@@ -1,9711 +1,5001 @@
 /**
- * GoTransformer.js - IL AST to Go AST Transformer
- * Converts IL AST (type-inferred, language-agnostic) to Go AST
+ * GoTransformer.js - IL AST to Go AST
  * (c)2006-2025 Hawkynt
  *
- * Full Pipeline:
- *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ * Pipeline: JS Source -> IL AST -> GoTransformer -> Go AST -> GoEmitter -> Go Source
  *
- * This transformer handles: IL AST → Go AST
+ * Every Go type comes from an IL type (resultType, declared field and
+ * parameter types, JSDoc returns); nothing is guessed from a name or a value.
  *
- * IL AST characteristics:
- *   - Type-inferred (no untyped nodes)
- *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
- *   - Global options already applied
+ * The object model (see ILProgramModel.js):
+ * - every class becomes a struct holding the fields of its whole base chain,
+ *   AlgorithmFramework.js's included, with every inherited method emitted on
+ *   it, so `this.EncryptBlock(...)` inside the framework's Result() reaches the
+ *   class's own override;
+ * - a class nothing derives from is a concrete pointer (*TEAInstance); a type
+ *   with subclasses (Algorithm, IBlockCipherInstance, a local base class) and
+ *   any untyped object are the JsObject interface, which every class
+ *   implements by name (JsGet/JsSet/JsCall), as JavaScript resolves members;
+ * - object literals are *JsMap, errors *JsError, BigInt *big.Int.
  *
- * Language options (applied here and in emitter):
- *   - packageName: Go package name
- *   - useStrictTypes: Enable strict type checking
- *   - useGenerics: Enable generics support
- *   - errorHandling: Enable idiomatic Go error handling
- *   - useContext: Add context.Context parameters
- *   - useCrypto: Use crypto stdlib functions
+ * Numbers follow JavaScript: an IL type of fixed width is that Go type, and an
+ * operation computes in the type the IL gives its result (bitwise operators
+ * on 32 bits as ToInt32/ToUint32 do, BigInt operators at full width).
+ * Strings are Latin-1 byte strings: one byte per character code below 256.
+ *
+ * The runtime the generated code relies on (GO_RUNTIME below) holds the
+ * JavaScript semantics that are not one Go operator: the object protocol,
+ * array and string helpers, BigInt, exceptions and the algorithm registry.
  */
 
-(function(global) {
+(function (global) {
   'use strict';
 
-  // Load dependencies
-  let GoAST;
+  let GoAST, Model;
   if (typeof require !== 'undefined') {
     GoAST = require('./GoAST.js');
-  } else if (global.GoAST) {
+    Model = require('./ILProgramModel.js');
+  } else {
     GoAST = global.GoAST;
+    Model = global.ILProgramModel;
   }
 
-  let GoEmitter;
-  if (typeof require !== 'undefined') {
-    GoEmitter = require('./GoEmitter.js').GoEmitter;
-  } else if (global.GoEmitter) {
-    GoEmitter = global.GoEmitter;
+  const G = GoAST;
+
+  /** A Go string literal holding a JavaScript string as Latin-1 bytes. */
+  function goStringLiteral(s) {
+    let out = '"';
+    for (const ch of String(s)) {
+      const code = ch.codePointAt(0);
+      if (code === 0x22) out += '\\"';
+      else if (code === 0x5c) out += '\\\\';
+      else if (code === 0x0a) out += '\\n';
+      else if (code === 0x0d) out += '\\r';
+      else if (code === 0x09) out += '\\t';
+      else if (code >= 0x20 && code < 0x7f) out += ch;
+      else if (code < 0x10000) out += '\\x' + (code & 0xff).toString(16).padStart(2, '0');
+      else out += '\\x3f';
+    }
+    return out + '"';
   }
 
-  const {
-    GoType, GoFile, GoImport, GoStruct, GoInterface, GoTypeAlias,
-    GoField, GoFunc, GoParameter, GoConst, GoVar,
-    GoBlock, GoExpressionStatement, GoReturn, GoIf, GoFor, GoSwitch, GoCase,
-    GoDefer, GoGo, GoBreak, GoContinue, GoSelect,
-    GoLiteral, GoIdentifier, GoBinaryExpression, GoUnaryExpression, GoSpread, GoAssignment,
-    GoSelectorExpression, GoIndexExpression, GoSliceExpression, GoCallExpression,
-    GoTypeAssertion, GoTypeConversion, GoCompositeLiteral, GoKeyValue,
-    GoFuncLit, GoMake, GoNew, GoRawCode
-  } = GoAST;
+  /** The Go spelling of a JavaScript constant (an untyped Go constant where it is a number). */
+  function constLiteral(c) {
+    if (c === null || c === undefined) return 'nil';
+    if (typeof c === 'string') return goStringLiteral(c);
+    if (typeof c === 'boolean') return String(c);
+    if (typeof c === 'bigint') return c >= -(2n ** 63n) && c < 2n ** 63n ? `jsBigI(${c})` : `jsBigLit("${c}")`;
+    if (Number.isNaN(c)) return 'math.NaN()';
+    if (c === Infinity) return 'math.Inf(1)';
+    if (c === -Infinity) return 'math.Inf(-1)';
+    return String(c);
+  }
 
-  /**
-   * Maps JavaScript/JSDoc types to Go types
-   */
-  const TYPE_MAP = {
-    'uint8': 'uint8', 'byte': 'uint8',
-    'uint16': 'uint16', 'ushort': 'uint16', 'word': 'uint16',
-    'uint32': 'uint32', 'uint': 'uint32', 'dword': 'uint32',
-    'uint64': 'uint64', 'ulong': 'uint64', 'qword': 'uint64',
-    'int8': 'int8', 'sbyte': 'int8',
-    'int16': 'int16', 'short': 'int16',
-    'int32': 'int32', 'int': 'int32',
-    'int64': 'int64', 'long': 'int64',
-    // usize/isize from IL (Rust-style platform-sized types) - map to Go's int
-    'usize': 'int', 'isize': 'int',
-    'float': 'float32', 'float32': 'float32',
-    'double': 'float64', 'float64': 'float64',
-    'number': 'uint32', // In crypto context
-    'boolean': 'bool', 'bool': 'bool',
-    'string': 'string', 'String': 'string',
-    'void': '', // No return type in Go
-    'object': 'interface{}', 'Object': 'interface{}', 'any': 'interface{}'
-  };
+  /** The name of a property key: the IL keeps it as a string, ESTree as an Identifier or Literal. */
+  const propKey = k => typeof k === 'string' ? k : (k && (k.name !== undefined ? k.name : String(k.value)));
+  const { canonicalType, isArrayType, elementType, isIntType, isFloatType, isNumericType, isBigType, intBits, isSignedInt } = Model;
 
-  /**
-   * JavaScript AST to Go AST Transformer
-   */
+  const GO_KEYWORDS = new Set(['break', 'case', 'chan', 'const', 'continue', 'default', 'defer', 'else', 'fallthrough', 'for',
+    'func', 'go', 'goto', 'if', 'import', 'interface', 'map', 'package', 'range', 'return', 'select', 'struct', 'switch', 'type', 'var']);
+  const GO_PREDECLARED = new Set(['append', 'cap', 'clear', 'close', 'complex', 'copy', 'delete', 'imag', 'len', 'make', 'max', 'min',
+    'new', 'panic', 'print', 'println', 'real', 'recover', 'bool', 'byte', 'comparable', 'complex64', 'complex128', 'error', 'float32',
+    'float64', 'int', 'int8', 'int16', 'int32', 'int64', 'rune', 'string', 'uint', 'uint8', 'uint16', 'uint32', 'uint64', 'uintptr',
+    'any', 'true', 'false', 'iota', 'nil', 'this', 'init', 'main',
+    // the packages the generated code imports
+    'math', 'big', 'fmt', 'strings', 'strconv', 'sort', 'reflect', 'regexp', 'os', 'bits', 'json', 'errors']);
+
+  const IMPORTS = ['fmt', 'math', 'math/big', 'math/bits', 'os', 'reflect', 'regexp', 'sort', 'strconv', 'strings'];
+
+  /** Bit width / signedness to the runtime's conversion helper suffix. */
+  const NUM_SUFFIX = { uint8: 'U8', uint16: 'U16', uint32: 'U32', uint64: 'U64', int8: 'I8', int16: 'I16', int32: 'I32', int64: 'I64', float64: 'F64' };
+
+  /** A Go expression with its IL type (and its value when it is a compile-time constant). */
+  class Val {
+    constructor(e, t, c) {
+      this.t = t;
+      if (c !== undefined) this.c = c;
+      this.e = e || (c !== undefined ? G.Lit(constLiteral(c)) : G.Lit('nil'));
+    }
+    get isConst() { return this.c !== undefined; }
+  }
+
   class GoTransformer {
     constructor(options = {}) {
-      // Accept 'namespace' as alias for 'packageName' for consistency with other transformers
-      const packageName = options.packageName || options.namespace || 'cipher';
-      this.options = {
-        packageName,
-        addComments: true,
-        useStrictTypes: true,
-        // errorHandling disabled by default: adds error returns to constructors
-        // but internal calls aren't updated to handle them, causing signature errors
-        errorHandling: false,
-        useInterfaces: true,
-        useGoroutines: true,
-        useCrypto: true,
-        useGenerics: true,
-        // useContext disabled by default: adds context params but calls don't match
-        useContext: false,
-        useChannels: true,
-        ...options
-      };
-      // Ensure packageName is always set correctly after spread
-      this.options.packageName = packageName;
-      this.typeKnowledge = options.typeKnowledge || null;
-      this.currentStruct = null;
-      this.currentFunc = null;
-      this.variableTypes = new Map();
-      this.structFieldTypes = new Map(); // Maps struct field names to their types
-      // Pre-register framework struct field types
-      this.structFieldTypes.set('Tests', GoType.Slice(new GoType('TestCase')));
-      this.structFieldTypes.set('tests', GoType.Slice(new GoType('TestCase')));
-      this.structFieldTypes.set('Documentation', GoType.Slice(new GoType('LinkItem')));
-      this.structFieldTypes.set('documentation', GoType.Slice(new GoType('LinkItem')));
-      this.structFieldTypes.set('References', GoType.Slice(new GoType('LinkItem')));
-      this.structFieldTypes.set('SupportedKeySizes', GoType.Slice(new GoType('KeySize')));
-      this.structFieldTypes.set('SupportedBlockSizes', GoType.Slice(new GoType('KeySize')));
-      this.methodReturnTypes = new Map(); // Maps method names to their return types
-      // Pre-register return types for built-in Go helper functions
-      this.methodReturnTypes.set('ParseInt', GoType.Int());
-      this.methodReturnTypes.set('ParseFloat', GoType.Float64());
-      this.methodReturnTypes.set('ifTruthy', GoType.Interface());
-      this.methodReturnTypes.set('firstNonNil', GoType.Interface());
-      this.methodReturnTypes.set('makeFilledSlice', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('containsElement', GoType.Bool());
-      this.methodReturnTypes.set('indexOfElement', GoType.Int());
-      this.methodReturnTypes.set('reduceSlice', GoType.Interface());
-      this.methodReturnTypes.set('reduceSliceBytes', GoType.UInt8());
-      this.methodReturnTypes.set('reduceSliceUint32', GoType.UInt32());
-      this.methodReturnTypes.set('mapSlice', GoType.Interface());
-      this.methodReturnTypes.set('filterSlice', GoType.Interface());
-      this.methodReturnTypes.set('minUint32', GoType.UInt32());
-      this.methodReturnTypes.set('maxUint32', GoType.UInt32());
-      this.methodReturnTypes.set('minInt', GoType.Int());
-      this.methodReturnTypes.set('maxInt', GoType.Int());
-      this.methodReturnTypes.set('getKeys', GoType.Slice(GoType.String()));
-      this.methodReturnTypes.set('getValues', GoType.Interface());
-      this.methodReturnTypes.set('sliceToString', GoType.String());
-      this.methodReturnTypes.set('stringToSlice', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('postIncrInt', GoType.Int());
-      this.methodReturnTypes.set('postIncrUint32', GoType.UInt32());
-      this.methodReturnTypes.set('postDecrInt', GoType.Int());
-      this.methodReturnTypes.set('postDecrUint32', GoType.UInt32());
-      this.methodReturnTypes.set('createTestVectors', GoType.Slice(new GoType('TestCase')));
-      this.methodReturnTypes.set('CreateTestVectors', GoType.Slice(new GoType('TestCase')));
-      this.methodReturnTypes.set('constantTimeCompare', GoType.Int());
-      this.methodReturnTypes.set('Result', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('Encode', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('Decode', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('Encrypt', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('Decrypt', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('Compress', GoType.Slice(GoType.UInt8()));
-      this.methodReturnTypes.set('Decompress', GoType.Slice(GoType.UInt8()));
-      this.methodParamTypes = new Map(); // Maps "methodName:paramIndex" to inferred type from call sites
-      this.methodDeclaredParams = new Map(); // Maps "methodName:paramIndex" to declared parameter type
-      this.currentFunctionReturnType = null; // Type of current function's return for inferring empty arrays
-      this.imports = new Set();
-      this.receiverName = 's'; // Default receiver variable name
-
-      // Track framework classes needed for stub generation
-      this.frameworkClasses = new Set(); // Base classes used (BlockCipherAlgorithm, etc.)
-      this.helperClasses = new Set();    // Helper classes (KeySize, LinkItem, etc.)
-      this.enumsUsed = new Set();        // Enums referenced (category_type, etc.)
-      this.frameworkFunctions = new Set(); // Framework functions (register_algorithm, etc.)
-      // Track renamed fields per struct (to avoid field/method name collisions)
-      this.renamedFields = new Map(); // Maps "StructName.OriginalName" -> "RenamedName"
-      this.declaredMethodNames = new Map();
-      this.methodRenames = new Map();
-      this.prescanEmptyArrayVars = new Set();
-      this.inMapSelfRefContext = false; // true when inside an object-literal IIFE where 'this' -> map key access
-      this.algorithmStructName = null; // Name of the concrete algorithm struct (e.g., 'LEAAlgorithm')
+      this.options = options;
+      this.packageName = options.packageName || 'main';
+      this.warnings = [];
     }
+
+    // ======================================================================
+    // ENTRY
+    // ======================================================================
 
     /**
-     * Check if an ObjectExpression (or ObjectLiteral IL node) contains any
-     * ThisExpression / ThisPropertyAccess / ThisMethodCall references inside
-     * function-valued properties.  When it does, the object must be built
-     * imperatively so that 's' (the receiver alias) can be captured in closures.
+     * Transform an IL Program into a Go File.
+     * @param {Object} ast - IL AST (Program)
+     * @returns {Object} GoAST File
      */
-    _objectExpressionHasThisRef(node) {
-      if (!node || !node.properties) return false;
-      const walk = (n) => {
-        if (!n || typeof n !== 'object') return false;
-        if (n.type === 'ThisExpression' || n.ilNodeType === 'ThisExpression') return true;
-        if (n.type === 'ThisPropertyAccess' || n.ilNodeType === 'ThisPropertyAccess') return true;
-        if (n.type === 'ThisMethodCall' || n.ilNodeType === 'ThisMethodCall') return true;
-        // Don't recurse into nested ObjectExpressions that have their own 'this' scope
-        // (but DO recurse into FunctionExpression bodies)
-        for (const key of Object.keys(n)) {
-          if (key === 'type' || key === 'ilNodeType') continue;
-          const child = n[key];
-          if (Array.isArray(child)) {
-            for (const item of child) {
-              if (item && typeof item === 'object' && walk(item)) return true;
-            }
-          } else if (child && typeof child === 'object' && walk(child)) return true;
-        }
-        return false;
-      };
-      for (const prop of node.properties) {
-        const val = prop.value;
-        if (!val) continue;
-        const isFn = val.type === 'FunctionExpression' || val.type === 'ArrowFunctionExpression';
-        if (isFn && walk(val.body)) return true;
-      }
-      return false;
-    }
-
-    /**
-     * Infer the return type string for a ThisMethodCall inside a map-self-ref
-     * context.  Returns null when the method doesn't appear to return a value
-     * (void), or a simple Go type string otherwise.
-     */
-    _inferThisMethodCallReturnForMap(node) {
-      // Simple heuristic: check the IL return type if present
-      const retType = node.returnType || node.inferredReturnType;
-      if (retType) {
-        const mapped = this.mapType(retType);
-        const s = mapped?.toString();
-        if (s && s !== '' && s !== 'void') return s;
-      }
-      // Methods named GenerateByte usually return uint32/uint8; Init returns void
-      const name = (node.method || '').toLowerCase();
-      if (name === 'init' || name === 'keysetup') return null;
-      // Fallback: assume returns interface{}
-      return 'interface{}';
-    }
-
-    /**
-     * Convert a Go AST node to its Go source code string representation.
-     * Uses GoEmitter to properly serialize the node instead of relying on toString()
-     * which would produce [object Object] for nodes without a custom toString().
-     * @param {GoNode} node - The AST node to convert
-     * @returns {string} The Go source code for the node
-     */
-    _nodeToCode(node) {
-      if (!node) return '';
-      if (typeof node === 'string') return node;
-      try {
-        const emitter = new GoEmitter({ indent: '', newline: '', addComments: false });
-        return emitter.emit(node);
-      } catch (e) {
-        return String(node);
-      }
-    }
-
-    /**
-     * Transform a slice index, handling negative indices.
-     * In JS, arr.slice(0, -1) means arr[0:arr.length-1]. Go doesn't support
-     * negative slice indices, so we convert them to len(arr)-N.
-     * @param {Object} indexNode - JS AST node for the index
-     * @param {Object} arrayNode - JS AST node for the array being sliced
-     * @returns {GoNode} - Transformed Go expression for the index
-     */
-    _transformSliceIndex(indexNode, arrayNode) {
-      if (!indexNode) return null;
-      // Detect negative numeric literal: -N (UnaryExpression with - and Literal)
-      if (indexNode.type === 'UnaryExpression' && indexNode.operator === '-' && indexNode.argument) {
-        const arg = indexNode.argument;
-        if (arg.type === 'Literal' && typeof arg.value === 'number' && arg.value > 0) {
-          // Convert -N to len(arr) - N
-          const arr = this.transformExpression(arrayNode);
-          const lenCall = new GoCallExpression(new GoIdentifier('len'), [arr]);
-          return new GoBinaryExpression(lenCall, '-', GoLiteral.Int(arg.value));
-        }
-      }
-      // Normal index - just transform it
-      return this.transformExpression(indexNode);
-    }
-
-    /**
-     * Safely create a type assertion - never on literals
-     * In Go, type assertions are only valid on interface values, not literals
-     * @param {GoNode} expression - The expression to assert
-     * @param {GoType} type - The type to assert to
-     * @returns {GoNode} - Either the assertion or the original expression if it's a literal
-     */
-    safeTypeAssertion(expression, type) {
-      // Never assert on literals - they're already typed in Go
-      if (expression.nodeType === 'Literal') {
-        // For numeric literals, use type conversion instead if needed
-        if (expression.literalType === 'int' || expression.literalType === 'uint32' ||
-            expression.literalType === 'float64') {
-          // Check if we need to convert the literal to the target type
-          const targetName = type?.name || type?.toString();
-          if (targetName && expression.literalType !== targetName) {
-            return new GoTypeConversion(type, expression);
-          }
-        }
-        return expression;
-      }
-
-      // Never assert on composite literals (maps, slices, struct literals) - they're concrete
-      if (expression.nodeType === 'CompositeLiteral') {
-        return expression;
-      }
-
-      // For function call expressions, only skip assertion if the return type is concrete
-      // Functions returning interface{}/any DO need type assertions at the call site
-      if (expression.nodeType === 'CallExpression') {
-        // Check the called method's return type via methodReturnTypes
-        const callee = expression.function;
-        let returnType = null;
-        if (callee?.nodeType === 'SelectorExpression') {
-          const methodName = callee.selector?.name || callee.selector;
-          if (methodName && this.methodReturnTypes) {
-            returnType = this.methodReturnTypes.get(methodName);
-          }
-        } else if (callee?.nodeType === 'Identifier') {
-          const funcName = callee.name;
-          if (funcName && this.methodReturnTypes) {
-            returnType = this.methodReturnTypes.get(funcName);
-          }
-        }
-        const returnTypeStr = returnType?.toString() || '';
-        // If return type is interface{}/any, allow the assertion to proceed
-        if (returnTypeStr === 'interface{}' || returnTypeStr === 'any') {
-          // Fall through to create the type assertion
-        } else {
-          // Return type is concrete or unknown - skip assertion
-          return expression;
-        }
-      }
-
-      // Never assert on type conversions - they already produce concrete types
-      if (expression.nodeType === 'TypeConversion') {
-        return expression;
-      }
-
-      // Never assert on make() expressions - they return concrete slice/map types
-      if (expression.nodeType === 'Make') {
-        return expression;
-      }
-
-      // Never assert on binary expressions - arithmetic/comparison produce concrete types
-      if (expression.nodeType === 'BinaryExpression') {
-        return expression;
-      }
-
-      // Never assert on unary expressions - they produce concrete types
-      if (expression.nodeType === 'UnaryExpression') {
-        return expression;
-      }
-
-      // Never assert on slice expressions - they produce concrete slice types
-      if (expression.nodeType === 'SliceExpression') {
-        return expression;
-      }
-
-      // Note: IndexExpression results may need assertion (e.g., map[string]interface{} indexing)
-
-      // Never assert on type assertions - already asserting
-      if (expression.nodeType === 'TypeAssertion') {
-        return expression;
-      }
-
-      // Never assert on new() expressions - they produce concrete pointer types
-      if (expression.nodeType === 'New') {
-        return expression;
-      }
-
-      // Type assertions only work on interface{} values
-      // If the expression has a known concrete type, don't add assertion
-      const exprType = expression.goType;
-      if (exprType) {
-        const exprTypeName = exprType.name || exprType.toString();
-        const targetTypeName = type?.name || type?.toString();
-
-        // If types match, no assertion needed
-        if (exprTypeName === targetTypeName) {
-          return expression;
-        }
-
-        // If expression type is not interface{}/any, use type conversion instead
-        if (exprTypeName !== 'interface{}' && exprTypeName !== 'any') {
-          // For numeric type conversions
-          if (this.isNumericType(exprTypeName) && this.isNumericType(targetTypeName)) {
-            return new GoTypeConversion(type, expression);
-          }
-          // Already a concrete type, don't assert
-          return expression;
-        }
-      }
-
-      // For index expressions, check if we're asserting on a known type
-      if (expression.nodeType === 'IndexExpression') {
-        let elemType = expression.goType?.name || expression.goType?.toString();
-        const targetTypeName = type?.name || type?.toString();
-
-        // If goType not set, infer element type from the target's known slice/array type
-        if (!elemType && expression.target) {
-          let containerType = null;
-          if (expression.target.nodeType === 'Identifier' && this.variableTypes) {
-            containerType = this.variableTypes.get(expression.target.name);
-          } else if (expression.target.nodeType === 'SelectorExpression') {
-            const fieldName = expression.target.selector?.name || expression.target.selector;
-            if (fieldName && this.structFieldTypes)
-              containerType = this.structFieldTypes.get(fieldName);
-          }
-          if (containerType) {
-            const ctStr = containerType.name || containerType.toString();
-            // Extract element type from slice type like []uint32 -> uint32
-            if (ctStr.startsWith('[]'))
-              elemType = ctStr.substring(2);
-            else if (ctStr.startsWith('map['))
-              elemType = null; // map values may be interface{}, let assertion proceed
-          }
-        }
-
-        if (elemType && (elemType === targetTypeName || (elemType !== 'interface{}' && elemType !== 'any'))) {
-          // Types match or source is concrete non-interface: skip assertion
-          if (elemType !== targetTypeName && this.isNumericType(elemType) && this.isNumericType(targetTypeName))
-            return new GoTypeConversion(type, expression);
-          return expression;
-        }
-      }
-
-      // For identifiers, check if we know the variable's type from context
-      if (expression.nodeType === 'Identifier') {
-        const varType = this.variableTypes?.get(expression.name);
-        if (varType) {
-          const varTypeName = varType.name || varType.toString();
-          const targetTypeName = type?.name || type?.toString();
-          if (varTypeName === targetTypeName) {
-            return expression;
-          }
-          if (varTypeName !== 'interface{}' && varTypeName !== 'any') {
-            if (this.isNumericType(varTypeName) && this.isNumericType(targetTypeName)) {
-              return new GoTypeConversion(type, expression);
-            }
-            return expression;
-          }
-        }
-      }
-
-      // For member/selector expressions, check if we know the field type
-      if (expression.nodeType === 'SelectorExpression') {
-        const fieldType = this.structFieldTypes?.get(expression.field?.name || expression.field);
-        if (fieldType) {
-          const fieldTypeName = fieldType.name || fieldType.toString();
-          const targetTypeName = type?.name || type?.toString();
-          if (fieldTypeName === targetTypeName) {
-            return expression;
-          }
-          if (fieldTypeName !== 'interface{}' && fieldTypeName !== 'any') {
-            if (this.isNumericType(fieldTypeName) && this.isNumericType(targetTypeName)) {
-              return new GoTypeConversion(type, expression);
-            }
-            return expression;
-          }
-        }
-      }
-
-      return new GoTypeAssertion(expression, type);
-    }
-
-    isNumericType(typeName) {
-      const numericTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                            'uint', 'uint8', 'uint16', 'uint32', 'uint64',
-                            'float32', 'float64', 'byte', 'rune'];
-      return numericTypes.includes(typeName);
-    }
-
-    /**
-     * Ensure a Go condition expression is boolean.
-     * Go requires explicit boolean expressions in if/for/while conditions.
-     * JS truthiness like `if (value)` must be converted to `if value != 0` etc.
-     * @param {Object} astNode - Original AST node (for type inference)
-     * @param {Object} condition - Transformed Go expression
-     * @returns {Object} Boolean Go expression
-     */
-    _ensureBooleanCondition(astNode, condition) {
-      if (!astNode || !condition) return condition;
-
-      const isComparison = astNode.type === 'BinaryExpression' &&
-                           ['==', '===', '!=', '!==', '<', '>', '<=', '>=', 'instanceof', 'in'].includes(astNode.operator);
-      const isUnaryNot = astNode.type === 'UnaryExpression' && astNode.operator === '!';
-      const isILComparison = ['Equals', 'NotEquals', 'LessThan', 'GreaterThan', 'LessThanOrEqual', 'GreaterThanOrEqual', 'StrictEquals', 'StrictNotEquals'].includes(astNode.ilNodeType);
-
-      if (isComparison || isUnaryNot || isILComparison)
-        return condition;
-
-      // Special: AlgorithmFramework/OpCodes truthiness checks -> != nil (they are struct pointers)
-      if (condition.nodeType === 'Identifier' &&
-          (condition.name === 'algorithmFramework' || condition.name === 'AlgorithmFramework' ||
-           condition.name === 'OpCodes' || condition.name === 'opCodes'))
-        return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-
-      const condType = this.inferFullExpressionType(astNode);
-      const typeStr = condType?.toString() || '';
-
-      if (typeStr === 'any' || typeStr === 'interface{}')
-        return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-
-      if (typeStr === 'bool')
-        return condition;
-
-      if (this.isNumericType(typeStr))
-        return new GoBinaryExpression(condition, '!=', GoLiteral.Int(0));
-
-      if (typeStr === 'string')
-        return new GoBinaryExpression(condition, '!=', GoLiteral.String(''));
-
-      if (condType?.isSlice || condType?.isArray)
-        return new GoBinaryExpression(
-          new GoCallExpression(new GoIdentifier('len'), [condition]),
-          '>', GoLiteral.Int(0)
-        );
-
-      if (condType?.isMap)
-        return new GoBinaryExpression(
-          new GoCallExpression(new GoIdentifier('len'), [condition]),
-          '>', GoLiteral.Int(0)
-        );
-
-      if (condType?.isPointer || typeStr.startsWith('*'))
-        return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-
-      // Check simple property access for field type lookup
-      const isSimplePropertyAccess = ['ThisPropertyAccess', 'MemberExpression', 'Identifier'].includes(astNode.type);
-      if (isSimplePropertyAccess) {
-        const propName = astNode.property || astNode.name;
-        if (propName) {
-          const fieldType = this.structFieldTypes.get(propName) ||
-                           this.structFieldTypes.get(this.toPascalCase(propName));
-          const fieldTypeStr = fieldType?.toString() || '';
-          if (fieldTypeStr === 'any' || fieldTypeStr === 'interface{}')
-            return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-          if (this.isNumericType(fieldTypeStr))
-            return new GoBinaryExpression(condition, '!=', GoLiteral.Int(0));
-          if (fieldTypeStr === 'string')
-            return new GoBinaryExpression(condition, '!=', GoLiteral.String(''));
-          if (fieldType?.isSlice || fieldType?.isArray)
-            return new GoBinaryExpression(
-              new GoCallExpression(new GoIdentifier('len'), [condition]),
-              '>', GoLiteral.Int(0)
-            );
-          return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-        }
-        return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-      }
-
-      if (typeStr && typeStr !== 'bool')
-        return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-
-      // Type inference failed - apply heuristic based on expression structure
-      if (!typeStr) {
-        if (astNode.type === 'BinaryExpression' && ['&', '|', '^', '<<', '>>', '>>>'].includes(astNode.operator))
-          return new GoBinaryExpression(condition, '!=', GoLiteral.Int(0));
-        if (astNode.type === 'CallExpression' || astNode.type === 'OpCodesCall')
-          return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-        if (astNode.type === 'AssignmentExpression' || astNode.type === 'UpdateExpression')
-          return new GoBinaryExpression(condition, '!=', GoLiteral.Int(0));
-        if (astNode.type === 'IndexExpression' || astNode.type === 'ArrayAccess')
-          return new GoBinaryExpression(condition, '!=', GoLiteral.Int(0));
-        return new GoBinaryExpression(condition, '!=', new GoLiteral(null, 'nil'));
-      }
-
-      return condition;
-    }
-
-    /**
-     * Map type from knowledge
-     */
-    mapTypeFromKnowledge(typeName) {
-      if (!typeName) {
-        return this.options.useStrictTypes ? GoType.UInt32() : GoType.Interface();
-      }
-
-      if (typeName.endsWith('[]')) {
-        const elementTypeName = typeName.slice(0, -2);
-        const elementType = this.mapTypeFromKnowledge(elementTypeName);
-        return GoType.Slice(elementType);
-      }
-
-      const typeMap = {
-        'byte': GoType.UInt8(),
-        'uint8': GoType.UInt8(),
-        'uint16': GoType.UInt16(),
-        'uint32': GoType.UInt32(),
-        'uint64': GoType.UInt64(),
-        'int8': GoType.Int8(),
-        'int16': GoType.Int16(),
-        'int32': GoType.Int32(),
-        'int64': GoType.Int64(),
-        'float32': GoType.Float32(),
-        'float64': GoType.Float64(),
-        'bool': GoType.Bool(),
-        'string': GoType.String(),
-        'dword': GoType.UInt32(),
-        'word': GoType.UInt16(),
-        'qword': GoType.UInt64()
-      };
-
-      const mapped = typeMap[typeName];
-      if (mapped) return mapped;
-
-      // Unknown type - use interface{} if not strict, or generic if using generics
-      if (this.options.useStrictTypes) {
-        return this.options.useGenerics ? new GoType('any') : GoType.UInt32();
-      }
-      return GoType.Interface();
-    }
-
-    /**
-     * Get OpCodes return type
-     */
-    getOpCodesReturnType(methodName) {
-      if (!this.typeKnowledge?.opCodesTypes) return null;
-      const methodInfo = this.typeKnowledge.opCodesTypes[methodName];
-      if (!methodInfo) return null;
-      return this.mapTypeFromKnowledge(methodInfo.returns);
-    }
-
-    /**
-     * Infer full expression type
-     */
-    inferFullExpressionType(node) {
-      if (!node) return GoType.Interface();
-
-      switch (node.type) {
-        case 'Literal':
-          return this.inferLiteralType(node);
-        case 'Identifier': {
-          const varType = this.variableTypes.get(node.name);
-          if (varType) return varType;
-          // Use IL resultType for non-scalar types (slices, strings, booleans)
-          // but not for numeric scalars (IL uses int32 while Go crypto needs uint32)
-          const ilType = this.mapILResultType(node.resultType);
-          if (ilType && (ilType.isSlice || ilType.name === 'string' || ilType.name === 'bool'))
-            return ilType;
-          return this.inferTypeFromName(node.name);
-        }
-        case 'CallExpression':
-          return this.inferCallExpressionType(node);
-        case 'ArrayExpression': {
-          // IL may annotate ArrayExpression with elementType
-          if (node.elementType) {
-            // Handle both string and object { name: 'type' } formats
-            const rawType = typeof node.elementType === 'string' ? node.elementType : node.elementType?.name;
-            const typeStr = rawType?.toLowerCase();
-            if (typeStr === 'uint8' || typeStr === 'byte') return GoType.Slice(GoType.UInt8());
-            if (typeStr === 'uint32' || typeStr === 'long') return GoType.Slice(GoType.UInt32());
-            if (typeStr === 'uint16' || typeStr === 'integer') return GoType.Slice(GoType.UInt16());
-            if (typeStr === 'int32') {
-              // Check if any values exceed INT32_MAX or are negative (unsigned values stored as signed) - use uint32 instead
-              const INT32_MAX = 2147483647;
-              const hasOverflow = (node.elements || []).some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'number' && (el.value > INT32_MAX || el.value < 0)
-              );
-              return GoType.Slice(hasOverflow ? GoType.UInt32() : GoType.Int32());
-            }
-            if (typeStr === 'int16') return GoType.Slice(GoType.Int16());
-            if (typeStr === 'int8') return GoType.Slice(GoType.Int8());
-            if (typeStr === 'float32') return GoType.Slice(GoType.Float32());
-            if (typeStr === 'float64' || typeStr === 'double') return GoType.Slice(GoType.Float64());
-            if (typeStr === 'uint64') return GoType.Slice(GoType.UInt64());
-            if (typeStr === 'int64') {
-              const INT64_MAX = 9223372036854775807n;
-              const hasOverflow = (node.elements || []).some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'bigint' && (el.value > INT64_MAX || el.value < 0n)
-              );
-              return GoType.Slice(hasOverflow ? GoType.UInt64() : GoType.Int64());
-            }
-          }
-          // Fallback to element inference
-          if (node.elements && node.elements.length > 0) {
-            const elemType = this.inferFullExpressionType(node.elements[0]);
-            return GoType.Slice(elemType);
-          }
-          return GoType.Slice(GoType.UInt8());
-        }
-        case 'ArrayLiteral': {
-          // ArrayLiteral from TypedArray - use IL's elementType
-          if (node.elementType) {
-            // Handle both string and object { name: 'type' } formats
-            const rawType = typeof node.elementType === 'string' ? node.elementType : node.elementType?.name;
-            const typeStr = rawType?.toLowerCase();
-            if (typeStr === 'uint8' || typeStr === 'byte') return GoType.Slice(GoType.UInt8());
-            if (typeStr === 'uint32' || typeStr === 'long') return GoType.Slice(GoType.UInt32());
-            if (typeStr === 'uint16' || typeStr === 'integer') return GoType.Slice(GoType.UInt16());
-            if (typeStr === 'int32') {
-              // Check if any values exceed INT32_MAX or are negative (unsigned values stored as signed) - use uint32 instead
-              const INT32_MAX = 2147483647;
-              const hasOverflow = (node.elements || []).some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'number' && (el.value > INT32_MAX || el.value < 0)
-              );
-              return GoType.Slice(hasOverflow ? GoType.UInt32() : GoType.Int32());
-            }
-            if (typeStr === 'int16') return GoType.Slice(GoType.Int16());
-            if (typeStr === 'int8') return GoType.Slice(GoType.Int8());
-            if (typeStr === 'float32') return GoType.Slice(GoType.Float32());
-            if (typeStr === 'float64' || typeStr === 'double') return GoType.Slice(GoType.Float64());
-            if (typeStr === 'uint64') return GoType.Slice(GoType.UInt64());
-            if (typeStr === 'int64') {
-              const INT64_MAX = 9223372036854775807n;
-              const hasOverflow = (node.elements || []).some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'bigint' && (el.value > INT64_MAX || el.value < 0n)
-              );
-              return GoType.Slice(hasOverflow ? GoType.UInt64() : GoType.Int64());
-            }
-          }
-          // Fallback to element inference
-          if (node.elements && node.elements.length > 0) {
-            const elemType = this.inferFullExpressionType(node.elements[0]);
-            return GoType.Slice(elemType);
-          }
-          return GoType.Slice(GoType.UInt8());
-        }
-        case 'UnaryExpression':
-          // ! operator returns boolean
-          if (node.operator === '!') {
-            return GoType.Bool();
-          }
-          return this.inferFullExpressionType(node.argument);
-        case 'LogicalExpression': {
-          // In Go, && and || only work on booleans and return boolean
-          // But in JavaScript, || returns first truthy value, && returns last truthy or first falsy
-          // If operands are booleans, return bool; otherwise return operand type or interface{}
-          const logLeftType = this.inferFullExpressionType(node.left);
-          const logRightType = this.inferFullExpressionType(node.right);
-          const logLeftStr = logLeftType?.toString() || '';
-          const logRightStr = logRightType?.toString() || '';
-
-          if (logLeftStr === 'bool' && logRightStr === 'bool')
-            return GoType.Bool();
-
-          // For || with non-booleans, return type matches operand type (or interface{})
-          if (logLeftStr === logRightStr)
-            return logLeftType;
-
-          // For || as null-coalescing: prefer concrete type over interface{}
-          if (node.operator === '||') {
-            const leftIsInterface = logLeftStr === 'interface{}' || logLeftStr === 'any' || logLeftStr === '';
-            const rightIsInterface = logRightStr === 'interface{}' || logRightStr === 'any' || logRightStr === '';
-            if (leftIsInterface && !rightIsInterface) return logRightType;
-            if (!leftIsInterface && rightIsInterface) return logLeftType;
-            // Both concrete but different numeric types: use left (JS || returns left if truthy)
-            if (!leftIsInterface && !rightIsInterface && this.isNumericType(logLeftStr) && this.isNumericType(logRightStr))
-              return logLeftType;
-          }
-
-          // For && short-circuit: result type is right operand's type
-          if (node.operator === '&&') {
-            const leftIsInterface = logLeftStr === 'interface{}' || logLeftStr === 'any' || logLeftStr === '';
-            const rightIsInterface = logRightStr === 'interface{}' || logRightStr === 'any' || logRightStr === '';
-            if (!rightIsInterface) return logRightType;
-            if (!leftIsInterface) return logLeftType;
-          }
-
-          // Mixed types - return interface{}
-          return GoType.Interface();
-        }
-        case 'BinaryExpression': {
-          const op = node.operator;
-          if (['==', '===', '!=', '!==', '<', '>', '<=', '>='].includes(op)) {
-            return GoType.Bool();
-          }
-          if (['&&', '||'].includes(op)) {
-            return GoType.Bool();
-          }
-          if (op === '>>>') {
-            return GoType.UInt32();
-          }
-          const leftType = this.inferFullExpressionType(node.left);
-          const rightType = this.inferFullExpressionType(node.right);
-
-          // Apply type coercion rules matching transformBinaryExpression
-          const leftTypeStr = leftType?.name || leftType?.toString() || '';
-          const rightTypeStr = rightType?.name || rightType?.toString() || '';
-          const ARITHMETIC_OPS = ['+', '-', '*', '/', '%', '+=', '-=', '*=', '/=', '%='];
-          const BITWISE_OPS = ['&', '|', '^', '&^', '<<', '>>', '&=', '|=', '^='];
-
-          const isLeftInt = leftTypeStr === 'int';
-          const isRightInt = rightTypeStr === 'int';
-          const isLeftUint32 = leftTypeStr === 'uint32';
-          const isRightUint32 = rightTypeStr === 'uint32';
-          const isBitwise = BITWISE_OPS.includes(op);
-          const isArithmetic = ARITHMETIC_OPS.includes(op);
-
-          // For int/uint32 mismatch, apply same coercion as transformBinaryExpression
-          if (isArithmetic || isBitwise) {
-            if ((isLeftInt && isRightUint32) || (isRightInt && isLeftUint32)) {
-              // Bitwise: result is uint32 (int cast to uint32)
-              // Arithmetic: result is int (uint32 cast to int)
-              return isBitwise ? GoType.UInt32() : GoType.Int();
-            }
-          }
-
-          // When one side is any/interface{} and the other is concrete in bitwise/arithmetic ops,
-          // the transform will type-assert the any side, so return the concrete type
-          if (isArithmetic || isBitwise) {
-            const isLeftAny = !leftTypeStr || leftTypeStr === 'any' || leftTypeStr === 'interface{}';
-            const isRightAny = !rightTypeStr || rightTypeStr === 'any' || rightTypeStr === 'interface{}';
-            if (isLeftAny && !isRightAny) return rightType;
-            if (isRightAny && !isLeftAny) return leftType;
-          }
-
-          const widerType = this.getWiderType(leftType, rightType);
-          // If Go inference yields any/interface{}, use IL resultType as fallback
-          const widerStr = widerType?.name || widerType?.toString() || '';
-          if (!widerStr || widerStr === 'any' || widerStr === 'interface{}') {
-            const ilType = this.mapILResultType(node.resultType);
-            if (ilType && ilType.name !== 'any' && ilType.name !== 'interface{}')
-              return ilType;
-          }
-          return widerType;
-        }
-        case 'NewExpression': {
-          // Get the type name from the callee
-          let typeName = node.callee.name;
-          if (!typeName && node.callee.type === 'MemberExpression') {
-            // Handle AlgorithmFramework.ClassName pattern
-            typeName = node.callee.property?.name || node.callee.property;
-          }
-          if (typeName === 'Array') {
-            return GoType.Slice(GoType.Interface());
-          }
-          // Helper classes are value types, not pointer types
-          const HELPER_CLASSES_FOR_TYPE = ['KeySize', 'LinkItem', 'TestCase', 'Vulnerability', 'TestCategory'];
-          if (HELPER_CLASSES_FOR_TYPE.includes(typeName)) {
-            return new GoType(typeName);
-          }
-          // new Type() -> &Type{} which is a pointer type
-          return GoType.Pointer(new GoType(typeName || 'interface{}'));
-        }
-        case 'MemberExpression':
-        case 'ThisPropertyAccess':
-          // Handle computed (index) access: arr[i] should return element type
-          if (node.computed) {
-            const baseType = this.inferFullExpressionType(node.object);
-            // Slice element type is stored in valueType (see GoType.Slice())
-            const elemType = baseType?.valueType || baseType?.elementType;
-            if (baseType && baseType.isSlice && elemType) {
-              return elemType;
-            }
-            // Fallback - use IL resultType for non-scalar types
-            {
-              const ilIdxType = this.mapILResultType(node.resultType);
-              if (ilIdxType && (ilIdxType.isSlice || ilIdxType.name === 'string' || ilIdxType.name === 'bool'))
-                return ilIdxType;
-            }
-            return GoType.Interface();
-          }
-
-          // Check if object type is any/interface{}/map - accessing any property returns interface{}
-          // But NOT for this.property access - that should check struct field types
-          const isThisAccess = node.object?.type === 'ThisExpression' ||
-                               node.type === 'ThisPropertyAccess';
-          if (!isThisAccess && node.object) {
-            const objBaseType = this.inferFullExpressionType(node.object);
-            const objBaseTypeStr = objBaseType?.toString() || '';
-            if (objBaseTypeStr === 'any' || objBaseTypeStr === 'interface{}' ||
-                objBaseTypeStr.startsWith('map[')) {
-              // config.base where config is any/map -> use IL resultType for non-scalar types
-              {
-                const ilMapType = this.mapILResultType(node.resultType);
-                if (ilMapType && (ilMapType.isSlice || ilMapType.name === 'string' || ilMapType.name === 'bool'))
-                  return ilMapType;
-              }
-              return GoType.Interface();
-            }
-          }
-
-          // For member expressions, first check if we know the struct field type
-          let propNameForType = node.property?.name || node.property;
-          if (propNameForType && typeof propNameForType === 'string') {
-            // Check struct field types first (these are the declared types)
-            const fieldType = this.structFieldTypes.get(propNameForType);
-            if (fieldType) return fieldType;
-            // Check with PascalCase (removing underscore prefix if present)
-            let baseName = propNameForType;
-            if (baseName.startsWith('_')) baseName = baseName.slice(1);
-            const pascalFieldType = this.structFieldTypes.get(
-              baseName.charAt(0).toUpperCase() + baseName.slice(1)
-            );
-            if (pascalFieldType) return pascalFieldType;
-            // Also check lowercase version
-            const lowerFieldType = this.structFieldTypes.get(baseName.toLowerCase());
-            if (lowerFieldType) return lowerFieldType;
-            // Use IL resultType for non-scalar types before falling back to name-based heuristics
-            const ilMemberType = this.mapILResultType(node.resultType);
-            if (ilMemberType && (ilMemberType.isSlice || ilMemberType.name === 'string' || ilMemberType.name === 'bool'))
-              return ilMemberType;
-            // Fall back to name-based inference
-            return this.inferTypeFromName(propNameForType);
-          }
-          {
-            const ilFinalType = this.mapILResultType(node.resultType);
-            if (ilFinalType && (ilFinalType.isSlice || ilFinalType.name === 'string' || ilFinalType.name === 'bool'))
-              return ilFinalType;
-          }
-          return GoType.Interface();
-
-        // IL AST node types for cryptographic operations
-        case 'PackBytes':
-          // PackBytes packs bytes into a uint - return uint type based on bits
-          const packBits = node.bits || 32;
-          if (packBits === 16) return GoType.UInt16();
-          if (packBits === 64) return GoType.UInt64();
-          return GoType.UInt32();
-        case 'UnpackBytes':
-          // UnpackBytes returns a byte slice
-          return GoType.Slice(GoType.UInt8());
-        case 'HexDecode':
-          // HexDecode returns a byte slice
-          return GoType.Slice(GoType.UInt8());
-        case 'ArrayLength':
-          // Array length returns int
-          return GoType.Int();
-        case 'ArraySlice':
-          // Slice of an array - infer element type from array
-          const arrType = this.inferFullExpressionType(node.array);
-          return arrType;
-        case 'ArrayCreation':
-          // Array creation returns a slice
-          return GoType.Slice(node.elementType ? new GoType(node.elementType) : GoType.UInt8());
-        case 'TypedArrayCreation': {
-          // TypedArrayCreation - use elementType from IL, with overflow check for int32
-          const rawElemType = node.elementType || node.resultType?.replace('[]', '') || 'uint8';
-          const elemStr = typeof rawElemType === 'string' ? rawElemType.toLowerCase() : rawElemType;
-          if (elemStr === 'int32') {
-            // Check if values exceed INT32_MAX -> use uint32
-            const INT32_MAX = 2147483647;
-            const hasOverflow = (node.elements || []).some(el =>
-              el && el.type === 'Literal' && typeof el.value === 'number' && (el.value > INT32_MAX || el.value < 0)
-            );
-            return GoType.Slice(hasOverflow ? GoType.UInt32() : GoType.Int32());
-          }
-          if (elemStr === 'uint32') return GoType.Slice(GoType.UInt32());
-          if (elemStr === 'uint16') return GoType.Slice(GoType.UInt16());
-          if (elemStr === 'uint64') return GoType.Slice(GoType.UInt64());
-          if (elemStr === 'int64') return GoType.Slice(GoType.Int64());
-          if (elemStr === 'int16') return GoType.Slice(new GoType('int16'));
-          if (elemStr === 'float32') return GoType.Slice(new GoType('float32'));
-          if (elemStr === 'float64') return GoType.Slice(GoType.Float64());
-          return GoType.Slice(GoType.UInt8());
-        }
-        case 'ArrayFill':
-          // ArrayFill creates a filled slice - use result type if available
-          if (node.resultType) {
-            const fillType = this.mapILResultType(node.resultType);
-            if (fillType) return fillType;
-          }
-          return GoType.Slice(GoType.UInt8());
-        case 'ArraySplice': {
-          // ArraySplice returns a slice - infer from the array being spliced
-          const spliceArrType = node.array ? this.inferFullExpressionType(node.array) : null;
-          if (spliceArrType?.isSlice) return spliceArrType;
-          // Fall back to resultType
-          if (node.resultType) {
-            const spliceType = this.mapILResultType(node.resultType);
-            if (spliceType) return spliceType;
-          }
-          return GoType.Slice(GoType.UInt8());
-        }
-        case 'ArrayConcat': {
-          // ArrayConcat returns a slice - infer from the first array
-          const concatArrType = node.arrays?.[0] ? this.inferFullExpressionType(node.arrays[0]) : null;
-          if (concatArrType?.isSlice) return concatArrType;
-          if (node.resultType) {
-            const concatType = this.mapILResultType(node.resultType);
-            if (concatType) return concatType;
-          }
-          return GoType.Slice(GoType.UInt8());
-        }
-        case 'ArrayReverse':
-        case 'ArrayCopy':
-        case 'ArrayFrom': {
-          // These return the same type as their input array
-          const inputArr = node.array || node.argument;
-          if (inputArr) {
-            const inputType = this.inferFullExpressionType(inputArr);
-            if (inputType?.isSlice) return inputType;
-          }
-          if (node.resultType) {
-            const arrResultType = this.mapILResultType(node.resultType);
-            if (arrResultType) return arrResultType;
-          }
-          return GoType.Slice(GoType.UInt8());
-        }
-        case 'BigIntCast':
-        case 'BigIntLiteral':
-          // BigInt values -> uint64 in Go
-          return GoType.UInt64();
-        case 'ObjectFreeze':
-        case 'ObjectSeal': {
-          // Object.freeze(array) / Object.seal(array) - infer type from the inner object/array
-          const innerArg = node.object || node.argument || node.arguments?.[0];
-          if (innerArg) {
-            const innerType = this.inferFullExpressionType(innerArg);
-            if (innerType) return innerType;
-          }
-          // Fall back to resultType with int32->uint32 overflow check for arrays
-          if (node.resultType) {
-            const rt = node.resultType;
-            if (rt === 'int32[]') {
-              const INT32_MAX = 2147483647;
-              const elems = innerArg?.elements || node.elements || [];
-              const hasOverflow = elems.some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'number' && (el.value > INT32_MAX || el.value < 0)
-              );
-              return GoType.Slice(hasOverflow ? GoType.UInt32() : GoType.Int32());
-            }
-            const frozenType = this.mapILResultType(rt);
-            if (frozenType) return frozenType;
-          }
-          return GoType.Interface();
-        }
-        case 'TypeConversion':
-          // Type conversion returns the target type
-          return new GoType(node.targetType || 'uint32');
-        case 'BitRotation':
-        case 'BitwiseOp':
-          // Bit operations return uint32
-          return GoType.UInt32();
-        case 'ThisMethodCall':
-          // Method call - look up registered return type
-          if (node.method) {
-            const returnType = this.methodReturnTypes.get(node.method) ||
-                               this.methodReturnTypes.get(this.toPascalCase(node.method));
-            if (returnType) return returnType;
-          }
-          {
-            const ilMethodType = this.mapILResultType(node.resultType);
-            if (ilMethodType && (ilMethodType.isSlice || ilMethodType.name === 'string' || ilMethodType.name === 'bool'))
-              return ilMethodType;
-          }
-          return GoType.Interface();
-        case 'SpreadElement':
-          // Spread element preserves the array type
-          return this.inferFullExpressionType(node.argument);
-
-        case 'ObjectExpression':
-        case 'ObjectLiteral':
-          // Object literal -> map[string]interface{}
-          return new GoType('map[string]interface{}');
-
-        case 'TemplateLiteral':
-          // Template literals become fmt.Sprintf which returns string
-          return GoType.String();
-
-        case 'Cast':
-          // Cast returns the target type
-          const castTargetType = node.targetType || 'int';
-          switch (castTargetType) {
-            case 'uint8': case 'byte': return GoType.UInt8();
-            case 'uint16': return GoType.UInt16();
-            case 'uint32': return GoType.UInt32();
-            case 'uint64': return GoType.UInt64();
-            case 'int8': return new GoType('int8');
-            case 'int16': return new GoType('int16');
-            case 'int32': return new GoType('int32');
-            case 'int64': return new GoType('int64');
-            case 'int': return GoType.Int();
-            case 'float32': return new GoType('float32');
-            case 'float64': return GoType.Float64();
-            case 'bool': return GoType.Bool();
-            case 'string': return GoType.String();
-            default: return GoType.UInt32();
-          }
-
-        case 'Floor':
-        case 'Ceil':
-        case 'Round':
-          // For integer division arguments, floor/ceil return the operand type
-          // (Go's integer division already floors for positive numbers)
-          // Otherwise they return float64
-          {
-            const argNode = node.argument || node.arguments?.[0];
-            if (argNode?.type === 'BinaryExpression' && argNode.operator === '/') {
-              const leftType = this.inferFullExpressionType(argNode.left);
-              const rightType = this.inferFullExpressionType(argNode.right);
-              const leftName = leftType?.name || '';
-              const rightName = rightType?.name || '';
-              if ((leftName.startsWith('int') || leftName.startsWith('uint')) &&
-                  (rightName.startsWith('int') || rightName.startsWith('uint'))) {
-                return this.getWiderType(leftType, rightType);
-              }
-            }
-            return GoType.Int(); // In crypto code, floor typically returns int
-          }
-        case 'Abs':
-        case 'Sin':
-        case 'Cos':
-        case 'Tan':
-        case 'Asin':
-        case 'Acos':
-        case 'Atan':
-        case 'Atan2':
-        case 'Sinh':
-        case 'Cosh':
-        case 'Tanh':
-        case 'Exp':
-        case 'Cbrt':
-        case 'Hypot':
-        case 'Sqrt':
-        case 'Log':
-        case 'Sign':
-        case 'Pow':
-        case 'Power':
-          // Math functions return float64
-          return GoType.Float64();
-
-        case 'Fround':
-          // Math.fround returns float32
-          return new GoType('float32');
-
-        case 'MathConstant':
-          // Math constants (PI, E, etc.) are float64
-          return GoType.Float64();
-
-        case 'NumberConstant':
-          // Number constants - most are float64, some are int
-          if (node.name === 'MAX_SAFE_INTEGER' || node.name === 'MIN_SAFE_INTEGER')
-            return GoType.Int64();
-          return GoType.Float64();
-
-        case 'InstanceOfCheck':
-          // instanceof returns boolean
-          return GoType.Bool();
-
-        case 'Min':
-        case 'Max':
-          // Min/Max return numeric type - infer from arguments
-          if (node.arguments?.[0]) {
-            return this.inferFullExpressionType(node.arguments[0]);
-          }
-          return GoType.Float64();
-
-        case 'RotateLeft':
-        case 'RotateRight':
-        case 'Rotation':
-          // Bit rotation returns uint32
-          return GoType.UInt32();
-
-        case 'MathCall':
-          // Math call - check method
-          if (node.method === 'imul') return GoType.Int();
-          if (node.method === 'abs') return GoType.Float64();
-          if (node.method === 'floor' || node.method === 'ceil' || node.method === 'round') return GoType.Float64();
-          return GoType.Float64();
-
-        case 'OpCodesCall':
-          // OpCodes return types depend on the method
-          const opMethod = node.method || '';
-          if (opMethod.includes('Pack')) return GoType.UInt32();
-          if (opMethod.includes('Unpack')) return GoType.Slice(GoType.UInt8());
-          if (opMethod.includes('Rot')) return GoType.UInt32();
-          if (opMethod.includes('Xor') && opMethod.includes('Array')) return GoType.Slice(GoType.UInt8());
-          // CopyArray/CloneArray returns the same type as the input array
-          if (opMethod === 'CopyArray' || opMethod === 'CloneArray') {
-            const argNode = node.arguments?.[0];
-            if (argNode) {
-              const argType = this.inferFullExpressionType(argNode);
-              if (argType?.isSlice || argType?.isArray) return argType;
-            }
-            return GoType.Slice(GoType.UInt8());
-          }
-          return GoType.UInt32();
-
-        case 'AssignmentExpression':
-          // Assignment returns the assigned value type
-          return this.inferFullExpressionType(node.right);
-
-        case 'ConditionalExpression':
-          // Ternary returns the type of the consequent/alternate
-          return this.inferFullExpressionType(node.consequent);
-
-        case 'ArrayReduce': {
-          // reduce returns the element type of the array for typed variants
-          const reduceArrType = this.inferFullExpressionType(node.array);
-          const reduceElemType = reduceArrType?.isSlice ? (reduceArrType.valueType || reduceArrType.elementType) : null;
-          if (reduceElemType) return reduceElemType;
-          return GoType.Interface();
-        }
-
-        case 'ArrayMap':
-        case 'ArrayFilter':
-          // map/filter preserves the array type
-          return this.inferFullExpressionType(node.array);
-
-        case 'ArrayFind':
-        case 'ArrayIndexOf':
-        case 'ArrayFindIndex': {
-          // find returns element type; indexOf/findIndex returns int
-          if (node.type === 'ArrayFind') {
-            const findArrType = this.inferFullExpressionType(node.array);
-            return findArrType?.isSlice ? (findArrType.valueType || findArrType.elementType || GoType.Interface()) : GoType.Interface();
-          }
-          return GoType.Int();
-        }
-
-        default:
-          // Fallback: use IL AST's resultType for non-scalar types (slices, strings, booleans)
-          // Numeric scalars are not used because IL uses signed types (int32) while Go crypto needs unsigned (uint32)
-          {
-            // Special handling for int32[] - check for overflow to use uint32 instead
-            const rt = node?.resultType;
-            if (rt === 'int32[]') {
-              const INT32_MAX = 2147483647;
-              const elems = node.elements || node.argument?.elements || [];
-              const hasOverflow = elems.some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'number' && (el.value > INT32_MAX || el.value < 0)
-              );
-              return GoType.Slice(hasOverflow ? GoType.UInt32() : GoType.Int32());
-            }
-            const ilDefaultType = this.mapILResultType(rt);
-            if (ilDefaultType && (ilDefaultType.isSlice || ilDefaultType.name === 'string' || ilDefaultType.name === 'bool'))
-              return ilDefaultType;
-          }
-          return GoType.Interface();
-      }
-    }
-
-    /**
-     * Maps an IL AST resultType string to a GoType.
-     * IL nodes carry resultType annotations (e.g., 'uint32', 'uint8[]', 'bigint', 'boolean')
-     * that can be used as a fallback when specific type inference cases aren't handled.
-     * @param {string|null} resultType - The IL resultType annotation
-     * @returns {GoType|null} The mapped GoType, or null if resultType is missing/unknown
-     */
-    mapILResultType(resultType) {
-      if (!resultType) return null;
-      const rt = typeof resultType === 'string' ? resultType : resultType.toString?.() || '';
-      if (!rt || rt === 'undefined' || rt === 'null') return null;
-
-      // Array/slice types: "uint8[]", "uint32[]", "int32[][]", etc.
-      if (rt.endsWith('[][]')) {
-        const elemBase = rt.slice(0, -4);
-        const inner = this.mapILResultType(elemBase + '[]');
-        return inner ? GoType.Slice(inner) : GoType.Slice(GoType.Slice(GoType.UInt8()));
-      }
-      if (rt.endsWith('[]')) {
-        const elemType = rt.slice(0, -2);
-        const goElem = this.mapILResultType(elemType);
-        return GoType.Slice(goElem || GoType.UInt8());
-      }
-
-      // Scalar types
-      switch (rt) {
-        case 'uint8': case 'byte': return GoType.UInt8();
-        case 'uint16': return GoType.UInt16();
-        case 'uint32': return GoType.UInt32();
-        case 'uint64': return GoType.UInt64();
-        case 'int8': return new GoType('int8');
-        case 'int16': return new GoType('int16');
-        case 'int32': return new GoType('int32');
-        case 'int64': return new GoType('int64');
-        case 'int': return GoType.Int();
-        case 'float32': return new GoType('float32');
-        case 'float64': return GoType.Float64();
-        case 'boolean': case 'bool': return GoType.Bool();
-        case 'string': return GoType.String();
-        case 'bigint': return GoType.UInt64(); // Go doesn't have native bigint; use uint64 as approximation
-        case 'number': return GoType.Float64();
-        case 'usize': return GoType.Int();
-        default: return null;
-      }
-    }
-
-    inferLiteralType(node) {
-      if (node.value === null) return GoType.Interface();
-      if (typeof node.value === 'boolean') return GoType.Bool();
-      if (typeof node.value === 'string') return GoType.String();
-      if (typeof node.value === 'number') {
-        return Number.isInteger(node.value) ? GoType.UInt32() : GoType.Float64();
-      }
-      // BigInt literals
-      if (typeof node.value === 'bigint') return GoType.UInt64();
-      return GoType.Interface();
-    }
-
-    inferTypeFromName(name) {
-      if (!name) return GoType.UInt32();
-      const lowerName = name.toLowerCase();
-
-      if (lowerName.includes('byte') || lowerName === 'b') {
-        return GoType.UInt8();
-      }
-      // Boolean fields - use strict matching to avoid false positives
-      // 'init' matches too broadly (INIT_ROUNDS, initState etc.) so only match exact forms
-      // 'encrypt'/'decrypt' matches too broadly (encryptBlock, decryptFunction) so only match exact
-      if (lowerName === 'inverse' || lowerName === 'isinverse' ||
-          lowerName === 'encrypt' || lowerName === 'decrypt' ||
-          lowerName === 'initialized' || lowerName === 'isinitialized' ||
-          lowerName.startsWith('is_') || lowerName.startsWith('has_') ||
-          // Use original name to check camelCase: isXxx, hasXxx
-          (name.startsWith('is') && name.length > 2 && name[2] >= 'A' && name[2] <= 'Z') ||
-          (name.startsWith('has') && name.length > 3 && name[3] >= 'A' && name[3] <= 'Z') ||
-          // Also match supports/needs patterns
-          lowerName.startsWith('supports') || lowerName.startsWith('needs') ||
-          // Mid-word boolean indicators: KeyIs128, flagIsSet, etc.
-          /(?:[a-z])(?:Is|Has|Should|Can|Will)[A-Z0-9]/.test(name)) {
-        return GoType.Bool();
-      }
-      // IV/nonce fields are typically byte slices
-      if (lowerName === 'iv' || lowerName === '_iv' || lowerName === 'nonce' ||
-          lowerName === '_nonce') {
-        return GoType.Slice(GoType.UInt8());
-      }
-      // Size/length/count/index fields should be int - check BEFORE block/key/state patterns
-      // This handles blockSize, keySize, stateSize etc. which should be int, not []uint8
-      // Also catches keyLen, blockLen, dataLen etc.
-      if (lowerName.includes('index') || lowerName.includes('length') ||
-          lowerName.includes('size') || lowerName.includes('count') ||
-          lowerName.endsWith('len') ||
-          lowerName === 'i' || lowerName === 'j' || lowerName === 'n') {
-        return GoType.Int();
-      }
-      // Numeric suffixes: names ending with offset/position/number/bits/rounds/etc.
-      // These indicate numeric values, not byte slices - check before key/block patterns
-      if (lowerName.endsWith('offset') || lowerName.endsWith('pos') ||
-          lowerName.endsWith('position') || lowerName.endsWith('idx') ||
-          lowerName.endsWith('num') || lowerName.endsWith('nr') ||
-          lowerName.endsWith('bits') || lowerName.endsWith('rounds') ||
-          lowerName.endsWith('steps') || lowerName.endsWith('shift') ||
-          lowerName.endsWith('mask') || lowerName.endsWith('width') ||
-          lowerName.endsWith('height') || lowerName.endsWith('depth')) {
-        return lowerName.endsWith('mask') ? GoType.UInt32() : GoType.Int();
-      }
-      // ALL_CAPS prefix constants: MAX_*, MIN_*, NUM_*, TOTAL_* are always numeric
-      if (/^(MAX|MIN|NUM|TOTAL)_/i.test(name) && /^[A-Z][A-Z0-9_]*$/.test(name))
-        return GoType.UInt32();
-
-      // S-box, LFSR, and similar register/permutation arrays are byte arrays
-      // Check before ALL_CAPS to catch SBOX, S_BOX, PERMUTATION, LFSR etc.
-      // For 'state' names, skip ALL_CAPS forms like MAX_STATE, INITIAL_STATE
-      // which are numeric constants rather than state arrays
-      if (lowerName === 's' || lowerName === 'sbox' || lowerName === 's_box' ||
-          lowerName.includes('permut') ||
-          (lowerName.includes('state') && !/^[A-Z][A-Z0-9_]*$/.test(name)) ||
-          lowerName === 'state' ||
-          lowerName.includes('lfsr') || lowerName.includes('nfsr') ||
-          lowerName === 'cells' || lowerName === 'register' ||
-          lowerName.includes('keystream') || lowerName.includes('feedback')) {
-        return GoType.Slice(GoType.UInt8());
-      }
-      // Numeric constant fields: ROUNDS, TOTAL_SUBKEYS, HALF_BLOCK, etc.
-      // All-uppercase names with underscores are typically numeric constants
-      // sbox/perm already caught above; allow key/block/table through as numeric
-      if (/^[A-Z][A-Z0-9_]*$/.test(name) && !lowerName.includes('sbox') &&
-          !lowerName.includes('s_box') && !lowerName.includes('permut')) {
-        return GoType.UInt32();
-      }
-      // Block/key/data fields are byte slices - use word-boundary matching
-      // Only match when the word appears as a complete segment in camelCase or snake_case
-      if (this._nameIndicatesByteSlice(name, lowerName)) {
-        return GoType.Slice(GoType.UInt8());
-      }
-      // Config-like fields should be map[string]interface{}
-      if (lowerName === 'config' || lowerName.endsWith('config') ||
-          lowerName.endsWith('options') || lowerName.endsWith('settings')) {
-        return GoType.Map(GoType.String(), GoType.Interface());
-      }
-      return GoType.UInt32();
-    }
-
-    // Check if a name indicates a byte-slice type using word-boundary-aware matching
-    _nameIndicatesByteSlice(name, lowerName) {
-      // Exact matches for common byte-slice names
-      const exactSliceNames = [
-        'key', 'keys', 'data', 'input', 'output', 'block', 'buffer',
-        'plaintext', 'ciphertext', 'message', 'digest', 'tag', 'aad',
-        'result', 'hash', 'salt', 'seed', 'tweak', 'header', 'payload',
-        '_key', '_data', '_input', '_output', '_block', '_buffer',
-      ];
-      if (exactSliceNames.includes(lowerName))
-        return true;
-      // Compound names where the last word is a byte-slice word
-      // e.g., roundKey, subKey, inputData, outputBlock, masterKey
-      if (/(?:key|keys|data|block|buffer|text|hash|salt|nonce)$/i.test(name) &&
-          // But NOT when preceded by a numeric/count indicator
-          !/(?:num|nr|total|max|min|half)$/i.test(name.replace(/(?:key|keys|data|block|buffer|text|hash|salt|nonce)$/i, '')))
-        return true;
-      // Names starting with a byte-slice word followed by typical data suffixes
-      // e.g., keyBytes, keyData, blockData, inputBuffer
-      if (/^(?:key|block|data|input|output)(?:bytes|data|buffer|stream|slice|array|chunk|part|half|left|right|word|words)$/i.test(lowerName))
-        return true;
-      // plaintext/ciphertext/message/digest/aad anywhere in compound name
-      if (lowerName.includes('plaintext') || lowerName.includes('ciphertext') ||
-          lowerName.includes('message') || lowerName.includes('digest') ||
-          lowerName.includes('aad'))
-        return true;
-      return false;
-    }
-
-    inferCallExpressionType(node) {
-      if (node.callee.type === 'MemberExpression') {
-        const obj = node.callee.object;
-        const method = node.callee.property.name;
-
-        if (obj.type === 'Identifier' && obj.name === 'OpCodes') {
-          const returnType = this.getOpCodesReturnType(method);
-          if (returnType) return returnType;
-        }
-
-        if (method === 'length') return GoType.Int();
-
-        // slice/subarray/concat preserve the source array type
-        if (method === 'slice' || method === 'subarray' || method === 'concat') {
-          const objType = this.inferFullExpressionType(obj);
-          if (objType && objType.isSlice) return objType;
-        }
-
-        // Check registered method return types for any method call (e.g., instance.Result())
-        const registeredMethodType = this.methodReturnTypes.get(method) ||
-                                     this.methodReturnTypes.get(this.toPascalCase(method));
-        if (registeredMethodType) return registeredMethodType;
-      }
-
-      // Handle Identifier call expressions (helper functions)
-      if (node.callee.type === 'Identifier') {
-        const funcName = node.callee.name;
-        const pascalName = this.toPascalCase(funcName);
-
-        // Check registered method return types first (handles local functions)
-        const registeredType = this.methodReturnTypes.get(funcName) ||
-                               this.methodReturnTypes.get(pascalName);
-        if (registeredType) return registeredType;
-
-        // Go helper functions for byte packing - return uint types
-        if (/^pack(16|32|64)(BE|LE)(Slice)?$/i.test(funcName)) {
-          const bits = funcName.match(/\d+/)?.[0];
-          if (bits === '16') return GoType.UInt16();
-          if (bits === '64') return GoType.UInt64();
-          return GoType.UInt32();
-        }
-        // Go helper functions for byte unpacking - return []uint8
-        if (/^unpack(16|32|64)(BE|LE)$/i.test(funcName)) {
-          return GoType.Slice(GoType.UInt8());
-        }
-        // len() returns int
-        if (funcName === 'len') return GoType.Int();
-        // mustHexDecode returns []uint8
-        if (funcName === 'mustHexDecode') return GoType.Slice(GoType.UInt8());
-        // makeFilledSlice returns []byte
-        if (funcName === 'makeFilledSlice') return GoType.Slice(GoType.Byte());
-        // xorArrays returns []byte
-        if (funcName === 'xorArrays') return GoType.Slice(GoType.Byte());
-        // copySlice returns []byte
-        if (funcName === 'copySlice') return GoType.Slice(GoType.Byte());
-        // make returns the specified type (handled elsewhere)
-        if (funcName === 'make') return GoType.Interface();
-        // int/uint32/uint8 conversion functions
-        if (funcName === 'int') return GoType.Int();
-        if (funcName === 'uint32') return GoType.UInt32();
-        if (funcName === 'uint8' || funcName === 'byte') return GoType.UInt8();
-        if (funcName === 'uint16') return GoType.UInt16();
-        if (funcName === 'uint64') return GoType.UInt64();
-        if (funcName === 'int32') return GoType.Int32();
-        if (funcName === 'int64') return GoType.Int64();
-        if (funcName === 'float64') return GoType.Float64();
-        if (funcName === 'float32') return GoType.Float32();
-        // asciiToBytes returns []byte
-        if (funcName === 'asciiToBytes' || funcName === 'ansiToBytes') return GoType.Slice(GoType.Byte());
-        // hexToBytes returns []byte
-        if (funcName === 'hexToBytes' || funcName === 'hex8ToBytes') return GoType.Slice(GoType.Byte());
-        // bytesToHex returns string
-        if (funcName === 'bytesToHex' || funcName === 'bytesToHex8') return GoType.String();
-        // firstNonNil returns interface{}
-        if (funcName === 'firstNonNil' || funcName === 'ifTruthy') return GoType.Interface();
-      }
-
-      // Use IL resultType for non-scalar types as fallback for call expressions
-      {
-        const ilCallType = this.mapILResultType(node.resultType);
-        if (ilCallType && (ilCallType.isSlice || ilCallType.name === 'string' || ilCallType.name === 'bool'))
-          return ilCallType;
-      }
-      return GoType.Interface();
-    }
-
-    getWiderType(type1, type2) {
-      if (!type1 || !type2) return type1 || type2 || GoType.UInt32();
-
-      const widths = {
-        'uint8': 8, 'int8': 8,
-        'uint16': 16, 'int16': 16,
-        'uint32': 32, 'int32': 32, 'int': 32,
-        'uint64': 64, 'int64': 64
-      };
-
-      const w1 = widths[type1.name] || 32;
-      const w2 = widths[type2.name] || 32;
-
-      return w1 >= w2 ? type1 : type2;
-    }
-
-    /**
-     * Determine if a new type should replace an existing type in method parameter inference.
-     * Returns true if:
-     * - existingType is generic (interface{}, any)
-     * - newType has a larger bit width (e.g., uint32 > uint8)
-     * - newType is a slice and existingType is not (or vice versa with better element type)
-     */
-    shouldReplaceType(existingType, newType) {
-      if (!existingType) return true;
-      if (!newType) return false;
-
-      const existingName = existingType.name || existingType.toString();
-      const newName = newType.name || newType.toString();
-
-      // Always replace generic types
-      if (existingName === 'interface{}' || existingName === 'any') return true;
-
-      // If both are integer types, prefer the wider one
-      const widths = {
-        'uint8': 8, 'int8': 8,
-        'uint16': 16, 'int16': 16,
-        'uint32': 32, 'int32': 32,
-        'uint64': 64, 'int64': 64,
-        'int': 32  // platform-dependent, treat as 32
-      };
-
-      const existingWidth = widths[existingName];
-      const newWidth = widths[newName];
-
-      // Both are integer types - prefer wider
-      if (existingWidth && newWidth && newWidth > existingWidth) return true;
-
-      // Both are slice types - check element types
-      if (existingType.isSlice && newType.isSlice) {
-        const existingElem = existingType.valueType || existingType.elementType;
-        const newElem = newType.valueType || newType.elementType;
-        if (existingElem && newElem) {
-          return this.shouldReplaceType(existingElem, newElem);
-        }
-      }
-
-      return false;
-    }
-
-    /**
-     * Transform JavaScript AST to Go AST
-     * @param {Object} jsAst - JavaScript AST
-     * @returns {GoFile} Go AST
-     */
-    transform(jsAst) {
-      const goFile = new GoFile();
-      goFile.package = this.options.packageName || 'main';
-
-      // Transform program body
-      if (jsAst.type === 'Program' && jsAst.body) {
-        for (const node of jsAst.body) {
-          const transformed = this.transformTopLevel(node);
-          if (transformed) {
-            if (Array.isArray(transformed)) {
-              goFile.declarations.push(...transformed);
-            } else {
-              goFile.declarations.push(transformed);
-            }
-          }
-        }
-      }
-
-      // Generate framework stub classes at the beginning of file
-      const stubs = this.generateFrameworkStubs();
-      if (stubs.length > 0) {
-        goFile.declarations = [...stubs, ...goFile.declarations];
-      }
-
-      // Add collected imports at the beginning
-      for (const imp of this.imports) {
-        // Use alias for math/bits to avoid shadowing by local 'bits' variable
-        const alias = imp === 'math/bits' ? 'mathbits' : null;
-        goFile.imports.push(new GoImport(imp, alias));
-      }
-
-      return goFile;
-    }
-
-    /**
-     * Generate stub types for AlgorithmFramework classes used in inheritance
-     */
-    generateFrameworkStubs() {
-      const stubs = [];
-
-      // Framework base type stub definitions (Go syntax using struct embedding)
-      const FRAMEWORK_STUBS = {
-        'BaseAlgorithm': 'type BaseAlgorithm struct {\n\tName string\n\tDescription string\n\tInventor string\n\tYear int\n\tCategory CategoryType\n\tSubCategory string\n\tSecurityStatus SecurityStatus\n\tComplexity ComplexityType\n\tCountry CountryCode\n\tDocumentation []LinkItem\n\tReferences []LinkItem\n\tKnownVulnerabilities []Vulnerability\n\tTests []TestCase\n\tConfig map[string]interface{}\n}',
-        'BlockCipherAlgorithm': 'type BlockCipherAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n\tSupportedBlockSizes []KeySize\n}',
-        'StreamCipherAlgorithm': 'type StreamCipherAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n\tSupportedIVSizes []KeySize\n}',
-        'HashFunctionAlgorithm': 'type HashFunctionAlgorithm struct {\n\tBaseAlgorithm\n\tOutputSize int\n\tBlockSize int\n}',
-        'AsymmetricAlgorithm': 'type AsymmetricAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n}',
-        'MacAlgorithm': 'type MacAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n\tOutputSize int\n}',
-        'KdfAlgorithm': 'type KdfAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n\tSupportedSaltSizes []KeySize\n}',
-        'AeadAlgorithm': 'type AeadAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n\tSupportedNonceSizes []KeySize\n\tSupportedTagSizes []KeySize\n}',
-        'CryptoAlgorithm': 'type CryptoAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n}',
-        'SymmetricCipherAlgorithm': 'type SymmetricCipherAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n}',
-        'AsymmetricCipherAlgorithm': 'type AsymmetricCipherAlgorithm struct {\n\tBaseAlgorithm\n\tSupportedKeySizes []KeySize\n}',
-        'EncodingAlgorithm': 'type EncodingAlgorithm struct {\n\tBaseAlgorithm\n}',
-        'CompressionAlgorithm': 'type CompressionAlgorithm struct {\n\tBaseAlgorithm\n}',
-        'ChecksumAlgorithm': 'type ChecksumAlgorithm struct {\n\tBaseAlgorithm\n\tOutputSize int\n}',
-        'ClassicalCipherAlgorithm': 'type ClassicalCipherAlgorithm struct {\n\tBaseAlgorithm\n}',
-        'IBlockCipherInstance': 'type IBlockCipherInstance struct {\n\tAlgorithm interface{}\n\tIsInverse bool\n\tKey []byte\n\tInputBuffer []byte\n\tBlockSize int\n\tKeySize int\n}',
-        'IStreamCipherInstance': 'type IStreamCipherInstance struct {\n\tAlgorithm interface{}\n\tIsInverse bool\n\tKey []byte\n\tIV []byte\n\tInputBuffer []byte\n}',
-        'IHashFunctionInstance': 'type IHashFunctionInstance struct {\n\tAlgorithm interface{}\n\tInputBuffer []byte\n}',
-        'IAlgorithmInstance': 'type IAlgorithmInstance struct {\n\tAlgorithm interface{}\n\tIsInverse bool\n\tInputBuffer []byte\n}',
-      };
-
-      // Helper struct definitions
-      const HELPER_STUBS = {
-        'KeySize': 'type KeySize struct {\n\tMinSize int\n\tMaxSize int\n\tStep int\n}',
-        'LinkItem': 'type LinkItem struct {\n\tText string\n\tURL string\n}',
-        'Vulnerability': 'type Vulnerability struct {\n\tName string\n\tDescription string\n\tMitigation string\n\tURI string\n\tURL string\n\tText string\n\tSeverity string\n}',
-        'TestCase': 'type TestCase struct {\n\tText string\n\tURI string\n\tInput interface{}\n\tExpected interface{}\n\tKey interface{}\n\tIV interface{}\n\tNonce interface{}\n\tTag interface{}\n\tAAD interface{}\n\tSalt interface{}\n\tPassword interface{}\n\tInfo interface{}\n\tOutput interface{}\n\tPlaintext interface{}\n\tCiphertext interface{}\n\tHash interface{}\n\tMAC interface{}\n\tSignature interface{}\n\tOutputSize int\n\tBlockSize int\n\tKeySize int\n\tRounds int\n\tSkip int\n\tCount int\n\tMode interface{}\n\tPadding interface{}\n\tAssociatedData interface{}\n\tPublicKey interface{}\n\tPrivateKey interface{}\n\tSeed interface{}\n\tMessage interface{}\n\tDigest interface{}\n\tN interface{}\n\tR interface{}\n\tP interface{}\n\tM interface{}\n\tD interface{}\n\tW interface{}\n\tA interface{}\n\tRows interface{}\n\tCols interface{}\n\tColumns interface{}\n\tAlphabet interface{}\n\tConfig interface{}\n\tParams interface{}\n\tVersion interface{}\n\tVariant interface{}\n\tLevel interface{}\n\tHashAlgorithm interface{}\n\tCounter interface{}\n\tDigits interface{}\n\tShift interface{}\n\tMacSize interface{}\n\tTweak interface{}\n\tParityBits interface{}\n\tRepetitions interface{}\n\tRoundTrip interface{}\n\tSCost interface{}\n\tTCost interface{}\n\tLabel interface{}\n\tOutputLength interface{}\n\tDirection interface{}\n\tTimestamp interface{}\n\tTimestep interface{}\n\tKeyLength interface{}\n\tPadType interface{}\n\tHashFunction interface{}\n\tIterations interface{}\n\tInnerType interface{}\n\tOuterType interface{}\n\tExtended interface{}\n\tShortened interface{}\n\tTimeSteps interface{}\n\tThreshold interface{}\n\tTotalShares interface{}\n\tTestReconstruction interface{}\n\tInverse interface{}\n\tLanguage interface{}\n\tEffectiveBits interface{}\n\tPad interface{}\n\tStepSize interface{}\n\tContext interface{}\n\tCounterBits interface{}\n\tRepetitionCount interface{}\n\tCipher interface{}\n\tCipherName interface{}\n\tTagSize interface{}\n\tTagLength interface{}\n\tMultiplier interface{}\n\tModulo interface{}\n\tPolynomial interface{}\n\tStateSize interface{}\n\tCost interface{}\n\tPasses interface{}\n\tSecret interface{}\n\tSecretKey interface{}\n\tCurve interface{}\n\tRadix interface{}\n\tAD interface{}\n\tCustomization interface{}\n\tOperationMode interface{}\n\tEndian interface{}\n\tReference interface{}\n\tKey2 interface{}\n\tIV1 interface{}\n\tIV2 interface{}\n\tQ interface{}\n\tG interface{}\n\tC interface{}\n\tTweakKey interface{}\n\tUKM interface{}\n\tKEK interface{}\n\tHashBits interface{}\n\tOutputLengthBits interface{}\n\tBlockSizeBits interface{}\n\tBurstLength interface{}\n\tWarmup interface{}\n\tIncrement interface{}\n\tLuxuryLevel interface{}\n\tOtherPublicKey interface{}\n\tForkOutput interface{}\n\tSharing interface{}\n\tWeight interface{}\n\tPositions interface{}\n\tOrder interface{}\n\tBits interface{}\n\tCombinationMode interface{}\n\tLength interface{}\n\tSequence interface{}\n\tValues interface{}\n\tOutputs interface{}\n\tIsDeterministic interface{}\n\tIsInverse interface{}\n}',
-      };
-
-      // Enum type definitions
-      const ENUM_STUBS = {
-        'CategoryType': 'type CategoryType string\nconst (\n\tCategoryBlock CategoryType = "block"\n\tCategoryStream CategoryType = "stream"\n\tCategoryHash CategoryType = "hash"\n\tCategoryAsymmetric CategoryType = "asymmetric"\n\tCategoryMAC CategoryType = "mac"\n\tCategoryKDF CategoryType = "kdf"\n\tCategoryEncoding CategoryType = "encoding"\n\tCategoryCompression CategoryType = "compression"\n\tCategoryChecksum CategoryType = "checksum"\n\tCategoryClassical CategoryType = "classical"\n\tCategorySpecial CategoryType = "special"\n\tCategoryRandom CategoryType = "random"\n\tCategoryPqc CategoryType = "pqc"\n\tCategoryPermutation CategoryType = "permutation"\n\tCategoryEcc CategoryType = "ecc"\n\tCategoryAead CategoryType = "aead"\n\tCategoryModes CategoryType = "modes"\n\tCategoryPadding CategoryType = "padding"\n)',
-        'SecurityStatus': 'type SecurityStatus string\nconst (\n\tSecuritySecure SecurityStatus = "secure"\n\tSecurityBroken SecurityStatus = "broken"\n\tSecurityDeprecated SecurityStatus = "deprecated"\n\tSecurityExperimental SecurityStatus = "experimental"\n\tSecurityEducational SecurityStatus = "educational"\n\tSecurityObsolete SecurityStatus = "obsolete"\n)',
-        'ComplexityType': 'type ComplexityType string\nconst (\n\tComplexityBeginner ComplexityType = "beginner"\n\tComplexityIntermediate ComplexityType = "intermediate"\n\tComplexityAdvanced ComplexityType = "advanced"\n\tComplexityExpert ComplexityType = "expert"\n\tComplexityResearch ComplexityType = "research"\n)',
-        'CountryCode': 'type CountryCode string\nconst (\n\tCountryUS CountryCode = "US"\n\tCountryGB CountryCode = "GB"\n\tCountryDE CountryCode = "DE"\n\tCountryFR CountryCode = "FR"\n\tCountryJP CountryCode = "JP"\n\tCountryCN CountryCode = "CN"\n\tCountryRU CountryCode = "RU"\n\tCountryIL CountryCode = "IL"\n\tCountryBE CountryCode = "BE"\n\tCountryKR CountryCode = "KR"\n\tCountryCH CountryCode = "CH"\n\tCountryAU CountryCode = "AU"\n\tCountryNL CountryCode = "NL"\n\tCountryAT CountryCode = "AT"\n\tCountryCA CountryCode = "CA"\n\tCountrySE CountryCode = "SE"\n\tCountryNO CountryCode = "NO"\n\tCountryDK CountryCode = "DK"\n\tCountryFI CountryCode = "FI"\n\tCountrySG CountryCode = "SG"\n\tCountryIN CountryCode = "IN"\n\tCountryBR CountryCode = "BR"\n\tCountryIT CountryCode = "IT"\n\tCountryUA CountryCode = "UA"\n\tCountryPL CountryCode = "PL"\n\tCountryES CountryCode = "ES"\n\tCountryPT CountryCode = "PT"\n\tCountryMX CountryCode = "MX"\n\tCountryAR CountryCode = "AR"\n\tCountryINTL CountryCode = "INTL"\n\tCountryANCIENT CountryCode = "ANCIENT"\n\tCountryUNKNOWN CountryCode = "UNKNOWN"\n)',
-      };
-
-      // Any algorithm class that embeds BaseAlgorithm requires helper classes and all enum types
-      // Check if any framework class is present (they all embed BaseAlgorithm directly or indirectly)
-      const hasAlgorithmClass = Array.from(this.frameworkClasses).some(fc =>
-        FRAMEWORK_STUBS[fc] && FRAMEWORK_STUBS[fc].includes('BaseAlgorithm')
-      ) || this.frameworkClasses.has('BaseAlgorithm');
-
-      if (hasAlgorithmClass) {
-        // Ensure BaseAlgorithm is in frameworkClasses if any class embeds it
-        this.frameworkClasses.add('BaseAlgorithm');
-        for (const helper of Object.keys(HELPER_STUBS)) {
-          this.helperClasses.add(helper);
-        }
-        // BaseAlgorithm struct uses CategoryType, SecurityStatus, ComplexityType, CountryCode as field types
-        for (const enumName of Object.keys(ENUM_STUBS)) {
-          this.enumsUsed.add(enumName);
-        }
-      }
-
-      // If any enum is used, BaseAlgorithm struct will likely be emitted,
-      // which requires ALL enum types and helper types to be defined
-      if (this.enumsUsed.size > 0 || this.frameworkClasses.has('BaseAlgorithm')) {
-        for (const enumName of Object.keys(ENUM_STUBS)) {
-          this.enumsUsed.add(enumName);
-        }
-        for (const helper of Object.keys(HELPER_STUBS)) {
-          this.helperClasses.add(helper);
-        }
-      }
-
-      // Check for enum usage first (they should come before struct definitions)
-      for (const enumName of this.enumsUsed) {
-        if (ENUM_STUBS[enumName]) {
-          stubs.push({ nodeType: 'RawCode', code: ENUM_STUBS[enumName] });
-        }
-      }
-
-      // Check for helper classes usage
-      for (const helper of this.helperClasses) {
-        if (HELPER_STUBS[helper]) {
-          stubs.push({ nodeType: 'RawCode', code: HELPER_STUBS[helper] });
-        }
-      }
-
-      // Check which framework classes are needed - order matters: BaseAlgorithm must come first
-      const orderedClasses = ['BaseAlgorithm', ...Array.from(this.frameworkClasses).filter(c => c !== 'BaseAlgorithm')];
-      for (const baseClass of orderedClasses) {
-        if (FRAMEWORK_STUBS[baseClass]) {
-          stubs.push({ nodeType: 'RawCode', code: FRAMEWORK_STUBS[baseClass] });
-        }
-      }
-
-      // Add framework functions
-      if (this.frameworkFunctions.has('register_algorithm') || this.frameworkFunctions.has('RegisterAlgorithm')) {
-        stubs.push({ nodeType: 'RawCode', code: 'func RegisterAlgorithm(algo interface{}) {}' });
-      }
-      if (this.frameworkFunctions.has('algorithm_framework') || this.enumsUsed.size > 0) {
-        stubs.push({ nodeType: 'RawCode', code: 'type AlgorithmFramework struct{}\nfunc (af *AlgorithmFramework) Find(name string) interface{} { return nil }\nvar algorithmFramework = &AlgorithmFramework{}' });
-        // Register the type so truthiness checks use != nil instead of != 0
-        this.variableTypes.set('algorithmFramework', GoType.Pointer(new GoType('AlgorithmFramework')));
-      }
-
-      // Add common helper functions used by IL transformations
-      const HELPER_FUNCS = `
-// Helper functions for transpiled algorithms
-func mustHexDecode(s string) []byte { b := make([]byte, len(s)/2); for i := 0; i < len(s); i += 2 { b[i/2] = hexVal(s[i])<<4 | hexVal(s[i+1]) }; return b }
-func hexVal(c byte) byte { if c >= '0' && c <= '9' { return c - '0' }; if c >= 'a' && c <= 'f' { return c - 'a' + 10 }; if c >= 'A' && c <= 'F' { return c - 'A' + 10 }; return 0 }
-func minInt(a, b int) int { if a < b { return a }; return b }
-func maxInt(a, b int) int { if a > b { return a }; return b }
-func minUint32(a, b uint32) uint32 { if a < b { return a }; return b }
-func maxUint32(a, b uint32) uint32 { if a > b { return a }; return b }
-func containsElement(arr []byte, val byte) bool { for _, v := range arr { if v == val { return true } }; return false }
-func indexOf(arr []byte, val byte) int { for i, v := range arr { if v == val { return i } }; return -1 }
-func reverseSlice(arr []byte) []byte { n := len(arr); r := make([]byte, n); for i, v := range arr { r[n-1-i] = v }; return r }
-func sortSlice(arr []byte) []byte { r := make([]byte, len(arr)); copy(r, arr); for i := 0; i < len(r)-1; i++ { for j := 0; j < len(r)-i-1; j++ { if r[j] > r[j+1] { r[j], r[j+1] = r[j+1], r[j] } } }; return r }
-func makeFilledSlice(size int, val int) []byte { r := make([]byte, size); for i := range r { r[i] = byte(val) }; return r }
-func cloneArray(arr []byte) []byte { r := make([]byte, len(arr)); copy(r, arr); return r }
-func cloneArrayUint32(arr []uint32) []uint32 { r := make([]uint32, len(arr)); copy(r, arr); return r }
-func uint32SliceToBytes(arr []uint32) []byte { r := make([]byte, len(arr)); for i, v := range arr { r[i] = byte(v) }; return r }
-func bytesToUint32Slice(arr []byte) []uint32 { r := make([]uint32, len(arr)); for i, v := range arr { r[i] = uint32(v) }; return r }
-func cloneArrayUint16(arr []uint16) []uint16 { r := make([]uint16, len(arr)); copy(r, arr); return r }
-func cloneArrayInt(arr []int) []int { r := make([]int, len(arr)); copy(r, arr); return r }
-func clearArray(arr []byte) { for i := range arr { arr[i] = 0 } }
-func xorArrays(a, b []byte) []byte { r := make([]byte, len(a)); for i := range a { r[i] = a[i] ^ b[i] }; return r }
-func stringToBytes(s string) []byte { return []byte(s) }
-func bytesToHex(b []byte) string { h := "0123456789abcdef"; r := make([]byte, len(b)*2); for i, v := range b { r[i*2] = h[v>>4]; r[i*2+1] = h[v&0xf] }; return string(r) }
-func rotl32(v uint32, n int) uint32 { return (v << uint(n)) | (v >> uint(32-n)) }
-func rotr32(v uint32, n int) uint32 { return (v >> uint(n)) | (v << uint(32-n)) }
-func rotl16(v uint16, n int) uint16 { return (v << uint(n)) | (v >> uint(16-n)) }
-func rotr16(v uint16, n int) uint16 { return (v >> uint(n)) | (v << uint(16-n)) }
-func rotl8(v byte, n int) byte { return (v << uint(n)) | (v >> uint(8-n)) }
-func rotr8(v byte, n int) byte { return (v >> uint(n)) | (v << uint(8-n)) }
-func pack32BE(b0, b1, b2, b3 byte) uint32 { return uint32(b0)<<24 | uint32(b1)<<16 | uint32(b2)<<8 | uint32(b3) }
-func pack32LE(b0, b1, b2, b3 byte) uint32 { return uint32(b3)<<24 | uint32(b2)<<16 | uint32(b1)<<8 | uint32(b0) }
-func pack16BE(b0, b1 byte) uint16 { return uint16(b0)<<8 | uint16(b1) }
-func pack16LE(b0, b1 byte) uint16 { return uint16(b1)<<8 | uint16(b0) }
-func unpack32BE(v uint32) []byte { return []byte{byte(v>>24), byte(v>>16), byte(v>>8), byte(v)} }
-func unpack32LE(v uint32) []byte { return []byte{byte(v), byte(v>>8), byte(v>>16), byte(v>>24)} }
-func unpack16BE(v uint16) []byte { return []byte{byte(v>>8), byte(v)} }
-func unpack16LE(v uint16) []byte { return []byte{byte(v), byte(v>>8)} }
-func pack32BESlice(b []byte) uint32 { return pack32BE(b[0], b[1], b[2], b[3]) }
-func pack32LESlice(b []byte) uint32 { return pack32LE(b[0], b[1], b[2], b[3]) }
-func pack16BESlice(b []byte) uint16 { return pack16BE(b[0], b[1]) }
-func pack16LESlice(b []byte) uint16 { return pack16LE(b[0], b[1]) }
-func pack64BE(b0,b1,b2,b3,b4,b5,b6,b7 byte) uint64 { return uint64(b0)<<56|uint64(b1)<<48|uint64(b2)<<40|uint64(b3)<<32|uint64(b4)<<24|uint64(b5)<<16|uint64(b6)<<8|uint64(b7) }
-func pack64LE(b0,b1,b2,b3,b4,b5,b6,b7 byte) uint64 { return uint64(b7)<<56|uint64(b6)<<48|uint64(b5)<<40|uint64(b4)<<32|uint64(b3)<<24|uint64(b2)<<16|uint64(b1)<<8|uint64(b0) }
-func unpack64BE(v uint64) []byte { return []byte{byte(v>>56),byte(v>>48),byte(v>>40),byte(v>>32),byte(v>>24),byte(v>>16),byte(v>>8),byte(v)} }
-func unpack64LE(v uint64) []byte { return []byte{byte(v),byte(v>>8),byte(v>>16),byte(v>>24),byte(v>>32),byte(v>>40),byte(v>>48),byte(v>>56)} }
-func pack64BESlice(b []byte) uint64 { return pack64BE(b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7]) }
-func pack64LESlice(b []byte) uint64 { return pack64LE(b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7]) }
-// Post-increment helpers (return old value, then increment)
-func postIncrInt(p *int) int { old := *p; *p += 1; return old }
-func postDecrInt(p *int) int { old := *p; *p -= 1; return old }
-func postIncrUint32(p *uint32) uint32 { old := *p; *p += 1; return old }
-func postDecrUint32(p *uint32) uint32 { old := *p; *p -= 1; return old }
-func postIncrUint16(p *uint16) uint16 { old := *p; *p += 1; return old }
-func postIncrInt32(p *int32) int32 { old := *p; *p += 1; return old }
-// Pre-increment helpers (increment, then return new value)
-func preIncrInt(p *int) int { *p += 1; return *p }
-func preDecrInt(p *int) int { *p -= 1; return *p }
-func preIncrUint32(p *uint32) uint32 { *p += 1; return *p }
-func preDecrUint32(p *uint32) uint32 { *p -= 1; return *p }
-func preIncrUint16(p *uint16) uint16 { *p += 1; return *p }
-func preIncrInt32(p *int32) int32 { *p += 1; return *p }
-// JavaScript short-circuit helpers - || on non-booleans returns first truthy
-func firstNonNil(a, b interface{}) interface{} { if a != nil { return a }; return b }
-func ifTruthy(a, b interface{}) interface{} { if a != nil { return b }; return nil }
-// Type check helpers for JavaScript typeof comparisons
-func isTypeString(v any) bool { _, ok := v.(string); return ok }
-func isTypeNumber(v any) bool { switch v.(type) { case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64: return true }; return false }
-func isTypeBool(v any) bool { _, ok := v.(bool); return ok }
-func isTypeObject(v any) bool { if v == nil { return false }; switch v.(type) { case map[string]any, []any, struct{}: return true }; return false }
-func isTypeNil(v any) bool { return v == nil }
-func isTypeFunc(v any) bool { return false } // Go functions can't be type-checked at runtime like this
-// HL64 represents a 64-bit value split into high and low 32-bit words
-type HL64 struct { H uint32; L uint32 }
-// 64-bit arithmetic helpers for algorithms using high/low word pairs
-func add3L64(al, bl, cl uint32) uint64 { return uint64(al) + uint64(bl) + uint64(cl) }
-func add3H64(lowSum uint64, ah, bh, ch uint32) uint32 { return uint32(int32(ah) + int32(bh) + int32(ch) + int32(lowSum>>32)) }
-func add64_HL(ah, al, bh, bl uint32) HL64 { l := uint64(al) + uint64(bl); h := uint32(int32(ah) + int32(bh) + int32(l>>32)); return HL64{H: h, L: uint32(l)} }
-func xor64_HL(ah, al, bh, bl uint32) HL64 { return HL64{H: ah ^ bh, L: al ^ bl} }
-func swap64_HL(high, low uint32) HL64 { return HL64{H: low, L: high} }
-func rotR64_HL(high, low uint32, n int) HL64 { n &= 63; if n == 0 { return HL64{H: high, L: low} }; if n == 32 { return HL64{H: low, L: high} }; if n < 32 { return HL64{H: (high >> n) | (low << (32 - n)), L: (low >> n) | (high << (32 - n))} }; n -= 32; return HL64{H: (low >> n) | (high << (32 - n)), L: (high >> n) | (low << (32 - n))} }
-func rotL64_HL(high, low uint32, n int) HL64 { return rotR64_HL(high, low, 64-n) }
-// Array/slice transformation helpers
-func mapSlice(arr interface{}, fn interface{}) interface{} { switch a := arr.(type) { case []byte: f := fn.(func(byte) byte); r := make([]byte, len(a)); for i, v := range a { r[i] = f(v) }; return r; case []uint32: f := fn.(func(uint32) uint32); r := make([]uint32, len(a)); for i, v := range a { r[i] = f(v) }; return r; case []int32: f := fn.(func(int32) int32); r := make([]int32, len(a)); for i, v := range a { r[i] = f(v) }; return r; case []int: f := fn.(func(int) int); r := make([]int, len(a)); for i, v := range a { r[i] = f(v) }; return r; case []uint16: f := fn.(func(uint16) uint16); r := make([]uint16, len(a)); for i, v := range a { r[i] = f(v) }; return r; case []int16: f := fn.(func(int16) int16); r := make([]int16, len(a)); for i, v := range a { r[i] = f(v) }; return r; default: return arr } }
-func mapSliceBytes(arr []byte, fn func(byte) byte) []byte { r := make([]byte, len(arr)); for i, v := range arr { r[i] = fn(v) }; return r }
-func mapSliceUint32(arr []uint32, fn func(uint32) uint32) []uint32 { r := make([]uint32, len(arr)); for i, v := range arr { r[i] = fn(v) }; return r }
-func filterSliceBytes(arr []byte, fn func(byte) bool) []byte { r := []byte{}; for _, v := range arr { if fn(v) { r = append(r, v) } }; return r }
-func someSliceBytes(arr []byte, fn func(byte) bool) bool { for _, v := range arr { if fn(v) { return true } }; return false }
-func everySliceBytes(arr []byte, fn func(byte) bool) bool { for _, v := range arr { if !fn(v) { return false } }; return true }
-func reduceSliceBytes(arr []byte, fn func(byte, byte) byte, init byte) byte { acc := init; for _, v := range arr { acc = fn(acc, v) }; return acc }
-func reduceSliceUint32(arr []uint32, fn func(uint32, uint32) uint32, init uint32) uint32 { acc := init; for _, v := range arr { acc = fn(acc, v) }; return acc }
-// Generic interface{} slice helpers for when element types are unknown
-// Accept interface{} for fn to handle both func(interface{}) bool and func(interface{}) interface{} signatures
-func _callPredicate(fn interface{}, v interface{}) bool { switch f := fn.(type) { case func(interface{}) bool: return f(v); case func(interface{}) interface{}: r := f(v); switch b := r.(type) { case bool: return b; default: return r != nil }; default: return false } }
-func every(arr interface{}, fn interface{}) bool { switch a := arr.(type) { case []byte: for _, v := range a { if !_callPredicate(fn, v) { return false } }; return true; case []uint32: for _, v := range a { if !_callPredicate(fn, v) { return false } }; return true; case []interface{}: for _, v := range a { if !_callPredicate(fn, v) { return false } }; return true; default: return true } }
-func some(arr interface{}, fn interface{}) bool { switch a := arr.(type) { case []byte: for _, v := range a { if _callPredicate(fn, v) { return true } }; return false; case []uint32: for _, v := range a { if _callPredicate(fn, v) { return true } }; return false; case []interface{}: for _, v := range a { if _callPredicate(fn, v) { return true } }; return false; default: return false } }
-func reduceSlice(arr interface{}, fn interface{}, init interface{}) interface{} { _callReduce := func(f interface{}, a, b interface{}) interface{} { switch rf := f.(type) { case func(interface{}, interface{}) interface{}: return rf(a, b); default: return a } }; switch a := arr.(type) { case []byte: acc := init; for _, v := range a { acc = _callReduce(fn, acc, v) }; return acc; case []uint32: acc := init; for _, v := range a { acc = _callReduce(fn, acc, v) }; return acc; case []interface{}: acc := init; for _, v := range a { acc = _callReduce(fn, acc, v) }; return acc; default: return init } }
-func filterSlice(arr interface{}, fn interface{}) interface{} { switch a := arr.(type) { case []byte: r := []byte{}; for _, v := range a { if _callPredicate(fn, v) { r = append(r, v) } }; return r; case []uint32: r := []uint32{}; for _, v := range a { if _callPredicate(fn, v) { r = append(r, v) } }; return r; case []interface{}: r := []interface{}{}; for _, v := range a { if _callPredicate(fn, v) { r = append(r, v) } }; return r; default: return arr } }
-func compareArrays(a, b interface{}) int { switch av := a.(type) { case []byte: bv, ok := b.([]byte); if !ok { return -1 }; if len(av) != len(bv) { if len(av) < len(bv) { return -1 }; return 1 }; for i := range av { if av[i] < bv[i] { return -1 } else if av[i] > bv[i] { return 1 } }; return 0; case []uint32: bv, ok := b.([]uint32); if !ok { return -1 }; if len(av) != len(bv) { if len(av) < len(bv) { return -1 }; return 1 }; for i := range av { if av[i] < bv[i] { return -1 } else if av[i] > bv[i] { return 1 } }; return 0; default: return -1 } }
-// JavaScript parseInt equivalent
-func ParseInt(s interface{}, base ...int) int { str := fmt.Sprintf("%v", s); b := 10; if len(base) > 0 { b = base[0] }; v, _ := strconv.ParseInt(strings.TrimSpace(str), b, 64); return int(v) }
-func joinSlice(arr []byte, sep string) string { if len(arr) == 0 { return "" }; r := fmt.Sprintf("%d", arr[0]); for i := 1; i < len(arr); i++ { r += sep + fmt.Sprintf("%d", arr[i]) }; return r }
-func spliceSlice(arr []byte, start, deleteCount int, items ...byte) []byte { if start < 0 { start = len(arr) + start }; if start < 0 { start = 0 }; if start > len(arr) { start = len(arr) }; end := start + deleteCount; if end > len(arr) { end = len(arr) }; r := make([]byte, 0, len(arr)-deleteCount+len(items)); r = append(r, arr[:start]...); r = append(r, items...); r = append(r, arr[end:]...); return r }
-// Power function helper
-func powInt(base, exp int) int { r := 1; for exp > 0 { if exp&1 == 1 { r *= base }; exp >>= 1; base *= base }; return r }
-func powUint32(base, exp uint32) uint32 { r := uint32(1); for exp > 0 { if exp&1 == 1 { r *= base }; exp >>= 1; base *= base }; return r }
-// String/byte conversion helpers
-func asciiToBytes(s string) []byte { return []byte(s) }
-func ansiToBytes(s string) []byte { return []byte(s) }
-func hexToBytes(s string) []byte { return mustHexDecode(s) }
-func hex8ToBytes(s string) []byte { return mustHexDecode(s) }
-func bytesToString(b []byte) string { return string(b) }
-// Bit manipulation helpers
-func bitMask(bits int) uint32 { if bits >= 32 { return 0xFFFFFFFF }; return (1 << uint(bits)) - 1 }
-func getBit(value interface{}, bit int) uint8 { switch v := value.(type) { case uint32: return uint8((v >> uint(bit)) & 1); case byte: return (v >> uint(bit)) & 1; case uint16: return uint8((v >> uint(bit)) & 1); case int: return uint8((v >> uint(bit)) & 1); case int32: return uint8((v >> uint(bit)) & 1); default: return 0 } }
-func setBit(value uint32, bit int, bitVal uint8) uint32 { if bitVal != 0 { return value | (1 << uint(bit)) }; return value &^ (1 << uint(bit)) }
-func unshiftSlice(arr []byte, items ...byte) []byte { return append(items, arr...) }
-func gF256Mul(a, b uint8) uint8 { var p uint8; for i := 0; i < 8; i++ { if b&1 != 0 { p ^= a }; hi := a & 0x80; a <<= 1; if hi != 0 { a ^= 0x1B }; b >>= 1 }; return p }
-func copySlice(dst, src []byte) []byte { n := len(src); if len(dst) < n { n = len(dst) }; copy(dst[:n], src[:n]); return dst }
-func constantTimeCompare(a, b []byte) int { if len(a) != len(b) { return 0 }; var v byte; for i := range a { v |= a[i] ^ b[i] }; if v == 0 { return 1 }; return 0 }
-func minSlice(arr interface{}) int { switch a := arr.(type) { case []int: m := a[0]; for _, v := range a[1:] { if v < m { m = v } }; return m; case []uint32: m := a[0]; for _, v := range a[1:] { if v < m { m = v } }; return int(m); case []byte: m := a[0]; for _, v := range a[1:] { if v < m { m = v } }; return int(m); case []interface{}: m := 0; for i, v := range a { iv, _ := v.(int); if i == 0 || iv < m { m = iv } }; return m; default: return 0 } }
-func maxSlice(arr interface{}) int { switch a := arr.(type) { case []int: m := a[0]; for _, v := range a[1:] { if v > m { m = v } }; return m; case []uint32: m := a[0]; for _, v := range a[1:] { if v > m { m = v } }; return int(m); case []byte: m := a[0]; for _, v := range a[1:] { if v > m { m = v } }; return int(m); case []interface{}: m := 0; for i, v := range a { iv, _ := v.(int); if i == 0 || iv > m { m = iv } }; return m; default: return 0 } }
-func toQWord(v interface{}) uint64 { switch x := v.(type) { case uint64: return x; case int64: return uint64(x); case uint32: return uint64(x); case int32: return uint64(x); case int: return uint64(x); case uint: return uint64(x); case float64: return uint64(x); default: return 0 } }
-func concatArrays(arrays ...interface{}) []byte { var r []byte; for _, a := range arrays { switch v := a.(type) { case []byte: r = append(r, v...); case []uint32: for _, x := range v { r = append(r, byte(x)) }; default: } }; return r }
-func doubleToBytes(v float64) []byte { bits := math.Float64bits(v); b := make([]byte, 8); for i := 0; i < 8; i++ { b[7-i] = byte(bits >> uint(i*8)) }; return b }
-func secureCompare(a, b []byte) int { if constantTimeCompare(a, b) == 1 { return 0 }; return 1 }
-func getKeys(m interface{}) []string { switch v := m.(type) { case map[string]interface{}: keys := make([]string, 0, len(v)); for k := range v { keys = append(keys, k) }; return keys; default: return nil } }
-func getEntries(m interface{}) [][2]interface{} { switch v := m.(type) { case map[string]interface{}: entries := make([][2]interface{}, 0, len(v)); for k, val := range v { entries = append(entries, [2]interface{}{k, val}) }; return entries; default: return nil } }
-func rotL64n(v interface{}, n int) uint64 { x := toQWord(v); return (x << uint(n&63)) | (x >> uint(64-(n&63))) }
-func rotR64n(v interface{}, n int) uint64 { x := toQWord(v); return (x >> uint(n&63)) | (x << uint(64-(n&63))) }
-func popCountFast(v uint32) int { v = v - ((v >> 1) & 0x55555555); v = (v & 0x33333333) + ((v >> 2) & 0x33333333); return int(((v + (v >> 4)) & 0x0F0F0F0F) * 0x01010101 >> 24) }
-func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return popCountFast(x); case int: return popCountFast(uint32(x)); case uint64: return popCountFast(uint32(x)) + popCountFast(uint32(x>>32)); case byte: return popCountFast(uint32(x)); default: return 0 } }
-`;
-      stubs.push({ nodeType: 'RawCode', code: HELPER_FUNCS });
-
-      // Helper function joinSlice uses fmt.Sprintf - ensure import is added
-      this.addImport('fmt');
-      // ParseInt helper uses strconv and strings packages
-      this.addImport('strconv');
-      this.addImport('strings');
-      // doubleToBytes uses math.Float64bits
-      this.addImport('math');
-      // Note: errors import is added when ErrorCreation nodes are encountered
-
-      return stubs;
-    }
-
-    /**
-     * Transform top-level node
-     */
-    transformTopLevel(node) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'ClassDeclaration':
-          return this.transformClassDeclaration(node);
-
-        case 'FunctionDeclaration':
-          return this.transformFunctionDeclaration(node);
-
-        case 'VariableDeclaration':
-          return this.transformTopLevelVariableDeclaration(node);
-
-        case 'ExpressionStatement':
-          // Handle IIFE wrappers - extract content from inside
-          if (node.expression.type === 'CallExpression') {
-            const callee = node.expression.callee;
-            // UMD pattern: (function(root, factory) { ... })(...)
-            if (callee.type === 'FunctionExpression' ||
-                callee.type === 'ArrowFunctionExpression') {
-              // Extract and process IIFE body content (pass full CallExpression for UMD detection)
-              return this.transformIIFEContent(callee, node.expression);
-            }
-
-            // Handle RegisterAlgorithm calls
-            if (callee.type === 'Identifier' && callee.name === 'RegisterAlgorithm') {
-              // Track for stub generation
-              this.frameworkFunctions.add('RegisterAlgorithm');
-              // Skip - algorithm registration not needed in Go
-              return null;
-            }
-          }
-
-          // Handle top-level assignment expressions that are class definitions
-          // Pattern: X = class extends Y { ... }
-          if (node.expression.type === 'AssignmentExpression') {
-            const transformed = this.transformAssignmentAsDeclaration(node.expression);
-            if (transformed) return transformed;
-          }
-
-          // Other expression statements at top level are usually side effects
-          return null;
-
-        case 'IfStatement':
-          // Top-level if statements are usually guard clauses - skip
-          return null;
-
-        default:
-          return null;
-      }
-    }
-
-    /**
-     * Extract and transform content from IIFE wrapper
-     * Handles multiple patterns:
-     * - Simple: (function(global) { ... })(globalThis)
-     * - UMD: (function(root, factory) { ... })((function(){...})(), function(deps) { ... })
-     */
-    transformIIFEContent(calleeNode, callExpr) {
-      // First, try to find the factory function in UMD pattern
-      // UMD pattern: the second argument is usually the factory function
-      if (callExpr && callExpr.arguments && callExpr.arguments.length >= 2) {
-        const factoryArg = callExpr.arguments[1];
-        if (factoryArg.type === 'FunctionExpression' || factoryArg.type === 'ArrowFunctionExpression') {
-          // Found UMD factory function - extract from its body
-          return this.extractDeclarationsFromBody(factoryArg.body?.body || []);
-        }
-      }
-
-      // Simple IIFE pattern: extract from callee's body
-      if (!calleeNode.body || !calleeNode.body.body) return null;
-      return this.extractDeclarationsFromBody(calleeNode.body.body);
-    }
-
-    /**
-     * Extract declarations from a function body
-     */
-    extractDeclarationsFromBody(bodyStatements) {
-      const declarations = [];
-
-      for (const stmt of bodyStatements) {
-        // Skip 'use strict' and other expression statements
-        if (stmt.type === 'ExpressionStatement') {
-          // But handle assignment expressions that might be class definitions
-          if (stmt.expression.type === 'AssignmentExpression') {
-            const transformed = this.transformAssignmentAsDeclaration(stmt.expression);
-            if (transformed) {
-              if (Array.isArray(transformed)) {
-                declarations.push(...transformed);
-              } else {
-                declarations.push(transformed);
-              }
-            }
-          }
-          continue;
-        }
-
-        // Process class declarations
-        if (stmt.type === 'ClassDeclaration') {
-          const transformed = this.transformClassDeclaration(stmt);
-          if (transformed) declarations.push(transformed);
-          continue;
-        }
-
-        // Process function declarations
-        if (stmt.type === 'FunctionDeclaration') {
-          const transformed = this.transformFunctionDeclaration(stmt);
-          if (transformed) declarations.push(transformed);
-          continue;
-        }
-
-        // Process variable declarations (const/let/var)
-        if (stmt.type === 'VariableDeclaration') {
-          const transformed = this.transformTopLevelVariableDeclaration(stmt);
-          if (transformed) {
-            if (Array.isArray(transformed)) {
-              declarations.push(...transformed);
-            } else {
-              declarations.push(transformed);
-            }
-          }
-          continue;
-        }
-
-        // Skip if statements (usually feature detection)
-        if (stmt.type === 'IfStatement') continue;
-      }
-
-      return declarations.length > 0 ? declarations : null;
-    }
-
-    /**
-     * Transform an assignment expression that might be a class definition
-     * e.g., const MyClass = class { ... }
-     */
-    transformAssignmentAsDeclaration(expr) {
-      // Handle class expressions assigned to variables
-      if (expr.right && expr.right.type === 'ClassExpression') {
-        // Create a ClassDeclaration-like node
-        const classNode = {
-          type: 'ClassDeclaration',
-          id: expr.left,
-          body: expr.right.body,
-          superClass: expr.right.superClass
-        };
-        return this.transformClassDeclaration(classNode);
-      }
-      return null;
-    }
-
-    transformTopLevelVariableDeclaration(node) {
-      // Transform top-level const/let/var to Go const or var
-      const declarations = [];
-
-      // Track destructure temp sources so DestructuredProperty/DestructuredElement
-      // declarators can look up the original source expression instead of referencing
-      // the (skipped) temp variable.
-      const destructureTempSources = new Map();
-
-      for (const decl of node.declarations) {
-        if (!decl.init) continue;
-
-        const name = decl.id.name;
-
-        // Skip AlgorithmFramework and OpCodes imports
-        if (name === 'AlgorithmFramework' || name === 'OpCodes') continue;
-
-        // Handle IL-expanded destructuring temps:
-        // The type-aware transpiler expands `const { a, b } = obj` into:
-        //   _destructure_N = obj          (ilNodeType: 'DestructureTemp')
-        //   a = _destructure_N.a          (ilNodeType: 'DestructuredProperty')
-        //   b = _destructure_N.b          (ilNodeType: 'DestructuredProperty')
-        // Skip the temp variable but record its source for later property access.
-        if (decl.ilNodeType === 'DestructureTemp') {
-          destructureTempSources.set(name, decl.init);
-          continue;
-        }
-
-        // Handle IL-expanded destructured properties: replace _destructure_N.prop
-        // with direct access to the original source object.prop
-        if (decl.ilNodeType === 'DestructuredProperty' &&
-            decl.init?.type === 'MemberExpression' &&
-            decl.init.object?.type === 'Identifier' &&
-            decl.init.object.name.startsWith('_destructure')) {
-          const tempName = decl.init.object.name;
-          const sourceInit = destructureTempSources.get(tempName);
-          if (sourceInit) {
-            // Rewrite init to use the original source instead of the temp
-            decl.init = {
-              ...decl.init,
-              object: sourceInit
-            };
-          }
-        }
-
-        // Handle IL-expanded destructured elements (array destructuring):
-        // replace _destructure_N[i] with direct access to sourceArray[i]
-        if (decl.ilNodeType === 'DestructuredElement' &&
-            decl.init?.type === 'MemberExpression' &&
-            decl.init.computed &&
-            decl.init.object?.type === 'Identifier' &&
-            decl.init.object.name.startsWith('_destructure')) {
-          const tempName = decl.init.object.name;
-          const sourceInit = destructureTempSources.get(tempName);
-          if (sourceInit) {
-            decl.init = {
-              ...decl.init,
-              object: sourceInit
-            };
-          }
-        }
-
-        // Skip framework types that are destructured from AlgorithmFramework
-        // These are already defined as Go types in the framework stubs
-        const FRAMEWORK_TYPES = [
-          'KeySize', 'LinkItem', 'TestCase', 'Vulnerability', 'TestCategory',
-          'CategoryType', 'SecurityStatus', 'ComplexityType', 'CountryCode',
-          'BlockCipherAlgorithm', 'StreamCipherAlgorithm', 'HashFunctionAlgorithm',
-          'SymmetricCipherAlgorithm', 'AsymmetricCipherAlgorithm', 'MacAlgorithm',
-          'CompressionAlgorithm', 'EncodingAlgorithm', 'CryptoAlgorithm',
-          'ChecksumAlgorithm', 'IBlockCipherInstance', 'IStreamCipherInstance',
-          'IHashFunctionInstance', 'IAlgorithmInstance', 'RegisterAlgorithm', 'Algorithm',
-          'AeadAlgorithm', 'IAeadInstance', 'Find'
-        ];
-        if (FRAMEWORK_TYPES.includes(name)) continue;
-
-        // Skip destructured properties that extract from framework modules
-        // e.g., RegisterAlgorithm = _destructure_0.RegisterAlgorithm where source was AlgorithmFramework
-        if ((decl.ilNodeType === 'DestructuredProperty' || decl.ilNodeType === 'DestructuredElement') &&
-            decl.init?.type === 'MemberExpression' &&
-            decl.init.object?.type === 'Identifier' &&
-            (decl.init.object.name === 'AlgorithmFramework' || decl.init.object.name === 'OpCodes')) {
-          continue;
-        }
-
-        // Infer type FIRST, then pass it to transformExpression
-        // This ensures array literals use the same type as the declared variable
-        const type = this.inferFullExpressionType(decl.init);
-
-        // Detect object-literal variables whose function values reference 'this'.
-        // In Go, map literals can't contain self-referential closures, so we wrap
-        // the initialisation in an IIFE: var X = func() map[string]interface{} { s := ...; return s }()
-        const initType = decl.init.type || decl.init.ilNodeType;
-        const isObjExpr = initType === 'ObjectExpression' || initType === 'ObjectLiteral';
-        if (isObjExpr && this._objectExpressionHasThisRef(decl.init)) {
-          const savedInMapSelfRef = this.inMapSelfRefContext;
-          this.inMapSelfRefContext = true;
-
-          // Build each property as an imperative assignment: s["key"] = value
-          const mapType = GoType.Map(GoType.String(), GoType.Interface());
-          const body = new GoBlock();
-          // s := make(map[string]interface{})
-          const sVar = new GoVar(this.receiverName, null, new GoMake(mapType, null));
-          sVar.isShortDecl = true;
-          body.statements.push(sVar);
-
-          for (const prop of (decl.init.properties || [])) {
-            if (prop.type === 'SpreadElement' || !prop.key) continue;
-            const jsKey = typeof prop.key === 'string'
-              ? prop.key
-              : (prop.key.name || prop.key.value || 'unknown');
-            const valExpr = this.transformExpression(prop.value);
-            // s["key"] = value
-            const target = new GoIndexExpression(
-              new GoIdentifier(this.receiverName),
-              GoLiteral.String(jsKey)
-            );
-            body.statements.push(new GoExpressionStatement(new GoAssignment([target], '=', [valExpr])));
-          }
-          body.statements.push(new GoReturn([new GoIdentifier(this.receiverName)]));
-
-          const iife = new GoCallExpression(
-            new GoFuncLit([], [new GoParameter('', mapType)], body),
-            []
-          );
-
-          this.inMapSelfRefContext = savedInMapSelfRef;
-
-          if (type) {
-            this.variableTypes.set(name, type);
-            this.variableTypes.set(this.toPascalCase(name), type);
-          }
-          const goVar = new GoVar(this.toPascalCase(name), mapType, iife);
-          declarations.push(goVar);
-          continue;
-        }
-
-        const value = this.transformExpression(decl.init, type);
-
-        // Register the type for later lookups (e.g., for array element type inference)
-        // This is crucial for expressions like SLISCP320_RC[i] to get the correct element type
-        if (type) {
-          this.variableTypes.set(name, type);
-          this.variableTypes.set(this.toPascalCase(name), type);
-        }
-
-        // Check if it's a constant (const with literal or Object.freeze)
-        // Note: Go doesn't allow const with slice/array/map/interface{} types, so those must be var
-        const typeStr = type?.name || type?.toString() || '';
-        const isSliceOrMapType = type && (type.isSlice || type.isArray || type.isMap ||
-          typeStr.startsWith('[]') || typeStr.startsWith('map['));
-        const isInterfaceType = typeStr === 'interface{}' || typeStr === 'any';
-        const isGoCompatibleConst = node.kind === 'const' &&
-          !isSliceOrMapType &&
-          !isInterfaceType &&
-          (decl.init.type === 'Literal' ||
-           (decl.init.type === 'CallExpression' &&
-            decl.init.callee?.type === 'MemberExpression' &&
-            decl.init.callee.object?.name === 'Object' &&
-            decl.init.callee.property?.name === 'freeze'));
-
-        if (isGoCompatibleConst) {
-          const goConst = new GoConst(this.toPascalCase(name), type, value);
-          declarations.push(goConst);
-        } else {
-          const goVar = new GoVar(this.toPascalCase(name), type, value);
-          declarations.push(goVar);
-        }
-      }
-
-      return declarations.length > 0 ? declarations : null;
-    }
-
-    /**
-     * Transform any JavaScript AST node to Go AST
-     */
-    transformNode(node) {
-      if (!node) return null;
-
-      const methodName = `transform${node.type}`;
-      if (typeof this[methodName] === 'function') {
-        return this[methodName](node);
-      }
-
-      return null;
-    }
-
-    // ========================[ TYPE MAPPING ]========================
-
-    mapType(typeName) {
-      if (!typeName) return GoType.Interface();
-
-      // Handle array types
-      if (typeName.endsWith('[]')) {
-        const elementTypeName = typeName.slice(0, -2);
-        const elementType = this.mapType(elementTypeName);
-        return GoType.Slice(elementType);
-      }
-
-      // Map basic types
-      const mapped = TYPE_MAP[typeName.toLowerCase()];
-      if (mapped) {
-        if (mapped === '') return null; // void
-        return new GoType(mapped);
-      }
-
-      return new GoType(typeName);
-    }
-
-    /**
-     * Map JSDoc type annotation to Go type
-     * Handles JSDoc-specific syntax like Object, custom types, etc.
-     */
-    mapJSDocType(jsDocType) {
-      if (!jsDocType) return GoType.Interface();
-
-      // Remove nullable prefix/suffix
-      let typeName = jsDocType.replace(/^\?/, '').replace(/\?$/, '').trim();
-
-      // Handle union types - use interface{}
-      if (typeName.includes('|')) {
-        return GoType.Interface();
-      }
-
-      // Handle generic array syntax: Array<T>
-      const arrayMatch = typeName.match(/^Array<(.+)>$/);
-      if (arrayMatch) {
-        const elementType = this.mapJSDocType(arrayMatch[1]);
-        return GoType.Slice(elementType);
-      }
-
-      // Handle array suffix: T[]
-      if (typeName.endsWith('[]')) {
-        const elementType = this.mapJSDocType(typeName.slice(0, -2));
-        return GoType.Slice(elementType);
-      }
-
-      // Map common JSDoc types
-      // Note: 'number' maps to uint32 because crypto code primarily uses integers
-      const JSDOC_TYPE_MAP = {
-        'object': GoType.Interface(),
-        'any': GoType.Interface(),
-        '*': GoType.Interface(),
-        'string': GoType.String(),
-        'number': GoType.UInt32(), // Crypto code uses integers, not floats
-        'boolean': GoType.Bool(),
-        'void': null,
-        'null': GoType.Interface(),
-        'undefined': GoType.Interface(),
-        'uint8': GoType.UInt8(),
-        'uint16': GoType.UInt16(),
-        'uint32': GoType.UInt32(),
-        'uint64': GoType.UInt64(),
-        'int': GoType.Int(),
-        'int8': new GoType('int8'),
-        'int16': new GoType('int16'),
-        'int32': new GoType('int32'),
-        'int64': new GoType('int64'),
-        'byte': GoType.UInt8(),
-        'uint8array': GoType.Slice(GoType.UInt8()),
-        'uint16array': GoType.Slice(GoType.UInt16()),
-        'uint32array': GoType.Slice(GoType.UInt32()),
-        'buffer': GoType.Slice(GoType.UInt8()),
-      };
-
-      const lowerType = typeName.toLowerCase();
-      if (JSDOC_TYPE_MAP[lowerType]) {
-        return JSDOC_TYPE_MAP[lowerType];
-      }
-
-      // For custom types (like AdlerConfig), use interface{} or map
-      // Config-like types should be map[string]interface{}
-      if (typeName.endsWith('Config') || typeName.endsWith('Options')) {
-        return GoType.Map(GoType.String(), GoType.Interface());
-      }
-
-      // Use the type name as-is (it may be a struct type)
-      return new GoType(typeName);
-    }
-
-    getInferredType(node, varName = null) {
-      // Try to infer type from value
-      if (node.type === 'Literal') {
-        if (typeof node.value === 'number') {
-          if (Number.isInteger(node.value)) {
-            // For integer literals, check variable name for hints
-            // Crypto code typically uses uint32 for non-index variables
-            if (varName) {
-              const lowerName = varName.toLowerCase();
-              // Index/count variables should be int
-              if (lowerName === 'i' || lowerName === 'j' || lowerName === 'k' ||
-                  lowerName.includes('index') || lowerName.includes('count') ||
-                  lowerName.includes('length') || lowerName.includes('offset') ||
-                  lowerName === 'n' || lowerName === 'len') {
-                return GoType.Int();
-              }
-            }
-            // Negative integers must be int (uint32 can't hold negative values)
-            if (node.value < 0) return GoType.Int();
-            // For crypto code, default integer variables to uint32
-            return GoType.UInt32();
-          }
-          return GoType.Float64();
-        }
-        if (typeof node.value === 'string') return GoType.String();
-        if (typeof node.value === 'boolean') return GoType.Bool();
-        if (node.value === null) return GoType.Interface();
-      }
-
-      // Infinity identifier -> uint32 (used as sentinel max value in crypto code)
-      if (node.type === 'Identifier' && node.name === 'Infinity') {
-        return GoType.UInt32();
-      }
-
-      // Negative unary expressions (e.g., -1) must be int
-      if (node.type === 'UnaryExpression' && node.operator === '-' && node.argument) {
-        // -Infinity -> uint32 (used as sentinel min value in crypto code)
-        if (node.argument.type === 'Identifier' && node.argument.name === 'Infinity') {
-          return GoType.UInt32();
-        }
-        if (node.argument.type === 'Literal' && typeof node.argument.value === 'number' && Number.isInteger(node.argument.value)) {
-          return GoType.Int();
-        }
-      }
-
-      if (node.type === 'ArrayExpression') {
-        // Try to infer element type from array contents
-        if (node.elements && node.elements.length > 0) {
-          // Check for spread elements
-          const hasSpread = node.elements.some(e => e?.type === 'SpreadElement');
-          if (hasSpread) {
-            // Get type from first spread element
-            const spreadElem = node.elements.find(e => e?.type === 'SpreadElement');
-            if (spreadElem) {
-              const argType = this.inferFullExpressionType(spreadElem.argument);
-              // If it's already a slice type, use it
-              if (argType?.isSlice || argType?.elementType) {
-                return argType;
-              }
-            }
-          }
-          // Check if all elements are byte-masked (& 0xFF) - common crypto pattern
-          const nonSpreadElems = node.elements.filter(e => e && e.type !== 'SpreadElement');
-          if (nonSpreadElems.length > 0 && nonSpreadElems.every(e =>
-              e.type === 'BinaryExpression' && e.operator === '&' &&
-              ((e.right && e.right.type === 'Literal' && e.right.value === 0xFF) ||
-               (e.left && e.left.type === 'Literal' && e.left.value === 0xFF)))) {
-            return GoType.Slice(GoType.UInt8());
-          }
-          // Check if all elements are byte-range values (literals 0-255, byte-masked, or uint8 casts)
-          // This handles cases like [0x80], [0x80, 0x00] in crypto padding code
-          // and mixed arrays like [OpCodes.AndN(x, 0xFF), xx[1]] in block ciphers
-          const isByteExpr = (e) => {
-            if (e.type === 'Literal' && typeof e.value === 'number' && Number.isInteger(e.value) && e.value >= 0 && e.value <= 255) return true;
-            if (e.type === 'BinaryExpression' && e.operator === '&') return true; // byte-masked
-            if (e.ilNodeType === 'And' || e.ilNodeType === 'Mask') return true;
-            // Check if element type is already uint8/byte
-            const eType = this.inferFullExpressionType(e);
-            const eStr = eType?.toString() || '';
-            if (eStr === 'uint8' || eStr === 'byte') return true;
-            return false;
-          };
-          // If there are at least some byte-masked elements and the rest are compatible byte-origin expressions
-          const hasByteMasks = nonSpreadElems.some(e =>
-            (e.type === 'BinaryExpression' && e.operator === '&') || e.ilNodeType === 'And' || e.ilNodeType === 'Mask');
-          if (nonSpreadElems.length > 0 && (nonSpreadElems.every(e => isByteExpr(e)) || hasByteMasks)) {
-            return GoType.Slice(GoType.UInt8());
-          }
-          // Infer from first non-spread element
-          const firstElem = node.elements.find(e => e && e.type !== 'SpreadElement');
-          if (firstElem) {
-            const elemType = this.inferFullExpressionType(firstElem);
-            return GoType.Slice(elemType);
-          }
-        }
-        // Empty array - use function return type if available (e.g., `let output = []` in method returning []uint8)
-        if (this.currentFunctionReturnType && this.currentFunctionReturnType.isSlice) {
-          return this.currentFunctionReturnType;
-        }
-        return GoType.Slice(GoType.UInt8()); // Default to []uint8 for crypto code
-      }
-
-      // Use full expression type inference for other cases
-      return this.inferFullExpressionType(node);
-    }
-
-    addImport(packagePath) {
-      this.imports.add(packagePath);
-    }
-
-    // ========================[ DECLARATIONS ]========================
-
-    transformClassDeclaration(node) {
-      const struct = new GoStruct(this.toPascalCase(node.id.name));
-      if (this.options.addComments) {
-        struct.docComment = `${struct.name} represents the ${node.id.name} class`;
-      }
-
-      this.currentStruct = struct;
-
-      // Handle inheritance via struct embedding
-      if (node.superClass) {
-        let baseName = node.superClass.name || node.superClass;
-
-        // Handle AlgorithmFramework.XxxAlgorithm pattern (MemberExpression)
-        if (node.superClass.type === 'MemberExpression' &&
-            node.superClass.object?.name === 'AlgorithmFramework') {
-          baseName = node.superClass.property?.name || node.superClass.property;
-        }
-        // Handle global.AlgorithmFramework.XxxAlgorithm pattern (nested MemberExpression)
-        else if (node.superClass.type === 'MemberExpression' &&
-            node.superClass.object?.type === 'MemberExpression' &&
-            node.superClass.object?.property?.name === 'AlgorithmFramework') {
-          baseName = node.superClass.property?.name || node.superClass.property;
-        }
-
-        if (typeof baseName === 'string') {
-          // Map known algorithm base classes
-          // Keep specific types that have extra fields, map generic types to BaseAlgorithm
-          const BASE_CLASS_MAP = {
-            // Core base classes
-            'Algorithm': 'BaseAlgorithm',
-            'CryptoAlgorithm': 'CryptoAlgorithm',
-            'SymmetricCipherAlgorithm': 'SymmetricCipherAlgorithm',
-            'AsymmetricCipherAlgorithm': 'AsymmetricCipherAlgorithm',
-            // Specific algorithm types - keep as-is since they have extra fields
-            'BlockCipherAlgorithm': 'BlockCipherAlgorithm',
-            'StreamCipherAlgorithm': 'StreamCipherAlgorithm',
-            'HashFunctionAlgorithm': 'HashFunctionAlgorithm',
-            'AsymmetricAlgorithm': 'AsymmetricAlgorithm',
-            'MACAlgorithm': 'MacAlgorithm',
-            'MacAlgorithm': 'MacAlgorithm',
-            'KDFAlgorithm': 'KdfAlgorithm',
-            'KdfAlgorithm': 'KdfAlgorithm',
-            'AEADAlgorithm': 'AeadAlgorithm',
-            'AeadAlgorithm': 'AeadAlgorithm',
-            'ChecksumAlgorithm': 'ChecksumAlgorithm',
-            'CompressionAlgorithm': 'CompressionAlgorithm',
-            'ClassicalCipherAlgorithm': 'ClassicalCipherAlgorithm',
-            'EncodingAlgorithm': 'EncodingAlgorithm',
-            'ErrorCorrectionAlgorithm': 'BaseAlgorithm',
-            'PaddingAlgorithm': 'BaseAlgorithm',
-            'CipherModeAlgorithm': 'BaseAlgorithm',
-            'RandomGenerationAlgorithm': 'BaseAlgorithm',
-            // Instance classes embed their base types for Algorithm field access
-            'IBlockCipherInstance': 'IBlockCipherInstance',
-            'IStreamCipherInstance': 'IStreamCipherInstance',
-            'IHashFunctionInstance': 'IHashFunctionInstance',
-            'IAlgorithmInstance': 'IAlgorithmInstance',
-            'IMacInstance': 'IAlgorithmInstance',
-            'IKdfInstance': 'IAlgorithmInstance',
-            'IAeadInstance': 'IAlgorithmInstance',
-            'IErrorCorrectionInstance': 'IAlgorithmInstance',
-            'IRandomGeneratorInstance': 'IAlgorithmInstance',
-          };
-          const mappedBase = BASE_CLASS_MAP[baseName];
-          if (mappedBase !== undefined) {
-            // Track framework class usage for stub generation
-            this.frameworkClasses.add(baseName);
-            // Also track the mapped base class if different
-            if (mappedBase && mappedBase !== baseName) {
-              this.frameworkClasses.add(mappedBase);
-            }
-            // Algorithm types that embed BaseAlgorithm need it too
-            const TYPES_EMBEDDING_BASE = [
-              'BlockCipherAlgorithm', 'StreamCipherAlgorithm', 'HashFunctionAlgorithm',
-              'AsymmetricAlgorithm', 'MacAlgorithm', 'KdfAlgorithm', 'AeadAlgorithm',
-              'EncodingAlgorithm', 'CompressionAlgorithm', 'ChecksumAlgorithm', 'ClassicalCipherAlgorithm'
-            ];
-            if (TYPES_EMBEDDING_BASE.includes(mappedBase)) {
-              this.frameworkClasses.add('BaseAlgorithm');
-              // Track the concrete algorithm struct name for type assertions
-              // e.g., LEAAlgorithm extending BlockCipherAlgorithm
-              this.algorithmStructName = struct.name;
-            }
-
-            if (mappedBase) {
-              // Track the mapped base class for context-aware field filtering
-              this.currentMappedBase = mappedBase;
-              // Add anonymous embedded struct field (Go embedding for inheritance)
-              const embeddedField = new GoField(mappedBase, new GoType(mappedBase));
-              embeddedField.isEmbedded = true;
-              struct.fields.push(embeddedField);
-            }
-          }
-        }
-      }
-
-      // Handle both class body structures:
-      // - Standard: {type: 'ClassBody', body: [...]}
-      // - Unwrapped UMD: array directly
-      const members = node.body?.body || node.body || [];
-
-      // Clear struct field types for this class (important when processing multiple classes)
-      this.structFieldTypes.clear();
-      this.declaredMethodNames.clear();
-      this.methodRenames.clear();
-      this.prescanEmptyArrayVars.clear();
-
-      // Pre-scan: First extract field types from constructor BEFORE scanning method return types
-      // This ensures that when we infer return types, we know the types of instance fields
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.kind === 'constructor') {
-            this.preScanConstructorFields(member);
-            break;
-          }
-        }
-      }
-
-      // Pre-scan: register ALL method return types BEFORE transforming any method bodies
-      // This ensures that method calls can be typed correctly even if the target method
-      // is defined later in the class (e.g., Result() calling _encryptBlock())
-      // Two passes: first pass registers direct return types, second pass resolves
-      // forward references (e.g., Result() calls EducationalPomaranch() defined later)
-      if (members && members.length > 0) {
-        const savedVarTypesForReturnScan = new Map(this.variableTypes);
-        for (let pass = 0; pass < 2; ++pass) {
-          for (const member of members) {
-            if (member.type === 'MethodDefinition' && member.kind === 'method') {
-              const methodName = member.key?.name || member.key;
-              if (methodName && member.value) {
-                // On second pass, skip methods already resolved with specific types
-                if (pass === 1) {
-                  const existing = this.methodReturnTypes.get(methodName);
-                  if (existing && existing.name !== 'interface{}' && existing.name !== 'any')
-                    continue;
-                }
-                const returnTypes = this.inferFunctionReturnType(member.value);
-                if (returnTypes.length > 0) {
-                  const returnType = returnTypes[0].type;
-                  this.methodReturnTypes.set(methodName, returnType);
-                  this.methodReturnTypes.set(this.toPascalCase(methodName), returnType);
-                }
-              }
-            }
-          }
-        }
-        this.variableTypes = savedVarTypesForReturnScan;
-      }
-
-      // Pre-scan: collect method call sites to infer parameter types from actual arguments
-      // This ensures that _encryptWords(words, keyWords) knows that words is []uint32
-      // We do TWO passes: first to collect basic call sites, then with known parameter types
-      if (members && members.length > 0) {
-        this.methodParamTypes.clear();
-
-        // First pass: collect call sites with basic type inference
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.value?.body) {
-            const savedVarTypes = new Map(this.variableTypes);
-            this.variableTypes.clear();
-            this.prescanFunctionBody(member.value.body, false);
-            this.collectMethodCallSites(member.value.body);
-            this.variableTypes = savedVarTypes;
-          }
-        }
-
-        // Second pass: re-collect with known parameter types from first pass
-        // This handles cases like: words = CopyArray(v) where v's type is now known
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.value?.body) {
-            const methodName = member.key?.name || member.key;
-            const params = member.value?.params || [];
-            const savedVarTypes = new Map(this.variableTypes);
-            this.variableTypes.clear();
-
-            // Register known parameter types from first pass
-            for (let i = 0; i < params.length; ++i) {
-              const paramName = params[i].name;
-              const key = `${methodName}:${i}`;
-              const knownType = this.methodParamTypes.get(key);
-              if (knownType) {
-                this.variableTypes.set(paramName, knownType);
-              }
-            }
-
-            this.prescanFunctionBody(member.value.body, false);
-            this.collectMethodCallSites(member.value.body);
-            this.variableTypes = savedVarTypes;
-          }
-        }
-      }
-
-      // Pre-scan: collect DECLARED method parameter types BEFORE transforming constructor
-      // This ensures that when the constructor calls a method like GetVariantConfig(variant),
-      // we know the declared parameter type to add proper type assertions
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.kind === 'method') {
-            const methodName = member.key?.name || member.key;
-            const pascalName = this.toPascalCase(methodName);
-            const params = member.value?.params || [];
-
-            for (let i = 0; i < params.length; ++i) {
-              const param = params[i];
-              // Infer the parameter type using existing inference logic
-              const paramType = this.inferParameterType(param, member.value?.body, methodName, i);
-
-              // Store declared parameter type for call-site type assertions
-              const declaredKey = `${methodName}:${i}`;
-              this.methodDeclaredParams.set(declaredKey, paramType);
-              // Also store with PascalCase for lookup
-              this.methodDeclaredParams.set(`${pascalName}:${i}`, paramType);
-            }
-          }
-        }
-      }
-
-      // Pre-scan: detect field/method name collisions BEFORE transformation
-      // This allows member access expressions to use the correct renamed field names
-      if (members && members.length > 0) {
-        const methodNamesRaw = new Set();
-        const propertyNamesRaw = new Set();
-
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.kind === 'method') {
-            const pascalName = this.toPascalCase(member.key?.name || member.key);
-            methodNamesRaw.add(pascalName);
-          } else if (member.type === 'PropertyDefinition') {
-            const pascalName = this.toPascalCase(member.key?.name || member.key);
-            propertyNamesRaw.add(pascalName);
-          } else if (member.type === 'MethodDefinition' && member.kind === 'constructor') {
-            // Also scan constructor body for this.x = y assignments
-            const body = member.value?.body?.body || [];
-            for (const stmt of body) {
-              if (stmt.type === 'ExpressionStatement' &&
-                  stmt.expression?.type === 'AssignmentExpression' &&
-                  (stmt.expression.left?.type === 'MemberExpression' &&
-                   stmt.expression.left?.object?.type === 'ThisExpression' ||
-                   stmt.expression.left?.type === 'ThisPropertyAccess')) {
-                const propName = stmt.expression.left.property?.name ||
-                                 stmt.expression.left.property;
-                if (propName) {
-                  const pascalName = this.toPascalCase(propName);
-                  propertyNamesRaw.add(pascalName);
-                }
-              }
-            }
-          }
-        }
-
-        // Detect collisions and register renames
-        for (const propName of propertyNamesRaw) {
-          if (methodNamesRaw.has(propName)) {
-            this.renamedFields.set(`${struct.name}.${propName}`, propName + '_');
-          }
-        }
-      }
-
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (member.type === 'MethodDefinition') {
-            if (member.kind === 'constructor') {
-              // Constructor -> New function + extract fields
-              const result = this.transformConstructor(member, struct.name);
-              if (result) {
-                // result contains: newFunc, fields, methods
-                if (result.fields) {
-                  struct.fields.push(...result.fields);
-                }
-                if (result.newFunc) {
-                  struct.methods.push(result.newFunc);
-                }
-                if (result.methods) {
-                  struct.methods.push(...result.methods);
-                }
-              }
-            } else if (member.kind === 'method') {
-              // Method -> receiver function
-              // First extract any fields assigned via this.X = ... in method body
-              const methodFields = this.extractSetterFields(member, struct.name);
-              if (methodFields && methodFields.length > 0) {
-                struct.fields.push(...methodFields);
-              }
-              const method = this.transformMethod(member, struct.name);
-              if (method) {
-                struct.methods.push(method);
-              }
-            } else if (member.kind === 'set') {
-              // Setter - extract dynamically created fields from this.fieldName = ...
-              const setterFields = this.extractSetterFields(member, struct.name);
-              if (setterFields && setterFields.length > 0) {
-                struct.fields.push(...setterFields);
-              }
-              // Don't generate setter method - Go uses direct field access
-              // and setter logic gets inlined where needed
-            } else if (member.kind === 'get') {
-              // Don't generate getter method - Go uses direct field access
-            }
-          } else if (member.type === 'PropertyDefinition') {
-            // Property -> field
-            const field = this.transformProperty(member);
-            if (field) {
-              struct.fields.push(field);
-            }
-          } else if (member.type === 'StaticBlock') {
-            // ES2022 static block -> Go package-level init() function
-            const initStatements = this.transformStaticBlock(member);
-            if (initStatements) {
-              struct.staticInitStatements = struct.staticInitStatements || [];
-              struct.staticInitStatements.push(...initStatements);
-            }
-          }
-        }
-      }
-
-      // Fix field/method name collisions - in Go, a struct can't have field and method with same name
-      // Note: Most collisions are detected early (line 1502-1524), but this catches fields
-      // created dynamically in constructors via this.X = ... assignments
-      const methodNames = new Set(struct.methods.map(m => m.name));
-      for (const field of struct.fields) {
-        if (methodNames.has(field.name) && !field.name.endsWith('_')) {
-          const originalName = field.name;
-          // Append underscore to field name to avoid collision with method
-          field.name = field.name + '_';
-          // Track the rename (may already be registered from early detection)
-          const renameKey = `${struct.name}.${originalName}`;
-          if (!this.renamedFields.has(renameKey)) {
-            this.renamedFields.set(renameKey, field.name);
-          }
-        }
-      }
-
-      this.currentStruct = null;
-      return struct;
-    }
-
-    transformConstructor(node, structName) {
-      const func = new GoFunc(`New${structName}`);
-      if (this.options.addComments) {
-        func.docComment = `New${structName} creates a new ${structName} instance`;
-      }
-
-      // Add error return if errorHandling is enabled
-      if (this.options.errorHandling) {
-        func.results = [
-          new GoParameter('', GoType.Pointer(new GoType(structName))),
-          new GoParameter('', new GoType('error'))
-        ];
-      } else {
-        func.results = [new GoParameter('', GoType.Pointer(new GoType(structName)))];
-      }
-
-      const body = new GoBlock();
-      const fields = [];
-      const methods = [];
-
-      // Add constructor parameters
-      if (node.value && node.value.params) {
-        for (let i = 0; i < node.value.params.length; ++i) {
-          const param = node.value.params[i];
-          const paramName = this._paramName(param, i);
-          const paramType = this.inferParameterType(param, node.value.body, 'constructor', i);
-          func.parameters.push(new GoParameter(paramName, paramType));
-          this.variableTypes.set(paramName, paramType);
-        }
-      }
-
-      // Create instance: result := &StructName{}
-      const resultDecl = new GoVar('result', null, new GoUnaryExpression(
-        '&',
-        new GoCompositeLiteral(new GoType(structName), [])
-      ));
-      resultDecl.isShortDecl = true;
-      body.statements.push(resultDecl);
-
-      // Process constructor body - extract fields and methods from this.property assignments
-      // In constructor, 'this' refers to 'result' (the instance being created)
-      const savedReceiverName = this.receiverName;
-      this.receiverName = 'result';
-
-      // Pre-scan: register all method return types before transforming bodies
-      // This ensures method calls can be properly typed even if methods are defined later
-      if (node.value && node.value.body && node.value.body.body) {
-        for (const stmt of node.value.body.body) {
-          if (this.isThisPropertyAssignment(stmt)) {
-            const expr = stmt.expression;
-            const propName = expr.left.property?.name || expr.left.property;
-            const value = expr.right;
-            if (value.type === 'FunctionExpression' || value.type === 'ArrowFunctionExpression') {
-              // Pre-register method return type
-              const returnTypes = this.inferFunctionReturnType(value);
-              if (returnTypes.length > 0) {
-                const returnType = returnTypes[0].type;
-                this.methodReturnTypes.set(propName, returnType);
-                this.methodReturnTypes.set(this.toPascalCase(propName), returnType);
-              }
-            }
-          }
-        }
-      }
-
-      // Now process the body with method return types available
-      if (node.value && node.value.body && node.value.body.body) {
-        for (const stmt of node.value.body.body) {
-          if (this.isThisPropertyAssignment(stmt)) {
-            const result = this.processThisAssignment(stmt, structName);
-            if (result.isMethod) {
-              methods.push(result.method);
-            } else {
-              // Only add field if it's not a base class field
-              if (result.field) {
-                fields.push(result.field);
-              }
-              // Add initialization to constructor body
-              if (result.initStatement) {
-                body.statements.push(result.initStatement);
-              }
-            }
-          } else {
-            // Regular statement goes to constructor body
-            const transformed = this.transformStatement(stmt);
-            if (transformed) {
-              if (Array.isArray(transformed)) {
-                body.statements.push(...transformed);
-              } else {
-                body.statements.push(transformed);
-              }
-            }
-          }
-        }
-      }
-      // Restore receiver name
-      this.receiverName = savedReceiverName;
-
-      // Return result (with nil error if errorHandling enabled)
-      if (this.options.errorHandling) {
-        body.statements.push(new GoReturn([
-          new GoIdentifier('result'),
-          GoLiteral.Nil()
-        ]));
-      } else {
-        body.statements.push(new GoReturn([new GoIdentifier('result')]));
-      }
-
-      func.body = body;
-
-      // Clear parameter types
-      if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          this.variableTypes.delete(param.name);
-        }
-      }
-
-      return { newFunc: func, fields, methods };
-    }
-
-    /**
-     * Pre-scan constructor to extract field types without full transformation.
-     * This allows method return type inference to know about instance fields.
-     */
-    preScanConstructorFields(constructorNode) {
-      const body = constructorNode.value?.body;
-      if (!body) return;
-
-      const statements = body.body || body;
-      if (!Array.isArray(statements)) return;
-
-      for (const stmt of statements) {
-        // Look for this.property = value assignments
-        if (stmt.type !== 'ExpressionStatement') continue;
-        const expr = stmt.expression;
-        if (expr.type !== 'AssignmentExpression') continue;
-
-        let propName;
-        // Check for standard JS MemberExpression with ThisExpression
-        if (expr.left.type === 'MemberExpression' && expr.left.object?.type === 'ThisExpression') {
-          propName = expr.left.property?.name || expr.left.property;
-        }
-        // Check for IL AST ThisPropertyAccess pattern
-        else if (expr.left.type === 'ThisPropertyAccess') {
-          propName = expr.left.property;
-        }
-        else continue;
-
-        if (!propName) continue;
-
-        // Skip null literal assignments - these are just initializations
-        // The actual type will be determined from later assignments in method bodies
-        const value = expr.right;
-        if (value?.type === 'Literal' && value.value === null) {
-          continue;
-        }
-
-        // Infer type from the value
-        let fieldType = this.inferFieldTypeFromValue(value, propName);
-
-        // Register the field type
-        const pascalName = this.toPascalCase(propName);
-        this.structFieldTypes.set(pascalName, fieldType);
-        this.structFieldTypes.set(propName, fieldType);
-      }
-    }
-
-    /**
-     * Infer field type from its initialization value (lightweight version for pre-scanning)
-     */
-    inferFieldTypeFromValue(value, propName) {
-      // Check known framework field types first
-      const lowerName = propName.toLowerCase();
-      const FRAMEWORK_FIELD_TYPES = {
-        'name': GoType.String(),
-        'description': GoType.String(),
-        'inventor': GoType.String(),
-        'year': GoType.UInt32(),
-        'category': new GoType('CategoryType'),
-        'subcategory': GoType.String(),
-        'securitystatus': new GoType('SecurityStatus'),
-        'complexity': new GoType('ComplexityType'),
-        'country': new GoType('CountryCode'),
-        'documentation': GoType.Slice(new GoType('LinkItem')),
-        'references': GoType.Slice(new GoType('LinkItem')),
-        'knownvulnerabilities': GoType.Slice(new GoType('Vulnerability')),
-        'tests': GoType.Slice(new GoType('TestCase')),
-        'testvectors': GoType.Slice(new GoType('TestCase')),
-        'supportedkeysizes': GoType.Slice(new GoType('KeySize')),
-        'supportedblocksizes': GoType.Slice(new GoType('KeySize')),
-        'supportednoncesizes': GoType.Slice(new GoType('KeySize')),
-        'keysizes': GoType.Slice(new GoType('KeySize')),
-        'blocksizes': GoType.Slice(new GoType('KeySize')),
-        'noncesizes': GoType.Slice(new GoType('KeySize')),
-        'ivsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedivsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedtagsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedsaltsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedoutputsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedrounds': GoType.Slice(new GoType('KeySize')),
-        'supportedversions': GoType.Slice(new GoType('KeySize')),
-        'supportedvariants': GoType.Slice(new GoType('KeySize')),
-        'supportedmodes': GoType.Slice(new GoType('KeySize')),
-        'tagsizes': GoType.Slice(new GoType('KeySize')),
-        'saltsizes': GoType.Slice(new GoType('KeySize')),
-        // MAC/AEAD algorithm specific fields
-        'supportedmacsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedhashsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedkeyderivationsizes': GoType.Slice(new GoType('KeySize')),
-        'supporteddigestsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedsignaturesizes': GoType.Slice(new GoType('KeySize')),
-        'supportedinputsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedseedsizes': GoType.Slice(new GoType('KeySize')),
-        // Numeric fields from algorithm base classes
-        'outputsize': GoType.Int(),
-        'blocksize': GoType.Int(),
-        'statesize': GoType.Int(),
-        'rounds': GoType.Int(),
-        'digestsize': GoType.Int(),
-        'tagsize': GoType.Int(),
-        'noncesize': GoType.Int(),
-        'saltsize': GoType.Int(),
-        'needskey': GoType.Bool(),
-        'needsnonce': GoType.Bool(),
-        'needsiv': GoType.Bool(),
-        'needssalt': GoType.Bool(),
-        // Bool fields discovered from algorithm metadata
-        'saltrequired': GoType.Bool(),
-        'supportscontinuousencoding': GoType.Bool(),
-        'supportsdetached': GoType.Bool(),
-        'supportserrordetection': GoType.Bool(),
-        'roundtrip': GoType.Bool(),
-        'firststep': GoType.Bool(),
-        'usepadding': GoType.Bool(),
-        'extended': GoType.Bool(),
-        'evenparity': GoType.Bool(),
-        'syndromeextraction': GoType.Bool(),
-        'testreconstruction': GoType.Bool(),
-        'testmode': GoType.Bool(),
-        // String fields discovered from algorithm metadata
-        'hashfunction': GoType.String(),
-        'alphabet': GoType.String(),
-        'default_hash': GoType.String(),
-        'defaulthash': GoType.String(),
-        'paramset': GoType.String(),
-        'paddingchar': GoType.String(),
-        'securitynotes': GoType.String(),
-        'currentvariant': GoType.String(),
-        'uppercase': GoType.String(),
-        'lowercase': GoType.String(),
-        'currentlevel': GoType.String(),
-        'hashalgorithm': GoType.String(),
-        'upper_reverse': GoType.String(),
-        'lower_reverse': GoType.String(),
-        'currentmode': GoType.String(),
-        'consonants': GoType.String(),
-        'vowels': GoType.String(),
-        'language': GoType.String(),
-        'rotor_i': GoType.String(),
-        'rotor_ii': GoType.String(),
-        'rotor_iii': GoType.String(),
-        'notch_i': GoType.String(),
-        'notch_ii': GoType.String(),
-        'notch_iii': GoType.String(),
-        'reflector_b': GoType.String(),
-        'innertype': GoType.String(),
-        'outertype': GoType.String(),
-        'interleavetype': GoType.String(),
-        'designtype': GoType.String(),
-        'errortype': GoType.String(),
-        'direction': GoType.String(),
-        'digitstring': GoType.String(),
-        'prefix': GoType.String(),
-        'mgffunction': GoType.String(),
-        'paddingtype': GoType.String(),
-        // Instance fields that store computed results
-        'result': GoType.Slice(GoType.UInt8()),
-        'result_': GoType.Slice(GoType.UInt8()),
-        'password': GoType.Slice(GoType.UInt8()),
-        'inputdata': GoType.Slice(GoType.UInt8()),
-        // Map fields for parameter dictionaries
-        'mceliece_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'dilithium_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'falcon_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'hqc_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'lwe_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'ml_dsa_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'rsa_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'sphincs_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'params': GoType.Map(GoType.String(), GoType.Interface()),
-        // Vulnerability tracking
-        'vulnerabilities': GoType.Slice(new GoType('Vulnerability')),
-      };
-
-      if (FRAMEWORK_FIELD_TYPES[lowerName]) {
-        return FRAMEWORK_FIELD_TYPES[lowerName];
-      }
-      // Also try without leading underscores (e.g., _interleaveType -> interleavetype)
-      const stripped = lowerName.replace(/^_+/, '');
-      if (stripped !== lowerName && FRAMEWORK_FIELD_TYPES[stripped]) {
-        return FRAMEWORK_FIELD_TYPES[stripped];
-      }
-
-      // Handle null/nil initialization - field needs interface{} to support nil
-      if (value && ((value.type === 'Literal' && value.value === null) ||
-                    (value.type === 'Literal' && value.literalType === 'nil') ||
-                    (value.nodeType === 'Literal' && value.value === null) ||
-                    (value.nodeType === 'Literal' && value.literalType === 'nil'))) {
-        return GoType.Interface();
-      }
-
-      // Handle ObjectExpression values BEFORE name-based inference
-      // Object literals should become map[string]interface{} in Go, not slices
-      if (value && value.type === 'ObjectExpression' && value.properties && value.properties.length > 0) {
-        // Return map type - Go doesn't support inline anonymous struct types
-        return GoType.Map(GoType.String(), GoType.Interface());
-      }
-
-      // Try name-based inference for common crypto patterns FIRST
-      // This correctly handles fields like inputBuffer, key, data which should be []uint8
-      const nameBasedType = this.inferTypeFromName(propName);
-      const nameTypeStr = nameBasedType?.toString();
-
-      // Detect boolean literal values — always return Bool regardless of name
-      const isBoolValue = value && (
-        (value.type === 'Literal' && typeof value.value === 'boolean') ||
-        (value.ilNodeType === 'Literal' && typeof value.value === 'boolean')
-      );
-      if (isBoolValue)
-        return GoType.Bool();
-
-      // Detect float literal values — return Float64 regardless of name
-      // e.g., LEARNING_RATE = 0.001 should be float64, not uint32
-      const isFloatLiteral = value && (
-        (value.type === 'Literal' && typeof value.value === 'number' && !Number.isInteger(value.value)) ||
-        (value.ilNodeType === 'Literal' && typeof value.value === 'number' && !Number.isInteger(value.value))
-      );
-      if (isFloatLiteral)
-        return GoType.Float64();
-
-      // Detect BigInt literal values — return UInt64 regardless of name
-      // e.g., this.A = 6364136223846793005n should be uint64, not uint32
-      const isBigIntValue = value && (
-        (value.type === 'Literal' && typeof value.value === 'bigint') ||
-        (value.ilNodeType === 'BigIntLiteral') ||
-        (value.ilNodeType === 'BigIntCast') ||
-        (value.type === 'TypeConversion' && value.goType?.name === 'uint64') ||
-        (value.type === 'CallExpression' && value.callee?.name === 'uint64')
-      );
-      if (isBigIntValue)
-        return GoType.UInt64();
-
-      // Detect integer literal values that exceed uint32 range — return UInt64
-      const isLargeIntValue = value && (
-        (value.type === 'Literal' && typeof value.value === 'number' &&
-         Number.isInteger(value.value) && (value.value > 0xFFFFFFFF || value.value < -2147483648))
-      );
-      if (isLargeIntValue)
-        return GoType.UInt64();
-
-      // If name-based inference returns a slice/array type, trust it over IL annotations
-      // UNLESS the actual value is a numeric literal (e.g., this.keyCS = 0, this.HALF_BLOCK = 256)
-      // In that case, the value clearly isn't a slice, so don't trust the name heuristic
-      const isScalarValue = value && (
-        (value.type === 'Literal' && typeof value.value === 'number') ||
-        (value.ilNodeType === 'Literal' && typeof value.value === 'number')
-      );
-      if (nameBasedType && (nameBasedType.isSlice || nameBasedType.isArray) && !isScalarValue) {
-        return nameBasedType;
-      }
-
-      // Detect calls to known slice-returning functions (makeFilledSlice, cloneArray, etc.)
-      if (value && (value.type === 'CallExpression' || value.ilNodeType === 'CallExpression')) {
-        const calleeName = value.callee?.name || value.callee?.property?.name || value.callee?.property || '';
-        const SLICE_RETURNING_FUNCS = ['makeFilledSlice', 'cloneArray', 'xorArrays', 'reverseSlice',
-          'sortSlice', 'stringToBytes', 'asciiToBytes', 'ansiToBytes', 'hexToBytes', 'hex8ToBytes',
-          'mustHexDecode', 'filterSliceBytes', 'mapSliceBytes', 'spliceSlice', 'copySlice', 'unshiftSlice'];
-        if (SLICE_RETURNING_FUNCS.includes(calleeName))
-          return GoType.Slice(GoType.UInt8());
-      }
-
-      // For array/slice creating expressions where name didn't match a slice pattern,
-      // use expression-based inference. This handles fields like sum0 = new Array(...)
-      // where we need to detect it's an array even though name inference returns uint32.
-      const ARRAY_CREATING_TYPES = [
-        'ArrayCreation', 'ArrayLiteral', 'ArrayExpression',
-        'TypedArrayCreation', 'NewExpression'
-      ];
-      if (value && ARRAY_CREATING_TYPES.includes(value.type)) {
-        const exprType = this.inferFullExpressionType(value);
-        if (exprType && (exprType.isSlice || exprType.isArray)) {
-          return exprType;
-        }
-      }
-
-      // Use non-slice name-based type if available
-      if (nameTypeStr && !nameTypeStr.includes('interface') && nameTypeStr !== 'any') {
-        return nameBasedType;
-      }
-
-      // Fallback to expression-based inference
-      return this.inferFullExpressionType(value) || GoType.Interface();
-    }
-
-    /**
-     * Check if a statement is a this.property = value assignment
-     */
-    isThisPropertyAssignment(stmt, debug = false) {
-      if (stmt.type !== 'ExpressionStatement') return false;
-      const expr = stmt.expression;
-      if (expr.type !== 'AssignmentExpression') return false;
-      // Check for standard JS MemberExpression with ThisExpression
-      if (expr.left.type === 'MemberExpression' && expr.left.object?.type === 'ThisExpression') {
-        return true;
-      }
-      // Check for IL AST ThisPropertyAccess pattern
-      if (expr.left.type === 'ThisPropertyAccess') {
-        return true;
-      }
-      return false;
-    }
-
-    /**
-     * Process a this.property = value assignment
-     * Returns {isMethod: boolean, field?: GoField, method?: GoFunc, initStatement?: GoNode, skipField?: boolean}
-     */
-    processThisAssignment(stmt, structName) {
-      const expr = stmt.expression;
-      // Handle both MemberExpression and ThisPropertyAccess patterns
-      let propName;
-      if (expr.left.type === 'ThisPropertyAccess') {
-        propName = expr.left.property;
-      } else {
-        propName = expr.left.property.name || expr.left.property.value;
-      }
-      const pascalName = this.toPascalCase(propName);
-      const value = expr.right;
-
-      // Check if assigning a function (method)
-      if (value.type === 'FunctionExpression' || value.type === 'ArrowFunctionExpression') {
-        // This is a method definition
-        const method = this.transformFunctionToMethod(propName, value, structName);
-        return { isMethod: true, method };
-      }
-
-      // Skip null literal assignments - these are just initializations
-      // The actual type will be determined from later assignments in method bodies
-      // via extractSetterFields. Go zero-values slices/maps/pointers to nil automatically.
-      if (value?.type === 'Literal' && value.value === null) {
-        return { isMethod: false, field: null, initStatement: null, skipField: true };
-      }
-
-      // Fields from BaseAlgorithm that should NOT be re-declared in the struct
-      // (they exist in the embedded base struct)
-      // Include both camelCase and lowercase versions for matching
-      // Only filter fields that actually exist in the current base class
-      const BASE_FIELDS = [
-        'name', 'description', 'inventor', 'year', 'category',
-        'subCategory', 'subcategory',
-        'securityStatus', 'securitystatus',
-        'complexity', 'country',
-        'documentation', 'references',
-        'knownVulnerabilities', 'knownvulnerabilities',
-        'tests',
-      ];
-      const EXTRA_FIELDS_BY_BASE = {
-        'BlockCipherAlgorithm': ['supportedKeySizes', 'supportedkeysizes', 'supportedBlockSizes', 'supportedblocksizes'],
-        'StreamCipherAlgorithm': ['supportedKeySizes', 'supportedkeysizes', 'supportedIVSizes', 'supportedivsizes'],
-        'HashFunctionAlgorithm': ['outputSize', 'outputsize', 'blockSize', 'blocksize'],
-        'AsymmetricAlgorithm': ['supportedKeySizes', 'supportedkeysizes'],
-        'MacAlgorithm': ['supportedKeySizes', 'supportedkeysizes', 'outputSize', 'outputsize'],
-        'KdfAlgorithm': ['supportedKeySizes', 'supportedkeysizes', 'supportedSaltSizes', 'supportedsaltsizes'],
-        'AeadAlgorithm': ['supportedKeySizes', 'supportedkeysizes', 'supportedNonceSizes', 'supportednoncesizes', 'supportedTagSizes', 'supportedtagsizes'],
-        'CryptoAlgorithm': ['supportedKeySizes', 'supportedkeysizes'],
-        'SymmetricCipherAlgorithm': ['supportedKeySizes', 'supportedkeysizes'],
-        'AsymmetricCipherAlgorithm': ['supportedKeySizes', 'supportedkeysizes'],
-        'ChecksumAlgorithm': ['outputSize', 'outputsize'],
-      };
-      const extraFields = EXTRA_FIELDS_BY_BASE[this.currentMappedBase] || [];
-      const BASE_ALGORITHM_FIELDS = new Set([...BASE_FIELDS, ...extraFields]);
-
-      // Framework enum types - use correct types instead of inference
-      // Use lowercase keys for consistent lookup
-      // Note: BaseAlgorithm uses value types (not pointers) for all fields
-      const FRAMEWORK_FIELD_TYPES = {
-        'category': new GoType('CategoryType'),
-        'securitystatus': new GoType('SecurityStatus'),
-        'complexity': new GoType('ComplexityType'),
-        'country': new GoType('CountryCode'),
-        'documentation': GoType.Slice(new GoType('LinkItem')),
-        'references': GoType.Slice(new GoType('LinkItem')),
-        'knownvulnerabilities': GoType.Slice(new GoType('Vulnerability')),
-        'supportedkeysizes': GoType.Slice(new GoType('KeySize')),
-        'supportedblocksizes': GoType.Slice(new GoType('KeySize')),
-        'supportednoncesizes': GoType.Slice(new GoType('KeySize')),
-        'supportedivsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedtagsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedsaltsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedoutputsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedmacsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedhashsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedkeyderivationsizes': GoType.Slice(new GoType('KeySize')),
-        'supporteddigestsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedsignaturesizes': GoType.Slice(new GoType('KeySize')),
-        'supportedinputsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedseedsizes': GoType.Slice(new GoType('KeySize')),
-        'supportedrounds': GoType.Slice(new GoType('KeySize')),
-        'supportedversions': GoType.Slice(new GoType('KeySize')),
-        'supportedvariants': GoType.Slice(new GoType('KeySize')),
-        'supportedmodes': GoType.Slice(new GoType('KeySize')),
-        'tagsizes': GoType.Slice(new GoType('KeySize')),
-        'saltsizes': GoType.Slice(new GoType('KeySize')),
-        // Numeric fields from algorithm base classes
-        'outputsize': GoType.Int(),
-        'blocksize': GoType.Int(),
-        'statesize': GoType.Int(),
-        'rounds': GoType.Int(),
-        'digestsize': GoType.Int(),
-        'tagsize': GoType.Int(),
-        'noncesize': GoType.Int(),
-        'saltsize': GoType.Int(),
-        'needskey': GoType.Bool(),
-        'needsnonce': GoType.Bool(),
-        'needsiv': GoType.Bool(),
-        'needssalt': GoType.Bool(),
-        // Bool fields discovered from algorithm metadata
-        'saltrequired': GoType.Bool(),
-        'supportscontinuousencoding': GoType.Bool(),
-        'supportsdetached': GoType.Bool(),
-        'supportserrordetection': GoType.Bool(),
-        'roundtrip': GoType.Bool(),
-        'firststep': GoType.Bool(),
-        'usepadding': GoType.Bool(),
-        'extended': GoType.Bool(),
-        'evenparity': GoType.Bool(),
-        'syndromeextraction': GoType.Bool(),
-        'testreconstruction': GoType.Bool(),
-        'testmode': GoType.Bool(),
-        // String fields discovered from algorithm metadata
-        'hashfunction': GoType.String(),
-        'alphabet': GoType.String(),
-        'default_hash': GoType.String(),
-        'defaulthash': GoType.String(),
-        'paramset': GoType.String(),
-        'paddingchar': GoType.String(),
-        'securitynotes': GoType.String(),
-        'currentvariant': GoType.String(),
-        'uppercase': GoType.String(),
-        'lowercase': GoType.String(),
-        'currentlevel': GoType.String(),
-        'hashalgorithm': GoType.String(),
-        'upper_reverse': GoType.String(),
-        'lower_reverse': GoType.String(),
-        'currentmode': GoType.String(),
-        'consonants': GoType.String(),
-        'vowels': GoType.String(),
-        'language': GoType.String(),
-        'rotor_i': GoType.String(),
-        'rotor_ii': GoType.String(),
-        'rotor_iii': GoType.String(),
-        'notch_i': GoType.String(),
-        'notch_ii': GoType.String(),
-        'notch_iii': GoType.String(),
-        'reflector_b': GoType.String(),
-        'innertype': GoType.String(),
-        'outertype': GoType.String(),
-        'interleavetype': GoType.String(),
-        'designtype': GoType.String(),
-        'errortype': GoType.String(),
-        'direction': GoType.String(),
-        'digitstring': GoType.String(),
-        'prefix': GoType.String(),
-        'mgffunction': GoType.String(),
-        'paddingtype': GoType.String(),
-        // Instance fields that store computed results
-        'result': GoType.Slice(GoType.UInt8()),
-        'result_': GoType.Slice(GoType.UInt8()),
-        'password': GoType.Slice(GoType.UInt8()),
-        'inputdata': GoType.Slice(GoType.UInt8()),
-        // Map fields for parameter dictionaries
-        'mceliece_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'dilithium_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'falcon_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'hqc_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'lwe_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'ml_dsa_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'rsa_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'sphincs_params': GoType.Map(GoType.String(), GoType.Interface()),
-        'params': GoType.Map(GoType.String(), GoType.Interface()),
-        'vulnerabilities': GoType.Slice(new GoType('Vulnerability')),
-        'tests': GoType.Slice(new GoType('TestCase')),
-        'testvectors': GoType.Slice(new GoType('TestCase'))
-      };
-
-      // Check if this is a base class field that should not be re-declared
-      // Both original camelCase and lowercase versions for comparison
-      const lowerName = propName.toLowerCase();
-      const isBaseField = BASE_ALGORITHM_FIELDS.has(propName) || BASE_ALGORITHM_FIELDS.has(lowerName);
-
-      // Field assignment - check for JSDoc @type annotation first
-      let fieldType = null;
-
-      // Extract type from JSDoc @type annotation if present
-      if (stmt.leadingComments && stmt.leadingComments.length > 0) {
-        for (const comment of stmt.leadingComments) {
-          const text = comment.value || comment;
-          const typeMatch = text.match(/@type\s+\{([^}]+)\}/);
-          if (typeMatch) {
-            const jsDocType = typeMatch[1].trim();
-            fieldType = this.mapJSDocType(jsDocType);
-            break;
-          }
-        }
-      }
-
-      // Fall back to framework types or inference
-      if (!fieldType) {
-        // Try with and without leading underscores for framework field lookup
-        const strippedLower = lowerName.replace(/^_+/, '');
-        if (FRAMEWORK_FIELD_TYPES[lowerName]) {
-          fieldType = FRAMEWORK_FIELD_TYPES[lowerName];
-        } else if (strippedLower !== lowerName && FRAMEWORK_FIELD_TYPES[strippedLower]) {
-          fieldType = FRAMEWORK_FIELD_TYPES[strippedLower];
-        } else {
-          // Use inferFieldTypeFromValue which applies name-based heuristics first
-          fieldType = this.inferFieldTypeFromValue(value, propName);
-        }
-      }
-
-      // Register field type for later type inference in method bodies
-      this.structFieldTypes.set(pascalName, fieldType);
-      this.structFieldTypes.set(propName, fieldType);
-
-      // Check if this field name collides with a method (use renamed version if so)
-      let finalFieldName = pascalName;
-      if (this.currentStruct) {
-        const renameKey = `${this.currentStruct.name}.${pascalName}`;
-        if (this.renamedFields.has(renameKey)) {
-          finalFieldName = this.renamedFields.get(renameKey);
-        }
-      }
-
-      // Create field (only if not a base class field)
-      const field = isBaseField ? null : new GoField(finalFieldName, fieldType);
-
-      // Create initialization statement: result.FieldName = value
-      // Pass field type for proper array literal typing
-      const resultIdent = new GoIdentifier('result');
-      const fieldAccess = new GoSelectorExpression(resultIdent, finalFieldName);
-      let initValue = this.transformExpression(value, fieldType);
-
-      // Add type assertion if assigning from any/interface{} to a specific type
-      // This handles Identifiers, MemberExpressions (e.g., config["base"]), and other expressions
-      const valueType = this.inferFullExpressionType(value);
-      const valueTypeStr = valueType?.toString() || '';
-      const fieldTypeStr = fieldType?.toString() || '';
-      // If source is any/interface{} but target is a specific type, add type assertion
-      // BUT: skip if the value is nil (null in JS) - nil cannot have type assertions
-      const isNilLiteral = initValue.nodeType === 'Literal' && initValue.value === null;
-      if (!isNilLiteral &&
-          (valueTypeStr === 'any' || valueTypeStr === 'interface{}') &&
-          fieldTypeStr && fieldTypeStr !== 'any' && fieldTypeStr !== 'interface{}') {
-        initValue = this.safeTypeAssertion(initValue, fieldType);
-      }
-
-      // Add numeric type conversion for mismatched types (e.g., int → uint32)
-      const _numTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                         'uint', 'uint8', 'uint16', 'uint32', 'uint64',
-                         'float32', 'float64'];
-      if (!isNilLiteral && fieldTypeStr !== valueTypeStr &&
-          _numTypes.includes(fieldTypeStr) && _numTypes.includes(valueTypeStr)) {
-        initValue = new GoTypeConversion(fieldType, initValue);
-      }
-
-      const initStatement = new GoExpressionStatement(
-        new GoAssignment([fieldAccess], '=', [initValue])
-      );
-
-      return { isMethod: false, field, initStatement, skipField: isBaseField };
-    }
-
-    /**
-     * Transform a function expression to a method with receiver
-     */
-    transformFunctionToMethod(methodName, funcNode, structName) {
-      const pascalName = this.toPascalCase(methodName);
-      const func = new GoFunc(pascalName);
-
-      // Set receiver name
-      this.receiverName = this.getReceiverName(structName);
-
-      // Add receiver (pointer receiver for methods that might modify state)
-      func.receiver = new GoParameter(this.receiverName, GoType.Pointer(new GoType(structName)));
-
-      // Transform parameters
-      if (funcNode.params) {
-        for (let i = 0; i < funcNode.params.length; ++i) {
-          const param = funcNode.params[i];
-          const paramName = this._paramName(param, i);
-          const paramType = this.inferParameterType(param, funcNode.body, methodName, i);
-          func.parameters.push(new GoParameter(paramName, paramType));
-          this.variableTypes.set(paramName, paramType);
-        }
-      }
-
-      // Determine return type
-      func.results = this.inferFunctionReturnType(funcNode);
-
-      // Register method return type for later lookup
-      if (func.results.length > 0) {
-        const returnType = func.results[0].type;
-        this.methodReturnTypes.set(methodName, returnType);
-        this.methodReturnTypes.set(pascalName, returnType);
-        // Set current function return type for empty array inference
-        this.currentFunctionReturnType = returnType;
-      }
-
-      // Transform body
-      if (funcNode.body) {
-        func.body = this.transformBlockStatement(funcNode.body);
-      }
-
-      // Clear current function return type
-      this.currentFunctionReturnType = null;
-
-      // Clear parameter types
-      if (funcNode.params) {
-        for (const param of funcNode.params) {
-          this.variableTypes.delete(param.name);
-        }
-      }
-
-      return func;
-    }
-
-    transformMethod(node, structName) {
-      const originalMethodName = node.key.name; // Keep original for call site lookup
-      let methodName = this.toPascalCase(originalMethodName);
-      // Detect method-to-method name collisions
-      if (structName) {
-        if (!this.declaredMethodNames.has(structName)) this.declaredMethodNames.set(structName, new Set());
-        var existingNames = this.declaredMethodNames.get(structName);
-        if (existingNames.has(methodName)) {
-          let suffix = 2;
-          while (existingNames.has(methodName + suffix)) suffix++;
-          methodName = methodName + suffix;
-          this.methodRenames.set(structName + "."+originalMethodName, methodName);
-        }
-        existingNames.add(methodName);
-      }
-      const func = new GoFunc(methodName);
-
-      // Set receiver name based on struct
-      this.receiverName = this.getReceiverName(structName);
-
-      // Add receiver (pointer receiver for methods that might modify state)
-      func.receiver = new GoParameter(this.receiverName, GoType.Pointer(new GoType(structName)));
-
-      // Transform parameters with type inference
-      if (node.value && node.value.params) {
-        for (let i = 0; i < node.value.params.length; ++i) {
-          const param = node.value.params[i];
-          const paramName = this._paramName(param, i);
-          // Use original method name for call site lookup (e.g., _encryptWords)
-          const paramType = this.inferParameterType(param, node.value.body, originalMethodName, i);
-          func.parameters.push(new GoParameter(paramName, paramType));
-
-          // Register parameter type for body transformation
-          this.variableTypes.set(param.name, paramType);
-
-          // Store declared parameter type for call-site type assertions
-          const declaredKey = `${originalMethodName}:${i}`;
-          this.methodDeclaredParams.set(declaredKey, paramType);
-          // Also store with PascalCase for lookup
-          this.methodDeclaredParams.set(`${methodName}:${i}`, paramType);
-        }
-      }
-
-      // Determine return type (clear empty array tracking per method to avoid cross-method pollution)
-      this.prescanEmptyArrayVars.clear();
-      func.results = this.inferFunctionReturnType(node.value);
-
-      // Set current function return type for empty array inference
-      if (func.results.length > 0) {
-        this.currentFunctionReturnType = func.results[0].type;
-
-        // Fix prescan-inferred array types: if the function returns []uint8 but
-        // prescan inferred []uint32 for empty arrays (from push of uint32 values),
-        // update them to match the return type
-        const retType = this.currentFunctionReturnType;
-        if (retType && retType.isSlice && retType.valueType) {
-          const retElemName = retType.valueType.name || retType.valueType.toString();
-          if (retElemName === 'uint8' || retElemName === 'byte') {
-            for (const [varName, varType] of this.variableTypes.entries()) {
-              if (varType && varType.isSlice && varType.valueType) {
-                const elemName = varType.valueType.name || varType.valueType.toString();
-                if ((elemName === 'uint32' || elemName === 'int32') && this.prescanEmptyArrayVars.has(varName)) {
-                  this.variableTypes.set(varName, retType);
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Transform body
-      if (node.value && node.value.body) {
-        func.body = this.transformBlockStatement(node.value.body);
-      }
-
-      // Clear current function return type
-      this.currentFunctionReturnType = null;
-
-      // Clear parameter types after transformation
-      if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          this.variableTypes.delete(param.name);
-        }
-      }
-
-      return func;
-    }
-
-    /**
-     * Extract dynamically created fields from setter method bodies
-     * Scans for patterns like: this.fieldName = new Array(...) or this.fieldName = value
-     */
-    extractSetterFields(node, structName) {
-      const fields = [];
-      const seenFields = new Set();
-
-      const scanNode = (n) => {
-        if (!n) return;
-
-        // Look for this.fieldName = value patterns
-        if (n.type === 'ExpressionStatement' &&
-            n.expression?.type === 'AssignmentExpression' &&
-            n.expression.operator === '=' &&
-            this.isThisPropertyAssignment(n)) {
-          const propName = n.expression.left.property?.name || n.expression.left.property;
-          const rightNode = n.expression.right;
-
-          // Skip null literal assignments - these are just initializations
-          if (rightNode?.type === 'Literal' && rightNode.value === null) {
-            return; // Skip this assignment but don't mark field as seen
-          }
-
-          if (propName && !seenFields.has(propName)) {
-            seenFields.add(propName);
-
-            // Infer type from the assignment, using name-based heuristics first
-            let valueType = this.inferFieldTypeFromValue(rightNode, propName);
-            const pascalName = this.toPascalCase(propName);
-
-            // For arrays/slices created with new Array(size), look for later element assignments
-            // to determine element type. We improve the type if it's interface{} or uint8 (the defaults)
-            if (valueType && (valueType.isSlice || valueType.isArray)) {
-              const currentElemType = valueType.valueType || valueType.elementType;
-              const needsImprovement = !currentElemType || currentElemType.isInterface ||
-                  currentElemType.name === 'interface{}' ||
-                  currentElemType.name === 'uint8'; // uint8 is the default for ArrayCreation
-              if (needsImprovement) {
-                const elementType = this.inferArrayElementType(propName, node.value?.body);
-                if (elementType && !elementType.isInterface && elementType.name !== 'interface{}' &&
-                    elementType.name !== 'uint8') {
-                  valueType = GoType.Slice(elementType);
-                }
-              }
-            }
-
-            // Check if this field is already in structFieldTypes (from constructor)
-            if (!this.structFieldTypes.has(propName) && !this.structFieldTypes.has(pascalName)) {
-              const field = new GoField(pascalName, valueType || GoType.Interface());
-              fields.push(field);
-              // Register the field type
-              this.structFieldTypes.set(pascalName, valueType);
-              this.structFieldTypes.set(propName, valueType);
-            }
-          }
-        }
-
-        // Recurse through node properties
-        for (const key in n) {
-          if (key === 'parent' || key === 'loc' || key === 'range') continue;
-          const val = n[key];
-          if (Array.isArray(val)) {
-            for (const item of val) {
-              if (item && typeof item === 'object') {
-                scanNode(item);
-              }
-            }
-          } else if (val && typeof val === 'object') {
-            scanNode(val);
-          }
-        }
-      };
-
-      // Scan the setter body
-      if (node.value?.body) {
-        scanNode(node.value.body);
-      }
-
-      return fields;
-    }
-
-    /**
-     * Infer array element type by scanning for element assignments like arr[i] = value
-     */
-    inferArrayElementType(arrayName, bodyNode) {
-      if (!bodyNode) return null;
-
-      let elementType = null;
-
-      const scanNode = (n) => {
-        if (!n || elementType) return;
-
-        // Look for this.arrayName[index] = value patterns
-        if (n.type === 'ExpressionStatement' &&
-            n.expression?.type === 'AssignmentExpression' &&
-            n.expression.operator === '=') {
-          const left = n.expression.left;
-          // Check for MemberExpression with computed access (array indexing)
-          if (left.type === 'MemberExpression' && left.computed) {
-            let objectName = null;
-            // Handle this.arrayName[i]
-            if (left.object?.type === 'ThisPropertyAccess') {
-              objectName = left.object.property;
-            } else if (left.object?.type === 'MemberExpression' &&
-                       left.object.object?.type === 'ThisExpression') {
-              objectName = left.object.property?.name || left.object.property;
-            }
-
-            if (objectName === arrayName) {
-              // Found an element assignment - infer type from the value
-              elementType = this.inferFullExpressionType(n.expression.right);
-              return;
-            }
-          }
-        }
-
-        // Recurse through node properties
-        for (const key in n) {
-          if (key === 'parent' || key === 'loc' || key === 'range') continue;
-          const val = n[key];
-          if (Array.isArray(val)) {
-            for (const item of val) {
-              if (item && typeof item === 'object') {
-                scanNode(item);
-              }
-            }
-          } else if (val && typeof val === 'object') {
-            scanNode(val);
-          }
-        }
-      };
-
-      scanNode(bodyNode);
-      return elementType;
-    }
-
-    // Resolve a usable parameter name from any parameter node shape
-    // (Identifier, default value, rest, or destructuring pattern). Go has no
-    // destructuring, so patterns fall back to a positional name.
-    _paramName(param, index) {
-      if (!param) return `p${index >= 0 ? index : 0}`;
-      switch (param.type) {
-        case 'Identifier': return param.name;
-        case 'AssignmentPattern': return this._paramName(param.left, index);
-        case 'RestElement': return this._paramName(param.argument, index);
-        default: return param.name || `p${index >= 0 ? index : 0}`;
-      }
-    }
-
-    inferParameterType(param, bodyNode, methodName = null, paramIndex = -1) {
-      const name = this._paramName(param, paramIndex);
-
-      // FIRST: Check for typeof usage - this indicates polymorphic parameter (string|array|etc)
-      // Must be checked before call site inference since typeof implies dynamic typing
-      // and call sites might be passing specific types to a polymorphic function
-      if (bodyNode && bodyNode.body) {
-        for (const stmt of bodyNode.body) {
-          if (this.hasTypeofCheck(stmt, name)) {
-            return this.options.useGenerics ? new GoType('any') : GoType.Interface();
-          }
-        }
-      }
-
-      // Check for IL resultType annotation on parameter (from type-aware-transpiler)
-      if (param.resultType === 'boolean' || param.resultType === 'bool')
-        return GoType.Bool();
-
-      // Check for boolean parameter names (framework convention)
-      const lowerName = name.toLowerCase();
-      if (lowerName === 'isinverse' || lowerName === 'inverse' ||
-          lowerName === 'isdecrypt' || lowerName === 'decrypt' ||
-          lowerName === 'isencode' || lowerName === 'isdecode' ||
-          (name.startsWith('is') && name.length > 2 && name[2] === name[2].toUpperCase()))
-        return GoType.Bool();
-
-      // Numeric suffix check BEFORE crypto name check
-      // blockSize, keyLength, inputOffset, dataCount etc. are numeric, not byte arrays
-      const _isNumericSuffix = lowerName.endsWith('size') || lowerName.endsWith('count') ||
-          lowerName.endsWith('length') || lowerName.endsWith('len') ||
-          lowerName.endsWith('offset') || lowerName.endsWith('index') ||
-          lowerName.endsWith('bits') || lowerName.endsWith('rounds') ||
-          lowerName.endsWith('num') || lowerName.endsWith('width') ||
-          lowerName.endsWith('height') || lowerName.endsWith('depth');
-      if (_isNumericSuffix)
-        return GoType.Int();
-
-      // Check name-based type inference for crypto parameters EARLY
-      // This handles common crypto patterns like plaintext, ciphertext, key, data, etc.
-      if (lowerName.includes('key') || lowerName.includes('data') ||
-          lowerName.includes('input') || lowerName.includes('output') ||
-          lowerName.includes('block') || lowerName.includes('buffer') ||
-          lowerName.includes('plaintext') || lowerName.includes('ciphertext') ||
-          lowerName.includes('message') || lowerName.includes('digest') ||
-          lowerName.includes('tag') || lowerName.includes('aad') ||
-          lowerName.includes('bytes') || lowerName.includes('nonce') ||
-          lowerName === 'iv' || lowerName === 'src' || lowerName === 'dst') {
-        return GoType.Slice(GoType.UInt8());
-      }
-
-      // Second, check if we have call site type information for this parameter
-      // This is the most accurate source since it's based on actual usage
-      if (methodName && paramIndex >= 0) {
-        const callSiteKey = `${methodName}:${paramIndex}`;
-        const callSiteType = this.methodParamTypes.get(callSiteKey);
-        if (callSiteType && callSiteType.name !== 'interface{}' && callSiteType.name !== 'any') {
-          return callSiteType;
-        }
-        // Also try with underscore prefix stripped (private method naming)
-        if (methodName.startsWith('_')) {
-          const altKey = `${methodName.slice(1)}:${paramIndex}`;
-          const altType = this.methodParamTypes.get(altKey);
-          if (altType && altType.name !== 'interface{}' && altType.name !== 'any') {
-            return altType;
-          }
-        }
-      }
-
-      // Check for JSDoc type annotation
-      if (param.typeAnnotation) {
-        return this.mapType(param.typeAnnotation.type);
-      }
-
-      // Name-based numeric parameter inference (before body analysis)
-      // Parameters clearly indicating numeric types from name patterns
-      if (lowerName === 'offset' || lowerName === 'pos' || lowerName === 'position' ||
-          lowerName === 'idx' || lowerName === 'index' || lowerName === 'start' ||
-          lowerName === 'end' || lowerName === 'len' || lowerName === 'length' ||
-          lowerName === 'size' || lowerName === 'count' || lowerName === 'num' ||
-          lowerName === 'shift' || lowerName === 'bits' || lowerName === 'rounds' ||
-          lowerName === 'width' || lowerName === 'height' || lowerName === 'depth' ||
-          lowerName.endsWith('offset') || lowerName.endsWith('index') ||
-          lowerName.endsWith('pos') || lowerName.endsWith('len') ||
-          lowerName.endsWith('count') || lowerName.endsWith('size') ||
-          lowerName.endsWith('bits') || lowerName.endsWith('rounds'))
-        return GoType.Int();
-
-      // Always analyze usage patterns in body to infer types
-      if (bodyNode && bodyNode.body) {
-
-        for (const stmt of bodyNode.body) {
-          // Look for bitwise operations FIRST: param << n, param >> n, param & x, param | x, param ^ x
-          // Bitwise ops are a strong signal of numeric type - must check before map key usage
-          if (this.hasBitwiseOperation(stmt, name)) {
-            return GoType.UInt32();
-          }
-
-          // Look for calls to rotation/bitwise functions with this parameter
-          if (this.hasBitFunctionCall(stmt, name)) {
-            return GoType.UInt32();
-          }
-
-          // Look for arithmetic operations: param + n, param - n, param * n, etc.
-          // This indicates numeric type (int), not string
-          if (this.hasArithmeticOperation(stmt, name)) {
-            return GoType.Int();
-          }
-
-          // Look for array access: param[i]
-          if (this.hasArrayAccess(stmt, name)) {
-            return GoType.Slice(GoType.UInt8());
-          }
-
-          // Look for .length property access
-          if (this.hasLengthAccess(stmt, name)) {
-            return GoType.Slice(GoType.UInt8());
-          }
-
-          // Look for map key access: configs[param] - param should be string
-          // Checked AFTER bitwise/array since those are more reliable signals
-          if (this.hasMapKeyUsage(stmt, name)) {
-            return GoType.String();
-          }
-        }
-      }
-
-      // Default based on strictness
-      if (this.options.useStrictTypes) {
-        // Use 'any' if generics enabled, otherwise interface{}
-        return this.options.useGenerics ? new GoType('any') : GoType.Interface();
-      }
-      return GoType.Interface();
-    }
-
-    hasArithmeticOperation(node, varName) {
-      if (!node) return false;
-      // Check for arithmetic binary expressions: param + N, param - N, param * N, param / N, param % N
-      if (node.type === 'BinaryExpression') {
-        const arithOps = ['+', '-', '*', '/', '%'];
-        if (arithOps.includes(node.operator)) {
-          const leftIsVar = node.left.type === 'Identifier' && node.left.name === varName;
-          const rightIsVar = node.right.type === 'Identifier' && node.right.name === varName;
-          const leftIsNum = node.left.type === 'Literal' && typeof node.left.value === 'number';
-          const rightIsNum = node.right.type === 'Literal' && typeof node.right.value === 'number';
-          // param + N or N + param (but NOT string + param which is concatenation)
-          if ((leftIsVar && rightIsNum) || (rightIsVar && leftIsNum))
-            return true;
-          // param + otherVar (in arithmetic context, e.g., offset + i)
-          if ((leftIsVar || rightIsVar) && node.operator !== '+')
-            return true; // Only +/- could be string concat; *, /, % are always numeric
-        }
-      }
-      // Recurse through node properties
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'parent') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && typeof child === 'object' && this.hasArithmeticOperation(child, varName)))
-            return true;
-        } else if (value && typeof value === 'object') {
-          if (this.hasArithmeticOperation(value, varName))
-            return true;
-        }
-      }
-      return false;
-    }
-
-    hasBitwiseOperation(node, varName) {
-      if (!node) return false;
-
-      // Check for bitwise binary expressions with this variable
-      if (node.type === 'BinaryExpression') {
-        const bitwiseOps = ['<<', '>>', '>>>', '&', '|', '^'];
-        if (bitwiseOps.includes(node.operator)) {
-          // Check if left or right operand is our variable
-          if ((node.left.type === 'Identifier' && node.left.name === varName) ||
-              (node.right.type === 'Identifier' && node.right.name === varName)) {
-            return true;
-          }
-        }
-      }
-
-      // Recurse through node properties
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'parent') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && typeof child === 'object' && this.hasBitwiseOperation(child, varName))) {
-            return true;
-          }
-        } else if (value && typeof value === 'object') {
-          if (this.hasBitwiseOperation(value, varName)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    hasBitFunctionCall(node, varName) {
-      if (!node) return false;
-
-      // Check for calls to rotation/bitwise functions
-      if (node.type === 'CallExpression') {
-        const callee = node.callee;
-        let funcName = '';
-
-        if (callee.type === 'Identifier') {
-          funcName = callee.name;
-        } else if (callee.type === 'MemberExpression' && callee.property) {
-          funcName = callee.property.name || callee.property;
-        }
-
-        // List of functions that require uint32 operands
-        const uint32Funcs = [
-          'RotL32', 'RotR32', 'rotl32', 'rotr32',
-          'RotateLeft32', 'RotateLeft', 'RotateRight32', 'RotateRight',
-          'Pack32BE', 'Pack32LE', 'pack32BE', 'pack32LE',
-          'Unpack32BE', 'Unpack32LE', 'unpack32BE', 'unpack32LE'
-        ];
-
-        if (uint32Funcs.some(fn => funcName.includes(fn) || funcName.toLowerCase().includes(fn.toLowerCase()))) {
-          // Check if our variable is an argument
-          for (const arg of node.arguments || []) {
-            if (arg.type === 'Identifier' && arg.name === varName) {
-              return true;
-            }
-          }
-        }
-      }
-
-      // Recurse through node properties
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'parent') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && typeof child === 'object' && this.hasBitFunctionCall(child, varName))) {
-            return true;
-          }
-        } else if (value && typeof value === 'object') {
-          if (this.hasBitFunctionCall(value, varName)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    hasMapKeyUsage(node, varName) {
-      if (!node) return false;
-
-      // Check for MemberExpression with computed property: configs[variant]
-      // This indicates the variable is used as a map key (should be string)
-      // BUT NOT when the object is an array/slice (bytes[offset] means offset is an int index, not a string key)
-      if (node.type === 'MemberExpression' && node.computed) {
-        if (node.property && node.property.type === 'Identifier' && node.property.name === varName) {
-          // Check object type - if it's a known array/slice, this is array indexing, not map key access
-          const objType = this.inferFullExpressionType(node.object);
-          const objTypeStr = objType?.toString() || '';
-          if (objType && (objType.isSlice || objType.isArray || objTypeStr.startsWith('[]')))
-            return false; // Array indexing, not map key usage
-          // Also check by object name - common byte array param names
-          const objName = node.object?.name || '';
-          const objLower = objName.toLowerCase();
-          if (objLower === 'bytes' || objLower === 'data' || objLower === 'input' || objLower === 'output' ||
-              objLower === 'block' || objLower === 'buffer' || objLower === 'key' || objLower === 'state' ||
-              objLower === 'b' || objLower === 'arr' || objLower === 'array' || objLower === 'src' || objLower === 'dst')
-            return false; // Known array parameter names
-          return true;
-        }
-      }
-
-      // Check IL node types for ElementAccess
-      if (node.ilNodeType === 'ElementAccess' || node.type === 'ElementAccess') {
-        if (node.index && node.index.type === 'Identifier' && node.index.name === varName) {
-          // Same check: if the object is a slice/array, this is integer indexing
-          const objNode = node.array || node.object;
-          const objType = objNode ? this.inferFullExpressionType(objNode) : null;
-          const objTypeStr = objType?.toString() || '';
-          if (objType && (objType.isSlice || objType.isArray || objTypeStr.startsWith('[]')))
-            return false;
-          const objName = objNode?.name || '';
-          const objLower = objName.toLowerCase();
-          if (objLower === 'bytes' || objLower === 'data' || objLower === 'input' || objLower === 'output' ||
-              objLower === 'block' || objLower === 'buffer' || objLower === 'key' || objLower === 'state' ||
-              objLower === 'b' || objLower === 'arr' || objLower === 'array' || objLower === 'src' || objLower === 'dst')
-            return false;
-          return true;
-        }
-      }
-
-      // Recurse through node properties
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'parent') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && typeof child === 'object' && this.hasMapKeyUsage(child, varName))) {
-            return true;
-          }
-        } else if (value && typeof value === 'object') {
-          if (this.hasMapKeyUsage(value, varName)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    hasTypeofCheck(node, varName) {
-      if (!node) return false;
-
-      // Check for typeof varName comparison: typeof x === "string"
-      // The pattern is BinaryExpression with UnaryExpression (typeof) as left operand
-      if (node.type === 'BinaryExpression' &&
-          (node.operator === '===' || node.operator === '==' || node.operator === '!==' || node.operator === '!=') &&
-          node.left.type === 'UnaryExpression' &&
-          node.left.operator === 'typeof' &&
-          node.left.argument.type === 'Identifier' &&
-          node.left.argument.name === varName) {
-        return true;
-      }
-
-      // Also check IL node types for typeof
-      if (node.ilNodeType === 'BinaryExpression' &&
-          node.left?.ilNodeType === 'UnaryExpression' &&
-          node.left?.operator === 'typeof' &&
-          node.left?.argument?.name === varName) {
-        return true;
-      }
-
-      // Recurse through node properties
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'parent') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && typeof child === 'object' && this.hasTypeofCheck(child, varName))) {
-            return true;
-          }
-        } else if (value && typeof value === 'object') {
-          if (this.hasTypeofCheck(value, varName)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    hasArrayAccess(node, varName) {
-      if (!node) return false;
-
-      if (node.type === 'MemberExpression' &&
-          node.object.type === 'Identifier' &&
-          node.object.name === varName &&
-          node.computed) {
-        // Check if the property is a string literal - this indicates map access, not array access
-        // e.g., config["base"] is map access, not array access
-        // e.g., arr[i] or arr[0] IS array access
-        const prop = node.property;
-        if (prop.type === 'Literal' && typeof prop.value === 'string') {
-          return false;  // String key access = map/object access, not array
-        }
-        return true;
-      }
-
-      // Recurse through node properties
-      for (const key in node) {
-        if (key === 'type' || key === 'loc') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && this.hasArrayAccess(child, varName))) {
-            return true;
-          }
-        } else if (value && typeof value === 'object') {
-          if (this.hasArrayAccess(value, varName)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    hasLengthAccess(node, varName) {
-      if (!node) return false;
-
-      if (node.type === 'MemberExpression' &&
-          node.object.type === 'Identifier' &&
-          node.object.name === varName &&
-          node.property.name === 'length') {
-        return true;
-      }
-
-      // Recurse
-      for (const key in node) {
-        if (key === 'type' || key === 'loc') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          if (value.some(child => child && this.hasLengthAccess(child, varName))) {
-            return true;
-          }
-        } else if (value && typeof value === 'object') {
-          if (this.hasLengthAccess(value, varName)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    transformProperty(node) {
-      let fieldName = this.toPascalCase(node.key.name);
-
-      // Check if this field was renamed due to collision with method name
-      if (this.currentStruct) {
-        const renameKey = `${this.currentStruct.name}.${fieldName}`;
-        if (this.renamedFields.has(renameKey)) {
-          fieldName = this.renamedFields.get(renameKey);
-        }
-      }
-
-      const field = new GoField(
-        fieldName,
-        this.getInferredType(node.value || {})
-      );
-      return field;
-    }
-
-    transformStaticBlock(node) {
-      // ES2022 static block -> Go package-level init() function
-      // Go doesn't have static class blocks, so transform to statements
-      // that will be placed in an init() function
-      // Handle both array body and object with body property
-      const statements = Array.isArray(node.body) ? node.body :
-                         (node.body?.body && Array.isArray(node.body.body)) ? node.body.body : [];
-      return statements.map(stmt => this.transformStatement(stmt));
-    }
-
-    transformClassExpression(node) {
-      // ClassExpression -> Go struct literal with embedded methods
-      // Go doesn't have classes, use struct with method receivers
-      const structName = node.id?.name || 'AnonymousStruct';
-      const structDecl = new GoStruct(structName);
-
-      if (node.body?.body) {
-        for (const member of node.body.body) {
-          if (member.type === 'PropertyDefinition') {
-            const field = new GoField(
-              this.toPascalCase(member.key.name),
-              this.inferType(member.value)
-            );
-            structDecl.fields.push(field);
-          }
-        }
-      }
-
-      return structDecl;
-    }
-
-    transformYieldExpression(node) {
-      // Go doesn't have yield - return the argument value
-      const argument = node.argument ? this.transformExpression(node.argument) : GoLiteral.Nil();
-      return argument;
-    }
-
-    transformFunctionDeclaration(node) {
-      const func = new GoFunc(this.toPascalCase(node.id.name));
-      if (this.options.addComments) {
-        func.docComment = `${func.name} ${node.id.name} function`;
-      }
-
-      this.currentFunc = func;
-
-      // Add context.Context as first parameter if useContext is enabled
-      if (this.options.useContext) {
-        this.addImport('context');
-        func.parameters.push(new GoParameter('ctx', new GoType('context.Context')));
-      }
-
-      // Transform parameters with type inference
-      if (node.params) {
-        for (let i = 0; i < node.params.length; ++i) {
-          const param = node.params[i];
-          const paramName = this._paramName(param, i);
-          const paramType = this.inferParameterType(param, node.body, node.id.name, i);
-          func.parameters.push(new GoParameter(paramName, paramType));
-
-          // Register parameter type for body transformation
-          this.variableTypes.set(paramName, paramType);
-        }
-      }
-
-      // Determine return type (with error if errorHandling enabled)
-      func.results = this.inferFunctionReturnType(node);
-      if (this.options.errorHandling && func.results.length > 0) {
-        func.results.push(new GoParameter('', new GoType('error')));
-      }
-
-      // Register function return type for call site lookups
-      if (func.results.length > 0) {
-        const returnType = func.results[0].type;
-        const funcName = node.id.name;
-        const pascalName = this.toPascalCase(funcName);
-        this.methodReturnTypes.set(funcName, returnType);
-        this.methodReturnTypes.set(pascalName, returnType);
-        // Set current function return type for empty array inference
-        this.currentFunctionReturnType = returnType;
-      }
-
-      // Transform body
-      if (node.body) {
-        func.body = this.transformBlockStatement(node.body);
-      }
-
-      // Clear parameter types after transformation
-      if (node.params) {
-        for (const param of node.params) {
-          this.variableTypes.delete(param.name);
-        }
-      }
-
-      this.currentFunc = null;
-      return func;
-    }
-
-    transformParameter(param) {
-      const name = param.name || 'param';
-      let type = GoType.Interface();
-
-      // Try to get type from JSDoc or annotations
-      if (param.typeAnnotation) {
-        type = this.mapType(param.typeAnnotation.type);
-      }
-
-      return new GoParameter(name, type);
-    }
-
-    inferFunctionReturnType(funcNode) {
-      // Check for explicit return type annotation
-      if (funcNode.returnType) {
-        const type = this.mapType(funcNode.returnType);
-        return type ? [new GoParameter('', type)] : [];
-      }
-
-      // Pre-scan function body to populate variable types before inferring return type
-      // This is needed because inferFullExpressionType looks up variables in variableTypes
-      this.prescanFunctionBody(funcNode.body);
-
-      // Analyze return statements
-      const returns = this.findReturnStatements(funcNode.body);
-      if (returns.length === 0) {
-        // No return statements found - check typeInfo as fallback
-        // This handles stub methods (panic-only bodies) that originally had return values
-        if (funcNode.typeInfo?.returns) {
-          const ret = funcNode.typeInfo.returns;
-          const typeName = typeof ret === 'string' ? ret : ret.name;
-          if (typeName) {
-            const type = this.mapType(typeName);
-            return type ? [new GoParameter('', type)] : [new GoParameter('', new GoType('interface{}'))];
-          }
-        }
-        return []; // void
-      }
-
-      // Use first return to infer type
-      if (returns[0].argument) {
-        const type = this.getInferredType(returns[0].argument);
-        return [new GoParameter('', type)];
-      }
-
-      return [];
-    }
-
-    /**
-     * Pre-scan function body to populate variable types before type inference.
-     * This handles:
-     * 1. Variable declarations with inferred types
-     * 2. Empty array declarations - look ahead for push calls to determine element type
-     */
-    prescanFunctionBody(bodyNode, debug = false) {
-      if (!bodyNode) return;
-
-      const statements = bodyNode.body || (Array.isArray(bodyNode) ? bodyNode : [bodyNode]);
-      if (debug) console.log('[prescan] statements count:', statements.length);
-
-      for (let i = 0; i < statements.length; ++i) {
-        const stmt = statements[i];
-        if (!stmt) continue;
-
-        if (stmt.type === 'VariableDeclaration') {
-          for (const declarator of stmt.declarations) {
-            if (declarator.id.type !== 'Identifier') continue;
-
-            const name = declarator.id.name;
-            const init = declarator.init;
-
-            if (init?.type === 'ArrayExpression' && (!init.elements || init.elements.length === 0)) {
-              // Empty array - look ahead for push calls to determine element type
-              const elemType = this.findPushElementType(name, statements.slice(i + 1));
-              if (debug) console.log(`[prescan] Empty array '${name}' -> elemType:`, elemType?.toString());
-              const arrayType = elemType ? GoType.Slice(elemType) : GoType.Slice(GoType.UInt8());
-              this.variableTypes.set(name, arrayType);
-              this.prescanEmptyArrayVars.add(name);
-              if (debug) console.log(`[prescan] Set type for '${name}':`, arrayType.toString());
-            } else if (init) {
-              // Non-empty initialization - infer type
-              // Use inferFullExpressionType for binary expressions to apply coercion rules
-              let type;
-              if (init.type === 'BinaryExpression') {
-                type = this.inferFullExpressionType(init);
-              } else {
-                type = this.getInferredType(init, name);
-              }
-              if (type) this.variableTypes.set(name, type);
-            }
-          }
-        }
-
-        // Recurse into blocks, if/for bodies, etc.
-        if (stmt.body) this.prescanFunctionBody(stmt.body);
-        if (stmt.consequent) this.prescanFunctionBody(stmt.consequent);
-        if (stmt.alternate) this.prescanFunctionBody(stmt.alternate);
-        if (stmt.block) this.prescanFunctionBody(stmt.block);
-      }
-    }
-
-    /**
-     * Look ahead in statements for push calls to an array variable to determine element type.
-     * Handles both direct .push(x) and spread .push(...x)
-     * IL uses ArrayAppend for .push() operations
-     */
-    findPushElementType(varName, statements) {
-      for (const stmt of statements) {
-        if (!stmt) continue;
-
-        // Handle expression statements with ArrayAppend IL nodes (from .push() calls)
-        if (stmt.type === 'ExpressionStatement') {
-          const expr = stmt.expression;
-          // IL uses 'ArrayAppend' for .push() operations
-          if (expr?.type === 'ArrayAppend' || expr?.ilNodeType === 'ArrayAppend') {
-            const arrayExpr = expr.array;
-            if (arrayExpr?.type === 'Identifier' && arrayExpr.name === varName) {
-              const valueNode = expr.value;
-              if (valueNode?.type === 'SpreadElement') {
-                // .push(...x) - get element type from spread array
-                const argType = this.inferFullExpressionType(valueNode.argument);
-                if (argType?.isSlice && argType.valueType) {
-                  return argType.valueType;
-                }
-              } else {
-                // .push(x) - get type of x
-                // For small integer literals (0-255), prefer uint8 for crypto byte arrays
-                if (valueNode?.type === 'Literal' && typeof valueNode.value === 'number' &&
-                    Number.isInteger(valueNode.value) && valueNode.value >= 0 && valueNode.value <= 255) {
-                  return GoType.UInt8();
-                }
-                return this.inferFullExpressionType(valueNode);
-              }
-            }
-          }
-
-          // Handle CallExpression form: array.push(value)
-          if (expr?.type === 'CallExpression') {
-            const callee = expr.callee;
-            if (callee?.type === 'MemberExpression' &&
-                callee.property?.name === 'push' &&
-                callee.object?.type === 'Identifier' &&
-                callee.object.name === varName) {
-              const args = expr.arguments;
-              if (args && args.length > 0) {
-                const firstArg = args[0];
-                if (firstArg.type === 'SpreadElement') {
-                  const argType = this.inferFullExpressionType(firstArg.argument);
-                  if (argType?.isSlice && argType.valueType) {
-                    return argType.valueType;
-                  }
-                } else {
-                  return this.inferFullExpressionType(firstArg);
-                }
-              }
-            }
-          }
-        }
-
-        // Recurse into for loops
-        if (stmt.type === 'ForStatement' && stmt.body) {
-          const forStmts = stmt.body.body || (Array.isArray(stmt.body) ? stmt.body : [stmt.body]);
-          const found = this.findPushElementType(varName, forStmts);
-          if (found) return found;
-        }
-
-        // Recurse into if statements
-        if (stmt.type === 'IfStatement') {
-          if (stmt.consequent) {
-            const conseqStmts = stmt.consequent.body || [stmt.consequent];
-            const found = this.findPushElementType(varName, conseqStmts);
-            if (found) return found;
-          }
-          if (stmt.alternate) {
-            const altStmts = stmt.alternate.body || [stmt.alternate];
-            const found = this.findPushElementType(varName, altStmts);
-            if (found) return found;
-          }
-        }
-      }
-      return null;
-    }
-
-    /**
-     * Collect method call sites to infer parameter types from actual arguments
-     * E.g., this._encryptWords(words, keyWords) where words is []uint32
-     */
-    collectMethodCallSites(node) {
-      if (!node) return;
-
-      // Look for IL ThisMethodCall nodes (generated by type-aware-transpiler)
-      if (node.type === 'ThisMethodCall' || node.ilNodeType === 'ThisMethodCall') {
-        const methodName = node.method;
-        const args = node.arguments || [];
-        if (methodName && args.length > 0) {
-          for (let i = 0; i < args.length; ++i) {
-            const arg = args[i];
-            const argType = this.inferFullExpressionType(arg);
-            if (argType && argType.name !== 'interface{}' && argType.name !== 'any') {
-              const key = `${methodName}:${i}`;
-              const existingType = this.methodParamTypes.get(key);
-              // Set if we don't have a type, or the new type is more specific/wider
-              if (!existingType || this.shouldReplaceType(existingType, argType)) {
-                this.methodParamTypes.set(key, argType);
-              }
-            }
-          }
-        }
-      }
-
-      // Also look for original this.methodName(args) CallExpression pattern (pre-IL)
-      if (node.type === 'CallExpression' &&
-          node.callee?.type === 'MemberExpression' &&
-          node.callee.object?.type === 'ThisExpression') {
-        const methodName = node.callee.property?.name || node.callee.property;
-        if (methodName && node.arguments?.length > 0) {
-          for (let i = 0; i < node.arguments.length; ++i) {
-            const arg = node.arguments[i];
-            const argType = this.inferFullExpressionType(arg);
-            if (argType && argType.name !== 'interface{}' && argType.name !== 'any') {
-              const key = `${methodName}:${i}`;
-              const existingType = this.methodParamTypes.get(key);
-              // Set if we don't have a type, or the new type is more specific/wider
-              if (!existingType || this.shouldReplaceType(existingType, argType)) {
-                this.methodParamTypes.set(key, argType);
-              }
-            }
-          }
-        }
-      }
-
-      // Recurse into all child nodes
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'range') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          for (const child of value) {
-            if (child && typeof child === 'object') {
-              this.collectMethodCallSites(child);
-            }
-          }
-        } else if (value && typeof value === 'object') {
-          this.collectMethodCallSites(value);
-        }
-      }
-    }
-
-    /**
-     * Find an AssignmentExpression nested within an expression tree.
-     * Checks the node itself, and left/right children of BinaryExpression/LogicalExpression.
-     * Returns the first AssignmentExpression found, or null.
-     */
-    // Select the appropriate type-specific increment/decrement helper based on operand type
-    _getIncrDecrHelper(argNode, isPrefix, isIncrement) {
-      const operandType = this.inferFullExpressionType(argNode);
-      const typeStr = operandType?.toString() || 'int';
-      const suffixMap = {
-        'uint32': 'Uint32', 'uint16': 'Uint16', 'int32': 'Int32',
-      };
-      const suffix = suffixMap[typeStr] || 'Int';
-      if (isPrefix)
-        return isIncrement ? `preIncr${suffix}` : `preDecr${suffix}`;
-      return isIncrement ? `postIncr${suffix}` : `postDecr${suffix}`;
-    }
-
-    _findNestedAssignment(node) {
-      if (!node) return null;
-      const nodeType = node.type || node.ilNodeType;
-      if (nodeType === 'AssignmentExpression' && (!node.operator || node.operator === '='))
-        return node;
-      // Check inside BinaryExpression/LogicalExpression
-      if (nodeType === 'BinaryExpression' || nodeType === 'LogicalExpression') {
-        return this._findNestedAssignment(node.left) || this._findNestedAssignment(node.right);
-      }
-      return null;
-    }
-
-    findReturnStatements(node, acc = []) {
-      if (!node) return acc;
-
-      if (node.type === 'ReturnStatement') {
-        acc.push(node);
-        return acc;
-      }
-
-      // Recurse into body
-      if (node.body) {
-        if (Array.isArray(node.body)) {
-          for (const child of node.body) {
-            this.findReturnStatements(child, acc);
-          }
-        } else {
-          this.findReturnStatements(node.body, acc);
-        }
-      }
-
-      // Recurse into if/else branches
-      if (node.consequent) {
-        if (Array.isArray(node.consequent)) {
-          for (const child of node.consequent) {
-            this.findReturnStatements(child, acc);
-          }
-        } else {
-          this.findReturnStatements(node.consequent, acc);
-        }
-      }
-      if (node.alternate) this.findReturnStatements(node.alternate, acc);
-
-      // Recurse into switch cases
-      if (node.cases) {
-        for (const c of node.cases) {
-          if (c.consequent) {
-            for (const child of c.consequent) {
-              this.findReturnStatements(child, acc);
-            }
-          }
-        }
-      }
-
-      // Recurse into try/catch/finally
-      if (node.block) this.findReturnStatements(node.block, acc);
-      if (node.handler) this.findReturnStatements(node.handler, acc);
-      if (node.finalizer) this.findReturnStatements(node.finalizer, acc);
-
-      return acc;
-    }
-
-    transformVariableDeclaration(node) {
-      const vars = [];
-
-      // Track IL-expanded destructure temp sources for rewriting references
-      const destructureTempSources = new Map();
-
-      for (const declarator of node.declarations) {
-        // Skip ObjectPattern destructuring (e.g., const { RegisterAlgorithm } = AlgorithmFramework)
-        if (declarator.id.type === 'ObjectPattern')
-          continue;
-
-        // Handle array destructuring: const [a, b, c] = arr;
-        if (declarator.id.type === 'ArrayPattern') {
-          const sourceExpr = declarator.init ? this.transformExpression(declarator.init) : null;
-          if (sourceExpr) {
-            for (let i = 0; i < declarator.id.elements.length; ++i) {
-              const elem = declarator.id.elements[i];
-              if (!elem) continue; // Skip holes in destructuring
-
-              const varName = elem.name;
-              const indexExpr = new GoIndexExpression(sourceExpr, GoLiteral.Int(i));
-              const goVar = new GoVar(varName, null, indexExpr);
-              goVar.isShortDecl = true; // Use :=
-              vars.push(goVar);
-            }
-          }
-          continue;
-        }
-
-        // Handle IL-expanded destructuring from the type-aware transpiler.
-        // The IL expands `const { a, b } = obj` into:
-        //   _destructure_N = obj          (ilNodeType: 'DestructureTemp')
-        //   a = _destructure_N.a          (ilNodeType: 'DestructuredProperty')
-        //   b = _destructure_N.b          (ilNodeType: 'DestructuredProperty')
-        // And `const [a, b] = arr` into:
-        //   _destructure_N = arr          (ilNodeType: 'DestructureTemp')
-        //   a = _destructure_N[0]         (ilNodeType: 'DestructuredElement')
-        //   b = _destructure_N[1]         (ilNodeType: 'DestructuredElement')
-        if (declarator.ilNodeType === 'DestructureTemp') {
-          const tempName = declarator.id.name;
-          // Record the source expression so subsequent property/element declarators
-          // can directly reference the original source instead of the temp
-          destructureTempSources.set(tempName, declarator.init);
-
-          // Emit the temp variable so it is available for indexing by subsequent
-          // DestructuredElement/DestructuredProperty declarators
-          let type = this.inferFullExpressionType(declarator.init) || null;
-          let init = this.transformExpression(declarator.init, type);
-
-          // When destructure temp will be indexed (DestructuredElement) or property-accessed
-          // (DestructuredProperty), ensure the Go type is concrete enough for those operations.
-          // The IL type system may know the exact type, but the Go expression might return
-          // interface{} from generic helpers (e.g., mapSlice). Add a type assertion when needed.
-          const typeStr = type?.toString() || '';
-          const hasElementAccess = node.declarations.some(d =>
-            d.ilNodeType === 'DestructuredElement' &&
-            d.init?.object?.name === tempName
-          );
-          const hasPropertyAccess = node.declarations.some(d =>
-            d.ilNodeType === 'DestructuredProperty' &&
-            d.init?.object?.name === tempName
-          );
-          if (hasElementAccess || hasPropertyAccess) {
-            // Determine the appropriate target type for assertion
-            if (!type || typeStr === 'interface{}' || typeStr === 'any') {
-              // No concrete type known - use generic indexable types
-              if (hasElementAccess) {
-                type = GoType.Slice(GoType.Interface());
-              } else {
-                type = GoType.Map(GoType.String(), GoType.Interface());
-              }
-            }
-            // Add type assertion to ensure Go compiler can verify indexability
-            // Use safeTypeAssertion to skip when init is already concrete (e.g., composite literal)
-            init = this.safeTypeAssertion(init, type);
-          }
-
-          if (type) this.variableTypes.set(tempName, type);
-          const goVar = new GoVar(tempName, type, init);
-          goVar.isShortDecl = !!init;
-          vars.push(goVar);
-          continue;
-        }
-
-        // Handle IL-expanded destructured properties/elements.
-        // The temp variable was already emitted above, so these can reference it directly.
-        // Just fall through to normal variable declaration handling - the init expression
-        // (e.g., _destructure_N.prop or _destructure_N[0]) will be transformed normally.
-        // No rewriting is needed here since the temp exists in scope.
-
-        // Skip arrow function assignments wrapping void operations (e.g., clearOutput = () => ClearArray(...))
-        // These are dead code in Go since unused variables are compile errors
-        if (declarator.init && (declarator.init.type === 'ArrowFunction' || declarator.init.type === 'ArrowFunctionExpression')) {
-          const arrowBody = declarator.init.body;
-          if (arrowBody && (arrowBody.type === 'ArrayClear' || arrowBody.ilNodeType === 'ArrayClear')) {
-            continue;
-          }
-        }
-        const origName = declarator.id.name;
-        const name = this.sanitizeVarName(origName);
-        let type = null;
-        let init = null;
-
-        // Check if prescan already determined the type (e.g., from push call analysis)
-        // Try sanitized name first, then original name (prescan uses original names)
-        const prescanType = name ? (this.variableTypes.get(name) || this.variableTypes.get(origName)) : null;
-        // Migrate prescan type to sanitized name if needed
-        if (prescanType && name !== origName) {
-          this.variableTypes.set(name, prescanType);
-          this.variableTypes.delete(origName);
-        }
-
-        if (declarator.init) {
-          // Check if this is an IIFE (immediately invoked function expression)
-          if (declarator.init.type === 'CallExpression' &&
-              (declarator.init.callee.type === 'FunctionExpression' ||
-               declarator.init.callee.type === 'ArrowFunctionExpression')) {
-            // Extract return value from IIFE
-            const returnValue = this.getIIFEReturnValue(declarator.init);
-            if (returnValue) {
-              type = prescanType || this.getInferredType(returnValue);
-              init = this.transformExpression(returnValue, type);
-            }
-          } else {
-            // Get type FIRST so it can be passed to transformExpression
-            // This is important for empty arrays where the type is determined by later push calls
-            type = prescanType || this.getInferredType(declarator.init, name);
-            init = this.transformExpression(declarator.init, type);
-
-            // For integer literals where we want a specific type, wrap with type conversion
-            // This ensures `sum := uint32(0)` instead of `sum := 0` (which would be int)
-            if (declarator.init.type === 'Literal' &&
-                typeof declarator.init.value === 'number' &&
-                Number.isInteger(declarator.init.value) &&
-                type && type.name !== 'int') {
-              // Detect int32 overflow: value > INT32_MAX should use uint32
-              if (type.name === 'int32' && declarator.init.value > 2147483647)
-                type = GoType.UInt32();
-              init = new GoTypeConversion(type, init);
-            }
-            // For non-literal integer expressions where Go's := would infer `int`,
-            // but the IL type is uint32, wrap with explicit uint32() to prevent
-            // type mismatches (e.g., n := 1 << m & 0xFFFFFFFF should be uint32, not int)
-            if (type && type.name === 'uint32' &&
-                init.nodeType !== 'TypeConversion' &&
-                init.nodeType !== 'Literal' &&
-                init.nodeType !== 'CallExpression' &&
-                init.nodeType !== 'CompositeLiteral' &&
-                init.nodeType !== 'TypeAssertion' &&
-                declarator.init.type !== 'Literal') {
-              init = new GoTypeConversion(type, init);
-            }
-          }
-        }
-
-        // Store variable type for later type inference
-        // If init includes a type assertion, use the asserted type as the variable type
-        // (e.g., aad := firstNonNil(...).([]uint8) means aad is []uint8, not interface{})
-        if (name && init && init.nodeType === 'TypeAssertion' && init.type) {
-          type = init.type;
-        }
-        if (name) {
-          if (type) {
-            this.variableTypes.set(name, type);
-          } else if (!init) {
-            // Check if hoisted ternary pre-pass inferred a type
-            const hoistedType = declarator._hoistedType;
-            if (hoistedType) {
-              this.variableTypes.set(name, hoistedType);
-              type = hoistedType;
-            } else {
-              // Uninitialized variable with no type - defaults to interface{}
-              this.variableTypes.set(name, GoType.Interface());
-              type = GoType.Interface(); // Also set for the GoVar node
-            }
-          }
-        }
-
-        // Detect nil initialization: `result := nil` is invalid Go, use `var result interface{}` instead
-        const isNilInit = init && (
-          (init.nodeType === 'Literal' && init.value === null) ||
-          (init.nodeType === 'Literal' && init.literalType === 'nil')
-        );
-        if (isNilInit) {
-          type = type || GoType.Interface();
-          init = null; // Will produce: var result interface{}
-        }
-
-        const goVar = new GoVar(name, type, init);
-        goVar.isShortDecl = !!init; // Use := if initialized
-        vars.push(goVar);
-      }
-
-      return vars;
-    }
-
-    // ========================[ STATEMENTS ]========================
-
-    transformStatement(node) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'BlockStatement':
-          return this.transformBlockStatement(node);
-        case 'ReturnStatement':
-          return this.transformReturnStatement(node);
-        case 'IfStatement':
-          return this.transformIfStatement(node);
-        case 'ForStatement':
-          return this.transformForStatement(node);
-        case 'ForOfStatement':
-          return this.transformForOfStatement(node);
-        case 'ForInStatement':
-          return this.transformForInStatement(node);
-        case 'WhileStatement':
-          return this.transformWhileStatement(node);
-        case 'DoWhileStatement':
-          return this.transformDoWhileStatement(node);
-        case 'SwitchStatement':
-          return this.transformSwitchStatement(node);
-        case 'TryStatement':
-          return this.transformTryStatement(node);
-        case 'ThrowStatement':
-          return this.transformThrowStatement(node);
-        case 'BreakStatement':
-          return new GoBreak();
-        case 'ContinueStatement':
-          return new GoContinue();
-        case 'ExpressionStatement':
-          // Special handling for ArrayAppend - append result must be assigned
-          if (node.expression.type === 'ArrayAppend') {
-            const arr = this.transformExpression(node.expression.array);
-            let valNode = node.expression.value;
-            let needsSpread = node.expression.spread;
-
-            // Unwrap SpreadElement if present
-            if (valNode.type === 'SpreadElement') {
-              valNode = valNode.argument;
-              needsSpread = true;
-            }
-
-            // Get array element type for type coercion and struct literal detection
-            const arrType = this.inferFullExpressionType(node.expression.array);
-            const appendElemType = arrType?.isSlice ? (arrType.valueType || arrType.elementType) : null;
-
-            let val = this.transformExpression(valNode, appendElemType);
-            const arrTypeStr = arrType?.toString() || '';
-            let elemType = null;
-            if (arrType?.isSlice && arrType.elementType) {
-              elemType = arrType.elementType;
-            } else if (arrTypeStr.startsWith('[]')) {
-              const elemTypeStr = arrTypeStr.slice(2);
-              elemType = new GoType(elemTypeStr);
-            }
-
-            // Check if value needs type assertion (e.g., data is 'any')
-            const valType = this.inferFullExpressionType(valNode);
-            const valTypeStr = valType?.toString() || '';
-            if (needsSpread) {
-              // Explicit spread from SpreadElement - always spread
-              if (valTypeStr === 'any' || valTypeStr === 'interface{}') {
-                const typeAssert = this.safeTypeAssertion(val, GoType.Slice(GoType.UInt8()));
-                val = new GoSpread(typeAssert);
-              } else {
-                val = new GoSpread(val);
-              }
-            } else if (valTypeStr === 'any' || valTypeStr === 'interface{}') {
-              // Value is interface{} but NOT a spread - type assert to element type, don't spread
-              if (elemType) {
-                val = this.safeTypeAssertion(val, elemType);
-              }
-            } else if (elemType && valType) {
-              // Add type conversion if element type doesn't match value type
-              const elemTypeStr = elemType.toString();
-              if (elemTypeStr !== valTypeStr && this.isNumericType(elemTypeStr) && this.isNumericType(valTypeStr)) {
-                val = new GoTypeConversion(elemType, val);
-              }
-            }
-
-            const appendCall = new GoCallExpression(new GoIdentifier('append'), [arr, val]);
-            return new GoExpressionStatement(new GoAssignment([arr], '=', [appendCall]));
-          }
-          // Handle chained assignments wrapped in ExpressionStatement
-          if (node.expression.type === 'AssignmentExpression') {
-            const assignResult = this.transformAssignmentExpression(node.expression);
-            if (assignResult.nodeType === 'Block') return assignResult;
-            return this._wrapWithHoisted(new GoExpressionStatement(assignResult));
-          }
-          {
-            const expr = this.transformExpression(node.expression);
-            return this._wrapWithHoisted(new GoExpressionStatement(expr));
-          }
-        case 'VariableDeclaration':
-          return this.transformVariableDeclaration(node);
-        case 'EmptyStatement':
-          return null;
-        case 'AssignmentExpression': {
-          // AssignmentExpression used as statement (not wrapped in ExpressionStatement)
-          const assignResult = this.transformAssignmentExpression(node);
-          // Chained assignments return GoBlock directly
-          if (assignResult.nodeType === 'Block') return assignResult;
-          return this._wrapWithHoisted(new GoExpressionStatement(assignResult));
-        }
-        case 'LabeledStatement':
-          // label: statement -> Go supports labels
-          return this.transformLabeledStatement(node);
-        default:
-          console.warn(`Unhandled statement type: ${node.type}`);
-          return null;
-      }
-    }
-
-    transformDoWhileStatement(node) {
-      // Go doesn't have do-while, convert to: for { body; if !condition { break } }
-      const body = this.transformStatement(node.body) || new GoBlock();
-      const condition = this.transformExpression(node.test);
-
-      const forLoop = new GoFor();
-      const forBody = body instanceof GoBlock ? body : new GoBlock();
-
-      // Add break if condition is false
-      const notCondition = new GoUnaryExpression('!', condition);
-      const breakIf = new GoIf(notCondition, new GoBlock(), null);
-      breakIf.thenBranch.statements.push(new GoBreak());
-      forBody.statements.push(breakIf);
-
-      forLoop.body = forBody;
-      return forLoop;
-    }
-
-    transformLabeledStatement(node) {
-      // Go supports labels - for now just transform the body (labels rarely needed)
-      return this.transformStatement(node.body);
-    }
-
-    transformTryStatement(node) {
-      // Go doesn't have try-catch, use defer/recover pattern
-      // For now, just transform the block and add error handling comments
-      const block = this.transformBlockStatement(node.block);
-
-      // Add comment about error handling
-      const commented = new GoBlock();
-      commented.statements.push(new GoExpressionStatement(
-        new GoIdentifier('// TODO: Add error handling for try-catch')
-      ));
-      commented.statements.push(...block.statements);
-
-      if (node.handler) {
-        let catchParamName = node.handler.param?.name || 'err';
-        // In Go, 'error' is a built-in type name; rename to avoid conflict
-        if (catchParamName === 'error') catchParamName = 'err';
-        commented.statements.push(new GoExpressionStatement(
-          new GoIdentifier(`// Catch block: ${catchParamName}`)
-        ));
-        const catchBlock = this.transformBlockStatement(node.handler.body);
-        commented.statements.push(...catchBlock.statements);
-      }
-
-      return commented;
-    }
-
-    transformThrowStatement(node) {
-      // Go uses panic instead of throw
-      // Note: don't add 'fmt' import here - panic doesn't require it
-      const arg = node.argument ? this.transformExpression(node.argument) : GoLiteral.String('error');
-      return new GoExpressionStatement(
-        new GoCallExpression(new GoIdentifier('panic'), [arg])
-      );
-    }
-
-    transformBlockStatement(node) {
-      const block = new GoBlock();
-
-      if (node.body) {
-        // Pre-pass: annotate hoisted ternary variables with inferred types
-        // Pattern: VarDecl(x, init=null) followed by IfStmt { x = a } else { x = b }
-        for (let i = 0; i < node.body.length - 1; ++i) {
-          const stmt = node.body[i];
-          if (stmt.type !== 'VariableDeclaration') continue;
-          const decls = stmt.declarations || [];
-          if (decls.length !== 1 || decls[0].init !== null) continue;
-          const varName = decls[0].id?.name;
-          if (!varName) continue;
-          const next = node.body[i + 1];
-          if (next.type !== 'IfStatement' || !next.consequent) continue;
-          // Check if consequent assigns to varName
-          const consBody = next.consequent.body || (next.consequent.type === 'BlockStatement' ? next.consequent.body : [next.consequent]);
-          if (!consBody?.length) continue;
-          const firstAssign = consBody[0];
-          if (firstAssign.type !== 'ExpressionStatement') continue;
-          const expr = firstAssign.expression;
-          if (!expr || expr.type !== 'AssignmentExpression') continue;
-          if (expr.left?.name !== varName) continue;
-          // Infer type from the right-hand side
-          const rhsType = this.inferFullExpressionType(expr.right);
-          if (rhsType && rhsType.toString() !== 'interface{}' && rhsType.toString() !== 'any') {
-            // Store the inferred type for transformVariableDeclaration to pick up
-            decls[0]._hoistedType = rhsType;
-          }
-        }
-
-        for (const stmt of node.body) {
-          const transformed = this.transformStatement(stmt);
-          if (transformed) {
-            if (Array.isArray(transformed)) {
-              block.statements.push(...transformed);
-            } else {
-              block.statements.push(transformed);
-            }
-          }
-        }
-      }
-
-      return block;
-    }
-
-    transformReturnStatement(node) {
-      if (!node.argument) {
-        return new GoReturn([]);
-      }
-
-      // Handle return with assignment: `return x = expr` -> `x = expr; return x`
-      const argType = node.argument.type || node.argument.ilNodeType;
-      if (argType === 'AssignmentExpression' && (!node.argument.operator || node.argument.operator === '=')) {
-        const assignExpr = this.transformExpression(node.argument);
-        const target = this.transformExpression(node.argument.left);
-        return new GoBlock([assignExpr, new GoReturn([target])]);
-      }
-
-      let returnValue = this.transformExpression(node.argument, this.currentFunctionReturnType);
-
-      // Check if we need type assertion for return value
-      // If function return type is specific but return value is interface{}, add type assertion
-      // BUT not for nil literals - those can be returned directly
-      if (this.currentFunctionReturnType) {
-        const isNilLiteral = node.argument.type === 'Literal' && node.argument.value === null;
-
-        // Replace nil with zero value when returning non-nilable type
-        if (isNilLiteral) {
-          const retStr = this.currentFunctionReturnType.toString();
-          if (this.isNumericType(retStr))
-            returnValue = GoLiteral.Int(0);
-          else if (retStr === 'string')
-            returnValue = GoLiteral.String('');
-          else if (retStr === 'bool')
-            returnValue = new GoLiteral(false, 'false');
-        }
-
-        // Handle negative literal overflow for unsigned return types
-        // Catches both UnaryExpression(-,1) and Literal(-1) forms
-        if (!isNilLiteral) {
-          let negativeValue = null;
-          if (node.argument.type === 'UnaryExpression' && node.argument.operator === '-' &&
-              node.argument.argument?.type === 'Literal' && typeof node.argument.argument.value === 'number')
-            negativeValue = node.argument.argument.value;
-          else if ((node.argument.type === 'Literal' || node.argument.ilNodeType === 'Literal') &&
-                   typeof node.argument.value === 'number' && node.argument.value < 0)
-            negativeValue = -node.argument.value;
-          if (negativeValue !== null && negativeValue > 0) {
-            const retStr = this.currentFunctionReturnType.toString();
-            if (retStr === 'uint32' || retStr === 'uint16' || retStr === 'uint8' || retStr === 'uint64') {
-              returnValue = negativeValue === 1
-                ? new GoRawCode(`^${retStr}(0)`)
-                : new GoRawCode(`^${retStr}(${negativeValue - 1})`);
-            }
-          }
-        }
-
-        if (!isNilLiteral) {
-          const argType = this.inferFullExpressionType(node.argument);
-          const argTypeStr = argType?.toString() || '';
-          const returnTypeStr = this.currentFunctionReturnType?.toString() || '';
-
-          if ((argTypeStr === 'interface{}' || argTypeStr === 'any') &&
-              returnTypeStr && returnTypeStr !== 'interface{}' && returnTypeStr !== 'any') {
-            returnValue = this.safeTypeAssertion(returnValue, this.currentFunctionReturnType);
-          }
-          // Convert []uint32 -> []uint8 when return type is []uint8
-          // This is common in crypto code where internal state uses uint32 but Feed/Result use bytes
-          if (argTypeStr === '[]uint32' && returnTypeStr === '[]uint8') {
-            returnValue = new GoCallExpression(new GoIdentifier('uint32SliceToBytes'), [returnValue]);
-            this._needsUint32SliceToBytes = true;
-          }
-        }
-      }
-
-      return new GoReturn([returnValue]);
-    }
-
-    transformIfStatement(node) {
-      // Skip framework loading patterns:
-      // if (!global.AlgorithmFramework && typeof require !== 'undefined') { global.AlgorithmFramework = require(...); }
-      // if (!global.OpCodes && typeof require !== 'undefined') { global.OpCodes = require(...); }
-      {
-        const _test = node.test;
-        // Check for !global.X or global.X patterns in the condition
-        const _hasFrameworkRef = (n) => {
-          if (!n) return false;
-          // Direct: global.AlgorithmFramework or global.OpCodes
-          if (n.type === 'MemberExpression' && n.object?.name === 'global' &&
-              (n.property?.name === 'AlgorithmFramework' || n.property?.name === 'OpCodes'))
-            return true;
-          // Negated: !global.X
-          if (n.type === 'UnaryExpression' && n.operator === '!' && _hasFrameworkRef(n.argument))
-            return true;
-          // Logical: !global.X && ...
-          if (n.type === 'LogicalExpression' && (_hasFrameworkRef(n.left) || _hasFrameworkRef(n.right)))
-            return true;
-          return false;
-        };
-        if (_hasFrameworkRef(_test)) {
-          return new GoBlock(); // Empty block - strip the loading pattern
-        }
-      }
-
-      // Check for nested assignment in condition: `if (a && (x = expr) <= y)` -> hoist assignment
-      const nestedAssign = this._findNestedAssignment(node.test);
-      if (nestedAssign) {
-        // Hoist the assignment before the if, replace assignment in condition with the variable
-        const assignTarget = nestedAssign.left;
-        const assignValue = nestedAssign.right;
-        const hoistedAssign = new GoAssignment(
-          this.transformExpression(assignTarget),
-          this.transformExpression(assignValue),
-          '='
-        );
-        // Replace the assignment node in-place with just the left side (variable reference)
-        // so the condition uses the already-assigned value
-        const savedType = nestedAssign.type;
-        const savedRight = nestedAssign.right;
-        const savedOperator = nestedAssign.operator;
-        nestedAssign.type = assignTarget.type;
-        nestedAssign.name = assignTarget.name;
-        nestedAssign.ilNodeType = assignTarget.ilNodeType;
-        Object.assign(nestedAssign, assignTarget);
-
-        const condition = this.transformExpression(node.test);
-        const consequent = this.transformStatement(node.consequent);
-        const alternate = node.alternate ? this.transformStatement(node.alternate) : null;
-
-        const ifStmt = new GoIfStatement(condition, consequent, alternate);
-        return new GoBlock([hoistedAssign, ifStmt]);
-      }
-
-      let condition = this.transformExpression(node.test);
-      condition = this._ensureBooleanCondition(node.test, condition);
-
-      const thenBranch = this.transformStatement(node.consequent) || new GoBlock();
-      const elseBranch = node.alternate ? this.transformStatement(node.alternate) : null;
-
-      return new GoIf(condition, thenBranch, elseBranch);
-    }
-
-    transformForStatement(node) {
-      const forLoop = new GoFor();
-
-      if (node.init) {
-        // Register loop variable type based on the init expression type
-        if (node.init.type === 'VariableDeclaration') {
-          for (const decl of node.init.declarations) {
-            if (decl.id?.name && decl.init) {
-              // Infer type from the init expression
-              let varType = GoType.Int(); // default for loop counters (matches len())
-
-              // For simple numeric literals (0, 1, etc.), use Go's native int
-              // This is important for loop counters that compare with len() results
-              if ((decl.init.type === 'Literal' || decl.init.ilNodeType === 'Literal') &&
-                  typeof decl.init.value === 'number') {
-                varType = GoType.Int(); // Use native int for loop counters
-              }
-              // For complex init expressions, infer type from the expression
-              else if (decl.init.resultType) {
-                // Check if this is a binary expression with uint32 type
-                // (e.g., this.CYCLES - 1) - use that type
-                varType = this.mapType(decl.init.resultType);
-                // For loop counters, prefer 'int' over 'int32' to match len() return type
-                // and avoid type mismatches in loop conditions
-                if (varType && (varType.name === 'int32' || varType.name === 'isize'))
-                  varType = GoType.Int();
-              } else if (decl.init.goType) {
-                varType = decl.init.goType;
-              } else {
-                // Analyze the init expression to determine type
-                const initExpr = this.transformExpression(decl.init);
-                if (initExpr?.goType) {
-                  varType = initExpr.goType;
-                }
-              }
-
-              this.variableTypes.set(decl.id.name, varType);
-            } else if (decl.id?.name) {
-              // No init expression, default to int
-              this.variableTypes.set(decl.id.name, new GoType('int'));
-            }
-          }
-        }
-
-        const init = this.transformStatement(node.init);
-        // If init is an array of variable declarations, take the first one
-        forLoop.init = Array.isArray(init) ? init[0] : init;
-
-        // Go only allows short declarations (:=) in for-loop init, never 'var' declarations
-        if (forLoop.init?.nodeType === 'Var' && !forLoop.init.isShortDecl) {
-          forLoop.init.isShortDecl = true;
-          // Ensure there's an initializer for := (can't do `x :=` with no value)
-          if (!forLoop.init.initializer && forLoop.init.type) {
-            // Provide zero value: int -> 0, uint64 -> uint64(0), etc.
-            const typeName = forLoop.init.type.toString();
-            if (typeName === 'uint64' || typeName === 'int64') {
-              forLoop.init.initializer = new GoTypeConversion(forLoop.init.type, GoLiteral.Int(0));
-            } else {
-              forLoop.init.initializer = GoLiteral.Int(0);
-            }
-          }
-        }
-      }
-
-      if (node.test) {
-        // Check if the test contains an assignment expression anywhere
-        // (e.g., `for(; v = v >> 8; )` or `for(; (v = v >> 8) != 0; )`)
-        // In JS, assignments are expressions; Go can't use assignments as values
-        const nestedAssign = this._findNestedAssignment(node.test);
-        if (nestedAssign) {
-          // We'll set a flag and handle it after body is built
-          // Extract: assignment node, and the comparison operator/right if wrapped
-          this._forLoopAssignmentTest = {
-            assignNode: nestedAssign,
-            fullTest: node.test,
-          };
-        } else {
-          forLoop.condition = this.transformExpression(node.test);
-          // Go requires boolean conditions in for loops - same conversion as if statements
-          forLoop.condition = this._ensureBooleanCondition(node.test, forLoop.condition);
-        }
-      }
-
-      if (node.update) {
-        // For loop post is in statement context - UpdateExpression/UnaryExpression should use simple assignment
-        let postExpr;
-        const updateType = node.update.type || node.update.ilNodeType;
-        const isUpdateExpr = updateType === 'UpdateExpression';
-        const isPrefixIncDec = updateType === 'UnaryExpression' &&
-          (node.update.operator === '++' || node.update.operator === '--');
-
-        if (isUpdateExpr || isPrefixIncDec) {
-          // Both postfix (UpdateExpression) and prefix (UnaryExpression) increment/decrement
-          // should use simple assignment in for loop post context
-          const operand = this.transformExpression(node.update.argument);
-          const one = GoLiteral.Int(1);
-          postExpr = node.update.operator === '++'
-            ? new GoAssignment([operand], '+=', [one])
-            : new GoAssignment([operand], '-=', [one]);
-        } else {
-          postExpr = this.transformExpression(node.update);
-        }
-        // Don't wrap in ExpressionStatement - for loop post needs raw expression, not statement
-        forLoop.post = postExpr;
-      }
-
-      forLoop.body = this.transformStatement(node.body) || new GoBlock();
-
-      // Handle assignment-as-condition: for { assign; if condition { break }; body }
-      if (this._forLoopAssignmentTest) {
-        const { assignNode, fullTest } = this._forLoopAssignmentTest;
-        this._forLoopAssignmentTest = null;
-        const assignExpr = this.transformExpression(assignNode);
-        const target = this.transformExpression(assignNode.left);
-
-        // Build the break condition
-        // If fullTest == assignNode (bare assignment), break when assigned value == 0
-        // If fullTest wraps it (e.g., (v = expr) != 0), invert the comparison for break
-        let breakCondition;
-        const fullTestType = fullTest.type || fullTest.ilNodeType;
-        if (fullTest === assignNode) {
-          // Bare assignment as condition: break when target == 0
-          breakCondition = new GoBinaryExpression(target, '==', GoLiteral.Int(0));
-        } else if (fullTestType === 'BinaryExpression' &&
-                   (fullTest.operator === '!=' || fullTest.operator === '!==')) {
-          // (v = expr) != X -> break when v == X
-          const rightVal = this.transformExpression(fullTest.right);
-          breakCondition = new GoBinaryExpression(target, '==', rightVal);
-        } else if (fullTestType === 'BinaryExpression' &&
-                   (fullTest.operator === '==' || fullTest.operator === '===')) {
-          // (v = expr) == X -> break when v != X
-          const rightVal = this.transformExpression(fullTest.right);
-          breakCondition = new GoBinaryExpression(target, '!=', rightVal);
-        } else {
-          // Unknown wrapper - just break when target is falsy (== 0)
-          breakCondition = new GoBinaryExpression(target, '==', GoLiteral.Int(0));
-        }
-
-        const breakCheck = new GoIf(
-          breakCondition,
-          new GoBlock([new GoRawCode('break')]),
-          null
-        );
-        // Prepend assignment + break-check to the body
-        const bodyBlock = forLoop.body.nodeType === 'Block' ? forLoop.body : new GoBlock([forLoop.body]);
-        bodyBlock.statements.unshift(new GoExpressionStatement(assignExpr), breakCheck);
-        forLoop.body = bodyBlock;
-        // No condition = infinite loop (Go `for { ... }`)
-      }
-
-      return forLoop;
-    }
-
-    transformWhileStatement(node) {
-      const forLoop = new GoFor();
-
-      // Check for assignment-in-condition (same as for-loop)
-      const nestedAssign = node.test ? this._findNestedAssignment(node.test) : null;
-      if (nestedAssign) {
-        // Convert to: for { assign; if breakCond { break }; body }
-        forLoop.body = this.transformStatement(node.body) || new GoBlock();
-        const assignExpr = this.transformExpression(nestedAssign);
-        const target = this.transformExpression(nestedAssign.left);
-        const fullTest = node.test;
-        const fullTestType = fullTest.type || fullTest.ilNodeType;
-
-        let breakCondition;
-        if (fullTest === nestedAssign) {
-          breakCondition = new GoBinaryExpression(target, '==', GoLiteral.Int(0));
-        } else if (fullTestType === 'BinaryExpression' && (fullTest.operator === '!=' || fullTest.operator === '!==')) {
-          breakCondition = new GoBinaryExpression(target, '==', this.transformExpression(fullTest.right));
-        } else if (fullTestType === 'BinaryExpression' && (fullTest.operator === '==' || fullTest.operator === '===')) {
-          breakCondition = new GoBinaryExpression(target, '!=', this.transformExpression(fullTest.right));
-        } else {
-          breakCondition = new GoBinaryExpression(target, '==', GoLiteral.Int(0));
-        }
-
-        const breakCheck = new GoIf(breakCondition, new GoBlock([new GoRawCode('break')]), null);
-        const bodyBlock = forLoop.body.nodeType === 'Block' ? forLoop.body : new GoBlock([forLoop.body]);
-        bodyBlock.statements.unshift(new GoExpressionStatement(assignExpr), breakCheck);
-        forLoop.body = bodyBlock;
-      } else {
-        forLoop.condition = this.transformExpression(node.test);
-        forLoop.condition = this._ensureBooleanCondition(node.test, forLoop.condition);
-        forLoop.body = this.transformStatement(node.body) || new GoBlock();
-      }
-
-      return forLoop;
-    }
-
-    /**
-     * Transform for-of statement: for (const x of array) { ... }
-     * Go equivalent: for _, x := range array { ... }
-     *
-     * Also handles IL-expanded destructuring:
-     *   for (const [a, b] of entries) -> for _, _destructure_N := range entries { a := _destructure_N[0]; b := _destructure_N[1]; ... }
-     */
-    transformForOfStatement(node) {
-      // Extract variable name from left side
-      let varName = 'item';
-      let destructureNames = null; // Array of entries for destructuring extraction
-
-      if (node.left.type === 'VariableDeclaration') {
-        const declarations = node.left.declarations || [];
-        const firstDecl = declarations[0];
-
-        // Check if the IL has already expanded destructuring (DestructureTemp marker)
-        if (firstDecl && firstDecl.ilNodeType === 'DestructureTemp') {
-          // The temp variable becomes the range value
-          varName = firstDecl.id?.name || '_item';
-          // Collect the destructured element/property names for extraction in the loop body
-          destructureNames = [];
-          for (let i = 1; i < declarations.length; ++i) {
-            const decl = declarations[i];
-            if (decl.ilNodeType === 'DestructuredElement' && decl.id?.name)
-              destructureNames.push({ name: decl.id.name, index: i - 1, isElement: true });
-            else if (decl.ilNodeType === 'DestructuredProperty' && decl.id?.name) {
-              const propName = decl.init?.property?.name || decl.init?.property?.value || decl.id.name;
-              destructureNames.push({ name: decl.id.name, propName, isElement: false });
-            }
-          }
-        } else if (firstDecl && firstDecl.id) {
-          // Check for non-expanded ArrayPattern/ObjectPattern
-          if (firstDecl.id.type === 'ArrayPattern' && firstDecl.id.elements) {
-            varName = '_loopItem';
-            destructureNames = [];
-            firstDecl.id.elements.forEach((el, idx) => {
-              if (el && el.name)
-                destructureNames.push({ name: el.name, index: idx, isElement: true });
-            });
-          } else if (firstDecl.id.type === 'ObjectPattern' && firstDecl.id.properties) {
-            varName = '_loopItem';
-            destructureNames = [];
-            for (const prop of firstDecl.id.properties) {
-              const name = prop.value?.name || prop.key?.name;
-              const propName = prop.key?.name || prop.key?.value;
-              if (name)
-                destructureNames.push({ name, propName, isElement: false });
-            }
-          } else {
-            varName = firstDecl.id.name || 'item';
-          }
-        }
-      } else if (node.left.type === 'Identifier') {
-        varName = node.left.name;
-      }
-
-      // Transform the iterable and body
-      const iterable = this.transformExpression(node.right);
-      const body = this.transformStatement(node.body) || new GoBlock();
-
-      // If we have destructuring, prepend extraction statements to the loop body
-      if (destructureNames && destructureNames.length > 0) {
-        const bodyBlock = body.nodeType === 'Block' ? body : new GoBlock([body]);
-        const extractStatements = [];
-        for (const entry of destructureNames) {
-          let initExpr;
-          if (entry.isElement) {
-            // Array destructuring: name := loopVar[index]
-            initExpr = new GoIndexExpression(
-              new GoIdentifier(varName),
-              GoLiteral.Int(entry.index)
-            );
-          } else {
-            // Object destructuring: name := loopVar["propName"]
-            initExpr = new GoIndexExpression(
-              new GoIdentifier(varName),
-              GoLiteral.String(entry.propName)
-            );
-          }
-          const goVar = new GoVar(entry.name, null, initExpr);
-          goVar.isShortDecl = true;
-          extractStatements.push(goVar);
-        }
-        bodyBlock.statements.unshift(...extractStatements);
-      }
-
-      // Go range loop: for _, varName := range iterable { body }
-      const forLoop = new GoFor();
-      forLoop.isRange = true;
-      forLoop.rangeKey = '_';
-      forLoop.rangeValue = varName;
-      forLoop.rangeExpr = iterable;
-      forLoop.body = body;
-
-      return forLoop;
-    }
-
-    /**
-     * Transform for-in statement: for (const key in object) { ... }
-     * Go equivalent: for key := range object { ... }
-     */
-    transformForInStatement(node) {
-      // Extract variable name from left side
-      let varName = 'key';
-      if (node.left.type === 'VariableDeclaration') {
-        const decl = node.left.declarations[0];
-        if (decl && decl.id) {
-          varName = decl.id.name;
-        }
-      } else if (node.left.type === 'Identifier') {
-        varName = node.left.name;
-      }
-
-      // Transform the object and body
-      const object = this.transformExpression(node.right);
-      const body = this.transformStatement(node.body) || new GoBlock();
-
-      // Go range loop: for key := range object { body }
-      const forLoop = new GoFor();
-      forLoop.isRange = true;
-      forLoop.rangeKey = varName;
-      forLoop.rangeValue = null; // Only key for for-in
-      forLoop.rangeExpr = object;
-      forLoop.body = body;
-
-      return forLoop;
-    }
-
-    transformSwitchStatement(node) {
-      const switchStmt = new GoSwitch(this.transformExpression(node.discriminant));
-
-      for (const caseNode of node.cases) {
-        const goCase = new GoCase(
-          caseNode.test ? [this.transformExpression(caseNode.test)] : []
-        );
-
-        for (const stmt of caseNode.consequent) {
-          const transformed = this.transformStatement(stmt);
-          if (transformed) {
-            if (Array.isArray(transformed)) {
-              goCase.statements.push(...transformed);
-            } else {
-              goCase.statements.push(transformed);
-            }
-          }
-        }
-
-        switchStmt.cases.push(goCase);
-      }
-
-      return switchStmt;
-    }
-
-    // ========================[ EXPRESSIONS ]========================
-
-    /**
-     * Transform expression with optional target type hint
-     * @param {Object} node - The AST node to transform
-     * @param {GoType} [targetType] - Optional target type for type-aware transformation
-     */
-    transformExpression(node, targetType = null) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'Literal':
-          return this.transformLiteral(node);
-        case 'Identifier':
-          return this.transformIdentifier(node);
-        case 'BinaryExpression':
-          return this.transformBinaryExpression(node);
-        case 'LogicalExpression':
-          return this.transformLogicalExpression(node);
-        case 'UnaryExpression':
-          return this.transformUnaryExpression(node);
-        case 'UpdateExpression':
-          return this.transformUpdateExpression(node);
-        case 'AssignmentExpression':
-          return this.transformAssignmentExpression(node);
-        case 'MemberExpression':
-          return this.transformMemberExpression(node);
-        case 'CallExpression':
-          return this.transformCallExpression(node);
-        case 'ArrayExpression':
-          return this.transformArrayExpression(node, targetType);
-        case 'ObjectExpression':
-          return this.transformObjectExpression(node, targetType);
-        case 'ConditionalExpression':
-          return this.transformConditionalExpression(node, targetType);
-        case 'NewExpression':
-          return this.transformNewExpression(node, targetType);
-        case 'ThisExpression':
-          return new GoIdentifier(this.receiverName);
-        case 'FunctionExpression':
-        case 'ArrowFunctionExpression':
-          return this.transformFunctionExpression(node);
-        case 'SequenceExpression':
-          // a, b, c -> only return last value
-          return this.transformExpression(node.expressions[node.expressions.length - 1]);
-        case 'SpreadElement':
-          // ...array -> array... in Go (variadic)
-          return this.transformSpreadElement(node);
-        case 'Super':
-          // super -> embedded struct access (Go doesn't have inheritance)
-          return this.transformSuper(node);
-        case 'TemplateLiteral':
-          return this.transformTemplateLiteral(node);
-        case 'ObjectPattern':
-          // Object destructuring - Go doesn't support this directly
-          // Return a comment placeholder
-          return new GoIdentifier('/* Object destructuring not supported in Go */');
-
-        case 'StaticBlock':
-          return this.transformStaticBlock(node);
-
-        case 'ChainExpression':
-          // Optional chaining a?.b - Go doesn't have this, transform inner
-          return this.transformExpression(node.expression);
-
-        case 'ClassExpression':
-          // Anonymous class expression - Go uses struct literals
-          return this.transformClassExpression(node);
-
-        case 'YieldExpression':
-          // yield - Go uses channels for similar patterns
-          return this.transformYieldExpression(node);
-
-        case 'PrivateIdentifier':
-          // #field -> Go lowercase (unexported) field
-          return new GoIdentifier(this.toSnakeCase(node.name));
-
-        // ============== IL AST Node Types ==============
-
-        case 'ParentConstructorCall':
-          // Go doesn't have inheritance - embedded struct initialization
-          return new GoIdentifier('/* parent constructor */');
-
-        case 'ThisPropertyAccess': {
-          // When inside a map-self-ref IIFE, use map key access: s["prop"]
-          if (this.inMapSelfRefContext) {
-            return new GoIndexExpression(
-              new GoIdentifier(this.receiverName),
-              GoLiteral.String(node.property)
-            );
-          }
-          // this.prop -> receiver.Prop
-          let propName = this.toPascalCase(node.property);
-
-          // Check if this property was renamed due to field/method collision
-          if (this.currentStruct) {
-            const renameKey = `${this.currentStruct.name}.${propName}`;
-            if (this.renamedFields.has(renameKey)) {
-              propName = this.renamedFields.get(renameKey);
-            }
-          }
-
-          return new GoSelectorExpression(
-            new GoIdentifier(this.receiverName),
-            propName
-          );
-        }
-
-        case 'ThisMethodCall': {
-          // When inside a map-self-ref IIFE, use map key access + type assertion:
-          //   s["method"].(func(...) T)(args)
-          if (this.inMapSelfRefContext) {
-            const rawArgs = node.arguments || [];
-            const args = rawArgs.map(a => this.transformExpression(a));
-            // Build: s["method"].(func(argTypes) retType)(args)
-            // Since we don't know exact function signatures at this point,
-            // use a raw code approach for the call
-            const argsCode = args.map(a => this._nodeToCode(a)).join(', ');
-            const methodAccess = `${this.receiverName}["${node.method}"]`;
-            // For zero-arg functions we can omit the func type and just call
-            // We need a type assertion to call the value from the map
-            // Use a general approach: assert to func(...interface{}) interface{}
-            const paramTypes = rawArgs.map(() => 'interface{}').join(', ');
-            const returnType = this._inferThisMethodCallReturnForMap(node);
-            const funcType = returnType
-              ? `func(${paramTypes}) ${returnType}`
-              : (rawArgs.length > 0 ? `func(${paramTypes})` : `func()`);
-            return new GoRawCode(`${methodAccess}.(${funcType})(${argsCode})`);
-          }
-
-          // this.method(...) -> receiver.Method(...)
-          const methodName = node.method;
-          const rawArgs = node.arguments || [];
-          const args = rawArgs.map((a, i) => {
-            // Look up expected/declared parameter types BEFORE transforming
-            // so we can pass target type context (fixes empty arrays getting []interface{})
-            const paramKey = `${methodName}:${i}`;
-            let expectedType = this.methodParamTypes.get(paramKey);
-            const declaredType = this.methodDeclaredParams.get(paramKey) ||
-                                 this.methodDeclaredParams.get(`${this.toPascalCase(methodName)}:${i}`);
-            const argTargetType = declaredType || expectedType || null;
-
-            const argExpr = this.transformExpression(a, argTargetType);
-            const argType = this.inferFullExpressionType(a);
-
-            // Add type cast if needed (e.g., int to uint32, or any to specific type)
-            let argName = argType?.name || argType?.toString() || '';
-            // If IL inference returns any/interface{}, try Go-side variable types
-            if ((argName === 'any' || argName === 'interface{}') && a?.type === 'Identifier') {
-              const goVarType = this.variableTypes.get(a.name);
-              if (goVarType) {
-                const goVarName = goVarType.name || goVarType.toString();
-                if (goVarName !== 'any' && goVarName !== 'interface{}') {
-                  argName = goVarName;
-                }
-              }
-            }
-            const isAnyType = argName === 'any' || argName === 'interface{}';
-
-            // If argument is any/interface{} and we know the declared parameter type,
-            // use type assertion to convert
-            if (isAnyType && declaredType) {
-              const declaredName = declaredType.name || declaredType.toString();
-              if (declaredName !== 'any' && declaredName !== 'interface{}') {
-                return this.safeTypeAssertion(argExpr, declaredType);
-              }
-            }
-
-            // Existing logic for int/uint type mismatches
-            if (expectedType && argType) {
-              const expectedName = expectedType.name || expectedType.toString();
-              if (argName !== expectedName && !argType.isSlice && !expectedType.isSlice) {
-                // Check if it's an int/uint type mismatch that needs casting
-                const intTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                                  'uint', 'uint8', 'uint16', 'uint32', 'uint64'];
-                if (intTypes.includes(argName) && intTypes.includes(expectedName)) {
-                  return new GoTypeConversion(expectedType, argExpr);
-                }
-              }
-            }
-            return argExpr;
+    transform(ast) {
+      this.model = Model.buildModel(ast, { framework: this.options.framework !== false });
+      this.prefix = this.options.symbolPrefix || '';
+      this.library = !!this.options.library;
+      this.decls = [];
+      this.initStmts = [];
+      this.tmpCounter = 0;
+      this.superCopies = new Map();
+      this.classNames = new Map();
+      this.emittedClasses = new Set();
+      this.computeEmittedClasses();
+      for (const info of this.model.classes.values()) if (this.emittedClasses.has(info.name)) this.classNames.set(info.name, this.prefix + this.ident(info.name));
+
+      const body = [];
+      for (const item of this.model.items) {
+        if (item.name && !this.model.isReachable(item.name)) continue;
+        if (item.origin === 'framework' && this.library && item.kind === 'variable') continue;
+        try {
+          switch (item.kind) {
+            case 'class': if (this.emittedClasses.has(item.name)) this.emitClass(this.model.classes.get(item.name)); break;
+            case 'function': this.emitTopFunction(item); break;
+            case 'variable': this.emitTopVariable(item); break;
+            case 'statement': this.emitTopStatement(item.node); break;
+          }
+        } catch (e) {
+          if (!this.options.lenient) throw new Error(`${item.kind} ${item.name || ''}: ${e.message}`);
+          this.warnings.push(`${item.kind} ${item.name || ''}: ${e.message}`);
+          this.decls.push(G.Comment(`${item.kind} ${item.name || ''} could not be transpiled: ${e.message}`));
+        }
+      }
+      if (this.initStmts.length) this.decls.push(G.Func('init', null, [], [], G.Block(this.initStmts)));
+      const decls = [];
+      if (!this.library) decls.push(G.Raw(GO_RUNTIME));
+      decls.push(...this.decls);
+      return G.File(this.packageName, this.library ? [] : IMPORTS, decls);
+    }
+
+    /** Classes that become structs: every class of the main file, and framework classes something instantiates. */
+    computeEmittedClasses() {
+      const instantiated = new Set();
+      Model.walk(this.model.items.filter(i => i.origin === 'main').map(i => i.node), n => {
+        if (n.type === 'NewExpression' && Model.constructedName(n.callee)) instantiated.add(Model.constructedName(n.callee));
+      });
+      // Framework classes instantiate each other (TestCase, KeySize, ...)
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const info of this.model.classes.values()) {
+          if (info.origin !== 'framework' || !instantiated.has(info.name) || info._scanned) continue;
+          info._scanned = true;
+          Model.walk(info.node, n => {
+            const c = n.type === 'NewExpression' && Model.constructedName(n.callee);
+            if (c && !instantiated.has(c)) { instantiated.add(c); changed = true; }
           });
-          // Check if this method was renamed due to collision
-          let goMethodName = this.toPascalCase(node.method);
-          if (this.currentStruct && this.methodRenames.has(this.currentStruct.name + '.' + node.method)) {
-            goMethodName = this.methodRenames.get(this.currentStruct.name + '.' + node.method);
-          }
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier(this.receiverName), goMethodName),
-            args
-          );
         }
-
-        case 'HexDecode':
-        case 'StringToBytes': {
-          const arg = this.transformExpression(node.arguments?.[0] || node.value);
-          if (node.type === 'HexDecode') {
-            // Use mustHexDecode helper (defined in framework stubs) to avoid error handling
-            return new GoCallExpression(
-              new GoIdentifier('mustHexDecode'),
-              [arg]
-            );
-          }
-          // []byte(string) - type conversion
-          return new GoTypeConversion(GoType.Slice(GoType.UInt8()), arg);
-        }
-
-        case 'PackBytes': {
-          // Use pack32BE/LE helpers (defined in framework stubs)
-          // PackBytes: packs individual bytes into a uint (bytes -> uint)
-          const rawArgs = node.arguments || node.bytes || [];
-          const bits = node.bits || 32;
-          const isBigEndian = node.endian === 'big' || node.bigEndian;
-
-          // Check if any argument is a spread element (e.g., ...bytes)
-          const hasSpread = rawArgs.some(a => a.type === 'SpreadElement');
-
-          if (hasSpread) {
-            // Use slice version: pack32BESlice(bytes) instead of pack32BE(b0, b1, b2, b3)
-            // Get the underlying expression from the spread
-            const spreadArg = rawArgs.find(a => a.type === 'SpreadElement');
-            const arg = this.transformExpression(spreadArg.argument || spreadArg);
-            const funcName = bits === 16 ? (isBigEndian ? 'pack16BESlice' : 'pack16LESlice') :
-                             bits === 64 ? (isBigEndian ? 'pack64BESlice' : 'pack64LESlice') :
-                                           (isBigEndian ? 'pack32BESlice' : 'pack32LESlice');
-            return new GoCallExpression(new GoIdentifier(funcName), [arg]);
-          }
-
-          const args = rawArgs.map(a => this.transformExpression(a));
-          const funcName = bits === 16 ? (isBigEndian ? 'pack16BE' : 'pack16LE') :
-                           bits === 64 ? (isBigEndian ? 'pack64BE' : 'pack64LE') :
-                                         (isBigEndian ? 'pack32BE' : 'pack32LE');
-          return new GoCallExpression(new GoIdentifier(funcName), args);
-        }
-
-        case 'UnpackBytes': {
-          // Use unpack32BE/LE helpers (defined in framework stubs)
-          // UnpackBytes: unpacks a uint into individual bytes (uint -> []byte)
-          let args = (node.arguments || []).map(a => this.transformExpression(a));
-          const bits = node.bits || 32;
-          const isBigEndian = node.endian === 'big' || node.bigEndian;
-          const funcName = bits === 16 ? (isBigEndian ? 'unpack16BE' : 'unpack16LE') :
-                           bits === 64 ? (isBigEndian ? 'unpack64BE' : 'unpack64LE') :
-                                         (isBigEndian ? 'unpack32BE' : 'unpack32LE');
-
-          // Add type conversion if argument type doesn't match expected type
-          // unpack16 expects uint16, unpack32 expects uint32, unpack64 expects uint64
-          if (node.arguments && node.arguments.length > 0) {
-            const argType = this.inferFullExpressionType(node.arguments[0]);
-            const argTypeStr = argType?.toString() || '';
-            const expectedType = bits === 16 ? 'uint16' : bits === 64 ? 'uint64' : 'uint32';
-            if (argTypeStr && argTypeStr !== expectedType) {
-              const goExpectedType = bits === 16 ? GoType.UInt16() :
-                                     bits === 64 ? GoType.UInt64() : GoType.UInt32();
-              // interface{}/any values need type assertion, not type conversion
-              if (argTypeStr === 'interface{}' || argTypeStr === 'any')
-                args = [this.safeTypeAssertion(args[0], goExpectedType)];
-              else
-                args = [new GoTypeConversion(goExpectedType, args[0])];
-            }
-          }
-          return new GoCallExpression(new GoIdentifier(funcName), args);
-        }
-
-        case 'ArrayCreation': {
-          // make([]T, size)
-          // Use target type if available, otherwise infer from element type
-          const size = node.size ? this.transformExpression(node.size) : GoLiteral.Int(0);
-          if (targetType && targetType.isSlice) {
-            return new GoMake(targetType, size);
-          }
-          // Resolve element type from IL node
-          let acElemType = GoType.UInt8(); // Default for crypto code
-          const rawElemType = typeof node.elementType === 'string'
-            ? node.elementType
-            : node.elementType?.name;
-          if (rawElemType) {
-            const et = rawElemType.toLowerCase();
-            if (et === 'uint32' || et === 'long') acElemType = GoType.UInt32();
-            else if (et === 'uint16' || et === 'integer') acElemType = GoType.UInt16();
-            else if (et === 'int32') acElemType = GoType.Int32();
-            else if (et === 'int16') acElemType = GoType.Int16();
-            else if (et === 'int8') acElemType = GoType.Int8();
-            else if (et === 'float32') acElemType = GoType.Float32();
-            else if (et === 'float64' || et === 'double') acElemType = GoType.Float64();
-            else if (et === 'uint64') acElemType = GoType.UInt64();
-            else if (et === 'int64') acElemType = GoType.Int64();
-            else if (et === 'uint8' || et === 'byte') acElemType = GoType.UInt8();
-          }
-          return new GoMake(GoType.Slice(acElemType), size);
-        }
-
-        case 'ArrayClear': {
-          // Go: loop to zero or re-create slice
-          // For simplicity, return a comment indicating clearing needed
-          const arrNode = node.array || (node.arguments && node.arguments[0]); const arr = arrNode ? this.transformExpression(arrNode) : new GoIdentifier('array');
-          // In Go, clearing is typically done by re-assigning a new slice
-          // or using a for loop - we'll use slice re-assignment pattern
-          return new GoAssignment([arr], '=', [
-            new GoMake(GoType.Slice(GoType.UInt8()), new GoCallExpression(new GoIdentifier('len'), [arr]))
-          ]);
-        }
-
-        case 'ArrayLength': {
-          // len(array)
-          const arrNode = node.array || node.argument;
-          const arr = this.transformExpression(arrNode);
-
-          // Check if the array is typed as any/interface{} - needs type assertion
-          let arrType = this.inferFullExpressionType(arrNode);
-          let arrTypeStr = arrType?.toString() || '';
-          // If IL inference returns any/interface{}, try Go-side variable types
-          if ((arrTypeStr === 'any' || arrTypeStr === 'interface{}') && arrNode?.type === 'Identifier') {
-            const goVarType = this.variableTypes.get(arrNode.name);
-            if (goVarType && goVarType.toString() !== 'any' && goVarType.toString() !== 'interface{}') {
-              arrType = goVarType; arrTypeStr = goVarType.toString();
-            }
-          }
-          if (arrTypeStr === 'any' || arrTypeStr === 'interface{}') {
-            // len(data.([]byte)) for any type
-            const typeAssert = this.safeTypeAssertion(arr, GoType.Slice(GoType.UInt8()));
-            return new GoCallExpression(new GoIdentifier('len'), [typeAssert]);
-          }
-
-          return new GoCallExpression(new GoIdentifier('len'), [arr]);
-        }
-
-        case 'ArrayAppend': {
-          // append(slice, value)
-          const arr = this.transformExpression(node.array);
-          let val = this.transformExpression(node.value);
-
-          // Get array element type and value type to detect mismatches
-          const arrType = this.inferFullExpressionType(node.array);
-          const valType = this.inferFullExpressionType(node.value);
-          const arrTypeStr = arrType?.toString() || '';
-          const valTypeStr = valType?.toString() || '';
-
-          // Extract element type from slice type like []int32 -> int32
-          let elemType = null;
-          if (arrType?.isSlice && arrType.elementType) {
-            elemType = arrType.elementType;
-          } else if (arrTypeStr.startsWith('[]')) {
-            const elemTypeStr = arrTypeStr.slice(2);
-            elemType = new GoType(elemTypeStr);
-          }
-
-          // Add type conversion if element type doesn't match value type
-          if (elemType && valType) {
-            const elemTypeStr = elemType.toString();
-            if (elemTypeStr !== valTypeStr && this.isNumericType(elemTypeStr) && this.isNumericType(valTypeStr)) {
-              val = new GoTypeConversion(elemType, val);
-            }
-          }
-          return new GoCallExpression(new GoIdentifier('append'), [arr, val]);
-        }
-
-        case 'ArraySlice': {
-          // slice[start:end]
-          const arr = this.transformExpression(node.array);
-          const start = node.start ? this._transformSliceIndex(node.start, node.array) : null;
-          const end = node.end ? this._transformSliceIndex(node.end, node.array) : null;
-          return new GoSliceExpression(arr, start, end);
-        }
-
-        case 'ArrayConcat': {
-          // append(arr1, arr2...)
-          const arr = this.transformExpression(node.array);
-          // Infer the target slice type from the transformed first array for type consistency
-          // Use the transformed node's type (GoCompositeLiteral carries its slice type)
-          // rather than inferFullExpressionType which may disagree with the actual transformed type
-          let arrSliceType = null;
-          if (arr?.type?.isSlice) arrSliceType = arr.type;
-          if (!arrSliceType) arrSliceType = this.inferFullExpressionType(node.array);
-          const others = (node.arrays || []).map(a => this.transformExpression(a, arrSliceType));
-          let result = arr;
-          for (const other of others) {
-            result = new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(other)]);
-          }
-          return result;
-        }
-
-        case 'ErrorCreation': {
-          // errors.New() or fmt.Errorf()
-          this.addImport('errors');
-          const msg = node.message ? this.transformExpression(node.message) : GoLiteral.String('error');
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('errors'), 'New'),
-            [msg]
-          );
-        }
-
-        case 'Cast': {
-          // Type conversion: int32(value), uint8(value), etc.
-          const rawNode = node.arguments?.[0] || node.expression;
-          const value = this.transformExpression(rawNode);
-          let castTarget = node.targetType || 'int';
-          // Detect int32 overflow: if value > INT32_MAX, use uint32 instead
-          if (castTarget === 'int32') {
-            const rawVal = rawNode?.value;
-            // Also check the transformed Go literal value
-            const goVal = value?.value;
-            if ((typeof rawVal === 'number' && rawVal > 2147483647) ||
-                (typeof goVal === 'number' && goVal > 2147483647)) {
-              castTarget = 'uint32';
-            }
-          }
-          const goType = castTarget === 'uint64' ? 'uint64' :
-                         castTarget === 'uint32' ? 'uint32' :
-                         castTarget === 'int32' ? 'int32' :
-                         castTarget === 'int64' ? 'int64' :
-                         castTarget === 'uint8' || castTarget === 'byte' ? 'uint8' :
-                         castTarget === 'uint16' ? 'uint16' :
-                         castTarget === 'int16' ? 'int16' :
-                         castTarget === 'int8' ? 'int8' :
-                         castTarget === 'float64' || castTarget === 'double' ? 'float64' :
-                         castTarget === 'float32' || castTarget === 'float' ? 'float32' :
-                         castTarget === 'int' ? 'int' : 'int';
-          // If source is interface{}/any, use type assertion instead of type conversion
-          const srcType = this.inferFullExpressionType(rawNode);
-          const srcTypeStr = srcType?.toString() || '';
-          if (srcTypeStr === 'interface{}' || srcTypeStr === 'any') {
-            return this.safeTypeAssertion(value, new GoType(goType));
-          }
-          return new GoTypeConversion(new GoType(goType), value);
-        }
-
-        case 'MathCall': {
-          // Math functions -> math package (import added only when needed)
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          const method = node.method;
-          switch (method) {
-            case 'imul':
-              // int32 multiply with overflow - no math import needed
-              if (args.length >= 2)
-                return new GoBinaryExpression(
-                  new GoCallExpression(new GoIdentifier('int32'), [args[0]]),
-                  '*',
-                  new GoCallExpression(new GoIdentifier('int32'), [args[1]])
-                );
-              break;
-            case 'floor':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Floor'), args);
-            case 'ceil':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Ceil'), args);
-            case 'abs':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Abs'), args);
-            case 'sqrt':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Sqrt'), args);
-            case 'pow':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Pow'), args);
-            case 'min':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Min'), args);
-            case 'max':
-              this.addImport('math');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('math'), 'Max'), args);
-            case 'random':
-              this.addImport('math/rand');
-              return new GoCallExpression(new GoSelectorExpression(new GoIdentifier('rand'), 'Float64'), []);
-            default:
-              this.addImport('math');
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('math'), this.toPascalCase(method)),
-                args
-              );
-          }
-        }
-
-        case 'RotateLeft':
-        case 'RotateRight': {
-          // bits.RotateLeft32 or bits.RotateLeft64
-          this.addImport('math/bits');
-          const value = this.transformExpression(node.value || node.arguments?.[0]);
-          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
-          const bits = node.bits || 32;
-          const funcName = node.type === 'RotateLeft' ? `RotateLeft${bits}` : `RotateLeft${bits}`;
-          // For RotateRight, negate the amount
-          const actualAmount = node.type === 'RotateRight'
-            ? new GoUnaryExpression('-', amount)
-            : amount;
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('mathbits'), funcName),
-            [value, actualAmount]
-          );
-        }
-
-        case 'OpCodesCall': {
-          // OpCodes.XYZ(...) - map to helper functions
-          const method = node.method || node.name || node.callee?.property?.name;
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-
-          // Map OpCodes methods to Go helpers
-          const opCodesMap = {
-            'RotL32': 'rotl32', 'RotR32': 'rotr32',
-            'RotL16': 'rotl16', 'RotR16': 'rotr16',
-            'RotL8': 'rotl8', 'RotR8': 'rotr8',
-            'Pack32BE': 'pack32BE', 'Pack32LE': 'pack32LE',
-            'Pack16BE': 'pack16BE', 'Pack16LE': 'pack16LE',
-            'Unpack32BE': 'unpack32BE', 'Unpack32LE': 'unpack32LE',
-            'Unpack16BE': 'unpack16BE', 'Unpack16LE': 'unpack16LE',
-            'XorArrays': 'xorArrays',
-            'Hex8ToBytes': 'mustHexDecode',
-            'BytesToHex8': 'bytesToHex',
-            'AnsiToBytes': 'stringToBytes',
-            'ClearArray': 'clearArray',
-            'CloneArray': 'cloneArray',
-            'CopyArray': 'cloneArray',  // CopyArray and CloneArray are synonyms
-          };
-
-          // Special handling for CloneArray/CopyArray - use typed version based on argument type
-          if (method === 'CloneArray' || method === 'CopyArray') {
-            const argNode = node.arguments?.[0];
-            if (argNode) {
-              const argType = this.inferFullExpressionType(argNode);
-              // Determine the appropriate clone function based on element type
-              if (argType?.isSlice || argType?.isArray) {
-                const elemType = argType.valueType || argType.elementType;
-                const elemTypeName = elemType?.name || '';
-                if (elemTypeName === 'uint32') {
-                  return new GoCallExpression(new GoIdentifier('cloneArrayUint32'), args);
-                } else if (elemTypeName === 'uint16') {
-                  return new GoCallExpression(new GoIdentifier('cloneArrayUint16'), args);
-                } else if (elemTypeName === 'int') {
-                  return new GoCallExpression(new GoIdentifier('cloneArrayInt'), args);
-                }
-              }
-            }
-            // Default to cloneArray (for []byte)
-            return new GoCallExpression(new GoIdentifier('cloneArray'), args);
-          }
-
-          const goFunc = opCodesMap[method] || this.toLowerFirst(method);
-          return new GoCallExpression(new GoIdentifier(goFunc), args);
-        }
-
-        case 'Floor': {
-          // Math.floor(x) -> int(math.Floor(float64(x))) for integer context
-          // For integer division, Go's int division already floors for positive numbers
-          const argNode = node.argument || node.arguments?.[0];
-          const argType = this.inferFullExpressionType(argNode);
-
-          // If argument is already an integer division result, just return it
-          // (Go's integer division is equivalent to floor for positive numbers)
-          if (argNode?.type === 'BinaryExpression' && argNode.operator === '/') {
-            const leftType = this.inferFullExpressionType(argNode.left);
-            const rightType = this.inferFullExpressionType(argNode.right);
-            const leftName = leftType?.name || '';
-            const rightName = rightType?.name || '';
-            if ((leftName.startsWith('int') || leftName.startsWith('uint')) &&
-                (rightName.startsWith('int') || rightName.startsWith('uint'))) {
-              // Integer division - Go already floors for positive
-              return this.transformExpression(argNode);
-            }
-          }
-
-          this.addImport('math');
-          const arg = this.transformExpression(argNode);
-
-          // Wrap argument in float64() if it's not already a float
-          const argName = argType?.name || '';
-          let floatArg = arg;
-          if (!argName.includes('float')) {
-            floatArg = new GoTypeConversion(GoType.Float64(), arg);
-          }
-
-          // math.Floor returns float64, wrap in int() for integer context
-          const floorCall = new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Floor'),
-            [floatArg]
-          );
-          return new GoTypeConversion(GoType.Int(), floorCall);
-        }
-
-        case 'ArrayFill': {
-          // Create and fill array - Go: make + loop or use slice literal with repeated value
-          const size = node.size ? this.transformExpression(node.size) : GoLiteral.Int(0);
-          const value = node.value ? this.transformExpression(node.value) : GoLiteral.Int(0);
-          // For simple cases, use makeFilledSlice helper
-          return new GoCallExpression(
-            new GoIdentifier('makeFilledSlice'),
-            [size, value]
-          );
-        }
-
-        case 'TypeConversion': {
-          // Explicit type conversion
-          const value = this.transformExpression(node.argument || node.value);
-          let targetType = this.mapType(node.targetType || node.toType);
-          // Detect int32 overflow: if value > INT32_MAX, use uint32 instead
-          if (targetType?.name === 'int32') {
-            const rawVal = (node.argument || node.value)?.value;
-            if (typeof rawVal === 'number' && rawVal > 2147483647) targetType = GoType.UInt32();
-          }
-          return new GoTypeConversion(targetType, value);
-        }
-
-        case 'BitwiseOp': {
-          // Bitwise operation node
-          const left = this.transformExpression(node.left);
-          const right = this.transformExpression(node.right);
-          return new GoBinaryExpression(left, node.operator, right);
-        }
-
-        case 'BitRotation': {
-          // Bit rotation - similar to RotateLeft/RotateRight
-          this.addImport('math/bits');
-          const value = this.transformExpression(node.value);
-          const amount = this.transformExpression(node.amount);
-          const bits = node.bits || 32;
-          const funcName = node.direction === 'left' ? `RotateLeft${bits}` : `RotateLeft${bits}`;
-          const actualAmount = node.direction === 'right'
-            ? new GoUnaryExpression('-', amount)
-            : amount;
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('mathbits'), funcName),
-            [value, actualAmount]
-          );
-        }
-
-        case 'ArrayLiteral': {
-          // ArrayLiteral from TypedArray construction or Array literals
-          // Use the elementType from the IL node if available
-          let elemType = GoType.UInt8(); // Default for crypto code
-          if (node.elementType) {
-            // Handle both string and object { name: 'type' } formats
-            const rawType = typeof node.elementType === 'string' ? node.elementType : node.elementType?.name;
-            const typeStr = rawType?.toLowerCase();
-            if (typeStr === 'uint8' || typeStr === 'byte') {
-              elemType = GoType.UInt8();
-            } else if (typeStr === 'uint32' || typeStr === 'long') {
-              elemType = GoType.UInt32();
-            } else if (typeStr === 'uint16' || typeStr === 'integer') {
-              elemType = GoType.UInt16();
-            } else if (typeStr === 'int32') {
-              // Check if any values exceed INT32_MAX - use uint32 instead
-              const INT32_MAX = 2147483647;
-              const hasOverflow = (node.elements || []).some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'number' && (el.value > INT32_MAX || el.value < 0)
-              );
-              elemType = hasOverflow ? GoType.UInt32() : GoType.Int32();
-            } else if (typeStr === 'int16') {
-              elemType = GoType.Int16();
-            } else if (typeStr === 'int8') {
-              elemType = GoType.Int8();
-            } else if (typeStr === 'float32') {
-              elemType = GoType.Float32();
-            } else if (typeStr === 'float64' || typeStr === 'double') {
-              elemType = GoType.Float64();
-            } else if (typeStr === 'uint64') {
-              elemType = GoType.UInt64();
-            } else if (typeStr === 'int64') {
-              // Check if any values exceed INT64_MAX - use uint64 instead
-              const INT64_MAX = 9223372036854775807n;
-              const hasOverflow = (node.elements || []).some(el =>
-                el && el.type === 'Literal' && typeof el.value === 'bigint' && (el.value > INT64_MAX || el.value < 0n)
-              );
-              elemType = hasOverflow ? GoType.UInt64() : GoType.Int64();
-            }
-            // uint8/byte is the default
-          }
-          const sliceType = GoType.Slice(elemType);
-
-          // Check for spread elements - need append() instead of composite literal
-          const hasSpreadInLiteral = (node.elements || []).some(e => e && e.type === 'SpreadElement');
-          if (hasSpreadInLiteral) {
-            let result = null;
-            const regularElems = [];
-            for (const el of (node.elements || [])) {
-              if (!el) continue;
-              if (el.type === 'SpreadElement') {
-                if (regularElems.length > 0) {
-                  const lit = new GoCompositeLiteral(sliceType, [...regularElems]);
-                  result = result
-                    ? new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(lit)])
-                    : lit;
-                  regularElems.length = 0;
-                }
-                const arg = this.transformExpression(el.argument);
-                if (result) {
-                  result = new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(arg)]);
-                } else {
-                  const emptySlice = new GoCompositeLiteral(sliceType, []);
-                  result = new GoCallExpression(new GoIdentifier('append'), [emptySlice, new GoSpread(arg)]);
-                }
-              } else {
-                regularElems.push(this.transformExpression(el, elemType));
-              }
-            }
-            if (regularElems.length > 0) {
-              const lit = new GoCompositeLiteral(sliceType, regularElems);
-              result = result
-                ? new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(lit)])
-                : lit;
-            }
-            return result || new GoCompositeLiteral(sliceType, []);
-          }
-
-          const elements = (node.elements || []).map(e => this.transformExpression(e, elemType));
-          return new GoCompositeLiteral(sliceType, elements);
-        }
-
-        case 'ArrayIncludes': {
-          // array.includes(value) -> containsElement(array, value)
-          const arr = this.transformExpression(node.array);
-          const value = this.transformExpression(node.value);
-          return new GoCallExpression(new GoIdentifier('containsElement'), [arr, value]);
-        }
-
-        case 'ArrayIndexOf': {
-          // array.indexOf(value) -> indexOf(array, value)
-          const arr = this.transformExpression(node.array);
-          const value = this.transformExpression(node.value);
-          return new GoCallExpression(new GoIdentifier('indexOf'), [arr, value]);
-        }
-
-        case 'ArrayMap': {
-          // array.map(fn) -> mapSlice(array, fn) - needs helper
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.fn;
-          if (callback) {
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('mapSlice'), [arr, fn]);
-          }
-          return arr;
-        }
-
-        case 'ArrayFilter': {
-          // array.filter(fn) -> filterSlice(array, fn)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('filterSlice'), [arr, fn]);
-          }
-          return arr;
-        }
-
-        case 'ArrayForEach': {
-          // array.forEach(fn) -> for _, v := range array { fn(v) }
-          // Since this is in expression context, return a comment
-          return new GoIdentifier('/* forEach not supported in expression context */');
-        }
-
-        case 'ArraySort': {
-          // array.sort() -> sortSlice(array)
-          this.addImport('sort');
-          const arr = this.transformExpression(node.array);
-          return new GoCallExpression(new GoIdentifier('sortSlice'), [arr]);
-        }
-
-        case 'ArrayReduce': {
-          // array.reduce(fn, init) -> reduceSlice(array, init, fn)
-          // Use typed variant when array element type is known
-          const arrType = this.inferFullExpressionType(node.array);
-          const arr = this.transformExpression(node.array);
-          const initial = node.initial ? this.transformExpression(node.initial) : GoLiteral.Int(0);
-          const callback = node.callback || node.reducer;
-          if (callback) {
-            const elemTypeStr = arrType?.valueType?.name || arrType?.valueType?.toString() || '';
-            const isByte = arrType?.isSlice && (elemTypeStr === 'uint8' || elemTypeStr === 'byte');
-            const isUint32 = arrType?.isSlice && elemTypeStr === 'uint32';
-            if (isByte || isUint32) {
-              // Use typed reduce: type the callback parameters
-              const savedTypes = new Map();
-              if (callback.type === 'ArrowFunctionExpression' || callback.type === 'ArrowFunction' || callback.type === 'FunctionExpression') {
-                const params = callback.params || [];
-                const paramType = isByte ? GoType.UInt8() : GoType.UInt32();
-                for (const p of params) {
-                  if (p.name || p.type === 'Identifier') {
-                    const pName = p.name || p.value;
-                    if (pName) {
-                      savedTypes.set(pName, this.variableTypes.get(pName));
-                      this.variableTypes.set(pName, paramType);
-                    }
-                  }
-                }
-              }
-              const fn = this.transformExpression(callback);
-              // Restore saved variable types
-              for (const [k, v] of savedTypes) {
-                if (v === undefined) this.variableTypes.delete(k);
-                else this.variableTypes.set(k, v);
-              }
-              const funcName = isByte ? 'reduceSliceBytes' : 'reduceSliceUint32';
-              return new GoCallExpression(new GoIdentifier(funcName), [arr, fn, initial]);
-            }
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('reduceSlice'), [arr, initial, fn]);
-          }
-          return initial;
-        }
-
-        case 'TypedArrayCreation': {
-          // new Uint8Array(size) -> make([]byte, size)
-          // new Uint8Array(existingArray) -> append([]byte{}, existingArray...)
-          const typeMap = {
-            'Uint8Array': GoType.UInt8(),
-            'Uint16Array': GoType.UInt16(),
-            'Uint32Array': GoType.UInt32(),
-            'Int8Array': GoType.Int8(),
-            'Int16Array': GoType.Int16(),
-            'Int32Array': GoType.Int32(),
-            'Float32Array': GoType.Float32(),
-            'Float64Array': GoType.Float64()
-          };
-          // IL node may use 'typedArrayType' or 'arrayType'; also check 'elementType'
-          let tacElemType = typeMap[node.typedArrayType] || typeMap[node.arrayType];
-          if (!tacElemType && node.elementType) {
-            const et = (typeof node.elementType === 'string' ? node.elementType : node.elementType?.name || '').toLowerCase();
-            if (et === 'uint32') tacElemType = GoType.UInt32();
-            else if (et === 'uint16') tacElemType = GoType.UInt16();
-            else if (et === 'int32') tacElemType = GoType.Int32();
-            else if (et === 'int16') tacElemType = GoType.Int16();
-            else if (et === 'int8') tacElemType = GoType.Int8();
-            else if (et === 'float32') tacElemType = GoType.Float32();
-            else if (et === 'float64') tacElemType = GoType.Float64();
-            else if (et === 'uint64') tacElemType = GoType.UInt64();
-            else if (et === 'int64') tacElemType = GoType.Int64();
-          }
-          const sliceType = GoType.Slice(tacElemType || GoType.UInt8());
-
-          // Check if size argument is an array/slice (copy from source) vs integer (create with size)
-          if (node.size) {
-            const sizeArgType = this.inferFullExpressionType(node.size);
-            const sizeArgTypeStr = sizeArgType?.toString() || '';
-            const sizeIsSlice = sizeArgType?.isSlice || sizeArgTypeStr.startsWith('[]');
-            // Also detect array-like sources by AST structure:
-            // - ArrayExpression is definitely an array
-            // - LogicalExpression with ArrayExpression fallback is data || []
-            // - Identifier/MemberExpression referencing a parameter/variable that's an array
-            const sizeNodeType = node.size.type || node.size.ilNodeType || '';
-            const isArrayLikeSource = sizeIsSlice
-              || sizeNodeType === 'ArrayExpression' || sizeNodeType === 'ArrayLiteral'
-              || (sizeNodeType === 'LogicalExpression' && node.size.right?.type === 'ArrayExpression');
-            if (isArrayLikeSource) {
-              // new Uint8Array(existingArray) -> append([]T{}, existingArray...)
-              const source = this.transformExpression(node.size);
-              const emptySlice = new GoCompositeLiteral(sliceType, []);
-              const spreadSource = new GoSpread(source);
-              return new GoCallExpression(new GoIdentifier('append'), [emptySlice, spreadSource]);
-            }
-          }
-
-          const size = node.size ? this.transformExpression(node.size) : GoLiteral.Int(0);
-          return new GoMake(sliceType, size);
-        }
-
-        case 'TypedArraySet': {
-          // typedArray.set(source, offset) -> copy(typedArray[offset:], source)
-          const array = this.transformExpression(node.array);
-          const source = this.transformExpression(node.source);
-          if (node.offset) {
-            const offset = this.transformExpression(node.offset);
-            const sliced = new GoSliceExpression(array, offset, null);
-            return new GoCallExpression(new GoIdentifier('copy'), [sliced, source]);
-          }
-          return new GoCallExpression(new GoIdentifier('copy'), [array, source]);
-        }
-
-        case 'TypedArraySubarray': {
-          // typedArray.subarray(start, end) -> typedArray[start:end]
-          const array = this.transformExpression(node.array);
-          const start = node.start ? this._transformSliceIndex(node.start, node.array) : null;
-          const end = node.end ? this._transformSliceIndex(node.end, node.array) : null;
-          return new GoSliceExpression(array, start, end);
-        }
-
-        case 'ArraySplice': {
-          // array.splice(start, deleteCount, ...items) -> Go slice manipulation
-          // In Go, we need to use append and slice operations
-          const array = this.transformExpression(node.array);
-          const start = this.transformExpression(node.start);
-          const deleteCount = node.deleteCount ? this.transformExpression(node.deleteCount) : null;
-          const items = (node.items || []).map(item => this.transformExpression(item));
-
-          // For simple splice with no items and deleteCount, use slice syntax
-          if (items.length === 0 && deleteCount) {
-            // array.splice(start, deleteCount) returns removed elements
-            // Go: array[start:start+deleteCount]
-            const endExpr = new GoBinaryExpression(start, '+', deleteCount);
-            return new GoSliceExpression(array, start, endExpr);
-          }
-
-          // For more complex splices, use spliceSlice helper (always available)
-          return new GoCallExpression(new GoIdentifier('spliceSlice'), [array, start, deleteCount || GoLiteral.Int(0), ...items]);
-        }
-
-        case 'StringRepeat': {
-          // string.repeat(count) -> strings.Repeat(str, count)
-          this.addImport('strings');
-          const str = this.transformExpression(node.string);
-          const count = node.count ? this.transformExpression(node.count) : GoLiteral.Int(1);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'Repeat'),
-            [str, count]
-          );
-        }
-
-        case 'Min': {
-          // Math.min(a, b) -> minInt/minUint32 helper based on argument types
-          // Handle spread: Math.min(...arr) -> minSlice(arr)
-          const rawArgs = node.arguments || [];
-          if (rawArgs.length === 1 && rawArgs[0].type === 'SpreadElement') {
-            const spreadArg = this.transformExpression(rawArgs[0].argument);
-            return new GoCallExpression(new GoIdentifier('minSlice'), [spreadArg]);
-          }
-          const args = rawArgs.map(a => this.transformExpression(a));
-          if (args.length === 0) return GoLiteral.Int(0);
-          if (args.length === 1) return args[0];
-          const minArgType = rawArgs[0] ? this.inferFullExpressionType(rawArgs[0]) : null;
-          const minTypeStr = minArgType?.toString() || '';
-          const minHelper = (minTypeStr === 'uint32' || minTypeStr === 'byte' || minTypeStr === 'uint8') ? 'minUint32' : 'minInt';
-          // Wrap arguments in explicit type conversion to match helper signature
-          const minTargetType = minHelper === 'minUint32' ? GoType.UInt32() : GoType.Int();
-          const minCoercedArgs = args.map(a => new GoTypeConversion(minTargetType, a));
-          return new GoCallExpression(new GoIdentifier(minHelper), minCoercedArgs);
-        }
-
-        case 'Max': {
-          // Math.max(a, b) -> maxInt/maxUint32 helper based on argument types
-          // Handle spread: Math.max(...arr) -> maxSlice(arr)
-          const rawArgs = node.arguments || [];
-          if (rawArgs.length === 1 && rawArgs[0].type === 'SpreadElement') {
-            const spreadArg = this.transformExpression(rawArgs[0].argument);
-            return new GoCallExpression(new GoIdentifier('maxSlice'), [spreadArg]);
-          }
-          const args = rawArgs.map(a => this.transformExpression(a));
-          if (args.length === 0) return GoLiteral.Int(0);
-          if (args.length === 1) return args[0];
-          const maxArgType = rawArgs[0] ? this.inferFullExpressionType(rawArgs[0]) : null;
-          const maxTypeStr = maxArgType?.toString() || '';
-          const maxHelper = (maxTypeStr === 'uint32' || maxTypeStr === 'byte' || maxTypeStr === 'uint8') ? 'maxUint32' : 'maxInt';
-          // Wrap arguments in explicit type conversion to match helper signature
-          const maxTargetType = maxHelper === 'maxUint32' ? GoType.UInt32() : GoType.Int();
-          const maxCoercedArgs = args.map(a => new GoTypeConversion(maxTargetType, a));
-          return new GoCallExpression(new GoIdentifier(maxHelper), maxCoercedArgs);
-        }
-
-        case 'StringTransform': {
-          // String transformation operations
-          const str = this.transformExpression(node.string || node.argument);
-          const operation = node.operation || node.method;
-          switch (operation) {
-            case 'toLowerCase':
-              this.addImport('strings');
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('strings'), 'ToLower'),
-                [str]
-              );
-            case 'toUpperCase':
-              this.addImport('strings');
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('strings'), 'ToUpper'),
-                [str]
-              );
-            case 'trim':
-              this.addImport('strings');
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('strings'), 'TrimSpace'),
-                [str]
-              );
-            case 'split':
-              this.addImport('strings');
-              const sep = node.separator ? this.transformExpression(node.separator) : GoLiteral.String('');
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('strings'), 'Split'),
-                [str, sep]
-              );
-            default:
-              return str;
-          }
-        }
-
-        case 'StringIncludes': {
-          // string.includes(substr) -> strings.Contains(str, substr)
-          this.addImport('strings');
-          const str = this.transformExpression(node.string);
-          const substr = this.transformExpression(node.substring || node.search);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'Contains'),
-            [str, substr]
-          );
-        }
-
-        case 'StringIndexOf': {
-          // string.indexOf(substr) -> strings.Index(str, substr)
-          this.addImport('strings');
-          const str = this.transformExpression(node.string);
-          const substr = this.transformExpression(node.substring || node.search);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'Index'),
-            [str, substr]
-          );
-        }
-
-        case 'StringCharAt': {
-          // string.charAt(i) -> string(str[i])
-          const str = this.transformExpression(node.string);
-          const index = this.transformExpression(node.index);
-          return new GoTypeConversion(GoType.String(), new GoIndexExpression(str, index));
-        }
-
-        case 'StringCharCodeAt': {
-          // string.charCodeAt(i) -> int(str[i])
-          const str = this.transformExpression(node.string);
-          const index = this.transformExpression(node.index);
-          return new GoCallExpression(new GoIdentifier('int'), [new GoIndexExpression(str, index)]);
-        }
-
-        case 'StringFromCharCode': {
-          // String.fromCharCode(code) -> string([]byte{byte(code)})
-          const code = this.transformExpression(node.code || node.arguments?.[0]);
-          return new GoTypeConversion(
-            GoType.String(),
-            new GoCompositeLiteral(GoType.Slice(GoType.UInt8()), [
-              new GoCallExpression(new GoIdentifier('byte'), [code])
-            ])
-          );
-        }
-
-        case 'ArrayFind': {
-          // array.find(fn) -> findElement(array, fn)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('findElement'), [arr, fn]);
-          }
-          return GoLiteral.Nil();
-        }
-
-        case 'ArrayFindIndex': {
-          // array.findIndex(fn) -> findIndex(array, fn)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('findIndex'), [arr, fn]);
-          }
-          return GoLiteral.Int(-1);
-        }
-
-        case 'ArrayEvery': {
-          // array.every(fn) -> every(array, fn)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('every'), [arr, fn]);
-          }
-          return GoLiteral.Bool(true);
-        }
-
-        case 'ArraySome': {
-          // array.some(fn) -> some(array, fn)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            const fn = this.transformExpression(callback);
-            return new GoCallExpression(new GoIdentifier('some'), [arr, fn]);
-          }
-          return GoLiteral.Bool(false);
-        }
-
-        case 'ArrayReverse': {
-          // array.reverse() -> reverseSlice(array)
-          const arr = this.transformExpression(node.array);
-          return new GoCallExpression(new GoIdentifier('reverseSlice'), [arr]);
-        }
-
-        case 'ArrayJoin': {
-          // array.join(sep) -> strings.Join(array, sep)
-          this.addImport('strings');
-          const arr = this.transformExpression(node.array);
-          const sep = node.separator ? this.transformExpression(node.separator) : GoLiteral.String('');
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'Join'),
-            [arr, sep]
-          );
-        }
-
-        case 'ArrayPop': {
-          // array.pop() -> popSlice(&array) - needs helper that modifies slice
-          const arr = this.transformExpression(node.array);
-          return new GoCallExpression(new GoIdentifier('popSlice'), [new GoUnaryExpression('&', arr)]);
-        }
-
-        case 'ArrayShift': {
-          // array.shift() -> shiftSlice(&array) - needs helper
-          const arr = this.transformExpression(node.array);
-          return new GoCallExpression(new GoIdentifier('shiftSlice'), [new GoUnaryExpression('&', arr)]);
-        }
-
-        case 'ArrayPush': {
-          // array.push(value) -> array = append(array, value)
-          const arr = this.transformExpression(node.array);
-          // Infer array element type to pass as context for struct literal detection
-          const pushArrType = this.inferFullExpressionType(node.array);
-          const pushElemType = pushArrType?.isSlice ? pushArrType.valueType : null;
-          let value = this.transformExpression(node.value, pushElemType);
-
-          // Get array element type and value type to detect mismatches
-          const arrType = this.inferFullExpressionType(node.array);
-          const valType = this.inferFullExpressionType(node.value);
-          const arrTypeStr = arrType?.toString() || '';
-          const valTypeStr = valType?.toString() || '';
-
-          // Extract element type from slice type like []int32 -> int32
-          let elemType = null;
-          if (arrType?.isSlice && arrType.elementType) {
-            elemType = arrType.elementType;
-          } else if (arrTypeStr.startsWith('[]')) {
-            const elemTypeStr = arrTypeStr.slice(2);
-            elemType = new GoType(elemTypeStr);
-          }
-
-          // Add type conversion if element type doesn't match value type
-          if (elemType && valType) {
-            const elemTypeStr = elemType.toString();
-            if (elemTypeStr !== valTypeStr && this.isNumericType(elemTypeStr) && this.isNumericType(valTypeStr)) {
-              value = new GoTypeConversion(elemType, value);
-            }
-          }
-          return new GoCallExpression(new GoIdentifier('append'), [arr, value]);
-        }
-
-        case 'ArrayUnshift': {
-          // array.unshift(value) -> unshiftSlice(&array, value)
-          const arr = this.transformExpression(node.array);
-          const value = this.transformExpression(node.value);
-          return new GoCallExpression(new GoIdentifier('unshiftSlice'), [new GoUnaryExpression('&', arr), value]);
-        }
-
-        case 'Abs': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Abs'),
-            [arg]
-          );
-        }
-
-        case 'Ceil': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Ceil'),
-            [arg]
-          );
-        }
-
-        case 'Round': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Round'),
-            [arg]
-          );
-        }
-
-        case 'Trunc':
-        case 'Truncate': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Trunc'),
-            [arg]
-          );
-        }
-
-        case 'Sign': {
-          // Sign function - Go doesn't have built-in, use Copysign(1, x)
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Copysign'),
-            [GoLiteral.Float(1.0), arg]
-          );
-        }
-
-        case 'Sqrt': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Sqrt'),
-            [arg]
-          );
-        }
-
-        case 'Log': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Log'),
-            [arg]
-          );
-        }
-
-        case 'Pow':
-        case 'Power': {
-          this.addImport('math');
-          const base = this.transformExpression(node.base || node.arguments?.[0]);
-          const exp = this.transformExpression(node.exponent || node.arguments?.[1]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Pow'),
-            [base, exp]
-          );
-        }
-
-        case 'Random': {
-          this.addImport('math/rand');
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('rand'), 'Float64'),
-            []
-          );
-        }
-
-        case 'Sin': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Sin'),
-            [arg]
-          );
-        }
-
-        case 'Cos': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Cos'),
-            [arg]
-          );
-        }
-
-        case 'Tan': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Tan'),
-            [arg]
-          );
-        }
-
-        case 'Asin': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Asin'),
-            [arg]
-          );
-        }
-
-        case 'Acos': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Acos'),
-            [arg]
-          );
-        }
-
-        case 'Atan': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Atan'),
-            [arg]
-          );
-        }
-
-        case 'Atan2': {
-          this.addImport('math');
-          const y = this.transformExpression(node.arguments?.[0] || node.y);
-          const x = this.transformExpression(node.arguments?.[1] || node.x);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Atan2'),
-            [y, x]
-          );
-        }
-
-        case 'Sinh': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Sinh'),
-            [arg]
-          );
-        }
-
-        case 'Cosh': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Cosh'),
-            [arg]
-          );
-        }
-
-        case 'Tanh': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Tanh'),
-            [arg]
-          );
-        }
-
-        case 'Exp': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Exp'),
-            [arg]
-          );
-        }
-
-        case 'Cbrt': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Cbrt'),
-            [arg]
-          );
-        }
-
-        case 'Hypot': {
-          this.addImport('math');
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Hypot'),
-            args
-          );
-        }
-
-        case 'Fround': {
-          // Math.fround(x) -> float32(x) cast
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(new GoIdentifier('float32'), [arg]);
-        }
-
-        case 'MathConstant': {
-          // Math constants: PI, E, LN2, LN10, LOG2E, LOG10E, SQRT2, SQRT1_2
-          this.addImport('math');
-          const mathConstMap = {
-            'PI': 'Pi',
-            'E': 'E',
-            'LN2': 'Ln2',
-            'LN10': 'Ln10',
-            'LOG2E': 'Log2E',
-            'LOG10E': 'Log10E',
-            'SQRT2': 'Sqrt2',
-          };
-          const goConst = mathConstMap[node.name];
-          if (goConst)
-            return new GoSelectorExpression(new GoIdentifier('math'), goConst);
-          // SQRT1_2 has no Go constant - use 1.0 / math.Sqrt2
-          if (node.name === 'SQRT1_2')
-            return new GoBinaryExpression(
-              GoLiteral.Float64(1.0),
-              '/',
-              new GoSelectorExpression(new GoIdentifier('math'), 'Sqrt2')
-            );
-          // Fallback: use the literal value
-          return GoLiteral.Float64(node.value);
-        }
-
-        case 'NumberConstant': {
-          // Number constants: MAX_SAFE_INTEGER, MIN_SAFE_INTEGER, MAX_VALUE, MIN_VALUE, EPSILON, POSITIVE_INFINITY, NEGATIVE_INFINITY, NaN
-          this.addImport('math');
-          switch (node.name) {
-            case 'MAX_SAFE_INTEGER':
-              return new GoSelectorExpression(new GoIdentifier('math'), 'MaxInt64');
-            case 'MIN_SAFE_INTEGER':
-              return new GoUnaryExpression('-', new GoSelectorExpression(new GoIdentifier('math'), 'MaxInt64'));
-            case 'MAX_VALUE':
-              return new GoSelectorExpression(new GoIdentifier('math'), 'MaxFloat64');
-            case 'MIN_VALUE':
-              return new GoSelectorExpression(new GoIdentifier('math'), 'SmallestNonzeroFloat64');
-            case 'EPSILON':
-              return GoLiteral.Float64(2.220446049250313e-16);
-            case 'POSITIVE_INFINITY':
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('math'), 'Inf'),
-                [GoLiteral.Int(1)]
-              );
-            case 'NEGATIVE_INFINITY':
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('math'), 'Inf'),
-                [GoLiteral.Int(-1)]
-              );
-            case 'NaN':
-              return new GoCallExpression(
-                new GoSelectorExpression(new GoIdentifier('math'), 'NaN'),
-                []
-              );
-            default:
-              // Fallback: use the literal value
-              return GoLiteral.Float64(node.value);
-          }
-        }
-
-        case 'InstanceOfCheck': {
-          // value instanceof ClassName -> func() bool { _, ok := value.(ClassName); return ok }()
-          const value = this.transformExpression(node.value);
-          const className = node.className?.name || node.className?.value || (typeof node.className === 'string' ? node.className : 'interface{}');
-          return new GoRawCode(`func() bool { _, ok_ := ${this._nodeToCode(value)}.(${className}); return ok_ }()`);
-        }
-
-        case 'Imul': {
-          // JavaScript imul - 32-bit integer multiply
-          const a = this.transformExpression(node.arguments?.[0]);
-          const b = this.transformExpression(node.arguments?.[1]);
-          return new GoBinaryExpression(
-            new GoCallExpression(new GoIdentifier('int32'), [a]),
-            '*',
-            new GoCallExpression(new GoIdentifier('int32'), [b])
-          );
-        }
-
-        case 'HexEncode': {
-          // bytes to hex string
-          this.addImport('encoding/hex');
-          const arg = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('hex'), 'EncodeToString'),
-            [arg]
-          );
-        }
-
-        case 'BytesToString': {
-          // []byte to string
-          const arg = this.transformExpression(node.value || node.argument || node.bytes);
-          return new GoTypeConversion(GoType.String(), arg);
-        }
-
-        case 'ObjectKeys': {
-          // Object.keys(obj) -> getKeys(obj) helper
-          const obj = this.transformExpression(node.object || node.arguments?.[0]);
-          return new GoCallExpression(new GoIdentifier('getKeys'), [obj]);
-        }
-
-        case 'ObjectValues': {
-          // Object.values(obj) -> getValues(obj) helper
-          const obj = this.transformExpression(node.object || node.arguments?.[0]);
-          return new GoCallExpression(new GoIdentifier('getValues'), [obj]);
-        }
-
-        case 'ObjectEntries': {
-          // Object.entries(obj) -> getEntries(obj) helper
-          const obj = this.transformExpression(node.object || node.arguments?.[0]);
-          return new GoCallExpression(new GoIdentifier('getEntries'), [obj]);
-        }
-
-        case 'ArrayXor': {
-          // XOR two arrays element-wise -> xorArrays(arr1, arr2)
-          const arr1 = this.transformExpression(node.left || node.array1 || node.arguments?.[0]);
-          const arr2 = this.transformExpression(node.right || node.array2 || node.arguments?.[1]);
-          return new GoCallExpression(new GoIdentifier('xorArrays'), [arr1, arr2]);
-        }
-
-        case 'BigIntCast': {
-          // BigInt(value) -> int64(value) or uint64(value)
-          const value = this.transformExpression(node.argument || node.value || node.arguments?.[0]);
-          const isSigned = node.signed !== false;
-          const goType = isSigned ? 'int64' : 'uint64';
-          return new GoCallExpression(new GoIdentifier(goType), [value]);
-        }
-
-        case 'BigIntLiteral': {
-          // BigInt literal like 0n, 1n, 256n -> uint64(0), uint64(1), uint64(256)
-          const val = node.value;
-          const numVal = typeof val === 'bigint' ? Number(val) : (val || 0);
-          return new GoTypeConversion(GoType.UInt64(), GoLiteral.Int(numVal));
-        }
-
-        case 'DataViewCreation': {
-          // new DataView(buffer) -> buffer (Go slices are already views)
-          const buffer = this.transformExpression(node.buffer || node.arguments?.[0]);
-          return buffer;
-        }
-
-        case 'DataViewRead': {
-          // IL parser may misidentify number.toString(radix) as DataViewRead
-          // Detect this: method is 'toString' and offset is the radix argument
-          if (node.method === 'toString') {
-            this.addImport('fmt');
-            const obj = this.transformExpression(node.view);
-            const radixVal = node.offset?.value;
-            let fmtVerb = '%v';
-            if (radixVal === 16) fmtVerb = '%x';
-            else if (radixVal === 2) fmtVerb = '%b';
-            else if (radixVal === 8) fmtVerb = '%o';
-            else if (radixVal === 10) fmtVerb = '%d';
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('fmt'), 'Sprintf'),
-              [GoLiteral.String(fmtVerb), obj]
-            );
-          }
-          // dataView.getUint32(offset, littleEndian) -> pack32LE/BE(slice[offset:offset+4])
-          const view = this.transformExpression(node.view);
-          const offset = this.transformExpression(node.offset);
-          const bits = node.bits || 32;
-          const littleEndian = node.littleEndian;
-          const bytes = bits / 8;
-          const endOffset = new GoBinaryExpression(offset, '+', GoLiteral.Int(bytes));
-          const slice = new GoSliceExpression(view, offset, endOffset);
-          const funcName = bits === 16 ? (littleEndian ? 'pack16LESlice' : 'pack16BESlice') :
-                           bits === 64 ? (littleEndian ? 'pack64LESlice' : 'pack64BESlice') :
-                                         (littleEndian ? 'pack32LESlice' : 'pack32BESlice');
-          return new GoCallExpression(new GoIdentifier(funcName), [slice]);
-        }
-
-        case 'DataViewWrite': {
-          // dataView.setUint32(offset, value, littleEndian) -> copy(slice[offset:], unpack32LE/BE(value))
-          const view = this.transformExpression(node.view);
-          const offset = this.transformExpression(node.offset);
-          let value = this.transformExpression(node.value);
-          const bits = node.bits || 32;
-          const littleEndian = node.littleEndian;
-          const funcName = bits === 16 ? (littleEndian ? 'unpack16LE' : 'unpack16BE') :
-                           bits === 64 ? (littleEndian ? 'unpack64LE' : 'unpack64BE') :
-                                         (littleEndian ? 'unpack32LE' : 'unpack32BE');
-
-          // Add type conversion if value type doesn't match expected type
-          if (node.value) {
-            const argType = this.inferFullExpressionType(node.value);
-            const argTypeStr = argType?.toString() || '';
-            const expectedType = bits === 16 ? 'uint16' : bits === 64 ? 'uint64' : 'uint32';
-            if (argTypeStr && argTypeStr !== expectedType) {
-              const goExpectedType = bits === 16 ? GoType.UInt16() :
-                                     bits === 64 ? GoType.UInt64() : GoType.UInt32();
-              value = new GoTypeConversion(goExpectedType, value);
-            }
-          }
-          const bytes = new GoCallExpression(new GoIdentifier(funcName), [value]);
-          const destSlice = new GoSliceExpression(view, offset, null);
-          return new GoCallExpression(new GoIdentifier('copy'), [destSlice, bytes]);
-        }
-
-        // IL AST StringInterpolation - `Hello ${name}` -> fmt.Sprintf("Hello %v", name)
-        case 'StringInterpolation': {
-          this.addImport('fmt');
-          let format = '';
-          const args = [];
-          if (node.parts) {
-            for (const part of node.parts) {
-              if (part.type === 'StringPart' || part.ilNodeType === 'StringPart') {
-                format += (part.value || '').replace(/%/g, '%%');
-              } else if (part.type === 'ExpressionPart' || part.ilNodeType === 'ExpressionPart') {
-                format += '%v';
-                args.push(this.transformExpression(part.expression));
-              }
-            }
-          }
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('fmt'), 'Sprintf'),
-            [GoLiteral.String(format), ...args]
-          );
-        }
-
-        // IL AST ObjectLiteral - {key: value} -> struct literal or map
-        case 'ObjectLiteral': {
-          if (!node.properties || node.properties.length === 0)
-            return GoLiteral.Nil();
-          // Delegate to transformObjectExpression which handles known struct types
-          return this.transformObjectExpression(node, targetType);
-        }
-
-        // IL AST StringFromCharCodes - String.fromCharCode(65) -> string([]byte{65})
-        case 'StringFromCharCodes': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (args.length === 0)
-            return GoLiteral.String('');
-          if (args.length === 1) {
-            // string([]byte{byte(code)})
-            return new GoRawCode(`string([]byte{byte(${args[0] ? this._nodeToCode(args[0]) : '0'})})`);
-          }
-          const bytes = args.map(a => `byte(${a ? this._nodeToCode(a) : '0'})`).join(', ');
-          return new GoRawCode(`string([]byte{${bytes}})`);
-        }
-
-        // IL AST IsArrayCheck - Array.isArray(x) -> x != nil (Go slices)
-        case 'IsArrayCheck': {
-          const value = this.transformExpression(node.value);
-          return new GoBinaryExpression(value, '!=', GoLiteral.Nil());
-        }
-
-        // IL AST ArrowFunction - (x) => expr -> func(x interface{}) interface{} { return expr }
-        case 'ArrowFunction': {
-          const params = (node.params || []).map(p => {
-            const name = typeof p === 'string' ? p : (p.name || 'arg');
-            // Use pre-set variable type (e.g., from typed reduce/map callbacks) or default to interface{}
-            const varType = this.variableTypes.get(name);
-            const typeStr = varType ? varType.toString() : 'interface{}';
-            return `${name} ${typeStr}`;
-          }).join(', ');
-          // Determine return type from parameter types (for callbacks with known types)
-          const paramTypes = (node.params || []).map(p => {
-            const name = typeof p === 'string' ? p : (p.name || 'arg');
-            return this.variableTypes.get(name);
-          }).filter(Boolean);
-          let bodyCode;
-          if (node.body) {
-            if (node.body.type === 'BlockStatement') {
-              const block = this.transformBlockStatement(node.body);
-              const blockCode = block ? this._nodeToCode(block) : '';
-              // Wrap in braces - _nodeToCode on a GoBlock doesn't include { }
-              bodyCode = `{\n${blockCode}}`;
-            } else {
-              // Single expression body
-              const bodyType = node.body.type || node.body.ilNodeType;
-              if (bodyType === 'AssignmentExpression' && (!node.body.operator || node.body.operator === '=')) {
-                // Arrow returning assignment: (x) => x = y  ->  func(x) { x = y; return x }
-                const assignExpr = this.transformExpression(node.body);
-                const target = this.transformExpression(node.body.left);
-                bodyCode = `{\n${this._nodeToCode(assignExpr)}\nreturn ${this._nodeToCode(target)}\n}`;
-              } else {
-                const expr = this.transformExpression(node.body);
-                // If expression is void (GoAssignment from ArrayClear), emit as statement
-                if (expr && expr.nodeType === "Assignment") {
-                  bodyCode = "{\n" + this._nodeToCode(new GoExpressionStatement(expr)) + "}";
-                } else {
-                  bodyCode = "{ return " + (expr ? this._nodeToCode(expr) : "nil") + " }";
-                }
-              }
-            }
-          } else {
-            bodyCode = '{ return nil }';
-          }
-          const isVoid = node.body && (node.body.type === 'ArrayClear' || node.body.ilNodeType === 'ArrayClear');
-          // Use first param type for return type when all params have the same known type
-          const knownRetType = paramTypes.length > 0 && paramTypes.every(t => t.toString() === paramTypes[0].toString())
-            ? paramTypes[0].toString() : null;
-          const retType = isVoid ? '' : (' ' + (knownRetType || 'interface{}'));
-          return new GoRawCode(`func(${params})${retType} ${bodyCode}`);
-        }
-
-        // IL AST TypeOfExpression - typeof x -> reflect.TypeOf(x).String()
-        case 'TypeOfExpression': {
-          this.addImport('reflect');
-          const value = this.transformExpression(node.argument || node.value);
-          return new GoCallExpression(
-            new GoSelectorExpression(
-              new GoCallExpression(new GoSelectorExpression(new GoIdentifier('reflect'), 'TypeOf'), [value]),
-              'String'
-            ),
-            []
-          );
-        }
-
-        // IL AST Power - x ** y -> math.Pow(x, y)
-        case 'Power': {
-          this.addImport('math');
-          const left = this.transformExpression(node.left);
-          const right = this.transformExpression(node.right);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Pow'),
-            [new GoTypeConversion(GoType.Float64(), left), new GoTypeConversion(GoType.Float64(), right)]
-          );
-        }
-
-        // IL AST ObjectFreeze - Object.freeze(x) -> just return x (no-op in Go)
-        case 'ObjectFreeze': {
-          return this.transformExpression(node.value || node.object, targetType);
-        }
-
-        // IL AST ObjectSeal - Object.seal(x) -> just return x (no-op in Go)
-        case 'ObjectSeal': {
-          return this.transformExpression(node.value || node.object, targetType);
-        }
-
-        // IL AST ObjectCreate - Object.create(proto) -> map[string]interface{}{}
-        case 'ObjectCreate': {
-          return new GoCompositeLiteral(
-            GoType.Map(GoType.String(), GoType.Interface()),
-            []
-          );
-        }
-
-        // IL AST ObjectMerge - Object.assign(target, ...sources) -> return target (simplified)
-        case 'ObjectMerge': {
-          return this.transformExpression(node.target);
-        }
-
-        // IL AST ObjectHasProperty - Object.hasOwn(obj, prop) -> _, ok := obj[prop]; ok
-        case 'ObjectHasProperty': {
-          const obj = this.transformExpression(node.object);
-          const prop = this.transformExpression(node.property);
-          return new GoRawCode(`func() bool { _, ok := ${this._nodeToCode(obj)}[${this._nodeToCode(prop)}]; return ok }()`);
-        }
-
-        // IL AST ObjectPropertyNames - Object.getOwnPropertyNames(obj) -> getKeys(obj)
-        case 'ObjectPropertyNames': {
-          const obj = this.transformExpression(node.object);
-          return new GoCallExpression(new GoIdentifier('getKeys'), [obj]);
-        }
-
-        // IL AST ObjectFromEntries - Object.fromEntries(entries) -> map from entries
-        case 'ObjectFromEntries': {
-          const entries = this.transformExpression(node.entries);
-          return new GoRawCode(`func() map[string]interface{} { m := make(map[string]interface{}); for _, e := range ${this._nodeToCode(entries)} { m[e[0].(string)] = e[1] }; return m }()`);
-        }
-
-        // IL AST ArrayFrom - Array.from(x) -> append([]T{}, x...)
-        case 'ArrayFrom': {
-          if (node.mapFunction) {
-            // Determine element type: prefer targetType from context, then infer from map function
-            let elemTypeStr = 'interface{}';
-
-            // If targetType is a slice, use its element type
-            if (targetType?.isSlice && targetType.valueType) {
-              const targetElemStr = targetType.valueType.toString();
-              if (targetElemStr && targetElemStr !== 'interface{}' && targetElemStr !== 'any')
-                elemTypeStr = targetElemStr;
-            }
-
-            // Otherwise try to infer from the map function's return
-            const mapFn = node.mapFunction;
-            if (elemTypeStr === 'interface{}' && mapFn) {
-              const body = mapFn.body;
-              if (body) {
-                const retExpr = body.type === 'BlockStatement'
-                  ? body.body?.find(s => s.type === 'ReturnStatement')?.argument
-                  : body;
-                if (retExpr) {
-                  const retType = this.inferFullExpressionType(retExpr);
-                  const retStr = retType?.toString() || '';
-                  if (retStr && retStr !== 'interface{}' && retStr !== 'any')
-                    elemTypeStr = retStr;
-                }
-              }
-            }
-
-            // Detect {length: N} pattern: Array.from({length: N}, (_, i) => expr)
-            // In Go: func() []T { r := make([]T, N); for i := range r { r[i] = expr }; return r }()
-            const iterNode = node.iterable;
-            if (iterNode && (iterNode.type === 'ObjectLiteral' || iterNode.type === 'ObjectExpression')) {
-              const props = iterNode.properties || [];
-              const lengthProp = props.find(p =>
-                (p.key === 'length' || p.key?.name === 'length' || p.key?.value === 'length')
-              );
-              if (lengthProp && props.length === 1) {
-                const lengthExpr = this.transformExpression(lengthProp.value);
-                const lengthCode = this._nodeToCode(lengthExpr);
-                // Get the map function's index parameter name (2nd param)
-                const indexParam = mapFn.params?.[1]?.name || 'i';
-                // Transform the body using the index variable
-                const bodyExpr = mapFn.body?.type === 'BlockStatement'
-                  ? mapFn.body.body?.find(s => s.type === 'ReturnStatement')?.argument
-                  : mapFn.body;
-                if (bodyExpr) {
-                  const transformedBody = this.transformExpression(bodyExpr);
-                  const bodyCode = this._nodeToCode(transformedBody);
-                  return new GoRawCode(`func() []${elemTypeStr} { r := make([]${elemTypeStr}, ${lengthCode}); for ${indexParam} := range r { r[${indexParam}] = ${elemTypeStr}(${bodyCode}) }; return r }()`);
-                }
-              }
-            }
-
-            // General case: Array.from(arr, fn) -> functional map with typed result
-            const iterable = this.transformExpression(node.iterable);
-            const iterCode = this._nodeToCode(iterable);
-            return new GoRawCode(`func() []${elemTypeStr} { var r []${elemTypeStr}; for _, v := range ${iterCode} { r = append(r, ${elemTypeStr}(v)) }; return r }()`);
-          }
-          const iterable = this.transformExpression(node.iterable);
-          const iterCode = this._nodeToCode(iterable);
-          return new GoRawCode(`append([]byte{}, ${iterCode}...)`);
-        }
-
-        // IL AST DataViewWrite - view.setUint32(offset, value, le) -> binary.Write
-        case 'DataViewWrite': {
-          this.addImport('encoding/binary');
-          const view = this.transformExpression(node.view);
-          const offset = this.transformExpression(node.offset);
-          const value = this.transformExpression(node.value);
-          const method = node.method;
-          const littleEndian = node.littleEndian !== false;
-
-          const order = littleEndian ? 'binary.LittleEndian' : 'binary.BigEndian';
-          const viewCode = this._nodeToCode(view);
-          const offsetCode = this._nodeToCode(offset);
-          const valueCode = this._nodeToCode(value);
-          if (method.includes('32'))
-            return new GoRawCode(`${order}.PutUint32(${viewCode}[${offsetCode}:], uint32(${valueCode}))`);
-          if (method.includes('16'))
-            return new GoRawCode(`${order}.PutUint16(${viewCode}[${offsetCode}:], uint16(${valueCode}))`);
-          return new GoAssignment(new GoIndexExpression(view, offset), value);
-        }
-
-        // IL AST DataViewRead - view.getUint32(offset, le) -> binary.Read
-        case 'DataViewRead': {
-          this.addImport('encoding/binary');
-          const view = this.transformExpression(node.view);
-          const offset = this.transformExpression(node.offset);
-          const method = node.method;
-          const littleEndian = node.littleEndian !== false;
-
-          const order = littleEndian ? 'binary.LittleEndian' : 'binary.BigEndian';
-          const viewCode = this._nodeToCode(view);
-          const offsetCode = this._nodeToCode(offset);
-          if (method.includes('32') || method.includes('Uint32'))
-            return new GoRawCode(`${order}.Uint32(${viewCode}[${offsetCode}:])`);
-          if (method.includes('16') || method.includes('Uint16'))
-            return new GoRawCode(`${order}.Uint16(${viewCode}[${offsetCode}:])`);
-          return new GoIndexExpression(view, offset);
-        }
-
-        // IL AST StringCharCodeAt - str.charCodeAt(i) -> int(str[i])
-        case 'StringCharCodeAt': {
-          const str = this.transformExpression(node.string);
-          const index = this.transformExpression(node.index);
-          return new GoTypeConversion(new GoType('int'), new GoIndexExpression(str, index));
-        }
-
-        // IL AST StringReplace - str.replace(search, replace) -> strings.Replace
-        case 'StringReplace': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string);
-          const search = this.transformExpression(node.searchValue);
-          const replace = this.transformExpression(node.replaceValue);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'Replace'),
-            [str, search, replace, GoLiteral.Int(-1)]
-          );
-        }
-
-        // IL AST BufferCreation - new ArrayBuffer(n) -> make([]byte, n)
-        case 'BufferCreation': {
-          const size = this.transformExpression(node.size);
-          return new GoMake(new GoType('[]byte'), size);
-        }
-
-        // IL AST MathCall - Math.imul(a,b) or other Math methods
-        case 'MathCall': {
-          this.addImport('math');
-          const method = node.method;
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-
-          if (method === 'imul') {
-            // Math.imul(a, b) -> int32(int64(a) * int64(b))
-            if (args.length >= 2)
-              return new GoRawCode(`int32(int64(${this._nodeToCode(args[0])}) * int64(${this._nodeToCode(args[1])}))`);
-          }
-          // Default: use math package
-          const goMethod = method.charAt(0).toUpperCase() + method.slice(1);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), goMethod),
-            args
-          );
-        }
-
-        // IL AST TypedArraySubarray - arr.subarray(start, end) -> arr[start:end]
-        case 'TypedArraySubarray': {
-          const array = this.transformExpression(node.array);
-          const start = this._transformSliceIndex(node.start, node.array);
-          const end = node.end ? this._transformSliceIndex(node.end, node.array) : null;
-
-          return new GoSliceExpression(array, start, end);
-        }
-
-        // IL AST StringEndsWith - str.endsWith(suffix) -> strings.HasSuffix(str, suffix)
-        case 'StringEndsWith': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string || node.object);
-          const suffix = this.transformExpression(node.suffix || node.search);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'HasSuffix'),
-            [str, suffix]
-          );
-        }
-
-        // IL AST StringSplit - str.split(delim) -> strings.Split(str, delim)
-        case 'StringSplit': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string || node.object);
-          const separator = node.separator ? this.transformExpression(node.separator) : GoLiteral.String('');
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'Split'),
-            [str, separator]
-          );
-        }
-
-        // IL AST StringStartsWith - str.startsWith(prefix) -> strings.HasPrefix(str, prefix)
-        case 'StringStartsWith': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string || node.object);
-          const prefix = this.transformExpression(node.prefix || node.search);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'HasPrefix'),
-            [str, prefix]
-          );
-        }
-
-        // IL AST StringSubstring - str.substring(start, end) -> str[start:end]
-        case 'StringSubstring': {
-          const str = this.transformExpression(node.string || node.object);
-          const start = node.start ? this.transformExpression(node.start) : null;
-          const end = node.end ? this.transformExpression(node.end) : null;
-          return new GoSliceExpression(str, start, end);
-        }
-
-        // IL AST StringToLowerCase - str.toLowerCase() -> strings.ToLower(str)
-        case 'StringToLowerCase': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string || node.object || node.argument);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'ToLower'),
-            [str]
-          );
-        }
-
-        // IL AST StringToUpperCase - str.toUpperCase() -> strings.ToUpper(str)
-        case 'StringToUpperCase': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string || node.object || node.argument);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'ToUpper'),
-            [str]
-          );
-        }
-
-        // IL AST StringTrim - str.trim() -> strings.TrimSpace(str)
-        case 'StringTrim': {
-          this.addImport('strings');
-          const str = this.transformExpression(node.string || node.object || node.argument);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('strings'), 'TrimSpace'),
-            [str]
-          );
-        }
-
-        // IL AST StringConcat - str1.concat(str2, ...) -> str1 + str2 + ...
-        case 'StringConcat': {
-          const str = this.transformExpression(node.string || node.object);
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (args.length === 0)
-            return str;
-          let result = str;
-          for (const arg of args)
-            result = new GoBinaryExpression(result, '+', arg);
-          return result;
-        }
-
-        // IL AST MapCreation - new Map() -> make(map[string]interface{})
-        case 'MapCreation': {
-          if (node.entries && node.entries.elements && node.entries.elements.length > 0) {
-            const kvPairs = node.entries.elements.map(entry => {
-              if (entry.elements && entry.elements.length >= 2) {
-                const key = this.transformExpression(entry.elements[0]);
-                const value = this.transformExpression(entry.elements[1]);
-                return new GoKeyValue(key, value || GoLiteral.Nil());
-              }
-              return null;
-            }).filter(p => p !== null);
-            return new GoCompositeLiteral(
-              GoType.Map(GoType.String(), GoType.Interface()),
-              kvPairs
-            );
-          }
-          return new GoMake(new GoType('map[string]interface{}'), null);
-        }
-
-        // IL AST MapGet - map.get(key) -> m[key]
-        case 'MapGet': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new GoIndexExpression(map, key);
-        }
-
-        // IL AST MapSet - map.set(key, value) -> m[key] = value
-        case 'MapSet': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          const value = this.transformExpression(node.value);
-          return new GoAssignment(new GoIndexExpression(map, key), '=', value);
-        }
-
-        // IL AST MapHas - map.has(key) -> _, ok := m[key]; ok pattern
-        case 'MapHas': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new GoRawCode(`func() bool { _, ok := ${this._nodeToCode(map)}[${this._nodeToCode(key)}]; return ok }()`);
-        }
-
-        // IL AST MapDelete - map.delete(key) -> delete(m, key)
-        case 'MapDelete': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new GoCallExpression(new GoIdentifier('delete'), [map, key]);
-        }
-
-        // IL AST SetCreation - new Set() -> make(map[T]struct{})
-        case 'SetCreation': {
-          if (node.values) {
-            const values = this.transformExpression(node.values);
-            return new GoRawCode(`func() map[interface{}]struct{} { s := make(map[interface{}]struct{}); for _, v := range ${this._nodeToCode(values)} { s[v] = struct{}{} }; return s }()`);
-          }
-          return new GoMake(new GoType('map[interface{}]struct{}'), null);
-        }
-
-        // IL AST CopyArray - [...arr] or Array.from(arr) -> append([]T{}, src...)
-        case 'CopyArray': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (args.length >= 1) {
-            const src = args[0];
-            return new GoRawCode(`append([]byte{}, ${this._nodeToCode(src)}...)`);
-          }
-          return GoLiteral.Nil();
-        }
-
-        // IL AST IsFiniteCheck - Number.isFinite(v) -> !math.IsInf(v, 0) && !math.IsNaN(v)
-        case 'IsFiniteCheck': {
-          this.addImport('math');
-          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new GoBinaryExpression(
-            new GoUnaryExpression('!', new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('math'), 'IsInf'),
-              [value, GoLiteral.Int(0)]
-            )),
-            '&&',
-            new GoUnaryExpression('!', new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('math'), 'IsNaN'),
-              [value]
-            ))
-          );
-        }
-
-        // IL AST IsNaNCheck - Number.isNaN(v) -> math.IsNaN(v)
-        case 'IsNaNCheck': {
-          this.addImport('math');
-          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'IsNaN'),
-            [value]
-          );
-        }
-
-        // IL AST IsIntegerCheck - Number.isInteger(v) -> v == math.Floor(v)
-        case 'IsIntegerCheck': {
-          this.addImport('math');
-          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new GoBinaryExpression(
-            value,
-            '==',
-            new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('math'), 'Floor'),
-              [value]
-            )
-          );
-        }
-
-        // IL AST DebugOutput - console.log/warn/error -> fmt.Println(...)
-        case 'DebugOutput': {
-          this.addImport('fmt');
-          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
-          if (args.length === 0)
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('fmt'), 'Println'),
-              []
-            );
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('fmt'), 'Println'),
-            args
-          );
-        }
-
-        // IL AST Log10 - Math.log10(v) -> math.Log10(v)
-        case 'Log10': {
-          this.addImport('math');
-          const arg = this.transformExpression(node.argument || node.arguments?.[0]);
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('math'), 'Log10'),
-            [arg]
-          );
-        }
-
-        // IL AST ParentMethodCall - super.method(args) -> embedded struct method call
-        case 'ParentMethodCall': {
-          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
-          const methodName = this.toPascalCase(node.method);
-          // In Go, parent method calls go through the embedded struct
-          if (this.currentStruct) {
-            return new GoCallExpression(
-              new GoSelectorExpression(
-                new GoSelectorExpression(new GoIdentifier(this.currentStruct.name), 'base'),
-                methodName
-              ),
-              args
-            );
-          }
-          // Fallback: call method directly
-          return new GoCallExpression(new GoIdentifier(methodName), args);
-        }
-
-        default:
-          console.warn(`Unhandled expression type: ${node.type}`);
-          return new GoIdentifier('nil');
+      }
+      for (const info of this.model.classes.values()) {
+        if (!this.model.isReachable(info.name)) continue;
+        if (info.origin === 'main' || instantiated.has(info.name)) this.emittedClasses.add(info.name);
       }
     }
 
-    transformIdentifier(node) {
-      let name = node.name;
+    // ======================================================================
+    // NAMES
+    // ======================================================================
 
-      // Map JavaScript keywords to Go equivalents
-      if (name === 'undefined' || name === 'null') return GoLiteral.Nil();
-      if (name === 'NaN') {
-        this.addImport('math');
-        return new GoSelectorExpression(new GoIdentifier('math'), 'NaN');
-      }
-      if (name === 'Infinity') {
-        this.addImport('math');
-        // Use math.MaxUint32 instead of math.Inf(1) - in crypto code, Infinity is used as
-        // a sentinel max value for integer comparisons (e.g., minDistance = Infinity).
-        // math.Inf(1) is float64, which causes type mismatches with uint32 variables.
-        return new GoTypeConversion(GoType.UInt32(), new GoSelectorExpression(new GoIdentifier('math'), 'MaxUint32'));
-      }
-
-      // Rename local variables that shadow Go builtins (e.g., len → length)
-      const sanitized = this.sanitizeVarName(name);
-      if (sanitized !== name) {
-        // Migrate the type mapping to the new name if present
-        if (this.variableTypes.has(name)) {
-          const existingType = this.variableTypes.get(name);
-          this.variableTypes.set(sanitized, existingType);
-        }
-        name = sanitized;
-      }
-
-      // Escape Go reserved keywords
-      const reserved = ['type', 'func', 'interface', 'struct', 'map', 'range', 'defer', 'go', 'chan', 'select', 'fallthrough', 'default', 'case'];
-      if (reserved.includes(name)) {
-        name = name + '_';
-      }
-
-      return new GoIdentifier(name);
+    ident(name) {
+      let n = String(name).replace(/\$/g, '_S_').replace(/[^A-Za-z0-9_]/g, '_');
+      if (/^[0-9]/.test(n)) n = '_' + n;
+      if (GO_KEYWORDS.has(n) || GO_PREDECLARED.has(n) || /^(js|Js|JS)/.test(n) || n === '_') n += '_';
+      return n;
     }
 
-    transformFunctionExpression(node) {
-      // Transform to anonymous function
-      const params = [];
-      if (node.params) {
-        node.params.forEach((param, i) => {
-          const paramName = this._paramName(param, i);
-          // Use pre-set variable type (e.g., from typed reduce callbacks) or default to interface{}
-          const paramType = this.variableTypes.get(paramName) || GoType.Interface();
-          params.push(new GoParameter(paramName, paramType));
+    className(name) { return this.classNames.get(name) || (this.prefix + this.ident(name)); }
+    fieldName(info, name) {
+      const eff = info.effective;
+      const base = this.ident(name);
+      return eff && (eff.methods.has(name) || eff.getters.has(name) || eff.setters.has(name)) ? base + '_f' : base;
+    }
+    methodName(name) { return this.ident(name); }
+    getterName(name) { return 'get_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    setterName(name) { return 'set_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    topName(name) {
+      // The framework's variables (its enums) live once, in the main program
+      const v = this.model.variables.get(name);
+      if (v && v.origin === 'framework') return this.ident(name);
+      return this.prefix + this.ident(name);
+    }
+
+    /** A generic runtime function instantiated for a Go type: jsFill[uint8]. */
+    generic(name, goType) { return G.Index(G.Ident(name), G.Ident(goType)); }
+    staticName(cls, name) { return `${this.className(cls)}_${String(name).replace(/[^A-Za-z0-9_]/g, '_')}`; }
+    tmp(base = 't') { return `jsT${base}${++this.tmpCounter}`; }
+
+    // ======================================================================
+    // TYPES
+    // ======================================================================
+
+    /** Whether an IL class type is a concrete Go pointer (emitted, nothing derives from it). */
+    isLeafClass(t) {
+      const info = this.model.classOf(t);
+      return !!info && this.emittedClasses.has(t) && !info.hasSubclasses;
+    }
+
+    /** The Go spelling of an IL type. */
+    goType(t) {
+      t = canonicalType(t) || 'any';
+      if (t === 'goint') return 'int';
+      if (isIntType(t)) return t;
+      if (isFloatType(t)) return 'float64';
+      if (isBigType(t)) return '*big.Int';
+      switch (t) {
+        case 'boolean': return 'bool';
+        case 'string': return 'string';
+        case 'void': return '';
+        case 'any': case 'null': case 'function': case 'undefined': return 'any';
+        case 'Error': case 'TypeError': case 'RangeError': return '*JsError';
+        case 'regex': case 'RegExp': return '*regexp.Regexp';
+        case 'Map': return '*JsMap';
+        case 'Set': return '*JsMap';
+        case 'object': return 'JsObject';
+      }
+      if (/^Map</.test(t)) return '*JsMap';
+      if (isArrayType(t)) {
+        const el = elementType(t);
+        return '[]' + this.goType(el === 'object' || el === 'any' ? 'any' : el);
+      }
+      if (t.startsWith('[') && t.endsWith(']')) return '[]any';
+      if (t.startsWith('(') || t.includes('=>')) return 'any';
+      if (this.isLeafClass(t)) return '*' + this.className(t);
+      return 'JsObject';
+    }
+
+    /** The Go type of a value that may be null: value types become any. */
+    goTypeNullable(t, nullable) {
+      if (nullable && (isNumericType(canonicalType(t)) || canonicalType(t) === 'boolean')) return 'any';
+      return this.goType(t);
+    }
+
+    typeOfNullable(t, nullable) {
+      return nullable && (isNumericType(canonicalType(t)) || canonicalType(t) === 'boolean') ? 'any' : (canonicalType(t) || 'any');
+    }
+
+    /** The zero value of an IL type. */
+    zero(t) {
+      const g = this.goType(t);
+      if (/^(u?int\d*|float64|int)$/.test(g)) return G.Lit('0');
+      if (g === 'bool') return G.Lit('false');
+      if (g === 'string') return G.Lit('""');
+      return G.Lit('nil');
+    }
+
+    /** Whether two IL types have the same Go type. */
+    sameGo(a, b) { return this.goType(a) === this.goType(b); }
+
+    // ======================================================================
+    // CONVERSION
+    // ======================================================================
+
+    /** A Go expression of IL type `to` for a value. */
+    coerce(v, to) {
+      to = canonicalType(to) || 'any';
+      if (!(v instanceof Val)) throw new Error('coerce of a non-value');
+      const from = canonicalType(v.t) || 'any';
+      const gf = this.goType(from);
+      const gt = this.goType(to);
+      if (to === 'void') return v.e;
+      if (v.isConst) return this.constTo(v, to);
+      if (gf === gt) return v.e;
+      if (from === 'null' || (v.e.kind === 'Lit' && v.e.text === 'nil')) return this.zero(to);
+      if (gt === 'any') return v.e;
+      if (gt === 'JsObject') {
+        if (gf.startsWith('*') && gf !== '*big.Int') return v.e;
+        return G.Call(G.Ident('jsToObject'), [v.e]);
+      }
+      // numbers
+      const numFrom = this.numKind(gf);
+      const numTo = this.numKind(gt);
+      if (numFrom && numTo) {
+        if (numFrom === 'float' && numTo === 'int') return G.Conv(gt, G.Call(G.Ident('jsF2I'), [v.e]));
+        return G.Conv(gt, v.e);
+      }
+      if (gt === 'bool') return this.truthy(v);
+      if (gf === 'bool' && numTo) return G.Conv(gt, G.Call(G.Ident('jsB2I'), [v.e]));
+      if (gf === '*big.Int' && numTo) return numTo === 'float' ? G.Call(G.Ident('jsBigToF64'), [v.e]) : G.Conv(gt, G.Call(G.Ident(gt.startsWith('u') ? 'jsBigToU64' : 'jsBigToI64'), [v.e]));
+      if (gt === '*big.Int' && numFrom) return G.Call(G.Ident(numFrom === 'float' ? 'jsBigFromF64' : (gf.startsWith('u') ? 'jsBigFromU64' : 'jsBigFromI64')), [numFrom === 'float' ? v.e : G.Conv(gf.startsWith('u') ? 'uint64' : 'int64', v.e)]);
+      if (gt === 'string') return G.Call(G.Ident('jsStr'), [v.e]);
+      if (numTo && gf === 'string') return G.Conv(gt, G.Call(G.Ident(numTo === 'float' ? 'jsToNumber' : 'jsToNumberInt'), [v.e]));
+      // everything else (slices of other elements, interfaces, class pointers) by the runtime's conversion
+      return G.Call(G.Index(G.Ident('jsTo'), G.Ident(gt)), [v.e]);
+    }
+
+    numKind(g) {
+      if (/^u?int(8|16|32|64)?$/.test(g)) return 'int';
+      if (g === 'float64') return 'float';
+      return null;
+    }
+
+    /** A constant in the Go spelling of IL type `to` (wrapped to the width as JavaScript's ToIntN does). */
+    constTo(v, to) {
+      const c = v.c;
+      const gt = this.goType(to);
+      if (c === null || c === undefined) return this.zero(to);
+      if (typeof c === 'string') {
+        if (gt === 'string' || gt === 'any') return G.Lit(this.goString(c));
+        if (this.numKind(gt)) return this.constTo(new Val(null, 'float64', Number(c)), to);
+        return this.coerce(new Val(G.Lit(this.goString(c)), 'string'), to);
+      }
+      if (typeof c === 'boolean') {
+        if (gt === 'bool' || gt === 'any') return G.Lit(String(c));
+        if (this.numKind(gt)) return G.Lit(c ? '1' : '0');
+        if (gt === 'string') return G.Lit(this.goString(String(c)));
+        return this.coerce(new Val(G.Lit(String(c)), 'boolean'), to);
+      }
+      if (typeof c === 'bigint') {
+        if (gt === '*big.Int') return this.bigLit(c);
+        if (/^u?int/.test(gt)) return G.Lit(String(this.wrapBig(c, to)));
+        if (gt === 'float64') return G.Lit(this.goFloat(Number(c)));
+        if (gt === 'any') return this.bigLit(c);
+        if (gt === 'string') return G.Lit(this.goString(c.toString()));
+        return this.coerce(new Val(this.bigLit(c), 'bigint'), to);
+      }
+      if (typeof c === 'number') {
+        const tcan = canonicalType(to);
+        if (gt === '*big.Int') return this.bigLit(BigInt(Math.trunc(c)));
+        if (/^u?int\d*$/.test(gt)) {
+          if (!Number.isFinite(c)) return G.Lit('0');
+          const w = this.wrapBig(BigInt(Math.trunc(c)), gt === 'int' ? 'int64' : tcan);
+          return G.Lit(String(w));
+        }
+        if (gt === 'float64') return G.Lit(this.goFloat(c));
+        if (gt === 'bool') return G.Lit(c !== 0 && !Number.isNaN(c) ? 'true' : 'false');
+        if (gt === 'string') return G.Lit(this.goString(this.jsNumberString(c)));
+        if (gt === 'any') {
+          const ft = canonicalType(v.t);
+          const g = isNumericType(ft) ? this.goType(ft) : 'float64';
+          return G.Conv(g, this.constTo(v, isNumericType(ft) ? ft : 'float64'));
+        }
+        return this.coerce(new Val(this.constTo(v, 'float64'), 'float64'), to);
+      }
+      return this.zero(to);
+    }
+
+    wrapBig(b, t) {
+      const bits = intBits(t) || 64;
+      return isSignedInt(t) || t === 'goint' ? BigInt.asIntN(bits, b) : BigInt.asUintN(bits, b);
+    }
+
+    bigLit(b) {
+      if (b >= -(2n ** 63n) && b < 2n ** 63n) return G.Call(G.Ident('jsBigI'), [G.Lit(String(b))]);
+      return G.Call(G.Ident('jsBigLit'), [G.Lit(`"${b.toString()}"`)]);
+    }
+
+    goFloat(n) {
+      if (Number.isNaN(n)) return 'math.NaN()';
+      if (n === Infinity) return 'math.Inf(1)';
+      if (n === -Infinity) return 'math.Inf(-1)';
+      if (Object.is(n, -0)) return 'math.Copysign(0, -1)';
+      const s = String(n);
+      return /[.e]/.test(s) ? s : s + '.0';
+    }
+
+    /** A Go string literal holding a JavaScript string as Latin-1 bytes. */
+    goString(s) { return goStringLiteral(s); }
+
+    jsNumberString(n) { return String(n); }
+
+    /** A boolean Go expression for JavaScript truthiness of a value. */
+    truthy(v) {
+      const t = canonicalType(v.t) || 'any';
+      if (v.isConst) return G.Lit(v.c ? 'true' : 'false');
+      const g = this.goType(t);
+      if (g === 'bool') return v.e;
+      if (this.numKind(g) === 'int') return G.Binary('!=', v.e, G.Lit('0'));
+      if (g === 'float64') return G.Call(G.Ident('jsTruthyF64'), [v.e]);
+      if (g === 'string') return G.Binary('!=', v.e, G.Lit('""'));
+      if (g.startsWith('[]') || g.startsWith('*')) return G.Binary('!=', v.e, G.Lit('nil'));
+      return G.Call(G.Ident('jsTruthy'), [v.e]);
+    }
+
+    // ======================================================================
+    // CLASSES
+    // ======================================================================
+
+    emitClass(info) {
+      const name = this.className(info.name);
+      const eff = info.effective;
+      const fields = [];
+      for (const [fname, f] of eff.fields) fields.push({ name: this.fieldName(info, fname), type: this.goTypeNullable(f.type, f.nullable) });
+      fields.push({ name: 'jsExtra', type: 'map[string]any' });
+      const chainNames = info.chain().map(c => c.name).join(' < ');
+      this.decls.push(G.Struct(name, fields, `${name} is the JavaScript class ${info.name}` + (info.base ? ` (${chainNames})` : '')));
+
+      // Static members
+      for (const [sname, s] of eff.staticFields) {
+        if (s.owner !== info) continue;
+        const t = s.type || (s.init && s.init.resultType) || 'any';
+        this.decls.push(G.VarDecl(this.staticName(info.name, sname), this.goType(t), null));
+        if (s.init) {
+          this.withFunction({ returnType: 'void', cls: null }, () => {
+            const v = this.expr(s.init);
+            this.initStmts.push(...this.flushPre(), G.Assign(G.Ident(this.staticName(info.name, sname)), '=', this.coerce(v, t)));
+          });
+        }
+      }
+      for (const [mname, m] of eff.staticMethods) {
+        if (m.owner !== info) continue;
+        this.decls.push(this.emitFunctionDecl(this.staticName(info.name, mname), null, m.fn, m.jsDoc, null));
+      }
+      for (const block of info.staticBlocks || []) {
+        this.withFunction({ returnType: 'void', cls: null }, () => {
+          this.initStmts.push(G.Block(this.stmts(block.body || [])));
         });
       }
 
-      const results = this.inferFunctionReturnType(node);
-      const body = this.transformBlockStatement(node.body);
+      // Constructor chain: New<Class> and one init per class of the chain
+      const chain = info.chain();
+      const ctorOwner = [...chain].reverse().find(c => c.ctor) || null;
+      const ctorParams = ctorOwner ? Model.functionParams(ctorOwner.ctor, ctorOwner.ctorDoc) : [];
+      const receiver = { name: 'this', type: '*' + name };
+      const newParams = ctorParams.map(p => ({ name: this.ident(p.name), type: this.goTypeNullable(p.type, p.nullable) }));
+      this.decls.push(G.Func('New' + name, null, newParams, [{ type: '*' + name }], G.Block([
+        G.Assign(G.Ident('this'), ':=', G.Unary('&', G.Composite(name, []))),
+        G.ExprStmt(G.Call(G.Selector(G.Ident('this'), this.initName(info)), newParams.map(p => G.Ident(p.name)))),
+        G.Return(G.Ident('this'))
+      ]), `New${name} constructs a ${info.name}`));
+      for (const c of chain) this.decls.push(this.emitInit(info, c));
 
-      return new GoFuncLit(params, results, body);
+      // Methods, accessors
+      for (const [mname, m] of eff.methods) this.decls.push(this.emitFunctionDecl(this.methodName(mname), receiver, m.fn, m.jsDoc, info));
+      for (const [gname, g] of eff.getters) this.decls.push(this.emitFunctionDecl(this.getterName(gname), receiver, g.fn, g.jsDoc, info));
+      for (const [sname, s] of eff.setters) this.decls.push(this.emitFunctionDecl(this.setterName(sname), receiver, s.fn, s.jsDoc, info));
+      for (const [key, copy] of this.superCopiesFor(info)) this.decls.push(this.emitFunctionDecl(key, receiver, copy.fn, copy.jsDoc, info));
+
+      this.decls.push(...this.emitProtocol(info, name));
     }
 
-    transformLogicalExpression(node) {
-      const operator = node.operator;
-      const leftType = this.inferFullExpressionType(node.left);
-      const rightType = this.inferFullExpressionType(node.right);
-      const leftTypeStr = leftType?.toString() || '';
-      const rightTypeStr = rightType?.toString() || '';
+    initName(c) { return `jsInit_${String(c.name).replace(/[^A-Za-z0-9_]/g, '_')}`; }
 
-      // Check if operands are booleans - use standard Go && and ||
-      const leftIsBool = leftTypeStr === 'bool';
-      const rightIsBool = rightTypeStr === 'bool';
-
-      if (leftIsBool && rightIsBool) {
-        // Both are booleans, standard logical expression
-        return this.transformBinaryExpression(node);
-      }
-
-      // Non-boolean || - JavaScript short-circuit evaluation
-      // a || b means "if a is truthy, return a, else return b"
-      if (operator === '||') {
-        const left = this.transformExpression(node.left);
-        const right = this.transformExpression(node.right);
-
-        // For interface{}/any types, check for nil using firstNonNil helper
-        if (leftTypeStr === 'any' || leftTypeStr === 'interface{}' ||
-            leftTypeStr.startsWith('*') || leftTypeStr.startsWith('[]') ||
-            leftTypeStr.startsWith('map')) {
-          const call = new GoCallExpression(new GoIdentifier('firstNonNil'), [left, right]);
-          // When the operand is a concrete type (slice/map/pointer), add type assertion
-          if (leftTypeStr !== 'any' && leftTypeStr !== 'interface{}' && leftType) {
-            return new GoTypeAssertion(call, leftType);
-          }
-          return call;
-        }
-
-        // For numeric types, check for non-zero
-        if (['int', 'int32', 'int64', 'uint', 'uint8', 'uint16', 'uint32', 'uint64', 'float64'].includes(leftTypeStr)) {
-          // For numbers, treat 0 as falsy - just return left (trusting the pattern)
-          return left;
-        }
-
-        // Fallback: use firstNonNil helper
-        return new GoCallExpression(new GoIdentifier('firstNonNil'), [left, right]);
-      }
-
-      // Non-boolean && - JavaScript short-circuit evaluation
-      // a && b means "if a is falsy, return a, else return b"
-      if (operator === '&&') {
-        const left = this.transformExpression(node.left);
-        const right = this.transformExpression(node.right);
-
-        // For interface{}/any/slice/pointer types with boolean right:
-        // Convert to "left != nil && right" for Go-idiomatic boolean expression
-        if (leftTypeStr === 'any' || leftTypeStr === 'interface{}' ||
-            leftTypeStr.startsWith('*') || leftTypeStr.startsWith('[]')) {
-          if (rightIsBool) {
-            const nilCheck = new GoBinaryExpression(left, '!=', new GoLiteral(null, 'nil'));
-            return new GoBinaryExpression(nilCheck, '&&', right);
-          }
-          return new GoCallExpression(new GoIdentifier('ifTruthy'), [left, right]);
-        }
-
-        // For numeric left with boolean right: convert to "left != 0 && right"
-        if (this.isNumericType(leftTypeStr) && rightIsBool) {
-          const zeroCheck = new GoBinaryExpression(left, '!=', GoLiteral.Int(0));
-          return new GoBinaryExpression(zeroCheck, '&&', right);
-        }
-
-        // Fallback: return right (trusting the pattern)
-        return right;
-      }
-
-      // Other logical operators - delegate to binary expression
-      return this.transformBinaryExpression(node);
+    /** The init method of one class of the chain: field initializers, then its constructor body (or the implicit one). */
+    emitInit(info, c) {
+      const receiver = { name: 'this', type: '*' + this.className(info.name) };
+      if (c.ctor) return this.emitFunctionDecl(this.initName(c), receiver, c.ctor, c.ctorDoc, info, { init: c });
+      // Implicit constructor: pass the arguments on to the base
+      const owner = c.base ? [...c.base.chain()].reverse().find(x => x.ctor) : null;
+      const params = owner ? Model.functionParams(owner.ctor, owner.ctorDoc) : [];
+      const goParams = params.map(p => ({ name: this.ident(p.name), type: this.goTypeNullable(p.type, p.nullable) }));
+      const stmts = [];
+      if (c.base) stmts.push(G.ExprStmt(G.Call(G.Selector(G.Ident('this'), this.initName(c.base)), goParams.map(p => G.Ident(p.name)))));
+      stmts.push(...this.fieldInitializers(info, c));
+      return G.Func(this.initName(c), receiver, goParams, [], G.Block(stmts));
     }
 
-    transformLiteral(node) {
-      if (typeof node.value === 'number') {
-        return Number.isInteger(node.value)
-          ? GoLiteral.Int(node.value)
-          : GoLiteral.Float64(node.value);
+    fieldInitializers(info, c) {
+      const out = [];
+      for (const fd of c.fieldInits || []) {
+        if (!fd.value) continue;
+        const fname = fd.key.name || fd.key.value;
+        const f = info.effective.fields.get(fname);
+        if (!f) continue;
+        this.withFunction({ returnType: 'void', cls: info, self: true }, () => {
+          const v = this.expr(fd.value);
+          out.push(...this.flushPre(), G.Assign(G.Selector(G.Ident('this'), this.fieldName(info, fname)), '=', this.coerce(v, this.typeOfNullable(f.type, f.nullable))));
+        });
       }
-      if (typeof node.value === 'string') {
-        return GoLiteral.String(node.value);
-      }
-      if (typeof node.value === 'boolean') {
-        return GoLiteral.Bool(node.value);
-      }
-      if (node.value === null) {
-        return GoLiteral.Nil();
-      }
-      // Handle BigInt literals - convert to typed uint64/int64 value
-      // Pass BigInt directly to GoLiteral.Hex to preserve full 64-bit precision
-      // (avoids Number() which silently truncates values > 2^53)
-      if (typeof node.value === 'bigint') {
-        const lit = GoLiteral.Hex(node.value, 64);
-        return new GoTypeConversion(GoType.UInt64(), lit);
-      }
-      // Handle undefined - treat same as nil in Go
-      if (node.value === undefined) {
-        return GoLiteral.Nil();
-      }
-
-      return GoLiteral.Nil();
+      return out;
     }
 
-    transformBinaryExpression(node) {
-      let operator = node.operator;
-
-      // Map JavaScript operators to Go operators
-      if (operator === '===') operator = '==';
-      if (operator === '!==') operator = '!=';
-
-      // Handle typeof comparisons: typeof x === "string" -> isTypeString(x)
-      // This needs to come early before we transform left/right
-      const isTypeofLeft = (node.left.type === 'UnaryExpression' && node.left.operator === 'typeof') ||
-                           (node.left.type === 'TypeOfExpression' || node.left.ilNodeType === 'TypeOfExpression');
-      const isStringRight = (node.right.type === 'Literal' && typeof node.right.value === 'string');
-      if ((operator === '==' || operator === '!=') && isTypeofLeft && isStringRight) {
-        const typeStr = node.right.value;
-        // IL TypeOfExpression uses 'argument', JS UnaryExpression uses 'argument' too
-        const argNode = node.left.argument || node.left.value;
-        const variable = argNode ? this.transformExpression(argNode) : new GoIdentifier('nil');
-
-        // Map JavaScript type names to Go type check helper functions
-        const typeCheckMap = {
-          'string': 'isTypeString',
-          'number': 'isTypeNumber',
-          'boolean': 'isTypeBool',
-          'object': 'isTypeObject',
-          'undefined': 'isTypeNil',
-          'function': 'isTypeFunc'
-        };
-
-        const helperName = typeCheckMap[typeStr];
-        if (helperName) {
-          const typeCheck = new GoCallExpression(new GoIdentifier(helperName), [variable]);
-          if (operator === '!=') {
-            // typeof x !== "string" -> !isTypeString(x)
-            return new GoUnaryExpression('!', typeCheck);
-          }
-          return typeCheck;
-        }
-      }
-
-      // Handle 'in' operator: key in object -> func() bool { _, ok := object[key]; return ok }()
-      if (operator === 'in') {
-        const left = this.transformExpression(node.left);
-        const right = this.transformExpression(node.right);
-        return new GoRawCode(`func() bool { _, ok := ${this._nodeToCode(right)}[${this._nodeToCode(left)}]; return ok }()`);
-      }
-
-      // Handle >>> (unsigned right shift) - Go doesn't have it directly
-      if (operator === '>>>') {
-        // In Go, use regular >> on uint32
-        const left = this.transformExpression(node.left);
-        const right = this.transformExpression(node.right);
-
-        // Cast to uint32, shift, result is uint32
-        const leftCasted = new GoTypeConversion(GoType.UInt32(), left);
-        return new GoBinaryExpression(leftCasted, '>>', right);
-      }
-
-      let left = this.transformExpression(node.left);
-      let right = this.transformExpression(node.right);
-
-      // Get types of both operands (with Go-side variable type fallback)
-      let leftType = this.inferFullExpressionType(node.left);
-      let rightType = this.inferFullExpressionType(node.right);
-      let leftTypeStr = leftType?.toString() || '';
-      let rightTypeStr = rightType?.toString() || '';
-      // If IL inference returns any/interface{}/empty, try Go-side variable types
-      const _needsFallback = t => !t || t === 'any' || t === 'interface{}';
-      if (_needsFallback(leftTypeStr)) {
-        const _name = node.left?.type === 'Identifier' ? node.left.name
-                    : (node.left?.type === 'MemberExpression' && node.left.property?.name) ? node.left.property.name
-                    : null;
-        const goVarType = _name ? this.variableTypes.get(_name) : null;
-        if (goVarType && !_needsFallback(goVarType.toString())) {
-          leftType = goVarType;
-          leftTypeStr = goVarType.toString();
-        }
-      }
-      if (_needsFallback(rightTypeStr)) {
-        const _name = node.right?.type === 'Identifier' ? node.right.name
-                    : (node.right?.type === 'MemberExpression' && node.right.property?.name) ? node.right.property.name
-                    : null;
-        const goVarType = _name ? this.variableTypes.get(_name) : null;
-        if (goVarType && !_needsFallback(goVarType.toString())) {
-          rightType = goVarType;
-          rightTypeStr = goVarType.toString();
-        }
-      }
-
-      // Check for int/uint32 mismatch which is common with len() and struct fields
-      // len() returns int, but BlockSize/ROUNDS etc are uint32
-      const ARITHMETIC_OPS = ['+', '-', '*', '/', '%', '+=', '-=', '*=', '/=', '%='];
-      const COMPARISON_OPS = ['<', '>', '<=', '>=', '==', '!='];
-      const BITWISE_OPS = ['&', '|', '^', '&^', '<<', '>>', '&=', '|=', '^='];
-
-      // In Go, bare numeric literals (0, 1, 0xFF, etc.) are untyped constants that
-      // automatically match any numeric type. Never wrap them with type conversions
-      // as that creates typed constants causing mismatches (e.g., uint32 vs int(0)).
-      // Bare numeric literals include decimal (0, 1, 255) and hex (0xFF, 0x1234) forms
-      const isLeftBareNumericLiteral = left?.nodeType === 'Literal' && (left.literalType === 'int' || left.literalType === 'uint32' || left.literalType === 'float64' || left.literalType === 'uint64');
-      const isRightBareNumericLiteral = right?.nodeType === 'Literal' && (right.literalType === 'int' || right.literalType === 'uint32' || right.literalType === 'float64' || right.literalType === 'uint64');
-
-
-      if (ARITHMETIC_OPS.includes(operator) || COMPARISON_OPS.includes(operator) || BITWISE_OPS.includes(operator)) {
-        // Check if we need type coercion
-        const isLenCall = node.left.type === 'CallExpression' &&
-                          node.left.callee?.name === 'len';
-        const isRightUint32 = rightTypeStr === 'uint32';
-        const isLeftUint32 = leftTypeStr === 'uint32';
-        const isLeftInt = leftTypeStr === 'int';
-        const isRightInt = rightTypeStr === 'int';
-
-        // If left is len() (returns int) and right is uint32, cast right to int
-        if (isLenCall && isRightUint32) {
-          right = new GoTypeConversion(new GoType('int'), right);
-        }
-        // Check opposite case
-        const isRightLenCall = node.right.type === 'CallExpression' &&
-                               node.right.callee?.name === 'len';
-
-        if (isRightLenCall && isLeftUint32) {
-          left = new GoTypeConversion(new GoType('int'), left);
-        }
-
-        // Also handle ArrayLength node type
-        if (node.left.type === 'ArrayLength' && isRightUint32) {
-          right = new GoTypeConversion(new GoType('int'), right);
-        }
-        if (node.right.type === 'ArrayLength' && isLeftUint32) {
-          left = new GoTypeConversion(new GoType('int'), left);
-        }
-
-        // General int/uint32 mismatch handling (e.g., loop var + struct field)
-        // For bitwise ops, cast int to uint32 (crypto uses unsigned)
-        // For other ops, cast uint32 to int to match Go's len() return type convention
-        // IMPORTANT: Never wrap bare numeric literals - they are untyped constants in Go
-        const isBitwise = BITWISE_OPS.includes(operator);
-        if (isLeftInt && isRightUint32) {
-          if (isBitwise) {
-            if (!isLeftBareNumericLiteral) left = new GoTypeConversion(GoType.UInt32(), left);
-          } else {
-            if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int'), right);
-          }
-        }
-        if (isRightInt && isLeftUint32) {
-          if (isBitwise) {
-            if (!isRightBareNumericLiteral) right = new GoTypeConversion(GoType.UInt32(), right);
-          } else {
-            if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int'), left);
-          }
-        }
-
-        // int/uint8 mismatch handling (common with S-box access and loop variables)
-        const isLeftUint8 = leftTypeStr === 'uint8';
-        const isRightUint8 = rightTypeStr === 'uint8';
-        if (isLeftInt && isRightUint8) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int'), right);
-        }
-        if (isRightInt && isLeftUint8) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int'), left);
-        }
-
-        // uint32/uint8 mismatch handling
-        if (isLeftUint32 && isRightUint8) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(GoType.UInt32(), right);
-        }
-        if (isRightUint32 && isLeftUint8) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(GoType.UInt32(), left);
-        }
-
-        // int32/uint32 mismatch handling (common with S-box lookups and arithmetic)
-        const isLeftInt32 = leftTypeStr === 'int32';
-        const isRightInt32 = rightTypeStr === 'int32';
-        if (isLeftInt32 && isRightUint32) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(GoType.UInt32(), left);
-        }
-        if (isRightInt32 && isLeftUint32) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(GoType.UInt32(), right);
-        }
-        // int32/int mismatch handling
-        if (isLeftInt32 && isRightInt) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int32'), right);
-        }
-        if (isRightInt32 && isLeftInt) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int32'), left);
-        }
-
-        // int/uint16 mismatch handling (common with len() and blockSize fields)
-        const isLeftUint16 = leftTypeStr === 'uint16';
-        const isRightUint16 = rightTypeStr === 'uint16';
-        if (isLeftInt && isRightUint16) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int'), right);
-        }
-        if (isRightInt && isLeftUint16) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int'), left);
-        }
-
-        // uint32/uint16 mismatch handling
-        if (isLeftUint32 && isRightUint16) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(GoType.UInt32(), right);
-        }
-        if (isRightUint32 && isLeftUint16) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(GoType.UInt32(), left);
-        }
-
-        // uint16/uint8 mismatch handling
-        if (isLeftUint16 && isRightUint8) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint16'), right);
-        }
-        if (isRightUint16 && isLeftUint8) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint16'), left);
-        }
-
-        // int32/uint8 mismatch handling
-        if (isLeftInt32 && isRightUint8) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int32'), right);
-        }
-        if (isRightInt32 && isLeftUint8) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int32'), left);
-        }
-
-        // int32/uint16 mismatch handling
-        if (isLeftInt32 && isRightUint16) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int32'), right);
-        }
-        if (isRightInt32 && isLeftUint16) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int32'), left);
-        }
-
-        // float64/uint8 mismatch handling
-        const isLeftFloat64 = leftTypeStr === 'float64';
-        const isRightFloat64 = rightTypeStr === 'float64';
-        if (isLeftFloat64 && isRightUint8) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('float64'), right);
-        }
-        if (isRightFloat64 && isLeftUint8) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('float64'), left);
-        }
-
-        // float64/int mismatch handling
-        if (isLeftFloat64 && isRightInt) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('float64'), right);
-        }
-        if (isRightFloat64 && isLeftInt) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('float64'), left);
-        }
-
-        // float64/int32 mismatch handling
-        if (isLeftFloat64 && isRightInt32) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('float64'), right);
-        }
-        if (isRightFloat64 && isLeftInt32) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('float64'), left);
-        }
-
-        // float64/uint32 mismatch handling
-        if (isLeftFloat64 && isRightUint32) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('float64'), right);
-        }
-        if (isRightFloat64 && isLeftUint32) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('float64'), left);
-        }
-
-        // float64/uint16 mismatch handling
-        if (isLeftFloat64 && isRightUint16) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('float64'), right);
-        }
-        if (isRightFloat64 && isLeftUint16) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('float64'), left);
-        }
-
-        // 64-bit integer mismatch handling (common in RNG/PRF algorithms)
-        const isLeftUint64 = leftTypeStr === 'uint64';
-        const isRightUint64 = rightTypeStr === 'uint64';
-        const isLeftInt64 = leftTypeStr === 'int64';
-        const isRightInt64 = rightTypeStr === 'int64';
-        // uint32/uint64 mismatch
-        if (isLeftUint32 && isRightUint64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint64'), left);
-        }
-        if (isRightUint32 && isLeftUint64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint64'), right);
-        }
-        // int/uint64 mismatch
-        if (isLeftInt && isRightUint64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint64'), left);
-        }
-        if (isRightInt && isLeftUint64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint64'), right);
-        }
-        // int64/uint64 mismatch
-        if (isLeftInt64 && isRightUint64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint64'), left);
-        }
-        if (isRightInt64 && isLeftUint64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint64'), right);
-        }
-        // uint64/int mismatch
-        if (isLeftUint64 && isRightInt) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint64'), right);
-        }
-        if (isRightUint64 && isLeftInt) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint64'), left);
-        }
-        // uint8/uint64 mismatch
-        if (isLeftUint8 && isRightUint64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint64'), left);
-        }
-        if (isRightUint8 && isLeftUint64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint64'), right);
-        }
-        // int32/uint64 mismatch
-        if (isLeftInt32 && isRightUint64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('uint64'), left);
-        }
-        if (isRightInt32 && isLeftUint64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('uint64'), right);
-        }
-        // uint8/int64 mismatch
-        if (isLeftUint8 && isRightInt64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int64'), left);
-        }
-        if (isRightUint8 && isLeftInt64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int64'), right);
-        }
-        // int/int64 mismatch
-        if (isLeftInt && isRightInt64 && !isBitwise) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int64'), left);
-        }
-        if (isRightInt && isLeftInt64 && !isBitwise) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int64'), right);
-        }
-        // uint32/int64 mismatch
-        if (isLeftUint32 && isRightInt64) {
-          if (!isLeftBareNumericLiteral) left = new GoTypeConversion(new GoType('int64'), left);
-        }
-        if (isRightUint32 && isLeftInt64) {
-          if (!isRightBareNumericLiteral) right = new GoTypeConversion(new GoType('int64'), right);
-        }
-
-        // interface{}/any with concrete type - add type assertion
-        // This handles cases like: uint32_var % config["modulo"]
-        // BUT: literals don't need type assertions - they're auto-typed
-        // AND: binary expressions that already have type assertions don't need another one
-        const isLeftInterface = leftTypeStr === 'interface{}' || leftTypeStr === 'any';
-        const isRightInterface = rightTypeStr === 'interface{}' || rightTypeStr === 'any';
-        const isLeftLiteral = left.nodeType === 'Literal';
-        const isRightLiteral = right.nodeType === 'Literal';
-        // Don't add type assertions to binary expressions - they're already typed from their operands
-        const isLeftBinary = left.nodeType === 'BinaryExpression';
-        const isRightBinary = right.nodeType === 'BinaryExpression';
-        const concreteTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                               'uint', 'uint8', 'uint16', 'uint32', 'uint64',
-                               'float32', 'float64'];
-
-        // If right is interface{} and left is concrete, assert right to left's type
-        // But don't add type assertion to literals or already-processed binary expressions
-        if (isRightInterface && !isRightLiteral && !isRightBinary && concreteTypes.includes(leftTypeStr)) {
-          right = this.safeTypeAssertion(right, leftType);
-        }
-        // If left is interface{} and right is concrete, assert left to right's type
-        // But don't add type assertion to literals or already-processed binary expressions
-        if (isLeftInterface && !isLeftLiteral && !isLeftBinary && concreteTypes.includes(rightTypeStr)) {
-          left = this.safeTypeAssertion(left, rightType);
-        }
-      }
-
-      return new GoBinaryExpression(left, operator, right);
+    superCopiesFor(info) {
+      return [...this.superCopies.entries()].filter(([, v]) => v.cls === info).map(([k, v]) => [k, v]);
     }
 
-    transformUnaryExpression(node) {
-      // Handle -Infinity specially: emit uint32(0) as minimum sentinel value
-      // In crypto code, -Infinity is used as a sentinel for "minimum possible value"
-      // in integer comparison patterns (e.g., maxCorr = -Infinity).
-      if (node.operator === '-' && node.argument &&
-          node.argument.type === 'Identifier' && node.argument.name === 'Infinity') {
-        return new GoTypeConversion(GoType.UInt32(), GoLiteral.Int(0));
-      }
-
-      const operand = this.transformExpression(node.argument);
-
-      // Handle ++ and -- operators (prefix increment/decrement parsed as UnaryExpression)
-      // In expression context, use helper function to return the new value
-      if (node.operator === '++' || node.operator === '--') {
-        // Prefix increment/decrement: increment first, then return new value
-        const addrOf = new GoUnaryExpression('&', operand);
-        const helperName = this._getIncrDecrHelper(node.argument, true, node.operator === '++');
-        return new GoCallExpression(new GoIdentifier(helperName), [addrOf]);
-      }
-
-      // Handle ! operator
-      if (node.operator === '!') {
-        // If operand is a boolean literal, just return the opposite literal
-        if (operand.nodeType === 'Literal' && operand.literalType === 'bool') {
-          return GoLiteral.Bool(!operand.value);
-        }
-
-        // If operand is already a Go boolean expression (comparison/logical), negate it directly
-        // This prevents generating `(data != nil) == nil` from `!Array.isArray(data)`
-        if (operand.nodeType === 'BinaryExpression') {
-          const compOps = ['==', '!=', '<', '>', '<=', '>='];
-          const logicalOps = ['&&', '||'];
-          if (compOps.includes(operand.operator)) {
-            // Flip the comparison operator: != becomes ==, < becomes >=, etc.
-            const flipMap = { '==': '!=', '!=': '==', '<': '>=', '>': '<=', '<=': '>', '>=': '<' };
-            return new GoBinaryExpression(operand.left, flipMap[operand.operator], operand.right);
-          }
-          if (logicalOps.includes(operand.operator)) {
-            // !(a && b) -> use !(expr) with parentheses
-            return new GoUnaryExpression('!', operand);
-          }
-        }
-
-        // If operand is already a unary ! expression, double negation cancels out
-        if (operand.nodeType === 'UnaryExpression' && operand.operator === '!') {
-          return operand.operand;
-        }
-
-        // In JavaScript, !data checks for falsy; in Go, must use comparisons based on type
-        const operandType = this.inferFullExpressionType(node.argument);
-        const typeStr = operandType?.toString() || '';
-
-        // Check if type is any, interface{}, slice, map, or pointer type (which can be nil-checked)
-        if (typeStr === 'any' || typeStr === 'interface{}' ||
-            typeStr.startsWith('*') || typeStr.startsWith('[]') ||
-            typeStr.startsWith('map[')) {
-          return new GoBinaryExpression(operand, '==', GoLiteral.Nil());
-        }
-
-        // For numeric types, compare to 0
-        const numericTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                              'uint', 'uint8', 'uint16', 'uint32', 'uint64',
-                              'float32', 'float64', 'byte', 'rune'];
-        if (numericTypes.includes(typeStr)) {
-          return new GoBinaryExpression(operand, '==', GoLiteral.Int(0));
-        }
-
-        // For string types, compare to empty string
-        if (typeStr === 'string') {
-          return new GoBinaryExpression(operand, '==', GoLiteral.String(''));
-        }
-
-        // For bool type, use standard !
-        if (typeStr === 'bool') {
-          return new GoUnaryExpression('!', operand);
-        }
-
-        // For unknown types, try to check for nil (safer than ! operator)
-        // This handles cases where type inference failed but it's actually a nullable type
-        return new GoBinaryExpression(operand, '==', GoLiteral.Nil());
-      }
-
-      // Handle typeof operator - in Go, use reflect.TypeOf().Kind()
-      // Standalone typeof is rare (usually in comparisons handled by transformBinaryExpression)
-      // For standalone use, return reflect.TypeOf(x).Kind().String()
-      if (node.operator === 'typeof') {
-        this.addImport('reflect');
-        // Build: reflect.TypeOf(operand).Kind().String()
-        const typeOfCall = new GoCallExpression(
-          new GoSelectorExpression(new GoIdentifier('reflect'), 'TypeOf'),
-          [operand]
-        );
-        const kindCall = new GoCallExpression(
-          new GoSelectorExpression(typeOfCall, 'Kind'),
-          []
-        );
-        return new GoCallExpression(
-          new GoSelectorExpression(kindCall, 'String'),
-          []
-        );
-      }
-
-      // Handle bitwise NOT operator - JavaScript uses ~ but Go uses ^
-      if (node.operator === '~') {
-        return new GoUnaryExpression('^', operand);
-      }
-
-      return new GoUnaryExpression(node.operator, operand);
-    }
-
-    transformUpdateExpression(node, isStatementContext = false) {
-      // ++i or i++ (and --i or i--)
-      // In Go, ++ and -- are statements, not expressions. When used in expression
-      // context (array index, function arg), we need to use helper functions that
-      // return the value while performing the side effect.
-      const operand = this.transformExpression(node.argument);
-
-      // For statement context (for loop post, standalone expression statement),
-      // use simple assignment: i += 1 or i -= 1
-      if (isStatementContext) {
-        const one = GoLiteral.Int(1);
-        if (node.operator === '++') {
-          return new GoAssignment([operand], '+=', [one]);
+    /** JsGet/JsSet/JsCall/JsHas/JsHasMethod: the members of a class by their JavaScript names. */
+    emitProtocol(info, name) {
+      const eff = info.effective;
+      const recv = `func (this *${name})`;
+      const lines = [];
+      const q = s => this.goString(s);
+      // JsGet
+      lines.push(`${recv} JsGet(name string) any {`, '\tswitch name {');
+      for (const [fname, f] of eff.fields) lines.push(`\tcase ${q(fname)}:`, `\t\treturn this.${this.fieldName(info, fname)}`);
+      for (const [gname] of eff.getters) lines.push(`\tcase ${q(gname)}:`, `\t\treturn this.${this.getterName(gname)}()`);
+      for (const [mname] of eff.methods) if (!eff.getters.has(mname)) lines.push(`\tcase ${q(mname)}:`, `\t\treturn jsBind(this, ${q(mname)})`);
+      lines.push('\t}', '\tif this.jsExtra != nil {', '\t\treturn this.jsExtra[name]', '\t}', '\treturn nil', '}', '');
+      // JsSet
+      lines.push(`${recv} JsSet(name string, value any) {`, '\tswitch name {');
+      for (const [fname, f] of eff.fields) lines.push(`\tcase ${q(fname)}:`, `\t\tthis.${this.fieldName(info, fname)} = jsTo[${this.goTypeNullable(f.type, f.nullable)}](value)`, '\t\treturn');
+      const accessorNames = new Set([...eff.getters.keys(), ...eff.setters.keys()]);
+      for (const aname of accessorNames) {
+        const s = eff.setters.get(aname);
+        if (s) {
+          const p = Model.functionParams(s.fn, s.jsDoc)[0] || { type: 'any', nullable: false };
+          lines.push(`\tcase ${q(aname)}:`, `\t\tthis.${this.setterName(aname)}(jsTo[${this.goTypeNullable(p.type, p.nullable)}](value))`, '\t\treturn');
         } else {
-          return new GoAssignment([operand], '-=', [one]);
+          lines.push(`\tcase ${q(aname)}:`, `\t\tpanic(jsNewError("TypeError", "Cannot set property ${aname.replace(/[^\w$]/g, '_')} which has only a getter"))`);
         }
       }
-
-      // For expression context, use helper function with pointer
-      // postIncrInt(&i) returns old value, then increments
-      // preIncrInt(&i) increments, then returns new value
-      const addrOf = new GoUnaryExpression('&', operand);
-      const isPrefix = node.prefix === true;
-      const isIncrement = node.operator === '++';
-      const helperName = this._getIncrDecrHelper(node.argument, isPrefix, isIncrement);
-
-      return new GoCallExpression(new GoIdentifier(helperName), [addrOf]);
+      lines.push('\t}', '\tif this.jsExtra == nil {', '\t\tthis.jsExtra = map[string]any{}', '\t}', '\tthis.jsExtra[name] = value', '}', '');
+      // JsCall
+      lines.push(`${recv} JsCall(name string, args ...any) any {`, '\tswitch name {');
+      for (const [mname, m] of eff.methods) {
+        const params = Model.functionParams(m.fn, m.jsDoc);
+        const ret = this.signatureReturn(m.fn, m.jsDoc);
+        const args = params.map((p, i) => {
+          const gt = this.goTypeNullable(p.type, p.nullable);
+          if (p.defaultValue) {
+            let dflt = 'nil';
+            this.withFunction({ returnType: 'void', cls: info, self: true }, () => {
+              const v = this.expr(p.defaultValue);
+              if (!this.fn.pre.length) dflt = this.emitExprText(this.coerce(v, this.typeOfNullable(p.type, p.nullable)));
+              this.fn.pre = [];
+            });
+            return `jsTo[${gt}](jsArgOr(args, ${i}, ${dflt}))`;
+          }
+          return `jsTo[${gt}](jsArg(args, ${i}))`;
+        });
+        const call = `this.${this.methodName(mname)}(${args.join(', ')})`;
+        lines.push(`\tcase ${q(mname)}:`);
+        if (ret.type === 'void') lines.push(`\t\t${call}`, '\t\treturn nil');
+        else lines.push(`\t\treturn ${call}`);
+      }
+      lines.push('\t}', '\tif f, ok := this.jsExtra[name]; ok {', '\t\treturn jsCallFunc(f, args...)', '\t}',
+        `\tpanic(jsNewError("TypeError", ${q(info.name + '.')} + name + " is not a function"))`, '}', '');
+      // JsHas / JsHasMethod
+      const all = [...new Set([...eff.fields.keys(), ...accessorNames, ...eff.methods.keys()])];
+      lines.push(`${recv} JsHas(name string) bool {`, '\tswitch name {');
+      if (all.length) lines.push(`\tcase ${all.map(q).join(', ')}:`, '\t\treturn true');
+      lines.push('\t}', '\t_, ok := this.jsExtra[name]', '\treturn ok', '}', '');
+      lines.push(`${recv} JsHasMethod(name string) bool {`, '\tswitch name {');
+      if (eff.methods.size) lines.push(`\tcase ${[...eff.methods.keys()].map(q).join(', ')}:`, '\t\treturn true');
+      lines.push('\t}', '\treturn jsIsFunc(this.jsExtra[name])', '}');
+      return [G.Raw(lines.join('\n'))];
     }
 
-    transformAssignmentExpression(node) {
-      // Handle array.length = N -> arr = arr[:N] (or arr[:0] for length = 0)
-      const leftType = node.left?.type || node.left?.ilNodeType;
-      if (leftType === 'ArrayLength' && node.operator === '=') {
-        const arrNode = node.left.array || node.left.argument;
-        const arr = this.transformExpression(arrNode);
-        const newLen = this.transformExpression(node.right);
-        // arr.length = 0 -> arr = arr[:0]
-        // arr.length = N -> arr = arr[:N]
-        return new GoAssignment([arr], '=', [new GoSliceExpression(arr, null, newLen)]);
+    emitExprText(e) {
+      if (!this._emitter) {
+        const GoEmitter = (typeof require !== 'undefined') ? require('./GoEmitter.js').GoEmitter : global.GoEmitter;
+        this._emitter = new GoEmitter({});
       }
-      // Handle assignment to .length via MemberExpression with property 'length'
-      if (node.left?.type === 'MemberExpression' && node.operator === '=' &&
-          (node.left.property === 'length' || node.left.property?.name === 'length')) {
-        const arr = this.transformExpression(node.left.object);
-        const newLen = this.transformExpression(node.right);
-        return new GoAssignment([arr], '=', [new GoSliceExpression(arr, null, newLen)]);
-      }
-
-      // Handle chained assignments: a = b = c = 0 -> split into: c = 0; b = 0; a = 0
-      if (node.right && node.right.type === 'AssignmentExpression' && node.operator === '=') {
-        const assignments = [];
-        let current = node;
-        const targets = [];
-        while (current && current.type === 'AssignmentExpression' && current.operator === '=') {
-          targets.push(current.left);
-          current = current.right;
-        }
-        // current is now the final value; targets are in order [a, b, c] for a = b = c = val
-        const finalValue = current;
-        // Assign in reverse: c = val, b = val, a = val
-        const stmts = [];
-        for (let i = targets.length - 1; i >= 0; --i) {
-          stmts.push(new GoExpressionStatement(this.transformAssignmentExpression({
-            type: 'AssignmentExpression',
-            operator: '=',
-            left: targets[i],
-            right: finalValue
-          })));
-        }
-        // Return as a block of statements
-        return new GoBlock(stmts);
-      }
-
-      const target = this.transformExpression(node.left);
-
-      // Infer target type for proper array literal typing
-      let targetType = null;
-      if (node.left.type === 'ThisPropertyAccess' || node.left.type === 'MemberExpression') {
-        // Check if this is an indexed access (slice element assignment)
-        if (node.left.computed) {
-          // Get the slice type and extract element type
-          const sliceType = this.inferFullExpressionType(node.left.object);
-          if (sliceType && sliceType.isSlice) {
-            targetType = sliceType.valueType || sliceType.elementType;
-          }
-        } else {
-          const propName = node.left.property?.name || node.left.property;
-          if (propName) {
-            targetType = this.structFieldTypes.get(propName) ||
-                         this.structFieldTypes.get(this.toPascalCase(propName));
-          }
-        }
-      } else if (node.left.type === 'Identifier') {
-        targetType = this.variableTypes.get(node.left.name);
-      }
-
-      let value = this.transformExpression(node.right, targetType);
-
-      // Replace nil with zero value when assigning to non-nilable types
-      if (node.operator === '=' && targetType) {
-        const isNil = (node.right?.value === null) ||
-                      (value?.nodeType === 'Literal' && value?.value === null);
-        if (isNil) {
-          const tStr = targetType.toString();
-          if (this.isNumericType(tStr))
-            value = GoLiteral.Int(0);
-          else if (tStr === 'string')
-            value = GoLiteral.String('');
-          else if (tStr === 'bool')
-            value = new GoLiteral(false, 'false');
-        }
-      }
-
-      // Add type conversion for simple '=' assignments if types don't match
-      if (node.operator === '=' && targetType) {
-        const valueType = this.inferFullExpressionType(node.right);
-        const targetTypeStr = targetType?.toString() || '';
-        const valueTypeStr = valueType?.toString() || '';
-        const numericTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                              'uint', 'uint8', 'uint16', 'uint32', 'uint64',
-                              'float32', 'float64'];
-        if (targetTypeStr !== valueTypeStr &&
-            numericTypes.includes(targetTypeStr) && numericTypes.includes(valueTypeStr)) {
-          value = new GoTypeConversion(targetType, value);
-        }
-        // Add type assertion when assigning interface{} to a concrete type
-        if ((valueTypeStr === 'interface{}' || valueTypeStr === 'any') &&
-            targetTypeStr && targetTypeStr !== 'interface{}' && targetTypeStr !== 'any') {
-          value = this.safeTypeAssertion(value, targetType);
-        }
-        // Add slice conversion when assigning method call results: []uint32 -> []uint8
-        // Only for method calls (e.g., c.Decode(data)), not for make() or literal expressions
-        if (valueTypeStr === '[]uint32' && targetTypeStr === '[]uint8' &&
-            (node.right?.type === 'ThisMethodCall' || node.right?.type === 'CallExpression' ||
-             (node.right?.type === 'MemberExpression' && node.right?.computed))) {
-          value = new GoCallExpression(new GoIdentifier('uint32SliceToBytes'), [value]);
-          this._needsUint32SliceToBytes = true;
-        }
-      }
-
-      // Check for compound assignment with type mismatch (e.g., i += t.BlockSize where i is int and BlockSize is uint32)
-      const COMPOUND_OPS = ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='];
-      if (COMPOUND_OPS.includes(node.operator)) {
-        let leftType = this.inferFullExpressionType(node.left);
-        let rightType = this.inferFullExpressionType(node.right);
-        let leftTypeStr = leftType?.toString() || '';
-        let rightTypeStr = rightType?.toString() || '';
-        // If IL inference returns any/interface{}, try Go-side variable types
-        if ((leftTypeStr === 'any' || leftTypeStr === 'interface{}') && node.left?.type === 'Identifier') {
-          const goVarType = this.variableTypes.get(node.left.name);
-          if (goVarType && goVarType.toString() !== 'any' && goVarType.toString() !== 'interface{}') {
-            leftType = goVarType; leftTypeStr = goVarType.toString();
-          }
-        }
-        if ((rightTypeStr === 'any' || rightTypeStr === 'interface{}') && node.right?.type === 'Identifier') {
-          const goVarType = this.variableTypes.get(node.right.name);
-          if (goVarType && goVarType.toString() !== 'any' && goVarType.toString() !== 'interface{}') {
-            rightType = goVarType; rightTypeStr = goVarType.toString();
-          }
-        }
-
-        // Handle interface{}/any on right side - need type assertion to match left type
-        if ((rightTypeStr === 'interface{}' || rightTypeStr === 'any') && leftTypeStr && leftTypeStr !== 'interface{}' && leftTypeStr !== 'any') {
-          value = this.safeTypeAssertion(value, leftType);
-        }
-        // If left is int (common for loop vars) and right is uint32, cast right to int
-        else if (leftTypeStr === 'int' && rightTypeStr === 'uint32') {
-          value = new GoTypeConversion(new GoType('int'), value);
-        }
-        // If left is uint32 and right is int, cast right to uint32
-        else if (leftTypeStr === 'uint32' && rightTypeStr === 'int') {
-          value = new GoTypeConversion(GoType.UInt32(), value);
-        }
-        // If left is uint32 and right is uint8 (e.g., sum += data[i]), cast right to uint32
-        else if (leftTypeStr === 'uint32' && rightTypeStr === 'uint8') {
-          value = new GoTypeConversion(GoType.UInt32(), value);
-        }
-        // If left is uint32 and right is uint16, cast right to uint32
-        else if (leftTypeStr === 'uint32' && rightTypeStr === 'uint16') {
-          value = new GoTypeConversion(GoType.UInt32(), value);
-        }
-        // If left is uint32 and right is int32, cast right to uint32
-        else if (leftTypeStr === 'uint32' && rightTypeStr === 'int32') {
-          value = new GoTypeConversion(GoType.UInt32(), value);
-        }
-        // If left is int32 and right is uint32, cast right to int32
-        else if (leftTypeStr === 'int32' && rightTypeStr === 'uint32') {
-          value = new GoTypeConversion(new GoType('int32'), value);
-        }
-        // If left is int and right is uint8/uint16, cast right to int
-        else if (leftTypeStr === 'int' && (rightTypeStr === 'uint8' || rightTypeStr === 'uint16')) {
-          value = new GoTypeConversion(new GoType('int'), value);
-        }
-        // If left is uint64 and right is smaller unsigned type, cast right to uint64
-        else if (leftTypeStr === 'uint64' && ['uint8', 'uint16', 'uint32', 'int'].includes(rightTypeStr)) {
-          value = new GoTypeConversion(GoType.UInt64(), value);
-        }
-        // If left is int64 and right is smaller type, cast right to int64
-        else if (leftTypeStr === 'int64' && ['int8', 'int16', 'int32', 'int', 'uint8', 'uint16'].includes(rightTypeStr)) {
-          value = new GoTypeConversion(new GoType('int64'), value);
-        }
-        // If left is uint8 and right is uint32/int/int32, cast right to uint8
-        else if (leftTypeStr === 'uint8' && ['uint32', 'int', 'int32', 'uint16'].includes(rightTypeStr)) {
-          value = new GoTypeConversion(GoType.UInt8(), value);
-        }
-        // If left is uint16 and right is uint32/int/int32, cast right to uint16
-        else if (leftTypeStr === 'uint16' && ['uint32', 'int', 'int32'].includes(rightTypeStr)) {
-          value = new GoTypeConversion(GoType.UInt16(), value);
-        }
-        // General: cast right to left type for any remaining numeric mismatches
-        else if (leftTypeStr !== rightTypeStr) {
-          const _numericSet = new Set(['int', 'int8', 'int16', 'int32', 'int64',
-                                       'uint', 'uint8', 'uint16', 'uint32', 'uint64',
-                                       'float32', 'float64']);
-          if (_numericSet.has(leftTypeStr) && _numericSet.has(rightTypeStr))
-            value = new GoTypeConversion(leftType, value);
-        }
-      }
-
-      // Add type assertion when assigning interface{} to typed variable
-      if (node.operator === '=') {
-        let rightType = this.inferFullExpressionType(node.right);
-        let rightTypeStr = rightType?.toString() || '';
-        // If IL inference returns any/interface{}, try Go-side variable types
-        if ((rightTypeStr === 'any' || rightTypeStr === 'interface{}') && node.right?.type === 'Identifier') {
-          const goVarType = this.variableTypes.get(node.right.name);
-          if (goVarType && goVarType.toString() !== 'any' && goVarType.toString() !== 'interface{}') {
-            rightType = goVarType; rightTypeStr = goVarType.toString();
-          }
-        }
-
-        if (rightTypeStr === 'interface{}' || rightTypeStr === 'any') {
-          // Check if target has a known type
-          if (targetType && targetType.toString() !== 'interface{}' && targetType.toString() !== 'any') {
-            // Don't add type assertion if value is already a type conversion to the correct type
-            const isAlreadyConverted = value.nodeType === 'TypeConversion' &&
-                                       value.type?.toString() === targetType.toString();
-            // Don't add type assertion if value is a nil literal
-            const isNilLiteral = value.nodeType === 'Literal' && value.value === null;
-            if (!isAlreadyConverted && !isNilLiteral) {
-              value = this.safeTypeAssertion(value, targetType);
-            }
-          }
-        }
-
-        // Handle int/uint32 type mismatch for regular assignments
-        // e.g., j = uint32(expr) & 255 where j is int
-        if (targetType && rightType) {
-          const targetTypeStr = targetType.toString();
-          if (targetTypeStr === 'int' && rightTypeStr === 'uint32') {
-            value = new GoTypeConversion(new GoType('int'), value);
-          } else if (targetTypeStr === 'uint32' && rightTypeStr === 'int') {
-            value = new GoTypeConversion(GoType.UInt32(), value);
-          }
-        }
-      }
-
-      // Handle >>>= (unsigned right shift assignment) - Go doesn't have this operator
-      // Convert x >>>= n to x = uint32(x) >> n
-      if (node.operator === '>>>=') {
-        const leftCasted = new GoTypeConversion(GoType.UInt32(), target);
-        const shiftExpr = new GoBinaryExpression(leftCasted, '>>', value);
-        return new GoAssignment([target], '=', [shiftExpr]);
-      }
-
-      // Handle <<= and >>= similarly (standard shift assignments are valid in Go)
-      // Just pass them through
-
-      return new GoAssignment([target], node.operator, [value]);
+      return this._emitter.expr(e);
     }
 
-    transformMemberExpression(node) {
-      // Handle framework enum types - CategoryType.BLOCK -> CategoryBlock
-      const FRAMEWORK_ENUMS = {
-        'CategoryType': 'Category',
-        'SecurityStatus': 'Security',
-        'ComplexityType': 'Complexity',
-        'CountryCode': 'Country'
-      };
+    // ======================================================================
+    // FUNCTIONS
+    // ======================================================================
 
-      // Map full country names to ISO codes
-      const COUNTRY_NAME_TO_ISO = {
-        'SINGAPORE': 'SG',
-        'UNITED_STATES': 'US',
-        'UNITED_KINGDOM': 'GB',
-        'GERMANY': 'DE',
-        'FRANCE': 'FR',
-        'JAPAN': 'JP',
-        'CHINA': 'CN',
-        'RUSSIA': 'RU',
-        'ISRAEL': 'IL',
-        'BELGIUM': 'BE',
-        'SOUTH_KOREA': 'KR',
-        'KOREA': 'KR',
-        'SWITZERLAND': 'CH',
-        'AUSTRALIA': 'AU',
-        'NETHERLANDS': 'NL',
-        'AUSTRIA': 'AT',
-        'CANADA': 'CA',
-        'SWEDEN': 'SE',
-        'NORWAY': 'NO',
-        'DENMARK': 'DK',
-        'FINLAND': 'FI',
-        'INDIA': 'IN',
-        'BRAZIL': 'BR',
-        'ITALY': 'IT',
-        'UKRAINE': 'UA',
-        'POLAND': 'PL',
-        'SPAIN': 'ES',
-        'PORTUGAL': 'PT',
-        'MEXICO': 'MX',
-        'ARGENTINA': 'AR',
-        'INTERNATIONAL': 'INTL',
-        'MULTI': 'INTL',
-        'INT': 'INTL',
-        'MULTINATIONAL': 'INTL',
-        'ANCIENT': 'ANCIENT',
-        'UNKNOWN': 'UNKNOWN'
-      };
-
-      // Helper to process enum access and return the identifier
-      const processEnumAccess = (enumTypeName, enumValue) => {
-        this.enumsUsed.add(enumTypeName);
-        const prefix = FRAMEWORK_ENUMS[enumTypeName];
-        // Convert BLOCK -> Block, CHECKSUM -> Checksum, but keep US/GB etc for country codes
-        let suffix;
-        if (enumTypeName === 'CountryCode') {
-          const upperValue = enumValue.toUpperCase();
-          // Map full country names to ISO codes, or keep as-is if already ISO
-          suffix = COUNTRY_NAME_TO_ISO[upperValue] || upperValue;
-        } else {
-          // Convert BLOCK -> Block, EDUCATIONAL -> Educational
-          suffix = enumValue.charAt(0).toUpperCase() + enumValue.slice(1).toLowerCase();
-          // Handle special cases where UPPERCASE -> specific mapping
-          if (enumValue === 'MAC') suffix = 'MAC';
-          if (enumValue === 'KDF') suffix = 'KDF';
-          if (enumValue === 'PQC') suffix = 'Pqc';
-          if (enumValue === 'ECC') suffix = 'Ecc';
-          // CategoryType: MODE (singular) maps to Modes (plural) enum constant
-          if (enumTypeName === 'CategoryType' && enumValue === 'MODE') suffix = 'Modes';
-          if (enumTypeName === 'CategoryType' && enumValue === 'PADDING_MODES') suffix = 'Padding';
-          // SecurityStatus: INSECURE maps to Broken
-          if (enumTypeName === 'SecurityStatus' && enumValue === 'INSECURE') suffix = 'Broken';
-          // ComplexityType: BASIC/SIMPLE/LOW map to Beginner, MEDIUM to Intermediate, HIGH to Advanced
-          if (enumTypeName === 'ComplexityType' && (enumValue === 'BASIC' || enumValue === 'SIMPLE' || enumValue === 'LOW')) suffix = 'Beginner';
-          if (enumTypeName === 'ComplexityType' && enumValue === 'MEDIUM') suffix = 'Intermediate';
-          if (enumTypeName === 'ComplexityType' && enumValue === 'HIGH') suffix = 'Advanced';
-          if (enumTypeName === 'ComplexityType' && enumValue === 'ELEMENTARY') suffix = 'Beginner';
-          if (enumTypeName === 'ComplexityType' && enumValue === 'TRIVIAL') suffix = 'Beginner';
-        }
-        return new GoIdentifier(prefix + suffix);
-      };
-
-      // Strip global/globalThis/window prefix: global.X -> X
-      // Only for non-computed access (global.X, not window[idx] which may be a local array)
-      if (!node.computed && node.object.type === 'Identifier' &&
-          (node.object.name === 'global' || node.object.name === 'globalThis' || node.object.name === 'window')) {
-        const propName = node.property?.name || node.property;
-        // If accessing global.AlgorithmFramework, just skip it
-        if (propName === 'AlgorithmFramework')
-          return new GoIdentifier('algorithmFramework');
-        // For other global.X access, strip global prefix and treat X as an identifier
-        return new GoIdentifier(propName);
-      }
-
-      // Pattern 1: CategoryType.BLOCK (direct access)
-      if (node.object.type === 'Identifier' && FRAMEWORK_ENUMS[node.object.name]) {
-        const enumValue = node.property.name || node.property.value;
-        return processEnumAccess(node.object.name, enumValue);
-      }
-
-      // Pattern 2: AlgorithmFramework.CategoryType.BLOCK (nested access)
-      if (node.object.type === 'MemberExpression' &&
-          node.object.object?.type === 'Identifier' &&
-          node.object.object.name === 'AlgorithmFramework' &&
-          FRAMEWORK_ENUMS[node.object.property?.name]) {
-        const enumTypeName = node.object.property.name;
-        const enumValue = node.property.name || node.property.value;
-        return processEnumAccess(enumTypeName, enumValue);
-      }
-
-      // Pattern 3: global.AlgorithmFramework.CategoryType.BLOCK (3-level deep access)
-      if (node.object.type === 'MemberExpression' &&
-          node.object.object?.type === 'MemberExpression' &&
-          (node.object.object.property?.name === 'AlgorithmFramework' || node.object.object.property === 'AlgorithmFramework') &&
-          FRAMEWORK_ENUMS[node.object.property?.name]) {
-        const enumTypeName = node.object.property.name;
-        const enumValue = node.property.name || node.property.value;
-        return processEnumAccess(enumTypeName, enumValue);
-      }
-
-      const object = this.transformExpression(node.object);
-
-      if (node.computed) {
-        // array[index] - check if object is interface{}/any type
-        let objType = this.inferFullExpressionType(node.object);
-        let typeStr = objType?.toString() || '';
-        // If IL inference returns any/interface{}, try Go-side variable types
-        if ((typeStr === 'any' || typeStr === 'interface{}') && node.object?.type === 'Identifier') {
-          const goVarType = this.variableTypes.get(node.object.name);
-          if (goVarType) {
-            objType = goVarType;
-            typeStr = goVarType.toString() || '';
-          }
-        }
-        let index = this.transformExpression(node.property);
-
-        // Check if index is 'any' type but needs to be string for map indexing
-        const indexType = this.inferFullExpressionType(node.property);
-        const indexTypeStr = indexType?.toString() || '';
-
-        if (typeStr.startsWith('map[string]') && (indexTypeStr === 'any' || indexTypeStr === 'interface{}')) {
-          // Need type assertion on index: map[key.(string)]
-          index = this.safeTypeAssertion(index, GoType.String());
-        } else if (typeStr.startsWith('map[string]') && this.isNumericType(indexTypeStr)) {
-          // Numeric index into string-keyed map - convert with fmt.Sprint
-          index = new GoCallExpression(new GoIdentifier('fmt.Sprint'), [index]);
-        }
-
-        if (typeStr === 'any' || typeStr === 'interface{}') {
-          // Check if this is string-key access (map) vs numeric-index access (array)
-          const prop = node.property;
-          if (prop.type === 'Literal' && typeof prop.value === 'string') {
-            // String key access like config["base"] - assert to map[string]interface{}
-            const mapType = new GoType('map[string]interface{}');
-            const typeAssert = this.safeTypeAssertion(object, mapType);
-            return new GoIndexExpression(typeAssert, index);
-          }
-          // Numeric index access like arr[i] - assert to []uint8
-          const typeAssert = this.safeTypeAssertion(object, GoType.Slice(GoType.UInt8()));
-          return new GoIndexExpression(typeAssert, index);
-        }
-
-        return new GoIndexExpression(object, index);
-      } else {
-        // object.field
-        const field = node.property.name || node.property.value;
-
-        // Handle special properties
-        if (field === 'length')
-          return new GoCallExpression(new GoIdentifier('len'), [object]);
-
-        // Handle error.message -> error.Error() in Go
-        if (field === 'message') {
-          const objType = this.inferFullExpressionType(node.object);
-          const typeStr = objType?.toString() || '';
-          const objName = node.object?.name || '';
-          if (typeStr === 'error' || (typeStr.includes('error') && !typeStr.includes('[]')) ||
-              objName === 'error' || objName === 'err' || objName === 'e') {
-            return new GoCallExpression(
-              new GoSelectorExpression(object, 'Error'),
-              []
-            );
-          }
-        }
-
-        // Check if object is a map type - use index expression instead of selector
-        let objType = this.inferFullExpressionType(node.object);
-        let typeStr = objType?.toString() || '';
-        // If IL inference returns any/interface{}, try Go-side variable types
-        if ((typeStr === 'any' || typeStr === 'interface{}') && node.object?.type === 'Identifier') {
-          const goVarType = this.variableTypes.get(node.object.name);
-          if (goVarType) {
-            objType = goVarType;
-            typeStr = goVarType.toString() || '';
-          }
-        }
-
-        if (typeStr.startsWith('map[string]')) {
-          // map[string]interface{} - access as map["field"]
-          return new GoIndexExpression(object, GoLiteral.String(field));
-        }
-
-        // For any/interface{} types accessing a field, type-assert to map and index
-        if (typeStr === 'any' || typeStr === 'interface{}') {
-          // config.Base -> config.(map[string]interface{})["base"]
-          const mapType = new GoType('map[string]interface{}');
-          const typeAssert = this.safeTypeAssertion(object, mapType);
-          return new GoIndexExpression(typeAssert, GoLiteral.String(field));
-        }
-
-        // In map-self-ref context, this.X -> s["x"] (map key access)
-        if (this.inMapSelfRefContext && node.object?.type === 'ThisExpression') {
-          return new GoIndexExpression(
-            new GoIdentifier(this.receiverName),
-            GoLiteral.String(field)
-          );
-        }
-
-        let fieldName = this.toPascalCase(field);
-
-        // Check if this field was renamed due to field/method collision
-        // If object is 'this' (receiver), check against current struct name
-        if (node.object?.type === 'ThisExpression' && this.currentStruct) {
-          const renameKey = `${this.currentStruct.name}.${fieldName}`;
-          if (this.renamedFields.has(renameKey)) {
-            fieldName = this.renamedFields.get(renameKey);
-          }
-        }
-
-        // Handle this.algorithm.X -> receiver.Algorithm.(*ConcreteAlgorithmType).X
-        // The embedded instance base (e.g., IBlockCipherInstance) declares Algorithm as interface{},
-        // so ALL field accesses require type assertion to the concrete algorithm struct.
-        if (this.algorithmStructName &&
-            node.object?.type === 'ThisPropertyAccess' &&
-            (node.object.property === 'algorithm' || node.object.property === 'Algorithm')) {
-          const typeAssert = new GoTypeAssertion(
-            object,
-            GoType.Pointer(new GoType(this.algorithmStructName))
-          );
-          return new GoSelectorExpression(typeAssert, fieldName);
-        }
-
-        return new GoSelectorExpression(object, fieldName);
-      }
+    signatureReturn(fn, jsDoc) {
+      const type = Model.functionReturnType(fn, jsDoc);
+      const nullable = Model.functionReturnNullable(fn, jsDoc);
+      return { type: type === 'void' ? 'void' : this.typeOfNullable(type, nullable) };
     }
 
-    transformCallExpression(node) {
-      // Handle OpCodes calls
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.name === 'OpCodes') {
-        return this.transformOpCodesCall(node);
-      }
-
-      // Handle Object methods (JavaScript built-ins)
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.type === 'Identifier' &&
-          node.callee.object.name === 'Object') {
-        const method = node.callee.property.name || node.callee.property.value;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-
-        // Object.freeze(x) -> x (Go doesn't have freeze)
-        if (method === 'freeze' && args.length === 1)
-          return args[0];
-        // Object.keys(obj) -> getKeys(obj) - needs helper
-        if (method === 'keys' && args.length === 1)
-          return new GoCallExpression(new GoIdentifier('getKeys'), args);
-        // Object.values(obj) -> getValues(obj)
-        if (method === 'values' && args.length === 1)
-          return new GoCallExpression(new GoIdentifier('getValues'), args);
-        // Object.entries(obj) -> getEntries(obj)
-        if (method === 'entries' && args.length === 1)
-          return new GoCallExpression(new GoIdentifier('getEntries'), args);
-        // Object.assign -> return target
-        if (method === 'assign' && args.length >= 1)
-          return args[0];
-      }
-
-      // Handle AlgorithmFramework static methods -> instance calls
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.type === 'Identifier' &&
-          node.callee.object.name === 'AlgorithmFramework') {
-        const method = node.callee.property.name || node.callee.property.value;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-        return new GoCallExpression(
-          new GoSelectorExpression(new GoIdentifier('algorithmFramework'), this.toPascalCase(method)),
-          args
-        );
-      }
-
-      // Handle Array methods (JavaScript built-ins)
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.type === 'Identifier' &&
-          node.callee.object.name === 'Array') {
-        const method = node.callee.property.name || node.callee.property.value;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-
-        // Array.isArray(x) -> true (in Go, slices are always "arrays")
-        // Since Go is statically typed, we know at compile time if it's a slice
-        if (method === 'isArray' && args.length === 1)
-          return GoLiteral.Bool(true);
-        // Array.from(x) -> x (slices don't need conversion)
-        if (method === 'from' && args.length >= 1)
-          return args[0];
-      }
-
-      // Handle String methods (JavaScript built-ins)
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.type === 'Identifier' &&
-          node.callee.object.name === 'String') {
-        const method = node.callee.property.name || node.callee.property.value;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-
-        // String.fromCharCode(code) -> string([]byte{byte(code)})
-        if (method === 'fromCharCode' && args.length >= 1) {
-          if (args.length === 1) {
-            // Single char: string([]byte{byte(code)})
-            return new GoTypeConversion(
-              GoType.String(),
-              new GoCompositeLiteral(GoType.Slice(GoType.UInt8()), [
-                new GoCallExpression(new GoIdentifier('byte'), [args[0]])
-              ])
-            );
-          }
-          // Multiple chars: string([]byte{byte(a), byte(b), ...})
-          const byteExprs = args.map(a => new GoCallExpression(new GoIdentifier('byte'), [a]));
-          return new GoTypeConversion(
-            GoType.String(),
-            new GoCompositeLiteral(GoType.Slice(GoType.UInt8()), byteExprs)
-          );
-        }
-      }
-
-      // Handle Number() type conversion - converts BigInt or other types to number
-      if (node.callee.type === 'Identifier' && node.callee.name === 'Number') {
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-        if (args.length === 1)
-          return new GoTypeConversion(GoType.Int(), args[0]);
-        return GoLiteral.Int(0);
-      }
-
-      // Handle Boolean() type conversion
-      if (node.callee.type === 'Identifier' && node.callee.name === 'Boolean') {
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-        if (args.length === 1)
-          return new GoBinaryExpression(args[0], '!=', GoLiteral.Int(0));
-        return GoLiteral.Bool(false);
-      }
-
-      // Handle special methods
-      if (node.callee.type === 'MemberExpression') {
-        return this.transformMethodCall(node);
-      }
-
-      // Regular function call
-      let func = this.transformExpression(node.callee);
-      const { args, hoisted } = this._transformArgsWithHoisting(node.arguments);
-
-      // Convert function names to PascalCase to match Go declaration style
-      // Function declarations use toPascalCase, so calls must too
-      if (node.callee.type === 'Identifier' && func.nodeType === 'Identifier') {
-        func = new GoIdentifier(this.toPascalCase(node.callee.name));
-      }
-
-      const callExpr = new GoCallExpression(func, args);
-      if (hoisted.length > 0) {
-        callExpr._hoistedStatements = hoisted;
-      }
-      return callExpr;
+    /** Run body() with a fresh function context. */
+    withFunction(ctx, body) {
+      const saved = this.fn;
+      this.fn = Object.assign({ scopes: [new Map()], pre: [], labels: [], tryDepth: 0 }, ctx);
+      try { return body(); } finally { this.fn = saved; }
     }
 
     /**
-     * Transform function arguments, hoisting compound assignments out.
-     * In JS, `f(a, b += c)` is valid (b += c is an expression returning b's new value).
-     * In Go, += is a statement. We hoist: `b += c; f(a, b)`
+     * A Go function (or method) for a JavaScript function.
+     * @param {string} name - Go name
+     * @param {Object|null} receiver - { name, type } for a method
+     * @param {Object} fn - IL FunctionExpression
+     * @param {Object} jsDoc - its JSDoc
+     * @param {Object|null} cls - the class whose `this` it sees
+     * @param {Object} [extra] - { init: ClassInfo } for a constructor body
      */
-    _transformArgsWithHoisting(argNodes) {
-      const args = [];
-      const hoisted = [];
-      for (const arg of argNodes) {
-        const argType = arg.type || arg.ilNodeType;
-        if (argType === 'AssignmentExpression' && arg.operator && arg.operator !== '=') {
-          // Compound assignment (+=, -=, etc.) - hoist as statement, use target as arg
-          const target = this.transformExpression(arg.left);
-          const value = this.transformExpression(arg.right);
-          hoisted.push(new GoExpressionStatement(new GoAssignment([target], arg.operator, [value])));
-          args.push(this.transformExpression(arg.left)); // Re-transform to get fresh reference
-        } else {
-          args.push(this.transformExpression(arg));
-        }
-      }
-      return { args, hoisted };
-    }
-
-    /**
-     * Collect _hoistedStatements from a Go expression tree and wrap a statement.
-     * When compound assignments are hoisted from function arguments,
-     * they're stored as _hoistedStatements on the CallExpression node.
-     * This method collects them and wraps the statement in a block if needed.
-     */
-    _wrapWithHoisted(stmt) {
-      const hoisted = this._collectHoisted(stmt);
-      if (hoisted.length === 0) return stmt;
-      return new GoBlock([...hoisted, stmt]);
-    }
-
-    _collectHoisted(node) {
-      if (!node) return [];
-      const result = [];
-      // Check the expression inside ExpressionStatement
-      const expr = node.expression || node;
-      if (expr._hoistedStatements) {
-        result.push(...expr._hoistedStatements);
-        delete expr._hoistedStatements;
-      }
-      // Check right-hand side of assignments
-      if (expr.nodeType === 'Assignment' && expr.values) {
-        for (const val of expr.values) {
-          if (val._hoistedStatements) {
-            result.push(...val._hoistedStatements);
-            delete val._hoistedStatements;
+    emitFunctionDecl(name, receiver, fn, jsDoc, cls, extra = {}) {
+      const params = Model.functionParams(fn, jsDoc);
+      const ret = extra.init ? { type: 'void' } : this.signatureReturn(fn, jsDoc);
+      return this.withFunction({ returnType: ret.type, cls, self: !!receiver, initOf: extra.init || null }, () => {
+        const goParams = params.map(p => ({ name: this.declareLocal(p.name, this.typeOfNullable(p.type, p.nullable), true).go, type: this.goTypeNullable(p.type, p.nullable) }));
+        let stmts = [];
+        if (extra.init) {
+          // Field initializers run right after super() (or first, without a base)
+          const hasSuper = this.containsParentCall(fn.body);
+          if (!hasSuper) {
+            if (extra.init.base) stmts.push(G.ExprStmt(G.Call(G.Selector(G.Ident('this'), this.initName(extra.init.base)), [])));
+            stmts.push(...this.fieldInitializers(cls, extra.init));
           }
         }
-      }
-      return result;
-    }
-
-    transformOpCodesCall(node) {
-      const methodName = node.callee.property.name;
-      const args = node.arguments.map(arg => this.transformExpression(arg));
-
-      // Use crypto packages if useCrypto is enabled
-      const useStdlib = this.options.useCrypto;
-
-      // Map OpCodes methods to Go equivalents
-      switch (methodName) {
-        case 'Pack32LE':
-          if (useStdlib) {
-            this.addImport('encoding/binary');
-            // binary.LittleEndian.PutUint32(buf, value)
-            return new GoCallExpression(
-              new GoSelectorExpression(
-                new GoSelectorExpression(new GoIdentifier('binary'), 'LittleEndian'),
-                'Uint32'
-              ),
-              args
-            );
-          }
-          break;
-
-        case 'Pack32BE':
-          if (useStdlib) {
-            this.addImport('encoding/binary');
-            return new GoCallExpression(
-              new GoSelectorExpression(
-                new GoSelectorExpression(new GoIdentifier('binary'), 'BigEndian'),
-                'Uint32'
-              ),
-              args
-            );
-          }
-          break;
-
-        case 'Unpack32LE':
-          if (useStdlib) {
-            this.addImport('encoding/binary');
-            return new GoCallExpression(
-              new GoSelectorExpression(
-                new GoSelectorExpression(new GoIdentifier('binary'), 'LittleEndian'),
-                'Uint32'
-              ),
-              args
-            );
-          }
-          break;
-
-        case 'Unpack32BE':
-          if (useStdlib) {
-            this.addImport('encoding/binary');
-            return new GoCallExpression(
-              new GoSelectorExpression(
-                new GoSelectorExpression(new GoIdentifier('binary'), 'BigEndian'),
-                'Uint32'
-              ),
-              args
-            );
-          }
-          break;
-
-        case 'RotL32':
-          if (useStdlib) {
-            this.addImport('math/bits');
-            // bits.RotateLeft32(value, shift)
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('mathbits'), 'RotateLeft32'),
-              args
-            );
-          }
-          break;
-
-        case 'RotR32':
-          if (useStdlib) {
-            this.addImport('math/bits');
-            // bits.RotateLeft32(value, -shift)
-            const negShift = new GoUnaryExpression('-', args[1]);
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('mathbits'), 'RotateLeft32'),
-              [args[0], negShift]
-            );
-          }
-          break;
-
-        case 'RotL8':
-          if (useStdlib) {
-            this.addImport('math/bits');
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('mathbits'), 'RotateLeft8'),
-              args
-            );
-          }
-          break;
-
-        case 'RotR8':
-          if (useStdlib) {
-            this.addImport('math/bits');
-            const negShift8 = new GoUnaryExpression('-', args[1]);
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('mathbits'), 'RotateLeft8'),
-              [args[0], negShift8]
-            );
-          }
-          break;
-
-        case 'Hex8ToBytes':
-          if (useStdlib) {
-            this.addImport('encoding/hex');
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('hex'), 'DecodeString'),
-              args
-            );
-          }
-          break;
-
-        case 'BytesToHex8':
-          if (useStdlib) {
-            this.addImport('encoding/hex');
-            return new GoCallExpression(
-              new GoSelectorExpression(new GoIdentifier('hex'), 'EncodeToString'),
-              args
-            );
-          }
-          break;
-
-        case 'XorArrays':
-          // Manual XOR loop in Go (no stdlib equivalent)
-          return new GoCallExpression(
-            new GoIdentifier('XorArrays'), // Helper function needed
-            args
-          );
-
-        case 'ClearArray':
-          // for i := range arr { arr[i] = 0 }
-          return new GoCallExpression(
-            new GoIdentifier('ClearArray'), // Helper function needed
-            args
-          );
-
-        case 'AnsiToBytes':
-          // []byte(string)
-          return new GoTypeConversion(
-            GoType.Slice(GoType.UInt8()),
-            args[0]
-          );
-
-        default:
-          // Unknown OpCodes method - fallback to custom implementation
-          break;
-      }
-
-      // If useCrypto is false or method not in stdlib, use custom implementation
-      return new GoCallExpression(
-        new GoIdentifier(methodName),
-        args
-      );
-    }
-
-    transformMethodCall(node) {
-      const object = this.transformExpression(node.callee.object);
-      const methodName = node.callee.property.name;
-
-      // For push, defer arg transformation to pass element type context
-      let args;
-      let pushElemType = null;
-      if (methodName === 'push') {
-        const pushArrType = this.inferFullExpressionType(node.callee.object);
-        const pushArrTypeStr = pushArrType?.toString() || '';
-        if (pushArrType?.isSlice && pushArrType.valueType)
-          pushElemType = pushArrType.valueType;
-        else if (pushArrType?.isSlice && pushArrType.elementType)
-          pushElemType = pushArrType.elementType;
-        else if (pushArrTypeStr.startsWith('[]'))
-          pushElemType = new GoType(pushArrTypeStr.slice(2));
-        args = node.arguments.map(arg => this.transformExpression(arg, pushElemType));
-      } else {
-        args = node.arguments.map(arg => this.transformExpression(arg));
-      }
-
-      // Map common methods
-      switch (methodName) {
-        case 'push': {
-          // arr = append(arr, item)
-          // Coerce each argument to the element type if needed
-          const coercedArgs = args.map((arg, i) => {
-            if (!pushElemType) return arg;
-            const valType = this.inferFullExpressionType(node.arguments[i]);
-            const valTypeStr = valType?.toString() || '';
-            const elemTypeStr = pushElemType.toString();
-            if (elemTypeStr !== valTypeStr && this.isNumericType(elemTypeStr) && this.isNumericType(valTypeStr))
-              return new GoTypeConversion(pushElemType, arg);
-            return arg;
-          });
-
-          return new GoAssignment(
-            [object],
-            '=',
-            [new GoCallExpression(new GoIdentifier('append'), [object, ...coercedArgs])]
-          );
-        }
-
-        case 'length':
-          return new GoCallExpression(new GoIdentifier('len'), [object]);
-
-        case 'slice': {
-          // arr.slice(start, end) -> arr[start:end]
-          // Handle negative indices: arr.slice(0, -1) -> arr[:len(arr)-1]
-          const jsArgs = node.arguments || [];
-          const start = jsArgs.length > 0 ? this._transformSliceIndex(jsArgs[0], node.callee.object) : null;
-          const end = jsArgs.length > 1 ? this._transformSliceIndex(jsArgs[1], node.callee.object) : null;
-          return new GoSliceExpression(object, start, end);
-        }
-
-        case 'subarray': {
-          // typedArray.subarray(start, end) -> arr[start:end]
-          // Handle negative indices same as slice
-          const jsSubArgs = node.arguments || [];
-          const start = jsSubArgs.length > 0 ? this._transformSliceIndex(jsSubArgs[0], node.callee.object) : null;
-          const end = jsSubArgs.length > 1 ? this._transformSliceIndex(jsSubArgs[1], node.callee.object) : null;
-          return new GoSliceExpression(object, start, end);
-        }
-
-        case 'fill': {
-          // arr.fill(value) -> for i := range arr { arr[i] = value }
-          // Simplification: use fillSlice helper
-          return new GoCallExpression(new GoIdentifier('fillSlice'), [object, ...args]);
-        }
-
-        case 'reverse': {
-          // arr.reverse() -> reverseSlice(arr)
-          return new GoCallExpression(new GoIdentifier('reverseSlice'), [object]);
-        }
-
-        case 'indexOf': {
-          // arr.indexOf(val) -> indexOf(arr, val)
-          return new GoCallExpression(new GoIdentifier('indexOf'), [object, ...args]);
-        }
-
-        case 'includes': {
-          // arr.includes(val) -> containsElement(arr, val)
-          return new GoCallExpression(new GoIdentifier('containsElement'), [object, ...args]);
-        }
-
-        // Map.set(key, value) -> m[key] = value
-        case 'set': {
-          if (args.length >= 2)
-            return new GoAssignment(new GoIndexExpression(object, args[0]), '=', args[1]);
-          break;
-        }
-
-        // Map.get(key) -> m[key]
-        case 'get': {
-          if (args.length >= 1)
-            return new GoIndexExpression(object, args[0]);
-          break;
-        }
-
-        // Map.has(key) -> func() bool { _, ok := m[key]; return ok }()
-        case 'has': {
-          if (args.length >= 1)
-            return new GoRawCode(`func() bool { _, ok := ${this._nodeToCode(object)}[${this._nodeToCode(args[0])}]; return ok }()`);
-          break;
-        }
-
-        // Map.delete(key) -> delete(m, key)
-        case 'delete': {
-          if (args.length >= 1)
-            return new GoCallExpression(new GoIdentifier('delete'), [object, args[0]]);
-          break;
-        }
-
-        case 'concat': {
-          // arr.concat(other) -> append(append([]T{}, arr...), other...)
-          if (args.length === 1) {
-            return new GoCallExpression(new GoIdentifier('append'), [object, new GoSpread(args[0])]);
-          }
-          let result = object;
-          for (const arg of args) {
-            result = new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(arg)]);
-          }
-          return result;
-        }
-
-        case 'toString': {
-          this.addImport('fmt');
-          // Check for radix argument: number.toString(radix)
-          let fmtVerb = '%v';
-          if (args.length > 0) {
-            const radixVal = args[0]?.value;
-            if (radixVal === 16) fmtVerb = '%x';
-            else if (radixVal === 2) fmtVerb = '%b';
-            else if (radixVal === 8) fmtVerb = '%o';
-            else if (radixVal === 10) fmtVerb = '%d';
-          }
-          return new GoCallExpression(
-            new GoSelectorExpression(new GoIdentifier('fmt'), 'Sprintf'),
-            [GoLiteral.String(fmtVerb), object]
-          );
-        }
-
-        default:
-          return new GoCallExpression(
-            new GoSelectorExpression(object, this.toPascalCase(methodName)),
-            args
-          );
-      }
-    }
-
-    /**
-     * Transform array expression to Go slice literal
-     * @param {Object} node - ArrayExpression node
-     * @param {GoType} [targetType] - Optional target slice type
-     */
-    transformArrayExpression(node, targetType = null) {
-      // Determine the slice type to use
-      // If targetType is a slice, use it; otherwise infer or use interface{}
-      let sliceType;
-      if (targetType && targetType.isSlice) {
-        sliceType = targetType;
-      } else if (node.elements.length > 0) {
-        // Infer from first non-null element
-        const firstEl = node.elements.find(el => el != null);
-        if (firstEl) {
-          // Check for known helper class constructors: new KeySize(...), new LinkItem(...), etc.
-          const HELPER_CLASS_NAMES = new Set(['KeySize', 'LinkItem', 'Vulnerability', 'TestCase']);
-          const calleeName = firstEl.type === 'NewExpression'
-            ? (firstEl.callee?.name || firstEl.callee?.property?.name || firstEl.callee?.property)
-            : null;
-          if (calleeName && HELPER_CLASS_NAMES.has(calleeName)) {
-            sliceType = GoType.Slice(new GoType(calleeName));
-          } else {
-            const elemType = this.inferFullExpressionType(firstEl);
-            // For SpreadElement, elemType is already a slice (e.g., []uint8)
-            // We want to use that slice type directly, not wrap it (which would make [][]uint8)
-            if (firstEl.type === 'SpreadElement' && elemType?.isSlice) {
-              sliceType = elemType;
-            } else {
-              sliceType = GoType.Slice(elemType);
-            }
-          }
-        } else {
-          sliceType = GoType.Slice(GoType.Interface());
-        }
-      } else {
-        // Empty array with no target type
-        // Try function return type first (e.g., `let output = []` in method returning []uint8)
-        if (this.currentFunctionReturnType && this.currentFunctionReturnType.isSlice) {
-          sliceType = this.currentFunctionReturnType;
-        } else {
-          sliceType = targetType || GoType.Slice(GoType.Interface());
-        }
-      }
-
-      // Check for int32 overflow: if any element > INT32_MAX, upgrade slice to uint32
-      if (sliceType?.isSlice && sliceType.valueType?.name === 'int32') {
-        const hasOverflow = (node.elements || []).some(el =>
-          el && el.type === 'Literal' && typeof el.value === 'number' && el.value > 2147483647
-        );
-        if (hasOverflow) {
-          sliceType = GoType.Slice(GoType.UInt32());
-        }
-      }
-      // Also check nested int32 arrays: [][]int32 where inner arrays have overflow
-      if (sliceType?.isSlice && sliceType.valueType?.isSlice && sliceType.valueType.valueType?.name === 'int32') {
-        const hasNestedOverflow = (node.elements || []).some(el =>
-          el && el.type === 'ArrayExpression' && (el.elements || []).some(inner =>
-            inner && inner.type === 'Literal' && typeof inner.value === 'number' && inner.value > 2147483647
-          )
-        );
-        if (hasNestedOverflow) {
-          sliceType = GoType.Slice(GoType.Slice(GoType.UInt32()));
-        }
-      }
-
-      // Check if any element is a spread element
-      const hasSpread = node.elements.some(el => el && el.type === 'SpreadElement');
-
-      if (hasSpread) {
-        // Use append() for spread elements: append(append([]T{}, arr1...), arr2...)
-        let result = null;
-        const regularElements = [];
-
-        for (const el of node.elements) {
-          if (!el) continue;
-
-          if (el.type === 'SpreadElement') {
-            // Flush regular elements first
-            if (regularElements.length > 0) {
-              const lit = new GoCompositeLiteral(sliceType, [...regularElements]);
-              result = result
-                ? new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(lit)])
-                : lit;
-              regularElements.length = 0;
-            }
-            // Add spread element
-            const arg = this.transformExpression(el.argument);
-            if (result) {
-              result = new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(arg)]);
-            } else {
-              // First element is a spread, start with empty slice and append
-              const emptySlice = new GoCompositeLiteral(sliceType, []);
-              result = new GoCallExpression(new GoIdentifier('append'), [emptySlice, new GoSpread(arg)]);
-            }
-          } else {
-            const sliceElemType = sliceType?.isSlice ? sliceType.valueType : null;
-            let transformed = this.transformExpression(el, sliceElemType);
-            // Add type conversion for numeric mismatches (e.g., uint32 into []uint8)
-            if (sliceElemType && el) {
-              const actualType = this.inferFullExpressionType(el);
-              if (actualType && sliceElemType.name !== actualType.name &&
-                  sliceElemType.name && actualType.name &&
-                  !actualType.isSlice && !sliceElemType.isSlice) {
-                const numericTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                                      'uint', 'uint8', 'uint16', 'uint32', 'uint64'];
-                if (numericTypes.includes(sliceElemType.name) && numericTypes.includes(actualType.name))
-                  transformed = new GoTypeConversion(sliceElemType, transformed);
-              }
-            }
-            regularElements.push(transformed);
-          }
-        }
-
-        // Flush remaining regular elements
-        if (regularElements.length > 0) {
-          const lit = new GoCompositeLiteral(sliceType, regularElements);
-          result = result
-            ? new GoCallExpression(new GoIdentifier('append'), [result, new GoSpread(lit)])
-            : lit;
-        }
-
-        return result || new GoCompositeLiteral(sliceType, []);
-      }
-
-      // Get element type for proper literal transformation (value vs pointer)
-      const elemType = sliceType.isSlice ? sliceType.valueType : null;
-      const elements = node.elements.map(el => {
-        let transformed = this.transformExpression(el, elemType);
-        // Add type conversion if element type doesn't match slice element type
-        if (elemType && el) {
-          const actualType = this.inferFullExpressionType(el);
-          if (actualType && elemType.name !== actualType.name &&
-              elemType.name && actualType.name &&
-              !actualType.isSlice && !elemType.isSlice) {
-            const numericTypes = ['int', 'int8', 'int16', 'int32', 'int64',
-                                  'uint', 'uint8', 'uint16', 'uint32', 'uint64'];
-            if (numericTypes.includes(elemType.name) && numericTypes.includes(actualType.name)) {
-              transformed = new GoTypeConversion(elemType, transformed);
-            }
-          }
-        }
-        // If target type is KeySize but element is a number literal, wrap in KeySize struct
-        if (elemType?.toString() === 'KeySize' && el.type === 'Literal' && typeof el.value === 'number') {
-          return new GoCompositeLiteral(new GoType('KeySize'), [
-            new GoKeyValue(new GoIdentifier('MinSize'), GoLiteral.Int(el.value)),
-            new GoKeyValue(new GoIdentifier('MaxSize'), GoLiteral.Int(el.value)),
-            new GoKeyValue(new GoIdentifier('Step'), GoLiteral.Int(0))
-          ]);
-        }
-        return transformed;
+        stmts.push(...this.functionBody(fn));
+        return G.Func(name, receiver, goParams, ret.type === 'void' ? [] : [{ type: this.goType(ret.type) }], G.Block(stmts));
       });
-      return new GoCompositeLiteral(sliceType, elements);
     }
 
-    transformObjectExpression(node, targetType = null) {
-      // Known framework struct types and their field mappings (JS property name -> Go field name)
-      const KNOWN_STRUCT_FIELDS = {
-        'TestCase': { text: 'Text', uri: 'URI', input: 'Input', expected: 'Expected', key: 'Key', iv: 'IV', nonce: 'Nonce', outputSize: 'OutputSize', tag: 'Tag', aad: 'AAD', salt: 'Salt', password: 'Password', info: 'Info', output: 'Output', plaintext: 'Plaintext', ciphertext: 'Ciphertext', hash: 'Hash', mac: 'MAC', signature: 'Signature', blockSize: 'BlockSize', keySize: 'KeySize', rounds: 'Rounds', mode: 'Mode', padding: 'Padding', associatedData: 'AssociatedData', publicKey: 'PublicKey', privateKey: 'PrivateKey', seed: 'Seed', message: 'Message', digest: 'Digest', n: 'N', r: 'R', p: 'P', m: 'M', d: 'D', w: 'W', a: 'A', rows: 'Rows', cols: 'Cols', columns: 'Columns', alphabet: 'Alphabet', config: 'Config', params: 'Params', version: 'Version', variant: 'Variant', level: 'Level', hashAlgorithm: 'HashAlgorithm', counter: 'Counter', digits: 'Digits', shift: 'Shift', macSize: 'MacSize', tweak: 'Tweak', parityBits: 'ParityBits', repetitions: 'Repetitions', roundTrip: 'RoundTrip', sCost: 'SCost', tCost: 'TCost', label: 'Label', outputLength: 'OutputLength', direction: 'Direction', timestamp: 'Timestamp', timestep: 'Timestep', keyLength: 'KeyLength', padType: 'PadType', hashFunction: 'HashFunction', iterations: 'Iterations', innerType: 'InnerType', outerType: 'OuterType', extended: 'Extended', shortened: 'Shortened', timeSteps: 'TimeSteps', threshold: 'Threshold', totalShares: 'TotalShares', testReconstruction: 'TestReconstruction', inverse: 'Inverse', language: 'Language', effectiveBits: 'EffectiveBits', pad: 'Pad', stepSize: 'StepSize', context: 'Context', counterBits: 'CounterBits', repetitionCount: 'RepetitionCount', cipher: 'Cipher', cipherName: 'CipherName', tagSize: 'TagSize', tagLength: 'TagLength', multiplier: 'Multiplier', modulo: 'Modulo', polynomial: 'Polynomial', stateSize: 'StateSize', cost: 'Cost', passes: 'Passes', secret: 'Secret', secretKey: 'SecretKey', curve: 'Curve', radix: 'Radix', ad: 'AD', customization: 'Customization', operationMode: 'OperationMode', endian: 'Endian', skip: 'Skip', count: 'Count', reference: 'Reference', key2: 'Key2', iv1: 'IV1', iv2: 'IV2', q: 'Q', g: 'G', c: 'C', tweakKey: 'TweakKey', ukm: 'UKM', kek: 'KEK', hashBits: 'HashBits', outputLengthBits: 'OutputLengthBits', blockSizeBits: 'BlockSizeBits', burstLength: 'BurstLength', warmup: 'Warmup', increment: 'Increment', luxuryLevel: 'LuxuryLevel', otherPublicKey: 'OtherPublicKey', forkOutput: 'ForkOutput', sharing: 'Sharing', weight: 'Weight', positions: 'Positions', order: 'Order', bits: 'Bits', combinationMode: 'CombinationMode', length: 'Length', sequence: 'Sequence', values: 'Values', outputs: 'Outputs', isDeterministic: 'IsDeterministic', isInverse: 'IsInverse' },
-        'Vulnerability': { type: 'Name', name: 'Name', text: 'Description', description: 'Description', mitigation: 'Mitigation', uri: 'URI', url: 'URI', severity: 'Severity' },
-        'LinkItem': { text: 'Text', uri: 'URL', url: 'URL' },
-        'KeySize': { min: 'MinSize', minSize: 'MinSize', max: 'MaxSize', maxSize: 'MaxSize', step: 'Step', stepSize: 'Step' },
+    containsParentCall(body) {
+      let found = false;
+      Model.walk(body, n => {
+        if (n.type === 'FunctionExpression' || n.type === 'ArrowFunction' || n.type === 'ArrowFunctionExpression') return false;
+        if (n.type === 'ParentConstructorCall') found = true;
+      });
+      return found;
+    }
+
+    /** The statements of a function body, ending in a return when it has a result. */
+    functionBody(fn) {
+      let stmts;
+      if (fn.body && fn.body.type === 'BlockStatement') {
+        this.hoistVars(fn.body);
+        stmts = this.stmts(fn.body.body);
+      } else if (fn.body) {
+        const v = this.expr(fn.body);
+        stmts = this.flushPre();
+        if (this.fn.returnType === 'void') stmts.push(this.exprStmt(v));
+        else stmts.push(G.Return(this.coerce(v, this.fn.returnType)));
+      } else {
+        stmts = [];
+      }
+      if (this.fn.returnType !== 'void' && !this.terminates(stmts)) stmts.push(G.Return(this.zero(this.fn.returnType)));
+      return stmts;
+    }
+
+    /** Whether Go sees a statement list as terminating (so no return needs adding). */
+    terminates(stmts) {
+      const last = stmts[stmts.length - 1];
+      if (!last) return false;
+      if (last.kind === 'Return') return true;
+      if (last.kind === 'ExprStmt' && last.expr.kind === 'Call' && last.expr.fn.kind === 'Ident' && last.expr.fn.name === 'panic') return true;
+      if (last.kind === 'Block') return this.terminates(last.stmts);
+      if (last.kind === 'If') return !!last.otherwise && this.terminates(last.then.stmts)
+        && (last.otherwise.kind === 'If' ? this.terminates([last.otherwise]) : this.terminates(last.otherwise.stmts || [last.otherwise]));
+      if (last.kind === 'For' && !last.cond && !this.hasBreak(last.body)) return true;
+      return false;
+    }
+
+    hasBreak(block) {
+      let found = false;
+      const visit = s => {
+        if (!s || found) return;
+        if (s.kind === 'Break') { found = true; return; }
+        if (s.kind === 'For' || s.kind === 'ForRange' || s.kind === 'Switch') return; // their own breaks
+        for (const k of ['stmts', 'then', 'otherwise', 'body', 'stmt']) {
+          const v = s[k];
+          if (Array.isArray(v)) v.forEach(visit); else if (v && typeof v === 'object') visit(v);
+        }
       };
+      visit(block);
+      return found;
+    }
 
-      const targetName = targetType?.name || targetType?.toString() || '';
-      const structFields = KNOWN_STRUCT_FIELDS[targetName];
-
-      if (structFields) {
-        // Emit as typed struct literal: TestCase{Text: "...", Input: []byte{...}}
-        const kvPairs = [];
-        for (const prop of node.properties) {
-          if (prop.type === 'SpreadElement' || !prop.key) continue;
-          // Handle both IL ObjectLiteral (prop.key is string) and ES-tree ObjectExpression (prop.key.name)
-          const jsKey = typeof prop.key === 'string' ? prop.key : (prop.key.name || prop.key.value || '');
-          const goFieldName = structFields[jsKey] || this.toPascalCase(jsKey);
-          const value = this.transformExpression(prop.value);
-          kvPairs.push(new GoKeyValue(new GoIdentifier(goFieldName), value));
+    /** JavaScript `var` declarations are function scoped: they are declared at the top. */
+    hoistVars(body) {
+      const hoisted = [];
+      Model.walk(body, (n) => {
+        if (n.type === 'FunctionExpression' || n.type === 'FunctionDeclaration' || n.type === 'ArrowFunction' || n.type === 'ArrowFunctionExpression' || n.type === 'ClassDeclaration') return false;
+        if (n.type === 'VariableDeclaration' && n.kind === 'var') {
+          for (const d of n.declarations) if (d.id && d.id.type === 'Identifier') hoisted.push(d);
+          n._hoisted = true;
         }
-        return new GoCompositeLiteral(new GoType(targetName), kvPairs);
+      });
+      if (!hoisted.length) return;
+      this.fn.hoisted = this.fn.hoisted || [];
+      const seen = new Set();
+      for (const d of hoisted) {
+        if (seen.has(d.id.name)) continue;
+        seen.add(d.id.name);
+        const t = this.typeOfNullable(this.declaratorType(d) || 'any', d.nullable || d.id.nullable);
+        const b = this.declareLocal(d.id.name, t);
+        this.fn.hoisted.push(G.VarDecl(b.go, this.goType(t), null), G.Assign(G.Ident('_'), '=', G.Ident(b.go)));
       }
-
-      // Default: convert to map[string]interface{}
-      const kvPairs = [];
-      for (const prop of node.properties) {
-        if (prop.type === 'SpreadElement' || !prop.key) continue;
-        const key = typeof prop.key === 'string' ? prop.key : (prop.key.name || prop.key.value || 'unknown');
-        const value = this.transformExpression(prop.value);
-        kvPairs.push(new GoKeyValue(GoLiteral.String(key), value));
-      }
-
-      return new GoCompositeLiteral(
-        GoType.Map(GoType.String(), GoType.Interface()),
-        kvPairs
-      );
     }
 
-    transformConditionalExpression(node, targetType = null) {
-      // Go doesn't have ternary operator - use an if expression
-      // For now, create inline function
-      let condition = this.transformExpression(node.test);
-      const consequent = this.transformExpression(node.consequent);
-      const alternate = this.transformExpression(node.alternate);
-
-      // Go requires boolean conditions - use shared boolean conversion logic
-      condition = this._ensureBooleanCondition(node.test, condition);
-
-      // func() T { if cond { return a }; return b }()
-      const funcBody = new GoBlock();
-      const ifStmt = new GoIf(condition, new GoBlock(), new GoBlock());
-      ifStmt.thenBranch.statements.push(new GoReturn([consequent]));
-      funcBody.statements.push(ifStmt);
-      funcBody.statements.push(new GoReturn([alternate]));
-
-      // Infer return type: prefer targetType from context, then infer from branches
-      let returnType = targetType;
-      if (!returnType || returnType.toString() === 'interface{}') {
-        const conseqType = this.inferFullExpressionType(node.consequent);
-        const altType = this.inferFullExpressionType(node.alternate);
-        returnType = conseqType;
-        if (!returnType || returnType.toString() === 'interface{}')
-          returnType = altType;
+    /** The IL type of a variable declarator (a || b of two numbers is that number type). */
+    declaratorType(d) {
+      if (d.declaredType) return canonicalType(d.declaredType);
+      let t = canonicalType(d.resultType || d.id.resultType || (d.init && d.init.resultType));
+      const init = d.init;
+      if (t === 'boolean' && init && init.type === 'LogicalExpression' && init.operator !== '??') {
+        const a = canonicalType(init.left.resultType);
+        const b = canonicalType(init.right.resultType);
+        if (a && a === b && a !== 'boolean' && a !== 'any') t = a;
       }
-      if (!returnType || returnType.toString() === 'interface{}') {
-        returnType = GoType.Interface();
-      }
-
-      // Fix negative literals for unsigned return types (e.g., -1 can't be uint32)
-      const retStr = returnType?.toString() || '';
-      const _isUnsigned = retStr === 'uint32' || retStr === 'uint16' || retStr === 'uint8' || retStr === 'uint64';
-      if (_isUnsigned) {
-        const _allStmts = [...(ifStmt.thenBranch?.statements || []), ...(funcBody.statements || [])];
-        for (const stmt of _allStmts) {
-          if (stmt.nodeType !== 'Return') continue;
-          const retVals = stmt.results || stmt.values;
-          if (!retVals?.length) continue;
-          const val = retVals[0];
-          // Check for GoLiteral with negative value
-          if (val.nodeType === 'Literal' && typeof val.value === 'number' && val.value < 0) {
-            retVals[0] = new GoRawCode(`^${retStr}(${-val.value - 1})`);
-          }
-          // Check for GoUnaryExpression('-', GoLiteral(n))
-          else if (val.nodeType === 'UnaryExpression' && val.operator === '-' &&
-                   val.operand?.nodeType === 'Literal' && typeof val.operand.value === 'number' &&
-                   val.operand.value > 0) {
-            retVals[0] = val.operand.value === 1
-              ? new GoRawCode(`^${retStr}(0)`)
-              : new GoRawCode(`^${retStr}(${val.operand.value - 1})`);
-          }
-        }
-      }
-
-      const funcLit = new GoFuncLit([], [new GoParameter('', returnType)], funcBody);
-      return new GoCallExpression(funcLit, []);
+      return t;
     }
 
-    /**
-     * Transform NewExpression to Go composite literal
-     * @param {Object} node - NewExpression AST node
-     * @param {GoType} [targetType] - Optional target type hint
-     */
-    transformNewExpression(node, targetType = null) {
-      // new Type() -> &Type{} or Type{} or make(...)
-      let typeName = node.callee.name;
+    // ======================================================================
+    // SCOPES
+    // ======================================================================
 
-      // Handle AlgorithmFramework.ClassName pattern
-      if (!typeName && node.callee.type === 'MemberExpression') {
-        if (node.callee.object?.name === 'AlgorithmFramework') {
-          typeName = node.callee.property?.name || node.callee.property;
-        } else {
-          // Other member expression - use property name
-          typeName = node.callee.property?.name || node.callee.property;
-        }
-      }
-
-      // Map TypedArrays to Go slices
-      const typedArrayMap = {
-        'Uint8Array': GoType.UInt8(),
-        'Uint16Array': GoType.UInt16(),
-        'Uint32Array': GoType.UInt32(),
-        'Int8Array': GoType.Int8(),
-        'Int16Array': GoType.Int16(),
-        'Int32Array': GoType.Int32(),
-        'Float32Array': GoType.Float32(),
-        'Float64Array': GoType.Float64()
-      };
-
-      if (typedArrayMap[typeName]) {
-        const hasArrayInit = node.arguments.length > 0 &&
-          node.arguments[0].type === 'ArrayExpression';
-
-        if (hasArrayInit) {
-          // new Uint8Array([1, 2, 3]) -> []byte{1, 2, 3}
-          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
-          return new GoCompositeLiteral(GoType.Slice(typedArrayMap[typeName]), elements);
-        }
-
-        // new Uint8Array(n) -> make([]byte, n)
-        const size = node.arguments[0] ? this.transformExpression(node.arguments[0]) : GoLiteral.Int(0);
-        return new GoMake(GoType.Slice(typedArrayMap[typeName]), size);
-      }
-
-      if (typeName === 'Array') {
-        // new Array(size) -> make([]T, size)
-        // Use target type if available, otherwise fall back to []interface{}
-        const size = node.arguments[0] ? this.transformExpression(node.arguments[0]) : GoLiteral.Int(0);
-        if (targetType && targetType.isSlice) {
-          return new GoMake(targetType, size);
-        }
-        return new GoMake(GoType.Slice(GoType.Interface()), size);
-      }
-
-      // Track framework helper class usage
-      const HELPER_CLASSES = ['KeySize', 'LinkItem', 'TestCase', 'Vulnerability', 'TestCategory'];
-      if (HELPER_CLASSES.includes(typeName)) {
-        this.helperClasses.add(typeName);
-      }
-
-      // Handle helper class constructor arguments with named fields
-      // new KeySize(16, 32, 8) -> KeySize{MinSize: 16, MaxSize: 32, Step: 8}
-      // Note: TestCase constructor is (input, expected, text, uri) per AlgorithmFramework.js
-      const HELPER_FIELD_MAPS = {
-        'KeySize': ['MinSize', 'MaxSize', 'Step'],
-        'LinkItem': ['Text', 'URL'],
-        'TestCase': ['Input', 'Expected', 'Text', 'URI', 'Key', 'IV'],
-        'Vulnerability': ['Name', 'Description', 'Mitigation'],
-        'TestCategory': ['Name', 'Description']
-      };
-
-      if (HELPER_CLASSES.includes(typeName) && node.arguments && node.arguments.length > 0) {
-        const fieldNames = HELPER_FIELD_MAPS[typeName] || [];
-        const keyValues = [];
-
-        // Define expected field types for helper classes
-        const HELPER_FIELD_TYPES = {
-          'TestCase': [GoType.Slice(GoType.Byte()), GoType.Slice(GoType.Byte()), GoType.String(), GoType.String(), GoType.Slice(GoType.Byte()), GoType.Slice(GoType.Byte())],
-          'LinkItem': [GoType.String(), GoType.String()],
-          'KeySize': [GoType.Int(), GoType.Int(), GoType.Int()],
-          'Vulnerability': [GoType.String(), GoType.String(), GoType.String()],
-          'TestCategory': [GoType.String(), GoType.String()]
-        };
-        const fieldTypes = HELPER_FIELD_TYPES[typeName] || [];
-
-        for (let i = 0; i < node.arguments.length && i < fieldNames.length; ++i) {
-          const key = new GoIdentifier(fieldNames[i]);
-          const fieldTargetType = fieldTypes[i] || null;
-          const value = this.transformExpression(node.arguments[i], fieldTargetType);
-          keyValues.push(new GoKeyValue(key, value));
-        }
-        // Use targetType if it's a known helper struct and different from typeName
-        // This handles cases like new LinkItem(...) in a []Vulnerability array
-        const KNOWN_STRUCTS = new Set(['KeySize', 'LinkItem', 'TestCase', 'Vulnerability', 'TestCategory']);
-        const targetName = targetType?.name || targetType?.toString() || '';
-        const effectiveType = (KNOWN_STRUCTS.has(targetName) && targetName !== typeName) ? targetName : typeName;
-        return new GoCompositeLiteral(new GoType(effectiveType), keyValues);
-      }
-
-      // If there are constructor arguments, call the constructor function
-      // new TEAInstance(this, isInverse) -> NewTEAInstance(this, isInverse)
-      if (node.arguments && node.arguments.length > 0 && !HELPER_CLASSES.includes(typeName)) {
-        const constructorName = `New${typeName}`;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-        return new GoCallExpression(new GoIdentifier(constructorName), args);
-      }
-
-      // Default: create struct literal
-      // Check if target type is a value type (not pointer)
-      const structLit = new GoCompositeLiteral(new GoType(typeName), []);
-
-      // If target type is a non-pointer type, return value literal
-      // Otherwise, return pointer literal
-      if (targetType && !targetType.isPointer) {
-        return structLit;
-      }
-
-      return new GoUnaryExpression('&', structLit);
+    declareLocal(name, type, isParam = false) {
+      const scope = this.fn.scopes[this.fn.scopes.length - 1];
+      let go = this.ident(name);
+      const binding = { name, go, type: canonicalType(type) || 'any', used: isParam };
+      scope.set(name, binding);
+      return binding;
     }
 
-    /**
-     * Transform spread element: ...array -> array...
-     * Go variadic syntax
-     */
-    transformSpreadElement(node) {
-      const argument = this.transformExpression(node.argument);
-      // In Go, variadic expansion is done with "..."
-      // This creates a special node that emitter will handle
-      const spread = new GoUnaryExpression('...', argument);
-      spread.isPostfix = true; // The ... comes after the argument in Go
-      return spread;
-    }
-
-    /**
-     * Transform super expression
-     * Go doesn't have inheritance, but we can use embedded structs
-     */
-    transformSuper(node) {
-      // If we're in a struct with a base class, access the embedded struct
-      if (this.currentStruct && this.currentStruct.baseClass) {
-        return new GoSelectorExpression(
-          new GoIdentifier(this.receiverName),
-          this.toPascalCase(this.currentStruct.baseClass)
-        );
+    lookup(name) {
+      for (let i = this.fn.scopes.length - 1; i >= 0; --i) {
+        const b = this.fn.scopes[i].get(name);
+        if (b) return b;
       }
-      // Fallback - just use receiver
-      return new GoIdentifier(this.receiverName);
-    }
-
-    /**
-     * Transform template literal: `Hello ${name}!` -> fmt.Sprintf("Hello %v!", name)
-     */
-    transformTemplateLiteral(node) {
-      this.addImport('fmt');
-
-      let formatStr = '';
-      const args = [];
-
-      for (let i = 0; i < node.quasis.length; ++i) {
-        formatStr += node.quasis[i].value.raw.replace(/%/g, '%%'); // Escape %
-        if (i < node.expressions.length) {
-          formatStr += '%v';
-          args.push(this.transformExpression(node.expressions[i]));
-        }
-      }
-
-      return new GoCallExpression(
-        new GoSelectorExpression(new GoIdentifier('fmt'), 'Sprintf'),
-        [GoLiteral.String(formatStr), ...args]
-      );
-    }
-
-    // ========================[ UTILITIES ]========================
-
-    toPascalCase(str) {
-      if (!str) return str;
-      if (typeof str !== 'string') return String(str);
-      // Remove leading underscore (JavaScript private field convention)
-      // _key -> Key, _value -> Value
-      if (str.startsWith('_'))
-        str = str.slice(1);
-
-      // Go convention: well-known acronyms should be all-caps when they are the entire name
-      const lower = str.toLowerCase();
-      const GO_ACRONYMS = ['id', 'url', 'uri', 'ip', 'tcp', 'udp', 'http', 'https', 'html', 'json', 'xml', 'api', 'sql', 'css', 'dns', 'tls', 'ssl', 'ssh', 'rpc', 'uuid'];
-      if (GO_ACRONYMS.includes(lower))
-        return str.toUpperCase();
-
-      // Go convention: acronym suffixes should be all-caps (e.g., userID, baseURL)
-      // Only apply when the acronym starts at a camelCase boundary (uppercase letter)
-      // to avoid false matches like "skip" → "SkIP" (ip is not an acronym here)
-      for (const acr of ['URL', 'URI', 'ID', 'IP']) {
-        const acrLen = acr.length;
-        if (lower.endsWith(acr.toLowerCase()) && str.length > acrLen) {
-          const acrStart = str.length - acrLen;
-          if (str[acrStart] === str[acrStart].toUpperCase() && str[acrStart] !== str[acrStart].toLowerCase())
-            return str.charAt(0).toUpperCase() + str.slice(1, acrStart) + acr;
-        }
-      }
-
-      return str.charAt(0).toUpperCase() + str.slice(1);
-    }
-
-    toLowerFirst(str) {
-      if (!str) return str;
-      return str.charAt(0).toLowerCase() + str.slice(1);
-    }
-
-    /**
-     * Rename local variables that would shadow Go builtins.
-     * e.g., `len` → `length`, `cap` → `capacity`, `new` → `newVal`
-     */
-    sanitizeVarName(name) {
-      // Only rename builtin FUNCTIONS that would cause "cannot call non-function" errors.
-      // Go type names (byte, string, int, bool, etc.) can be shadowed by variables safely.
-      const GO_BUILTIN_RENAMES = {
-        'len': 'length', 'cap': 'capacity', 'copy': 'copyVal',
-        'make': 'makeVal', 'new': 'newVal', 'append': 'appendVal',
-        'delete': 'deleteVal', 'close': 'closeVal', 'panic': 'panicVal',
-        'recover': 'recoverVal', 'print': 'printVal', 'println': 'printlnVal',
-        'error': 'err',
-      };
-      return GO_BUILTIN_RENAMES[name] || name;
-    }
-
-    /**
-     * Get a safe receiver name for a struct that won't shadow common loop variables.
-     * Standard Go convention: first letter lowercase. But if that's i, j, k, n, x, y, v
-     * (common loop/temp vars), use more letters to avoid shadowing.
-     */
-    getReceiverName(structName) {
-      const firstChar = this.toLowerFirst(structName)[0];
-      const COMMON_VARS = ['i', 'j', 'k', 'n', 'x', 'y', 'v'];
-      if (COMMON_VARS.includes(firstChar) && structName.length > 1) {
-        // Use first two lowercase letters
-        return this.toLowerFirst(structName).substring(0, 2);
-      }
-      return firstChar;
-    }
-
-    /**
-     * Get the return value from an IIFE if it has one
-     */
-    getIIFEReturnValue(callNode) {
-      const func = callNode.callee;
-      if (!func.body || func.body.type !== 'BlockStatement') {
-        // Arrow function with expression body - the body IS the return value
-        if (func.body) return func.body;
-        return null;
-      }
-
-      // Look for a return statement at the end of the function body
-      const body = func.body.body;
-      if (!body || body.length === 0) return null;
-
-      const lastStmt = body[body.length - 1];
-      if (lastStmt.type === 'ReturnStatement' && lastStmt.argument)
-        return lastStmt.argument;
-
+      if (this.fn.outer) return this.fn.outer(name);
       return null;
     }
+
+    pushScope() { this.fn.scopes.push(new Map()); }
+    popScope() { return this.fn.scopes.pop(); }
+
+    // ======================================================================
+    // TOP LEVEL
+    // ======================================================================
+
+    emitTopFunction(item) {
+      const node = item.node;
+      this.decls.push(this.emitFunctionDecl(this.topName(item.name), null, node, node.jsDoc, null));
+    }
+
+    emitTopVariable(item) {
+      const d = item.node;
+      const v = this.model.variables.get(item.name);
+      const t = this.typeOfNullable(v.type, v.nullable);
+      const goName = this.topName(item.name);
+      // A framework variable (its enums) is set before any init() runs, so a
+      // bundled dependency's module code finds it set
+      if (item.origin === 'framework' && d.init) {
+        this.withFunction({ returnType: 'void', cls: null }, () => {
+          const val = this.expr(d.init);
+          if (this.fn.pre.length) throw new Error('a framework variable initializer with statements');
+          this.decls.push(G.VarDecl(goName, this.goType(t), this.coerce(val, t)));
+        });
+        return;
+      }
+      this.decls.push(G.VarDecl(goName, this.goType(t), null));
+      if (d.init) {
+        this.withFunction({ returnType: 'void', cls: null }, () => {
+          const val = this.expr(d.init);
+          this.initStmts.push(...this.flushPre(), G.Assign(G.Ident(goName), '=', this.coerce(val, t)));
+        });
+      }
+    }
+
+    emitTopStatement(node) {
+      this.withFunction({ returnType: 'void', cls: null }, () => {
+        const out = this.stmt(node);
+        if (out.length) this.initStmts.push(out.length === 1 && out[0].kind !== 'VarDecl' ? out[0] : G.Block(out));
+      });
+    }
+
+    // ======================================================================
+    // STATEMENTS
+    // ======================================================================
+
+    /** Pending statements an expression needs before it (hoisted temporaries). */
+    flushPre() {
+      const pre = this.fn.pre;
+      this.fn.pre = [];
+      return pre;
+    }
+
+    stmts(list) {
+      const out = [];
+      const pending = [];
+      this.pushScope();
+      if (this.fn.hoisted && this.fn.hoisted.length) { out.push(...this.fn.hoisted); this.fn.hoisted = null; }
+      for (const s of list || []) {
+        const before = out.length;
+        out.push(...this.stmt(s));
+        if (s && s.type === 'VariableDeclaration' && !s._hoisted) pending.push({ at: out.length, decls: s.declarations });
+        void before;
+      }
+      const scope = this.popScope();
+      // Locals nothing reads still have to be "used" for Go
+      const inserts = [];
+      for (const b of scope.values()) {
+        if (b.used || b.isParam) continue;
+        const entry = pending.find(p => p.decls.some(d => d.id && d.id.name === b.name));
+        if (entry) inserts.push({ at: entry.at, stmt: G.Assign(G.Ident('_'), '=', G.Ident(b.go)) });
+      }
+      inserts.sort((a, b) => b.at - a.at);
+      for (const ins of inserts) out.splice(ins.at, 0, ins.stmt);
+      return out;
+    }
+
+    stmt(node) {
+      if (!node) return [];
+      switch (node.type) {
+        case 'BlockStatement': return [G.Block(this.stmts(node.body))];
+        case 'EmptyStatement': return [];
+        case 'ExpressionStatement': return this.expressionStatement(node.expression);
+        case 'VariableDeclaration': return this.variableDeclaration(node);
+        case 'ReturnStatement': return this.returnStatement(node);
+        case 'IfStatement': return this.ifStatement(node);
+        case 'ForStatement': return this.forStatement(node);
+        case 'WhileStatement': return this.whileStatement(node);
+        case 'DoWhileStatement': return this.doWhileStatement(node);
+        case 'ForOfStatement': return this.forOfStatement(node);
+        case 'ForInStatement': return this.forInStatement(node);
+        case 'BreakStatement': return [G.Break(node.label ? this.labelName(node.label) : null)];
+        case 'ContinueStatement': return [G.Continue(node.label ? this.labelName(node.label) : null)];
+        case 'ThrowStatement': return this.throwStatement(node);
+        case 'TryStatement': return this.tryStatement(node);
+        case 'SwitchStatement': return this.switchStatement(node);
+        case 'LabeledStatement': return this.labeledStatement(node);
+        case 'FunctionDeclaration': return this.localFunction(node);
+        case 'ClassDeclaration': throw new Error('a class declared inside a function is not supported');
+        case 'DebugOutput': return this.expressionStatement(node);
+        default:
+          return this.expressionStatement(node);
+      }
+    }
+
+    labelName(label) { return 'L_' + (label.name || label); }
+
+    expressionStatement(e) {
+      if (!e) return [];
+      switch (e.type) {
+        case 'AssignmentExpression': return this.assignment(e, false);
+        case 'UpdateExpression': return this.update(e, false);
+        case 'UnaryExpression':
+          if (e.operator === '++' || e.operator === '--') return this.update(e, false);
+          break;
+        case 'SequenceExpression': return [].concat(...e.expressions.map(x => this.expressionStatement(x)));
+        case 'ParentConstructorCall': return this.parentConstructorCall(e);
+        case 'ArrayAppend': {
+          // push as a statement: only the append
+          this.xArrayAppend(e);
+          return this.flushPre();
+        }
+        case 'LogicalExpression': {
+          // a && f() as a statement
+          const cond = this.condition(e.left);
+          const pre = this.flushPre();
+          const body = this.withBlock(() => this.expressionStatement(e.right));
+          return [...pre, G.If(e.operator === '&&' ? cond : (e.operator === '||' ? G.Unary('!', cond) : G.Call(G.Ident('jsIsNull'), [this.coerce(this.expr(e.left), 'any')])), G.Block(body))];
+        }
+        case 'ConditionalExpression': {
+          const cond = this.condition(e.test);
+          const pre = this.flushPre();
+          return [...pre, G.If(cond, G.Block(this.withBlock(() => this.expressionStatement(e.consequent))), G.Block(this.withBlock(() => this.expressionStatement(e.alternate))))];
+        }
+      }
+      const v = this.expr(e);
+      return [...this.flushPre(), this.exprStmt(v)];
+    }
+
+    /** A value as a statement: calls stay, anything else is assigned to _. */
+    exprStmt(v) {
+      if (v.e.kind === 'Call' && !(v.isConst)) return G.ExprStmt(v.e);
+      if (v.t === 'void') return G.ExprStmt(v.e);
+      return G.Assign(G.Ident('_'), '=', v.e);
+    }
+
+    withBlock(f) {
+      this.pushScope();
+      try { return f(); } finally { this.popScope(); }
+    }
+
+    variableDeclaration(node) {
+      const out = [];
+      for (const d of node.declarations) {
+        if (!d.id) continue;
+        if (d.id.type !== 'Identifier') { out.push(...this.destructuringDeclaration(d)); continue; }
+        const t = this.typeOfNullable(this.declaratorType(d) || 'any', d.nullable || d.id.nullable || d.declaredNullable);
+        if (node._hoisted) {
+          if (!d.init) continue;
+          const b = this.lookup(d.id.name);
+          const v = this.expr(d.init);
+          out.push(...this.flushPre(), G.Assign(G.Ident(b.go), '=', this.coerce(v, b.type)));
+          continue;
+        }
+        let init = null;
+        if (d.init) {
+          const v = this.expr(d.init);
+          init = this.coerce(v, t);
+          out.push(...this.flushPre());
+        }
+        const b = this.declareLocal(d.id.name, t);
+        out.push(G.VarDecl(b.go, this.goType(t), init));
+      }
+      return out;
+    }
+
+    destructuringDeclaration(d) {
+      const out = [];
+      const src = this.expr(d.init);
+      out.push(...this.flushPre());
+      const tmp = this.tmp('d');
+      out.push(G.VarDecl(tmp, this.goType(src.t), src.e), G.Assign(G.Ident('_'), '=', G.Ident(tmp)));
+      const srcVal = new Val(G.Ident(tmp), src.t);
+      if (d.id.type === 'ArrayPattern') {
+        d.id.elements.forEach((el, i) => {
+          if (!el) return;
+          const target = el.type === 'AssignmentPattern' ? el.left : el;
+          const t = canonicalType(target.resultType) || (isArrayType(src.t) ? elementType(src.t) : 'any');
+          const item = this.indexValue(srcVal, new Val(G.Lit(String(i)), 'int32', i), t);
+          const b = this.declareLocal(target.name, t);
+          out.push(G.VarDecl(b.go, this.goType(t), this.coerce(item, t)));
+        });
+      } else if (d.id.type === 'ObjectPattern') {
+        for (const p of d.id.properties) {
+          const key = propKey(p.key);
+          const target = p.value && p.value.type === 'AssignmentPattern' ? p.value.left : (p.value || p.key);
+          const t = canonicalType(target.resultType || p.resultType) || 'any';
+          const item = this.memberValue(srcVal, key, t);
+          const b = this.declareLocal(target.name, t);
+          out.push(G.VarDecl(b.go, this.goType(t), this.coerce(item, t)));
+        }
+      }
+      return out;
+    }
+
+    returnStatement(node) {
+      if (!node.argument) return this.returnWith(this.fn.returnType !== 'void' ? this.zero(this.fn.returnType) : null);
+      const v = this.expr(node.argument);
+      const pre = this.flushPre();
+      if (this.fn.returnType === 'void') return [...pre, this.exprStmt(v), ...this.returnWith(null)];
+      return [...pre, ...this.returnWith(this.coerce(v, this.fn.returnType))];
+    }
+
+    /**
+     * Return from the JavaScript function. Inside a try (whose body and catch
+     * run in closures) that sets the closure's named results jsDone/jsRet,
+     * which the enclosing function returns once the closure is done.
+     */
+    returnWith(value) {
+      if (this.fn.inTry && this.fn.inTry.hasReturn) {
+        const lhs = [G.Ident('jsDone')];
+        const rhs = [G.Lit('true')];
+        if (value && this.fn.returnType !== 'void') { lhs.push(G.Ident('jsRet')); rhs.push(value); }
+        return [G.Assign(lhs, '=', rhs), G.Return()];
+      }
+      return [value ? G.Return(value) : G.Return()];
+    }
+
+    condition(test) {
+      const v = this.expr(test);
+      return this.truthy(v);
+    }
+
+    /** Statements of a branch, as a block. */
+    branch(node) {
+      if (!node) return G.Block([]);
+      return G.Block(this.withBlock(() => node.type === 'BlockStatement' ? this.stmts(node.body) : this.stmt(node)));
+    }
+
+    ifStatement(node) {
+      const cond = this.condition(node.test);
+      const pre = this.flushPre();
+      const then = this.branch(node.consequent);
+      let otherwise = null;
+      if (node.alternate) {
+        if (node.alternate.type === 'IfStatement') {
+          const inner = this.ifStatement(node.alternate);
+          otherwise = inner.length === 1 ? inner[0] : G.Block(inner);
+        } else {
+          otherwise = this.branch(node.alternate);
+        }
+      }
+      return [...pre, G.If(cond, then, otherwise)];
+    }
+
+    /** A loop's label (when a LabeledStatement wraps it). */
+    takeLabel() {
+      const l = this.fn.pendingLabel || null;
+      this.fn.pendingLabel = null;
+      return l;
+    }
+
+    forStatement(node) {
+      const label = this.takeLabel();
+      this.pushScope();
+      const out = [];
+      let init = null;
+      if (node.init) {
+        if (node.init.type === 'VariableDeclaration' && !node.init._hoisted && node.init.declarations.every(d => d.id.type === 'Identifier')) {
+          const names = [];
+          const values = [];
+          for (const d of node.init.declarations) {
+            const t = this.typeOfNullable(this.declaratorType(d) || 'any', d.nullable);
+            const v = d.init ? this.coerce(this.expr(d.init), t) : this.zero(t);
+            const b = this.declareLocal(d.id.name, t);
+            b.used = true;
+            names.push(G.Ident(b.go));
+            values.push(this.typedValue(v, t));
+          }
+          const pre = this.flushPre();
+          if (pre.length) { out.push(...pre); }
+          init = G.Assign(names, ':=', values);
+        } else {
+          out.push(...this.stmt(node.init.type === 'VariableDeclaration' ? node.init : { type: 'ExpressionStatement', expression: node.init }));
+        }
+      }
+      let cond = null;
+      if (node.test) {
+        const c = this.condition(node.test);
+        const pre = this.flushPre();
+        cond = pre.length ? this.iife([...pre, G.Return(c)], 'bool') : c;
+      }
+      let post = null;
+      if (node.update) {
+        const ups = this.expressionStatement(node.update);
+        post = ups.length === 1 && (ups[0].kind === 'Assign' && ups[0].op !== ':=' || ups[0].kind === 'IncDec' || ups[0].kind === 'ExprStmt') ? ups[0] : G.ExprStmt(G.Call(G.FuncLit([], [], G.Block(ups)), []));
+      }
+      const body = this.loopBody(node.body);
+      this.popScope();
+      out.push(G.For(init, cond, post, body, label));
+      return out.length === 1 ? out : [G.Block(out)];
+    }
+
+    /** A Go expression with an explicit type (for := declarations). */
+    typedValue(e, t) {
+      const g = this.goType(t);
+      if (e.kind === 'Lit') return G.Conv(g, e);
+      if (e.kind === 'Conv' && e.type === g) return e;
+      return G.Conv(g, e);
+    }
+
+    loopBody(body) {
+      return G.Block(this.withBlock(() => body && body.type === 'BlockStatement' ? this.stmts(body.body) : this.stmt(body)));
+    }
+
+    whileStatement(node) {
+      const label = this.takeLabel();
+      const c = this.condition(node.test);
+      const pre = this.flushPre();
+      const cond = pre.length ? this.iife([...pre, G.Return(c)], 'bool') : c;
+      return [G.For(null, cond, null, this.loopBody(node.body), label)];
+    }
+
+    doWhileStatement(node) {
+      // for first := true; first || cond; first = false { body }: continue re-tests the condition
+      const label = this.takeLabel();
+      const first = this.tmp('first');
+      const body = this.loopBody(node.body);
+      const c = this.condition(node.test);
+      const pre = this.flushPre();
+      const cond = pre.length ? this.iife([...pre, G.Return(c)], 'bool') : c;
+      return [G.For(G.Assign(G.Ident(first), ':=', G.Lit('true')), G.Binary('||', G.Ident(first), cond), G.Assign(G.Ident(first), '=', G.Lit('false')), body, label)];
+    }
+
+    forOfStatement(node) {
+      const label = this.takeLabel();
+      const iter = this.expr(node.right);
+      const pre = this.flushPre();
+      const decl = node.left.type === 'VariableDeclaration' ? node.left.declarations[0].id : node.left;
+      this.pushScope();
+      const it = canonicalType(iter.t) || 'any';
+      let elT = isArrayType(it) ? elementType(it) : (it === 'string' ? 'string' : 'any');
+      const declared = canonicalType(decl.resultType);
+      const b = this.declareLocal(decl.name, declared || elT);
+      const tmpV = this.tmp('v');
+      const body = this.loopBody(node.body);
+      this.popScope();
+      let rangeExpr = iter.e;
+      if (it === 'string') rangeExpr = G.Call(G.Ident('jsStringChars'), [iter.e]);
+      else if (!isArrayType(it)) rangeExpr = G.Call(G.Ident('jsIterValues'), [iter.e]);
+      const assign = G.VarDecl(b.go, this.goType(b.type), this.coerce(new Val(G.Ident(tmpV), it === 'string' ? 'string' : (isArrayType(it) ? elT : 'any')), b.type));
+      body.stmts.unshift(assign, G.Assign(G.Ident('_'), '=', G.Ident(b.go)));
+      return [...pre, G.ForRange('_', tmpV, rangeExpr, body, label)];
+    }
+
+    forInStatement(node) {
+      const label = this.takeLabel();
+      const obj = this.expr(node.right);
+      const pre = this.flushPre();
+      const decl = node.left.type === 'VariableDeclaration' ? node.left.declarations[0].id : node.left;
+      this.pushScope();
+      const b = this.declareLocal(decl.name, 'string');
+      b.used = true;
+      const body = this.loopBody(node.body);
+      this.popScope();
+      body.stmts.unshift(G.Assign(G.Ident('_'), '=', G.Ident(b.go)));
+      return [...pre, G.ForRange('_', b.go, G.Call(G.Ident('jsKeys'), [this.coerce(obj, 'any')]), body, label)];
+    }
+
+    labeledStatement(node) {
+      const name = this.labelName(node.label);
+      const loops = ['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement', 'SwitchStatement'];
+      if (loops.includes(node.body.type)) {
+        this.fn.pendingLabel = name;
+        return this.stmt(node.body);
+      }
+      // A labeled block: break L leaves it - a one-pass loop gives that
+      const body = this.loopBody(node.body);
+      body.stmts.push(G.Break(name));
+      return [G.For(null, null, null, body, name)];
+    }
+
+    throwStatement(node) {
+      const v = this.expr(node.argument);
+      const pre = this.flushPre();
+      return [...pre, G.ExprStmt(G.Call(G.Ident('panic'), [G.Call(G.Ident('jsThrowable'), [this.coerce(v, 'any')])]))];
+    }
+
+    tryStatement(node) {
+      // func() { defer finally; defer recover-catch; try }(), with returns carried out
+      const hasReturn = this.containsReturn(node);
+      const resultType = this.fn.returnType;
+      const saved = { inTry: this.fn.inTry };
+      this.fn.inTry = { hasReturn, resultType };
+      const doneVar = 'jsDone';
+      const valVar = 'jsRet';
+      const tryBody = this.branch(node.block).stmts;
+      let catchStmts = null;
+      if (node.handler) {
+        catchStmts = this.withBlock(() => {
+          const stmts = [];
+          if (node.handler.param) {
+            const b = this.declareLocal(node.handler.param.name, 'any');
+            b.used = true;
+            stmts.push(G.Assign(G.Ident(b.go), ':=', G.Call(G.Ident('jsCaught'), [G.Ident('jsR')])), G.Assign(G.Ident('_'), '=', G.Ident(b.go)));
+          }
+          stmts.push(...this.stmts(node.handler.body.body));
+          return stmts;
+        });
+      }
+      const finallyStmts = node.finalizer ? this.branch(node.finalizer).stmts : null;
+      this.fn.inTry = saved.inTry;
+      const inner = [];
+      if (finallyStmts) inner.push(G.Defer(G.Call(G.FuncLit([], [], G.Block(finallyStmts)), [])));
+      if (catchStmts) {
+        inner.push(G.Defer(G.Call(G.FuncLit([], [], G.Block([
+          G.If(G.Binary('!=', G.Ident('jsR'), G.Lit('nil')), G.Block(catchStmts), null, G.Assign(G.Ident('jsR'), ':=', G.Call(G.Ident('recover'), [])))
+        ])), [])));
+      }
+      inner.push(...tryBody);
+      if (!hasReturn) return [G.ExprStmt(G.Call(G.FuncLit([], [], G.Block(inner)), []))];
+      const results = [{ name: doneVar, type: 'bool' }];
+      if (resultType !== 'void') results.push({ name: valVar, type: this.goType(resultType) });
+      inner.push(G.Return());
+      const call = G.Call(G.FuncLit([], results, G.Block(inner)), []);
+      const d = this.tmp('done');
+      const r = this.tmp('ret');
+      const lhs = resultType !== 'void' ? [G.Ident(d), G.Ident(r)] : [G.Ident(d)];
+      return [G.If(G.Ident(d), G.Block(this.returnWith(resultType !== 'void' ? G.Ident(r) : null)), null, G.Assign(lhs, ':=', call))];
+    }
+
+    containsReturn(node) {
+      let found = false;
+      Model.walk([node.block, node.handler, node.finalizer], n => {
+        if (n.type === 'FunctionExpression' || n.type === 'ArrowFunction' || n.type === 'ArrowFunctionExpression' || n.type === 'FunctionDeclaration') return false;
+        if (n.type === 'ReturnStatement') found = true;
+      });
+      return found;
+    }
+
+    switchStatement(node) {
+      const label = this.takeLabel();
+      const disc = this.expr(node.discriminant);
+      const pre = this.flushPre();
+      const tag = canonicalType(disc.t) || 'any';
+      const cases = [];
+      const n = node.cases.length;
+      node.cases.forEach((c, i) => {
+        const exprs = c.test ? [this.coerce(this.expr(c.test), tag)] : null;
+        const casePre = this.flushPre();
+        if (casePre.length) throw new Error('a switch case with side effects is not supported');
+        let body = this.withBlock(() => this.stmts(c.consequent));
+        // JavaScript falls through a case that does not end in a jump
+        const last = body[body.length - 1];
+        const unwrapped = c.consequent.length === 1 && c.consequent[0].type === 'BlockStatement' ? body[0] && body[0].stmts : null;
+        const lastInner = unwrapped ? unwrapped[unwrapped.length - 1] : null;
+        const ends = x => x && (x.kind === 'Return' || x.kind === 'Continue' || (x.kind === 'Break') ||
+          (x.kind === 'ExprStmt' && x.expr.kind === 'Call' && x.expr.fn.name === 'panic'));
+        if (last && last.kind === 'Break' && !last.label) body = body.slice(0, -1);
+        else if (lastInner && lastInner.kind === 'Break' && !lastInner.label) body[0].stmts = unwrapped.slice(0, -1);
+        else if (!ends(last) && !ends(lastInner) && i < n - 1) body.push(G.Fallthrough());
+        cases.push({ exprs, body });
+      });
+      // A case that only falls through to the next merges its expression into it
+      const merged = [];
+      for (let i = 0; i < cases.length; ++i) {
+        const c = cases[i];
+        if (c.body.length === 1 && c.body[0].kind === 'Fallthrough' && c.exprs && cases[i + 1] && cases[i + 1].exprs) {
+          cases[i + 1].exprs = c.exprs.concat(cases[i + 1].exprs);
+          continue;
+        }
+        merged.push(c);
+      }
+      // Duplicate constant cases are compile errors in a tagged Go switch; a
+      // tagless switch on a temporary compares each case in order instead
+      const texts = [];
+      for (const c of merged) for (const e of c.exprs || []) texts.push(e.kind === 'Lit' ? e.text : null);
+      const tagged = texts.every(t => t !== null) && new Set(texts).size === texts.length;
+      if (tagged) return [...pre, G.Switch(this.coerce(disc, tag), merged, label)];
+      const tmp = this.tmp('sw');
+      for (const c of merged) if (c.exprs) c.exprs = c.exprs.map(e => this.equality('===', new Val(G.Ident(tmp), tag), new Val(e, tag)).e);
+      return [...pre, G.Switch(null, merged, label, G.Assign(G.Ident(tmp), ':=', this.coerce(disc, tag)))];
+    }
+
+    localFunction(node) {
+      const name = node.id.name;
+      const params = Model.functionParams(node, node.jsDoc);
+      const ret = this.signatureReturn(node, node.jsDoc);
+      const b = this.declareLocal(name, 'function');
+      b.used = true;
+      b.fnSig = { params, ret };
+      const fnType = this.funcType(params, ret.type);
+      const lit = this.funcLit(node, node.jsDoc);
+      return [G.VarDecl(b.go, fnType, null), G.Assign(G.Ident(b.go), '=', lit.e), G.Assign(G.Ident('_'), '=', G.Ident(b.go))];
+    }
+
+    funcType(params, retType) {
+      return `func(${params.map(p => this.goTypeNullable(p.type, p.nullable)).join(', ')})${retType === 'void' ? '' : ' ' + this.goType(retType)}`;
+    }
+
+    /** A closure for a nested function or arrow function. */
+    funcLit(node, jsDoc) {
+      const params = Model.functionParams(node, jsDoc);
+      const ret = this.signatureReturn(node, jsDoc);
+      const outer = this.fn;
+      const lookupOuter = name => {
+        for (let i = outer.scopes.length - 1; i >= 0; --i) {
+          const b = outer.scopes[i].get(name);
+          if (b) { b.used = true; return b; }
+        }
+        return outer.outer ? outer.outer(name) : null;
+      };
+      const lit = this.withFunction({ returnType: ret.type, cls: outer.cls, self: outer.self, outer: lookupOuter }, () => {
+        const goParams = params.map(p => ({ name: this.declareLocal(p.name, this.typeOfNullable(p.type, p.nullable), true).go, type: this.goTypeNullable(p.type, p.nullable) }));
+        const body = this.functionBody(node);
+        return G.FuncLit(goParams, ret.type === 'void' ? [] : [{ type: this.goType(ret.type) }], G.Block(body));
+      });
+      const v = new Val(lit, 'function');
+      v.sig = { params, ret };
+      return v;
+    }
+
+    /** func() T { stmts }() */
+    iife(stmts, type) {
+      return G.Call(G.FuncLit([], type && type !== 'void' ? [{ type: this.goType(type) }] : [], G.Block(stmts)), []);
+    }
+
+    // ======================================================================
+    // ASSIGNMENT
+    // ======================================================================
+
+    /**
+     * An assignment as statements (asValue false), or as statements plus the
+     * assigned value (asValue true: returns { stmts, value }).
+     */
+    assignment(node, asValue) {
+      const op = node.operator;
+      const left = node.left;
+      const binOp = op === '=' ? null : op.slice(0, -1);
+      // Logical assignment: a ||= b, a &&= b, a ??= b
+      if (binOp === '||' || binOp === '&&' || binOp === '??') {
+        const target = this.lvalue(left);
+        const cur = target.get();
+        const cond = binOp === '||' ? G.Unary('!', this.truthy(cur)) : binOp === '&&' ? this.truthy(cur) : G.Call(G.Ident('jsIsNull'), [this.coerce(cur, 'any')]);
+        const rhs = this.expr(node.right);
+        const inner = [...this.flushPre(), ...target.set(rhs)];
+        const pre = [...target.pre];
+        const stmts = [...pre, G.If(cond, G.Block(inner))];
+        return asValue ? { stmts, value: target.get() } : stmts;
+      }
+      const target = this.lvalue(left);
+      let value;
+      if (binOp) {
+        const cur = target.get();
+        const rhs = this.expr(node.right);
+        value = this.binaryValues(binOp, cur, rhs, canonicalType(node.resultType) || target.type, node);
+      } else {
+        value = this.expr(node.right);
+      }
+      const pre = [...target.pre, ...this.flushPre()];
+      if (!asValue) return [...pre, ...target.set(value)];
+      // As a value: keep it in a temporary
+      const t = target.type;
+      const tmp = this.tmp('a');
+      const stmts = [...pre, G.Assign(G.Ident(tmp), ':=', this.coerce(value, t)), ...target.set(new Val(G.Ident(tmp), t))];
+      return { stmts, value: new Val(G.Ident(tmp), t) };
+    }
+
+    /**
+     * An assignable place: { type, get() -> Val, set(Val) -> stmts, pre }.
+     * Index and object expressions are evaluated once (into temporaries when they have effects).
+     */
+    lvalue(node) {
+      const pre = [];
+      switch (node.type) {
+        case 'Identifier': {
+          const b = this.lookup(node.name);
+          if (b) {
+            return { type: b.type, pre, get: () => { b.used = true; return new Val(G.Ident(b.go), b.type); }, set: v => [G.Assign(G.Ident(b.go), '=', this.coerce(v, b.type))] };
+          }
+          const top = this.model.variables.get(node.name);
+          if (top) {
+            const t = this.typeOfNullable(top.type, top.nullable);
+            const id = G.Ident(this.topName(node.name));
+            return { type: t, pre, get: () => new Val(id, t), set: v => [G.Assign(id, '=', this.coerce(v, t))] };
+          }
+          throw new Error(`assignment to an unknown variable ${node.name}`);
+        }
+        case 'ThisPropertyAccess':
+          if (!node.computed) return this.memberLvalue(this.thisValue(), node.property, node, pre);
+          return this.indexLvalue(this.thisValue(), node.property, node, pre);
+        case 'MemberExpression': {
+          if (!node.computed) {
+            const key = node.property.name || node.property.value;
+            // Class.staticField
+            if (node.object.type === 'Identifier' && this.model.classes.has(node.object.name) && !this.lookup(node.object.name)) {
+              const info = this.model.classes.get(node.object.name);
+              const sf = this.findStaticField(info, key);
+              if (sf) {
+                const id = G.Ident(this.staticName(sf.owner.name, key));
+                const t = sf.type || 'any';
+                return { type: t, pre, get: () => new Val(id, t), set: v => [G.Assign(id, '=', this.coerce(v, t))] };
+              }
+            }
+            const obj = this.stableExpr(this.expr(node.object), pre);
+            return this.memberLvalue(obj, key, node, pre);
+          }
+          const obj = this.stableExpr(this.expr(node.object), pre);
+          return this.indexLvalue(obj, node.property, node, pre);
+        }
+        case 'ArrayLength': {
+          const arr = this.expr(node.array);
+          pre.push(...this.flushPre());
+          return this.memberLvalue(arr, 'length', { resultType: 'int32' }, pre);
+        }
+        default:
+          throw new Error(`cannot assign to ${node.type}`);
+      }
+    }
+
+    /** An expression that may be evaluated twice: identifiers and this stay, anything else goes to a temporary. */
+    stableExpr(v, pre) {
+      pre.push(...this.flushPre());
+      if (v.e.kind === 'Ident' || v.isConst) return v;
+      if (v.e.kind === 'Selector' && v.e.operand.kind === 'Ident') return v;
+      const tmp = this.tmp('o');
+      pre.push(G.Assign(G.Ident(tmp), ':=', v.e));
+      return new Val(G.Ident(tmp), v.t);
+    }
+
+    findStaticField(info, key) {
+      for (let c = info; c; c = c.base) if (c.staticFields.has(key)) return Object.assign({ owner: c }, c.staticFields.get(key));
+      return null;
+    }
+
+    memberLvalue(obj, key, node, pre) {
+      const ot = canonicalType(obj.t) || 'any';
+      const info = this.isLeafClass(ot) || (obj.isThis && this.fn.cls) ? (obj.isThis ? this.fn.cls : this.model.classOf(ot)) : null;
+      const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (info) {
+        const eff = info.effective;
+        if (eff.fields.has(key)) {
+          const f = eff.fields.get(key);
+          const t = this.typeOfNullable(f.type, f.nullable);
+          const sel = G.Selector(obj.e, this.fieldName(info, key));
+          return { type: t, pre, get: () => new Val(sel, t), set: v => [G.Assign(sel, '=', this.coerce(v, t))], field: true };
+        }
+        if (eff.setters.has(key) || eff.getters.has(key)) {
+          const g = eff.getters.get(key);
+          const s = eff.setters.get(key);
+          const gt = g ? this.signatureReturn(g.fn, g.jsDoc).type : 'any';
+          const sp = s ? (Model.functionParams(s.fn, s.jsDoc)[0] || { type: 'any' }) : null;
+          const st = sp ? this.typeOfNullable(sp.type, sp.nullable) : 'any';
+          return {
+            type: s ? st : gt, pre,
+            get: () => g ? new Val(G.Call(G.Selector(obj.e, this.getterName(key)), []), gt) : new Val(G.Lit('nil'), 'any'),
+            set: v => s ? [G.ExprStmt(G.Call(G.Selector(obj.e, this.setterName(key)), [this.coerce(v, st)]))]
+              : [G.ExprStmt(G.Call(G.Selector(obj.e, 'JsSet'), [G.Lit(this.goString(key)), this.coerce(v, 'any')]))]
+          };
+        }
+      }
+      if (ot === 'Error' || ot === 'TypeError' || ot === 'RangeError') {
+        const field = key === 'message' ? 'Message' : key === 'name' ? 'Name' : null;
+        if (field) {
+          const sel = G.Selector(obj.e, field);
+          return { type: 'string', pre, get: () => new Val(sel, 'string'), set: v => [G.Assign(sel, '=', this.coerce(v, 'string'))] };
+        }
+      }
+      if (isArrayType(ot) && key === 'length') {
+        return {
+          type: 'int32', pre,
+          get: () => new Val(G.Conv('int32', G.Call(G.Ident('len'), [obj.e])), 'int32'),
+          set: v => {
+            const target = this.lvalueExprFor(obj);
+            return [G.Assign(target, '=', G.Call(G.Ident('jsSetLength'), [obj.e, G.Conv('int', this.coerce(v, 'int32'))]))];
+          }
+        };
+      }
+      // Dynamic object
+      const o = this.coerce(obj, 'object');
+      return {
+        type: nodeType, pre,
+        get: () => new Val(G.Call(G.Selector(o, 'JsGet'), [G.Lit(this.goString(key))]), 'any'),
+        set: v => [G.ExprStmt(G.Call(G.Selector(o, 'JsSet'), [G.Lit(this.goString(key)), this.anyOf(v)]))]
+      };
+    }
+
+    /** A value for an any slot, keeping its IL type (constants get an explicit Go type). */
+    anyOf(v) {
+      return this.coerce(v, 'any');
+    }
+
+    lvalueExprFor(obj) {
+      return obj.e;
+    }
+
+    indexLvalue(obj, indexNode, node, pre) {
+      const ot = canonicalType(obj.t) || 'any';
+      const idx = this.stableExpr(this.expr(indexNode), pre);
+      if (isArrayType(ot)) {
+        const el = elementType(ot);
+        const elT = el === 'object' ? 'any' : el;
+        const i = this.coerce(idx, 'goint');
+        const place = G.Index(obj.e, i);
+        return {
+          type: elT, pre,
+          get: () => new Val(G.Index(obj.e, i), elT),
+          set: v => {
+            // An index at the end grows the array, as JavaScript's does
+            const val = this.coerce(v, elT);
+            if (this.isAssignable(obj.e)) return [G.Assign(obj.e, '=', G.Call(this.generic('jsSetAt', this.goType(elT)), [obj.e, i, val]))];
+            return [G.Assign(place, '=', val)];
+          }
+        };
+      }
+      if (ot === 'string') throw new Error('assignment to a string index');
+      const o = this.coerce(obj, 'object');
+      const key = G.Call(G.Ident('jsKey'), [this.coerce(idx, 'any')]);
+      const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      return {
+        type: nodeType, pre,
+        get: () => new Val(G.Call(G.Selector(o, 'JsGet'), [key]), 'any'),
+        set: v => [G.ExprStmt(G.Call(G.Selector(o, 'JsSet'), [key, this.anyOf(v)]))]
+      };
+    }
+
+    isAssignable(e) {
+      return e.kind === 'Ident' || e.kind === 'Selector' || e.kind === 'Index';
+    }
+
+    update(node, asValue) {
+      const target = this.lvalue(node.argument);
+      const t = target.type;
+      const cur = target.get();
+      const one = new Val(G.Lit('1'), 'int32', 1);
+      const next = this.binaryValues(node.operator === '++' ? '+' : '-', cur, one, isNumericType(t) || isBigType(t) ? t : 'float64', node);
+      const pre = [...target.pre, ...this.flushPre()];
+      if (!asValue) {
+        if (target.field !== undefined || cur.e.kind === 'Ident' || cur.e.kind === 'Selector' || cur.e.kind === 'Index') {
+          if (this.numKind(this.goType(t)) && (cur.e.kind === 'Ident' || target.field)) return [...pre, G.IncDec(cur.e, node.operator)];
+        }
+        return [...pre, ...target.set(next)];
+      }
+      const tmp = this.tmp('u');
+      if (node.prefix) {
+        return { stmts: [...pre, ...target.set(next), G.Assign(G.Ident(tmp), ':=', this.coerce(target.get(), t))], value: new Val(G.Ident(tmp), t) };
+      }
+      return { stmts: [...pre, G.Assign(G.Ident(tmp), ':=', this.coerce(cur, t)), ...target.set(this.binaryValues(node.operator === '++' ? '+' : '-', new Val(G.Ident(tmp), t), one, isNumericType(t) || isBigType(t) ? t : 'float64', node))], value: new Val(G.Ident(tmp), t) };
+    }
+
+    parentConstructorCall(node) {
+      const info = this.fn.cls;
+      const owner = this.fn.initOf;
+      if (!info || !owner || !owner.base) return [];
+      const base = owner.base;
+      const ctorOwner = [...base.chain()].reverse().find(c => c.ctor);
+      const params = ctorOwner ? Model.functionParams(ctorOwner.ctor, ctorOwner.ctorDoc) : [];
+      const args = this.callArgs(node.arguments || [], params);
+      const out = [...this.flushPre(), G.ExprStmt(G.Call(G.Selector(G.Ident('this'), this.initName(base)), args))];
+      out.push(...this.fieldInitializers(info, owner));
+      return out;
+    }
+
+    // ======================================================================
+    // EXPRESSIONS
+    // ======================================================================
+
+    thisValue() {
+      const cls = this.fn.cls;
+      if (!cls || !this.fn.self) return new Val(G.Ident('nil'), 'any');
+      const v = new Val(G.Ident('this'), this.isLeafClass(cls.name) ? cls.name : '#this');
+      v.isThis = true;
+      v.thisClass = cls;
+      return v;
+    }
+
+    /**
+     * Transform an IL expression.
+     * @param {Object} node - IL expression
+     * @returns {Val} the Go expression and its IL type
+     */
+    expr(node) {
+      if (!node) return new Val(G.Lit('nil'), 'null', null);
+      const handler = this['x' + node.type];
+      if (handler) return handler.call(this, node);
+      this.warnings.push(`unsupported expression ${node.type}`);
+      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString(node.type))]), canonicalType(node.resultType) || 'any');
+    }
+
+    xLiteral(node) {
+      const t = canonicalType(node.resultType);
+      if (node.regex) {
+        return new Val(G.Call(G.Selector(G.Ident('regexp'), 'MustCompile'), [G.Lit(this.goString(this.goRegex(node.regex)))]), 'regex');
+      }
+      const v = node.value;
+      if (v === null) return new Val(G.Lit('nil'), 'null', null);
+      if (node.bigint !== undefined || typeof v === 'bigint') {
+        const b = BigInt(typeof v === 'bigint' ? v : String(node.bigint || v).replace(/n$/, ''));
+        return new Val(null, isBigType(t) ? 'bigint' : (t === 'uint64' || t === 'int64' ? t : 'bigint'), b);
+      }
+      if (typeof v === 'number') return new Val(null, t && isNumericType(t) ? t : (Number.isInteger(v) ? 'int32' : 'float64'), v);
+      if (typeof v === 'string') return new Val(null, 'string', v);
+      if (typeof v === 'boolean') return new Val(null, 'boolean', v);
+      return new Val(G.Lit('nil'), 'null', null);
+    }
+
+    goRegex(r) {
+      const flags = (r.flags || '').replace(/[gy]/g, '');
+      return (flags ? `(?${flags})` : '') + r.pattern;
+    }
+
+    xIdentifier(node) {
+      const name = node.name;
+      if (name === 'undefined') return new Val(G.Lit('nil'), 'null', null);
+      if (name === 'NaN') return new Val(null, 'float64', NaN);
+      if (name === 'Infinity') return new Val(null, 'float64', Infinity);
+      const b = this.lookup(name);
+      if (b) {
+        b.used = true;
+        const v = new Val(G.Ident(b.go), b.type);
+        if (b.fnSig) v.sig = b.fnSig;
+        return v;
+      }
+      const top = this.model.variables.get(name);
+      if (top) return new Val(G.Ident(this.topName(name)), this.typeOfNullable(top.type, top.nullable));
+      const fn = this.model.functions.get(name);
+      if (fn) {
+        const v = new Val(G.Ident(this.topName(name)), 'function');
+        v.sig = { params: Model.functionParams(fn.node, fn.node.jsDoc), ret: this.signatureReturn(fn.node, fn.node.jsDoc) };
+        return v;
+      }
+      if (this.model.classes.has(name)) {
+        const v = new Val(G.Lit('nil'), 'any');
+        v.classRef = this.model.classes.get(name);
+        return v;
+      }
+      this.warnings.push(`unknown identifier ${name}`);
+      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString('identifier ' + name))]), canonicalType(node.resultType) || 'any');
+    }
+
+    xThisExpression() { return this.thisValue(); }
+
+    xThisPropertyAccess(node) {
+      const self = this.thisValue();
+      if (node.computed) return this.indexValue(self, this.expr(node.property), canonicalType(node.resultType) || 'any');
+      return this.memberValue(self, node.property, this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable));
+    }
+
+    xMemberExpression(node) {
+      const resultType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (!node.computed) {
+        const key = node.property.name || node.property.value;
+        if (node.object.type === 'Identifier' && !this.lookup(node.object.name)) {
+          const special = this.globalMember(node.object.name, key, node);
+          if (special) return special;
+          if (this.model.classes.has(node.object.name) && !this.model.variables.has(node.object.name)) {
+            const info = this.model.classes.get(node.object.name);
+            const sf = this.findStaticField(info, key);
+            if (sf) return new Val(G.Ident(this.staticName(sf.owner.name, key)), sf.type || 'any');
+            for (let c = info; c; c = c.base) {
+              if (c.staticGetters && c.staticGetters.has(key)) {
+                const g = c.staticGetters.get(key);
+                return new Val(G.Call(G.Ident(this.staticName(c.name, 'get_' + key)), []), this.signatureReturn(g.fn, g.jsDoc).type);
+              }
+            }
+          }
+        }
+        const obj = this.expr(node.object);
+        return this.memberValue(obj, key, resultType);
+      }
+      const obj = this.expr(node.object);
+      return this.indexValue(obj, this.expr(node.property), resultType);
+    }
+
+    /** Members of the JavaScript globals (Number.MAX_SAFE_INTEGER, Math.PI, ...). */
+    globalMember(obj, key) {
+      const consts = {
+        'Number.MAX_SAFE_INTEGER': 9007199254740991, 'Number.MIN_SAFE_INTEGER': -9007199254740991,
+        'Number.MAX_VALUE': Number.MAX_VALUE, 'Number.MIN_VALUE': Number.MIN_VALUE, 'Number.EPSILON': Number.EPSILON,
+        'Number.POSITIVE_INFINITY': Infinity, 'Number.NEGATIVE_INFINITY': -Infinity, 'Number.NaN': NaN,
+        'Math.PI': Math.PI, 'Math.E': Math.E, 'Math.LN2': Math.LN2, 'Math.LN10': Math.LN10, 'Math.LOG2E': Math.LOG2E,
+        'Math.LOG10E': Math.LOG10E, 'Math.SQRT2': Math.SQRT2, 'Math.SQRT1_2': Math.SQRT1_2
+      };
+      const k = `${obj}.${key}`;
+      if (k in consts) return new Val(null, 'float64', consts[k]);
+      return null;
+    }
+
+    /** obj.key as a value. */
+    memberValue(obj, key, resultType) {
+      const ot = canonicalType(obj.t) || 'any';
+      if (obj.classRef) {
+        const sf = this.findStaticField(obj.classRef, key);
+        if (sf) return new Val(G.Ident(this.staticName(sf.owner.name, key)), sf.type || 'any');
+        if (key === 'name') return new Val(null, 'string', obj.classRef.name);
+      }
+      if ((ot === 'string' || isArrayType(ot)) && key === 'length')
+        return new Val(G.Conv('int32', G.Call(G.Ident('len'), [obj.e])), 'int32');
+      const pre = [];
+      const lv = this.memberLvalue(obj, key, { resultType }, pre);
+      this.fn.pre.push(...pre);
+      return lv.get();
+    }
+
+    /** obj[index] as a value. */
+    indexValue(obj, idx, resultType) {
+      const ot = canonicalType(obj.t) || 'any';
+      if (isArrayType(ot)) {
+        const el = elementType(ot);
+        return new Val(G.Index(obj.e, this.coerce(idx, 'goint')), el === 'object' ? 'any' : el);
+      }
+      if (ot === 'string') return new Val(G.Call(G.Ident('jsCharAt'), [obj.e, this.coerce(idx, 'goint')]), 'string');
+      if (ot === 'Map') return new Val(G.Call(G.Selector(obj.e, 'MapGet'), [this.coerce(idx, 'any')]), 'any');
+      const o = this.coerce(obj, 'object');
+      return new Val(G.Call(G.Selector(o, 'JsGet'), [G.Call(G.Ident('jsKey'), [this.coerce(idx, 'any')])]), 'any');
+    }
+
+    xArrayLength(node) {
+      const a = this.expr(node.array);
+      const t = canonicalType(a.t) || 'any';
+      if (isArrayType(t) || t === 'string') return new Val(G.Conv('int32', G.Call(G.Ident('len'), [a.e])), 'int32');
+      return new Val(G.Call(G.Ident('jsLength'), [this.coerce(a, 'any')]), 'int32');
+    }
+
+    // ------------------------------------------------------------ operators
+
+    xBinaryExpression(node) {
+      const left = this.expr(node.left);
+      const right = this.expr(node.right);
+      return this.binaryValues(node.operator, left, right, canonicalType(node.resultType), node);
+    }
+
+    /**
+     * A binary operation on two values with the IL result type.
+     * @param {string} op - JavaScript operator
+     * @param {Val} l - left
+     * @param {Val} r - right
+     * @param {string} rt - IL result type
+     */
+    binaryValues(op, l, r, rt, node) {
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      // Constant folding with JavaScript's own semantics
+      if (l.isConst && r.isConst && !(typeof l.c === 'bigint') !== !(typeof r.c === 'bigint') === false) {
+        const folded = this.fold(op, l.c, r.c);
+        if (folded !== undefined) return new Val(null, rt || (typeof folded === 'boolean' ? 'boolean' : typeof folded === 'string' ? 'string' : 'float64'), folded);
+      }
+      switch (op) {
+        case '===': case '==': case '!==': case '!=': return this.equality(op, l, r);
+        case '<': case '<=': case '>': case '>=': return this.compare(op, l, r);
+        case 'in': return new Val(G.Call(G.Ident('jsIn'), [this.coerce(l, 'any'), this.coerce(r, 'any')]), 'boolean');
+        case 'instanceof': return this.instanceOf(l, r);
+      }
+      const big = isBigType(lt) || isBigType(rtp) || isBigType(rt) || (typeof l.c === 'bigint') || (typeof r.c === 'bigint');
+      // String concatenation
+      if (op === '+' && (lt === 'string' || rtp === 'string' || rt === 'string')) {
+        return new Val(G.Binary('+', this.coerce(l, 'string'), this.coerce(r, 'string')), 'string');
+      }
+      const bitwise = ['&', '|', '^', '<<', '>>', '>>>'].includes(op);
+      if (bitwise) return this.bitwise(op, l, r, rt, big);
+      if (op === '**') return this.power(l, r, rt);
+      // Arithmetic
+      if (big && (isBigType(rt) || isBigType(lt) || isBigType(rtp))) {
+        const fn = { '+': 'jsBigAdd', '-': 'jsBigSub', '*': 'jsBigMul', '/': 'jsBigDiv', '%': 'jsBigMod' }[op];
+        const res = new Val(G.Call(G.Ident(fn), [this.coerce(l, 'bigint'), this.coerce(r, 'bigint')]), 'bigint');
+        return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      let t = rt && isNumericType(rt) ? rt : (isNumericType(lt) && isNumericType(rtp) ? this.widen(lt, rtp) : 'float64');
+      if (op === '/') {
+        // JavaScript division is a float division; a 64-bit integer result is a BigInt division
+        if ((t === 'uint64' || t === 'int64') && (big || ((lt === 'uint64' || lt === 'int64') && (rtp === 'uint64' || rtp === 'int64') && !isFloatType(lt) && !isFloatType(rtp)) && this.isBigIntish(node))) {
+          return new Val(G.Binary('/', this.coerce(l, t), this.coerce(r, t)), t);
+        }
+        const q = new Val(G.Binary('/', this.coerce(l, 'float64'), this.coerce(r, 'float64')), 'float64');
+        return isFloatType(t) ? q : new Val(this.coerce(q, t), t);
+      }
+      if (op === '%') {
+        if (isFloatType(t) || isFloatType(lt) || isFloatType(rtp)) {
+          const m = new Val(G.Call(G.Selector(G.Ident('math'), 'Mod'), [this.coerce(l, 'float64'), this.coerce(r, 'float64')]), 'float64');
+          return isFloatType(t) ? m : new Val(this.coerce(m, t), t);
+        }
+        // Integer remainder: computed in the wider operand type (it takes the sign of the dividend)
+        const w = this.widen(lt, rtp);
+        if (!isIntType(w)) {
+          const m = new Val(G.Call(G.Selector(G.Ident('math'), 'Mod'), [this.coerce(l, 'float64'), this.coerce(r, 'float64')]), 'float64');
+          return isFloatType(t) ? m : new Val(this.coerce(m, t), t);
+        }
+        const m = new Val(G.Binary('%', this.coerce(l, w), this.coerce(r, w)), w);
+        return w === t ? m : new Val(this.coerce(m, t), t);
+      }
+      return new Val(G.Binary(op, this.coerce(l, t), this.coerce(r, t)), t);
+    }
+
+    /** Whether a 64-bit division is a BigInt one (its operands are BigInt values). */
+    isBigIntish(node) {
+      const isBig = n => n && (isBigType(n.resultType) || n.type === 'BigIntCast' || n.bigint === true || (n.type === 'Literal' && (n.bigint !== undefined || typeof n.value === 'bigint')));
+      return !!node && (isBig(node.left) || isBig(node.right));
+    }
+
+    /** The type two numbers of different types compute in. */
+    widen(a, b) {
+      if (a === b) return a;
+      if (isFloatType(a) || isFloatType(b) || !isIntType(a) || !isIntType(b)) return 'float64';
+      if (a === 'uint64' || b === 'uint64') return (isSignedInt(a) || isSignedInt(b)) ? 'int64' : 'uint64';
+      return intBits(a) === 64 || intBits(b) === 64 ? 'int64' : (isSignedInt(a) || isSignedInt(b) || intBits(a) === 32 || intBits(b) === 32 ? 'int64' : 'int32');
+    }
+
+    fold(op, a, b) {
+      try {
+        switch (op) {
+          case '+': return a + b;
+          case '-': return a - b;
+          case '*': return a * b;
+          case '/': return typeof a === 'bigint' ? (b === 0n ? undefined : a / b) : a / b;
+          case '%': return typeof a === 'bigint' ? (b === 0n ? undefined : a % b) : a % b;
+          case '**': return a ** b;
+          case '&': return a & b;
+          case '|': return a | b;
+          case '^': return a ^ b;
+          case '<<': return a << b;
+          case '>>': return a >> b;
+          case '>>>': return a >>> b;
+          case '===': case '==': return a === b;
+          case '!==': case '!=': return a !== b;
+          case '<': return a < b;
+          case '<=': return a <= b;
+          case '>': return a > b;
+          case '>=': return a >= b;
+        }
+      } catch (e) { return undefined; }
+      return undefined;
+    }
+
+    /** Bitwise operators: 32-bit for Numbers (ToInt32/ToUint32), full width for BigInt. */
+    bitwise(op, l, r, rt, big) {
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      const wide = t => t === 'uint64' || t === 'int64';
+      const bigOp = big || wide(rt) || isBigType(rt);
+      if (bigOp) {
+        // Both 64-bit: Go's own operators are exact
+        if ((wide(lt) || l.isConst) && (wide(rtp) || r.isConst || op === '<<' || op === '>>') && wide(rt) && !isBigType(lt) && !isBigType(rtp)) {
+          if (op === '<<' || op === '>>') {
+            const shifted = new Val(G.Binary(op === '>>>' ? '>>' : op, this.coerce(l, rt), this.coerce(r, 'uint64')), rt);
+            return shifted;
+          }
+          return new Val(G.Binary(op, this.coerce(l, rt), this.coerce(r, rt)), rt);
+        }
+        const fn = { '&': 'jsBigAnd', '|': 'jsBigOr', '^': 'jsBigXor', '<<': 'jsBigShl', '>>': 'jsBigShr', '>>>': 'jsBigShr' }[op];
+        const args = op === '<<' || op === '>>' || op === '>>>' ? [this.coerce(l, 'bigint'), G.Conv('int', this.coerce(r, 'int64'))] : [this.coerce(l, 'bigint'), this.coerce(r, 'bigint')];
+        const res = new Val(G.Call(G.Ident(fn), args), 'bigint');
+        return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      // Number operators: ToInt32 of both operands
+      let a = this.toInt32Bits(l, op === '>>>' ? 'uint32' : 'int32');
+      if (op === '<<' || op === '>>' || op === '>>>') {
+        // An untyped constant shifted by a variable takes its type from the context: give it its own
+        if (l.isConst) a = G.Conv(op === '>>>' ? 'uint32' : 'int32', a);
+        const count = r.isConst ? G.Lit(String((Number(r.c) >>> 0) & 31)) : G.Binary('&', this.toInt32Bits(r, 'uint32'), G.Lit('31'));
+        const res = new Val(G.Binary(op === '>>>' ? '>>' : op, a, count), op === '>>>' ? 'uint32' : 'int32');
+        return rt && rt !== res.t ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      const res = new Val(G.Binary(op, this.toInt32Bits(l, 'int32'), this.toInt32Bits(r, 'int32')), 'int32');
+      return rt && rt !== 'int32' ? new Val(this.coerce(res, rt), rt) : res;
+    }
+
+    /** A 32-bit operand of a Number bitwise operator (JavaScript's ToInt32/ToUint32). */
+    toInt32Bits(v, as) {
+      const t = canonicalType(v.t) || 'any';
+      if (v.isConst) {
+        const n = typeof v.c === 'bigint' ? Number(BigInt.asIntN(32, v.c)) : (Number(v.c) | 0);
+        return G.Lit(String(as === 'uint32' ? n >>> 0 : n));
+      }
+      if (t === as) return v.e;
+      if (isIntType(t)) return G.Conv(as, v.e);
+      if (isFloatType(t)) return G.Conv(as, G.Call(G.Ident('jsToInt32'), [v.e]));
+      return G.Conv(as, this.coerce(v, 'int32'));
+    }
+
+    power(l, r, rt) {
+      const lt = canonicalType(l.t) || 'any';
+      if (isBigType(lt) || isBigType(rt) || typeof l.c === 'bigint') {
+        const res = new Val(G.Call(G.Ident('jsBigPow'), [this.coerce(l, 'bigint'), this.coerce(r, 'bigint')]), 'bigint');
+        return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      const p = new Val(G.Call(G.Selector(G.Ident('math'), 'Pow'), [this.coerce(l, 'float64'), this.coerce(r, 'float64')]), 'float64');
+      return rt && !isFloatType(rt) && isNumericType(rt) ? new Val(this.coerce(p, rt), rt) : p;
+    }
+
+    equality(op, l, r) {
+      const neg = op === '!==' || op === '!=';
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      const isNullV = v => v.t === 'null' || (v.isConst && v.c === null);
+      let e;
+      if (isNullV(l) || isNullV(r)) {
+        const other = isNullV(l) ? r : l;
+        if (isNullV(other)) e = G.Lit('true');
+        else {
+          const g = this.goType(other.t);
+          if (g === 'any' || g === 'JsObject') e = G.Call(G.Ident('jsIsNull'), [other.e]);
+          else if (g.startsWith('[]') || g.startsWith('*') || g.startsWith('map')) e = G.Binary('==', other.e, G.Lit('nil'));
+          else e = G.Lit('false'); // a value type is never null
+        }
+      } else if (isBigType(lt) || isBigType(rtp)) {
+        e = G.Binary('==', G.Call(G.Ident('jsBigCmp'), [this.coerce(l, 'bigint'), this.coerce(r, 'bigint')]), G.Lit('0'));
+      } else if (isNumericType(lt) && isNumericType(rtp)) {
+        const w = this.widen(lt, rtp);
+        e = G.Binary('==', this.coerce(l, w), this.coerce(r, w));
+      } else if (lt === 'string' && rtp === 'string') {
+        e = G.Binary('==', l.e, r.e);
+      } else if (lt === 'boolean' && rtp === 'boolean') {
+        e = G.Binary('==', l.e, r.e);
+      } else if ((lt === 'string' && r.isConst) || (rtp === 'string' && l.isConst)) {
+        e = G.Binary('==', this.coerce(l, 'string'), this.coerce(r, 'string'));
+      } else if (isNumericType(lt) && r.isConst && typeof r.c === 'number') {
+        e = G.Binary('==', l.e, this.coerce(r, lt));
+      } else if (isNumericType(rtp) && l.isConst && typeof l.c === 'number') {
+        e = G.Binary('==', this.coerce(l, rtp), r.e);
+      } else {
+        e = G.Call(G.Ident(op.length === 3 || op === '!==' ? 'jsStrictEquals' : 'jsLooseEquals'), [this.coerce(l, 'any'), this.coerce(r, 'any')]);
+      }
+      return new Val(neg ? G.Unary('!', e.kind === 'Binary' ? G.Paren(e) : e) : e, 'boolean');
+    }
+
+    compare(op, l, r) {
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      if (isBigType(lt) || isBigType(rtp)) {
+        return new Val(G.Binary(op, G.Call(G.Ident('jsBigCmp'), [this.coerce(l, 'bigint'), this.coerce(r, 'bigint')]), G.Lit('0')), 'boolean');
+      }
+      if (lt === 'string' && rtp === 'string') return new Val(G.Binary(op, l.e, r.e), 'boolean');
+      let w;
+      if (isNumericType(lt) && isNumericType(rtp)) w = this.widen(lt, rtp);
+      else if (isNumericType(lt) && r.isConst) w = lt;
+      else if (isNumericType(rtp) && l.isConst) w = rtp;
+      else w = 'float64';
+      // A constant that does not fit the operand type compares as float
+      if (w !== 'float64' && ((l.isConst && !this.fits(l.c, w)) || (r.isConst && !this.fits(r.c, w)))) w = 'float64';
+      return new Val(G.Binary(op, this.coerce(l, w), this.coerce(r, w)), 'boolean');
+    }
+
+    fits(c, t) {
+      if (typeof c !== 'number' || !Number.isInteger(c)) return typeof c === 'bigint' ? true : false;
+      const bits = intBits(t);
+      if (!bits) return true;
+      const min = isSignedInt(t) ? -(2 ** (bits - 1)) : 0;
+      const max = isSignedInt(t) ? 2 ** (bits - 1) - 1 : 2 ** bits - 1;
+      return c >= min && c <= max;
+    }
+
+    instanceOf(l, r) {
+      const cls = r.classRef;
+      if (!cls) {
+        const name = r.e && r.e.kind === 'Call' ? null : null;
+        void name;
+        return new Val(G.Call(G.Ident('jsInstanceOfBuiltin'), [this.coerce(l, 'any'), G.Lit(this.goString('Error'))]), 'boolean');
+      }
+      // Every emitted class that is (or derives from) it
+      const names = [...this.emittedClasses].filter(n => this.model.classes.get(n).isA(cls.name)).map(n => '*' + this.className(n));
+      if (!names.length) return new Val(G.Lit('false'), 'boolean');
+      const v = this.tmp('i');
+      const cases = names.map(n => ({ exprs: [G.Ident(n)], body: [G.Return(G.Lit('true'))] }));
+      const sw = { kind: 'Raw', code: '' };
+      void sw;
+      const body = [G.Raw(`switch ${v}.(type) {\ncase ${names.join(', ')}:\n\treturn true\n}`), G.Return(G.Lit('false'))];
+      void cases;
+      return new Val(G.Call(G.FuncLit([{ name: v, type: 'any' }], [{ type: 'bool' }], G.Block(body)), [this.coerce(l, 'any')]), 'boolean');
+    }
+
+    xLogicalExpression(node) {
+      let rt = canonicalType(node.resultType) || 'any';
+      const op = node.operator;
+      // a || b yields one of its operands: when both have one non-boolean type, that is its type
+      const lt0 = canonicalType(node.left.resultType);
+      const rt0 = canonicalType(node.right.resultType);
+      if (rt === 'boolean' && op !== '??' && lt0 && lt0 === rt0 && lt0 !== 'boolean' && lt0 !== 'any') rt = lt0;
+      if (rt === 'boolean' && op !== '??') {
+        const a = this.condition(node.left);
+        const preA = this.flushPre();
+        const b = this.condition(node.right);
+        const preB = this.flushPre();
+        this.fn.pre.push(...preA);
+        const right = preB.length ? this.iife([...preB, G.Return(b)], 'boolean') : b;
+        return new Val(G.Binary(op === '&&' ? '&&' : '||', a, right), 'boolean');
+      }
+      // A value: func() T { a := left; if <a is the answer> { return a }; return right }()
+      const left = this.expr(node.left);
+      const preA = this.flushPre();
+      const right = this.expr(node.right);
+      const preB = this.flushPre();
+      const t = rt;
+      const tmp = this.tmp('l');
+      const leftVal = new Val(G.Ident(tmp), left.t);
+      let keepLeft;
+      if (op === '||') keepLeft = this.truthy(leftVal);
+      else if (op === '&&') keepLeft = G.Unary('!', this.truthy(leftVal));
+      else keepLeft = G.Unary('!', G.Call(G.Ident('jsIsNull'), [this.coerce(leftVal, 'any')]));
+      this.fn.pre.push(...preA);
+      const stmts = [G.Assign(G.Ident(tmp), ':=', left.e), G.If(keepLeft, G.Block([G.Return(this.coerce(leftVal, t))])), ...preB, G.Return(this.coerce(right, t))];
+      return new Val(this.iife(stmts, t), t);
+    }
+
+    xConditionalExpression(node) {
+      const rt = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      const cond = this.condition(node.test);
+      const pre = this.flushPre();
+      this.fn.pre.push(...pre);
+      const a = this.expr(node.consequent);
+      const preA = this.flushPre();
+      const b = this.expr(node.alternate);
+      const preB = this.flushPre();
+      const ca = this.coerce(a, rt);
+      const cb = this.coerce(b, rt);
+      if (!preA.length && !preB.length && this.isSimple(ca) && this.isSimple(cb)) {
+        return new Val(G.Call(G.Index(G.Ident('jsIf'), G.Ident(this.goType(rt))), [cond, ca, cb]), rt);
+      }
+      return new Val(this.iife([G.If(cond, G.Block([...preA, G.Return(ca)])), ...preB, G.Return(cb)], rt), rt);
+    }
+
+    /** An expression that cannot fail or have effects (safe to evaluate eagerly). */
+    isSimple(e) {
+      if (e.kind === 'Lit' || e.kind === 'Ident') return true;
+      if (e.kind === 'Conv') return this.isSimple(e.operand);
+      if (e.kind === 'Selector') return e.operand.kind === 'Ident';
+      if (e.kind === 'Unary') return this.isSimple(e.operand);
+      if (e.kind === 'Binary') return !['/', '%'].includes(e.op) && this.isSimple(e.left) && this.isSimple(e.right);
+      return false;
+    }
+
+    xUnaryExpression(node) {
+      const op = node.operator;
+      if (op === '++' || op === '--') return this.xUpdateExpression(Object.assign({}, node, { type: 'UpdateExpression', prefix: node.prefix !== false }));
+      const rt = canonicalType(node.resultType);
+      if (op === 'typeof') return this.typeOf(node.argument);
+      if (op === 'delete') return this.xDeleteExpression(node);
+      const v = this.expr(node.argument);
+      if (op === '!') {
+        if (v.isConst) return new Val(null, 'boolean', !v.c);
+        const c = this.truthy(v);
+        return new Val(G.Unary('!', c.kind === 'Binary' ? G.Paren(c) : c), 'boolean');
+      }
+      if (op === 'void') { this.fn.pre.push(this.exprStmt(v)); return new Val(G.Lit('nil'), 'null', null); }
+      const t = canonicalType(v.t) || 'any';
+      if (v.isConst && (typeof v.c === 'number' || typeof v.c === 'bigint')) {
+        if (op === '-') return new Val(null, rt || v.t, -v.c);
+        if (op === '+') return new Val(null, rt || 'float64', Number(v.c));
+        if (op === '~') return new Val(null, rt || 'int32', ~v.c);
+      }
+      if (op === '-') {
+        if (isBigType(t) || isBigType(rt)) return new Val(G.Call(G.Ident('jsBigNeg'), [this.coerce(v, 'bigint')]), 'bigint');
+        const target = rt && isNumericType(rt) ? rt : (isNumericType(t) ? t : 'float64');
+        return new Val(G.Unary('-', this.coerce(v, target)), target);
+      }
+      if (op === '+') {
+        const target = rt && isNumericType(rt) ? rt : 'float64';
+        return new Val(this.coerce(v, target), target);
+      }
+      if (op === '~') {
+        if (isBigType(t) || isBigType(rt) || ((t === 'uint64' || t === 'int64') && (rt === 'uint64' || rt === 'int64'))) {
+          if (!isBigType(t) && !isBigType(rt)) return new Val(G.Unary('^', this.coerce(v, rt)), rt);
+          const res = new Val(G.Call(G.Ident('jsBigNot'), [this.coerce(v, 'bigint')]), 'bigint');
+          return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+        }
+        const res = new Val(G.Unary('^', this.toInt32Bits(v, 'int32')), 'int32');
+        return rt && rt !== 'int32' ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      throw new Error(`unary ${op}`);
+    }
+
+    typeOf(arg) {
+      const v = this.expr(arg);
+      const t = canonicalType(v.t) || 'any';
+      const known = isNumericType(t) ? 'number' : isBigType(t) ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean'
+        : t === 'function' ? null : (isArrayType(t) || this.isLeafClass(t)) ? 'object' : null;
+      if (known) return new Val(null, 'string', known);
+      return new Val(G.Call(G.Ident('jsTypeOf'), [this.coerce(v, 'any')]), 'string');
+    }
+
+    xTypeOfExpression(node) { return this.typeOf(node.argument); }
+
+    xDeleteExpression(node) {
+      const arg = node.argument;
+      if (arg.type === 'MemberExpression') {
+        const obj = this.expr(arg.object);
+        const key = arg.computed ? G.Call(G.Ident('jsKey'), [this.coerce(this.expr(arg.property), 'any')]) : G.Lit(this.goString(arg.property.name));
+        return new Val(G.Call(G.Ident('jsDelete'), [this.coerce(obj, 'any'), key]), 'boolean');
+      }
+      return new Val(null, 'boolean', true);
+    }
+
+    xUpdateExpression(node) {
+      const r = this.update(node, true);
+      this.fn.pre.push(...r.stmts);
+      return r.value;
+    }
+
+    xAssignmentExpression(node) {
+      const r = this.assignment(node, true);
+      this.fn.pre.push(...r.stmts);
+      return r.value;
+    }
+
+    xSequenceExpression(node) {
+      const list = node.expressions;
+      for (let i = 0; i < list.length - 1; ++i) this.fn.pre.push(...this.expressionStatement(list[i]));
+      return this.expr(list[list.length - 1]);
+    }
+
+    /**
+     * Side effects an expression needs go to fn.pre, which the enclosing
+     * statement emits first. Inside a condition of && / || / ?: that would
+     * change the order, so those wrap their operand's pre into a closure.
+     */
+
+    // ---------------------------------------------------------- calls
+
+    /** Arguments coerced to the callee's parameter types, missing ones given their default. */
+    callArgs(argNodes, params, selfInfo) {
+      const out = [];
+      const spread = argNodes.some(a => a && a.type === 'SpreadElement');
+      if (spread) {
+        // f(...xs): every parameter from the spread list
+        const list = this.spreadList(argNodes, 'any');
+        const tmp = this.tmp('s');
+        this.fn.pre.push(G.Assign(G.Ident(tmp), ':=', list), G.Assign(G.Ident('_'), '=', G.Ident(tmp)));
+        params.forEach((p, i) => {
+          const t = this.typeOfNullable(p.type, p.nullable);
+          out.push(this.coerce(new Val(G.Call(G.Ident('jsArg'), [G.Ident(tmp), G.Lit(String(i))]), 'any'), t));
+        });
+        return out;
+      }
+      params.forEach((p, i) => {
+        const t = this.typeOfNullable(p.type, p.nullable);
+        if (i < argNodes.length) {
+          const v = this.expr(argNodes[i]);
+          out.push(this.coerce(v, t));
+        } else if (p.defaultValue) {
+          const saved = this.fn.cls;
+          if (selfInfo !== undefined) this.fn.cls = selfInfo;
+          out.push(this.coerce(this.expr(p.defaultValue), t));
+          this.fn.cls = saved;
+        } else {
+          out.push(this.zero(t));
+        }
+      });
+      // Extra arguments are evaluated for their effects
+      for (let i = params.length; i < argNodes.length; ++i) {
+        const v = this.expr(argNodes[i]);
+        if (!v.isConst && v.e.kind === 'Call') this.fn.pre.push(this.exprStmt(v));
+      }
+      return out;
+    }
+
+    /** The values of an argument or element list with spreads, as one []any (or typed) slice expression. */
+    spreadList(nodes, elT) {
+      const parts = [];
+      let run = [];
+      const goEl = this.goType(elT);
+      const flush = () => { if (run.length) { parts.push(G.Composite('[]' + goEl, run)); run = []; } };
+      for (const n of nodes) {
+        if (n && n.type === 'SpreadElement') {
+          flush();
+          const v = this.expr(n.argument);
+          const vt = canonicalType(v.t) || 'any';
+          parts.push(isArrayType(vt) && this.goType(vt) === '[]' + goEl ? v.e : this.coerce(v, elT + '[]'));
+        } else {
+          run.push(this.coerce(this.expr(n), elT));
+        }
+      }
+      flush();
+      if (parts.length === 1) return parts[0].kind === 'Composite' ? parts[0] : G.Call(G.Ident('jsCopy'), [parts[0]]);
+      return G.Call(G.Ident('jsConcat'), parts.length ? parts : [G.Composite('[]' + goEl, [])]);
+    }
+
+    xCallExpression(node) {
+      const callee = node.callee;
+      const rt = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      // f.apply(thisArg, list) and f.call(thisArg, ...args) of a global function: the call itself
+      if (callee.type === 'MemberExpression' && !callee.computed && ['apply', 'call'].includes(propKey(callee.property))
+        && (callee.object.type === 'MemberExpression' || (callee.object.type === 'Identifier' && !this.lookup(callee.object.name) && this.model.functions.has(callee.object.name)))) {
+        const args = node.arguments || [];
+        const direct = propKey(callee.property) === 'apply'
+          ? (args[1] ? [{ type: 'SpreadElement', argument: args[1] }] : [])
+          : args.slice(1);
+        return this.xCallExpression(Object.assign({}, node, { callee: callee.object, arguments: direct }));
+      }
+      if (callee.type === 'Identifier') {
+        const name = callee.name;
+        const local = this.lookup(name);
+        if (!local) {
+          const special = this.globalCall(name, node, rt);
+          if (special) return special;
+        }
+        const fv = this.xIdentifier(callee);
+        if (fv.sig) {
+          const args = this.callArgs(node.arguments || [], fv.sig.params);
+          const ret = fv.sig.ret.type;
+          return new Val(G.Call(fv.e, args), ret);
+        }
+        if (fv.classRef) return this.newObject(fv.classRef, node.arguments || []);
+        const args = (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'));
+        return new Val(G.Call(G.Ident('jsCallFunc'), [this.coerce(fv, 'any'), ...args]), 'any');
+      }
+      if (callee.type === 'MemberExpression' && !callee.computed) {
+        const key = callee.property.name || callee.property.value;
+        if (callee.object.type === 'Identifier' && !this.lookup(callee.object.name)) {
+          const special = this.globalMethodCall(callee.object.name, key, node, rt);
+          if (special) return special;
+          const info = this.model.classes.get(callee.object.name);
+          if (info && !this.model.variables.has(callee.object.name)) {
+            for (let c = info; c; c = c.base) {
+              const sm = c.staticMethods.get(key);
+              if (sm) {
+                const params = Model.functionParams(sm.fn, sm.jsDoc);
+                return new Val(G.Call(G.Ident(this.staticName(c.name, key)), this.callArgs(node.arguments || [], params)), this.signatureReturn(sm.fn, sm.jsDoc).type);
+              }
+            }
+          }
+        }
+        const obj = this.expr(callee.object);
+        return this.methodCall(obj, key, node.arguments || [], rt, node);
+      }
+      if (callee.type === 'MemberExpression' && callee.computed) {
+        const obj = this.expr(callee.object);
+        const key = this.expr(callee.property);
+        const args = (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'));
+        return new Val(G.Call(G.Selector(this.coerce(obj, 'object'), 'JsCall'), [G.Call(G.Ident('jsKey'), [this.coerce(key, 'any')]), ...args]), 'any');
+      }
+      // (expr)(args): a function value
+      const f = this.expr(callee);
+      if (f.sig) return new Val(G.Call(f.e, this.callArgs(node.arguments || [], f.sig.params)), f.sig.ret.type);
+      const args = (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'));
+      return new Val(G.Call(G.Ident('jsCallFunc'), [this.coerce(f, 'any'), ...args]), 'any');
+    }
+
+    /** Calls of JavaScript globals that reach the IL unlowered. */
+    globalCall(name, node, rt) {
+      const args = node.arguments || [];
+      const a = i => this.expr(args[i]);
+      switch (name) {
+        case 'RegisterAlgorithm':
+          return new Val(G.Call(G.Ident('jsRegisterAlgorithm'), [this.coerce(a(0), 'object')]), 'void');
+        case 'Number': {
+          if (!args.length) return new Val(null, 'float64', 0);
+          const v = a(0);
+          const vt = canonicalType(v.t);
+          const target = rt && isNumericType(rt) ? rt : 'float64';
+          if (isBigType(vt)) return new Val(this.coerce(new Val(G.Call(G.Ident('jsBigToF64'), [v.e]), 'float64'), target), target);
+          if (vt === 'string') return new Val(this.coerce(new Val(G.Call(G.Ident('jsToNumber'), [v.e]), 'float64'), target), target);
+          return new Val(this.coerce(v, target), target);
+        }
+        case 'BigInt': {
+          const v = a(0);
+          const vt = canonicalType(v.t);
+          if (vt === 'string') return new Val(G.Call(G.Ident('jsBigParse'), [v.e]), 'bigint');
+          return new Val(this.coerce(v, 'bigint'), 'bigint');
+        }
+        case 'String': return new Val(this.coerce(a(0), 'string'), 'string');
+        case 'Boolean': return new Val(this.truthy(a(0)), 'boolean');
+        case 'parseInt': {
+          const s = this.coerce(a(0), 'string');
+          const radix = args[1] ? this.coerce(a(1), 'goint') : G.Lit('10');
+          const v = new Val(G.Call(G.Ident('jsParseInt'), [s, radix]), 'float64');
+          return rt && isNumericType(rt) && !isFloatType(rt) ? new Val(this.coerce(v, rt), rt) : v;
+        }
+        case 'parseFloat': return new Val(G.Call(G.Ident('jsToNumber'), [this.coerce(a(0), 'string')]), 'float64');
+        case 'isNaN': return new Val(G.Call(G.Selector(G.Ident('math'), 'IsNaN'), [this.coerce(a(0), 'float64')]), 'boolean');
+        case 'isFinite': return new Val(G.Call(G.Ident('jsIsFinite'), [this.coerce(a(0), 'float64')]), 'boolean');
+        case 'Error': case 'TypeError': case 'RangeError':
+          return new Val(G.Call(G.Ident('jsNewError'), [G.Lit(this.goString(name)), args[0] ? this.coerce(a(0), 'string') : G.Lit('""')]), 'Error');
+      }
+      return null;
+    }
+
+    /** Calls of members of JavaScript globals (AlgorithmFramework.Find, Object.keys, Math.x, ...). */
+    globalMethodCall(obj, key, node, rt) {
+      const args = node.arguments || [];
+      const a = i => this.expr(args[i]);
+      const k = `${obj}.${key}`;
+      switch (k) {
+        case 'AlgorithmFramework.Find':
+          return new Val(G.Call(G.Ident('jsFindAlgorithm'), [this.coerce(a(0), 'string')]), 'Algorithm');
+        case 'AlgorithmFramework.RegisterAlgorithm':
+          return new Val(G.Call(G.Ident('jsRegisterAlgorithm'), [this.coerce(a(0), 'object')]), 'void');
+        case 'Object.keys': return new Val(G.Call(G.Ident('jsKeys'), [this.coerce(a(0), 'any')]), 'string[]');
+        case 'Object.values': return new Val(G.Call(G.Ident('jsValues'), [this.coerce(a(0), 'any')]), 'any[]');
+        case 'Object.entries': return new Val(G.Call(G.Ident('jsEntries'), [this.coerce(a(0), 'any')]), 'any[]');
+        case 'Object.assign': return new Val(G.Call(G.Ident('jsAssign'), args.map((x, i) => this.coerce(a(i), 'any'))), canonicalType(args[0].resultType) || 'object');
+        case 'Object.freeze': case 'Object.seal': { const v = a(0); return v; }
+        case 'Array.isArray': return new Val(G.Call(G.Ident('jsIsArray'), [this.coerce(a(0), 'any')]), 'boolean');
+        case 'ArrayBuffer.isView': return new Val(G.Call(G.Ident('jsIsArray'), [this.coerce(a(0), 'any')]), 'boolean');
+        case 'Number.isInteger': return new Val(G.Call(G.Ident('jsIsInteger'), [this.coerce(a(0), 'any')]), 'boolean');
+        case 'Number.isSafeInteger': return new Val(G.Call(G.Ident('jsIsInteger'), [this.coerce(a(0), 'any')]), 'boolean');
+        case 'Number.isFinite': return new Val(G.Call(G.Ident('jsIsFinite'), [this.coerce(a(0), 'float64')]), 'boolean');
+        case 'Number.isNaN': return new Val(G.Call(G.Selector(G.Ident('math'), 'IsNaN'), [this.coerce(a(0), 'float64')]), 'boolean');
+        case 'Number.parseInt': return this.globalCall('parseInt', node, rt);
+        case 'String.fromCharCode': return new Val(G.Call(G.Ident('jsFromCharCodes'), [this.spreadList(args, 'int32')]), 'string');
+        case 'Math.imul': return new Val(G.Conv('int32', G.Binary('*', this.toInt32Bits(a(0), 'uint32'), this.toInt32Bits(a(1), 'uint32'))), 'int32');
+        case 'BigInt.asUintN': return this.bigAsN(a(0), a(1), false, rt);
+        case 'BigInt.asIntN': return this.bigAsN(a(0), a(1), true, rt);
+        case 'JSON.stringify': return new Val(G.Call(G.Ident('jsJSON'), [this.coerce(a(0), 'any')]), 'string');
+        case 'console.log': case 'console.warn': case 'console.error': case 'console.info': case 'console.debug':
+          return new Val(G.Call(G.Ident('jsLog'), args.map((x, i) => this.coerce(a(i), 'any'))), 'void');
+      }
+      if (obj === 'Math') return this.mathCall(key, args.map((x, i) => a(i)), rt);
+      if (obj === 'OpCodes') return this.opCodesCall(key, args, rt, node);
+      return null;
+    }
+
+    bigAsN(bits, v, signed, rt) {
+      const res = new Val(G.Call(G.Ident(signed ? 'jsBigAsIntN' : 'jsBigAsUintN'), [this.coerce(bits, 'goint'), this.coerce(v, 'bigint')]), 'bigint');
+      return rt && !isBigType(rt) && rt !== 'any' ? new Val(this.coerce(res, rt), rt) : res;
+    }
+
+    mathCall(key, args, rt) {
+      const f64 = i => this.coerce(args[i], 'float64');
+      const unary = { floor: 'Floor', ceil: 'Ceil', round: 'jsRound', trunc: 'Trunc', abs: 'Abs', sqrt: 'Sqrt', log: 'Log', log2: 'Log2', log10: 'Log10', exp: 'Exp', sin: 'Sin', cos: 'Cos', tan: 'Tan', tanh: 'Tanh', atan: 'Atan', sign: 'jsSign', cbrt: 'Cbrt', fround: 'jsFround', clz32: 'jsClz32', log1p: 'Log1p', expm1: 'Expm1' };
+      let res;
+      if (unary[key]) {
+        const fn = unary[key].startsWith('js') ? G.Ident(unary[key]) : G.Selector(G.Ident('math'), unary[key]);
+        res = new Val(G.Call(fn, [f64(0)]), 'float64');
+      } else if (key === 'pow') res = new Val(G.Call(G.Selector(G.Ident('math'), 'Pow'), [f64(0), f64(1)]), 'float64');
+      else if (key === 'atan2') res = new Val(G.Call(G.Selector(G.Ident('math'), 'Atan2'), [f64(0), f64(1)]), 'float64');
+      else if (key === 'min' || key === 'max') return this.minMax(key, args, rt);
+      else if (key === 'random') res = new Val(G.Call(G.Ident('jsRandom'), []), 'float64');
+      else if (key === 'hypot') res = new Val(G.Call(G.Selector(G.Ident('math'), 'Hypot'), [f64(0), f64(1)]), 'float64');
+      else return null;
+      return rt && isNumericType(rt) && !isFloatType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+    }
+
+    minMax(key, args, rt) {
+      const t = rt && isNumericType(rt) ? rt : 'float64';
+      const allInt = args.every(v => isIntType(canonicalType(v.t)) || v.isConst) && isIntType(t);
+      if (allInt && args.length >= 1) {
+        // Go's min/max builtins
+        return new Val(G.Call(G.Ident(key), args.map(v => this.coerce(v, t))), t);
+      }
+      const res = new Val(G.Call(G.Ident(key === 'min' ? 'jsMinF' : 'jsMaxF'), args.map(v => this.coerce(v, 'float64'))), 'float64');
+      return isFloatType(t) ? res : new Val(this.coerce(res, t), t);
+    }
+
+    /**
+     * A method call obj.key(args): direct on a concrete class, by name on an
+     * object, and the JavaScript built-in methods of strings, arrays, numbers.
+     */
+    methodCall(obj, key, argNodes, rt, node) {
+      const ot = canonicalType(obj.t) || 'any';
+      const info = obj.isThis ? this.fn.cls : (this.isLeafClass(ot) ? this.model.classOf(ot) : null);
+      if (info) {
+        const m = info.effective.methods.get(key);
+        if (m) {
+          const params = Model.functionParams(m.fn, m.jsDoc);
+          const ret = this.signatureReturn(m.fn, m.jsDoc);
+          return new Val(G.Call(G.Selector(obj.e, this.methodName(key)), this.callArgs(argNodes, params, info)), ret.type);
+        }
+        if (info.effective.fields.has(key)) {
+          const f = this.memberValue(obj, key, 'any');
+          const args = argNodes.map(a => this.coerce(this.expr(a), 'any'));
+          return new Val(G.Call(G.Ident('jsCallFunc'), [this.coerce(f, 'any'), ...args]), 'any');
+        }
+      }
+      // Built-in methods by receiver type
+      const builtin = this.builtinMethod(obj, ot, key, argNodes, rt, node);
+      if (builtin) return builtin;
+      const args = argNodes.map(a => this.coerce(this.expr(a), 'any'));
+      if (ot === 'function' || (obj.sig && (key === 'call' || key === 'apply'))) {
+        return new Val(G.Call(G.Ident('jsCallFunc'), [this.coerce(obj, 'any'), ...args.slice(1)]), 'any');
+      }
+      return new Val(G.Call(G.Selector(this.coerce(obj, 'object'), 'JsCall'), [G.Lit(this.goString(key)), ...args]), 'any');
+    }
+
+    /** JavaScript's own methods of strings, arrays, numbers, Maps, errors. */
+    builtinMethod(obj, ot, key, argNodes, rt, node) {
+      const a = i => this.expr(argNodes[i]);
+      const has = i => i < argNodes.length;
+      if (ot === 'string') {
+        switch (key) {
+          case 'charCodeAt': return new Val(G.Call(G.Ident('jsCharCodeAt'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0')]), 'int32');
+          case 'charAt': return new Val(G.Call(G.Ident('jsCharAt'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0')]), 'string');
+          case 'codePointAt': return new Val(G.Call(G.Ident('jsCharCodeAt'), [obj.e, this.coerce(a(0), 'goint')]), 'int32');
+          case 'toUpperCase': case 'toLocaleUpperCase': return new Val(G.Call(G.Ident('jsToUpper'), [obj.e]), 'string');
+          case 'toLowerCase': case 'toLocaleLowerCase': return new Val(G.Call(G.Ident('jsToLower'), [obj.e]), 'string');
+          case 'trim': return new Val(G.Call(G.Selector(G.Ident('strings'), 'TrimSpace'), [obj.e]), 'string');
+          case 'indexOf': return new Val(G.Call(G.Ident('jsStrIndexOf'), [obj.e, this.coerce(a(0), 'string'), has(1) ? this.coerce(a(1), 'goint') : G.Lit('0')]), 'int32');
+          case 'lastIndexOf': return new Val(G.Conv('int32', G.Call(G.Selector(G.Ident('strings'), 'LastIndex'), [obj.e, this.coerce(a(0), 'string')])), 'int32');
+          case 'includes': return new Val(G.Call(G.Selector(G.Ident('strings'), 'Contains'), [obj.e, this.coerce(a(0), 'string')]), 'boolean');
+          case 'startsWith': return new Val(G.Call(G.Selector(G.Ident('strings'), 'HasPrefix'), [obj.e, this.coerce(a(0), 'string')]), 'boolean');
+          case 'endsWith': return new Val(G.Call(G.Selector(G.Ident('strings'), 'HasSuffix'), [obj.e, this.coerce(a(0), 'string')]), 'boolean');
+          case 'substring': return new Val(G.Call(G.Ident('jsSubstring'), [obj.e, this.coerce(a(0), 'goint'), has(1) ? this.coerce(a(1), 'goint') : G.Lit('-1')]), 'string');
+          case 'substr': return new Val(G.Call(G.Ident('jsSubstr'), [obj.e, this.coerce(a(0), 'goint'), has(1) ? this.coerce(a(1), 'goint') : G.Lit('-1')]), 'string');
+          case 'slice': return new Val(G.Call(G.Ident('jsStrSlice'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd')]), 'string');
+          case 'split': return new Val(G.Call(G.Ident('jsSplit'), [obj.e, has(0) ? this.coerce(a(0), 'any') : G.Lit('nil')]), 'string[]');
+          case 'repeat': return new Val(G.Call(G.Selector(G.Ident('strings'), 'Repeat'), [obj.e, this.coerce(a(0), 'goint')]), 'string');
+          case 'padStart': return new Val(G.Call(G.Ident('jsPadStart'), [obj.e, this.coerce(a(0), 'goint'), has(1) ? this.coerce(a(1), 'string') : G.Lit('" "')]), 'string');
+          case 'padEnd': return new Val(G.Call(G.Ident('jsPadEnd'), [obj.e, this.coerce(a(0), 'goint'), has(1) ? this.coerce(a(1), 'string') : G.Lit('" "')]), 'string');
+          case 'replace': case 'replaceAll': return new Val(G.Call(G.Ident(key === 'replace' ? 'jsReplace' : 'jsReplaceAll'), [obj.e, this.coerce(a(0), 'any'), this.coerce(a(1), 'any')]), 'string');
+          case 'concat': return new Val(G.Binary('+', obj.e, this.coerce(a(0), 'string')), 'string');
+          case 'toString': case 'valueOf': return obj;
+          case 'match': return new Val(G.Call(G.Ident('jsMatch'), [obj.e, this.coerce(a(0), 'any')]), 'string[]');
+          case 'normalize': return obj;
+        }
+      }
+      if (isArrayType(ot)) {
+        const el = elementType(ot);
+        switch (key) {
+          case 'push': {
+            const items = argNodes.map((x, i) => this.coerce(a(i), el));
+            const target = obj.e;
+            if (!this.isAssignable(target)) return new Val(G.Conv('int32', G.Call(G.Ident('len'), [G.Call(G.Ident('append'), [target, ...items])])), 'int32');
+            this.fn.pre.push(G.Assign(target, '=', G.Call(G.Ident('append'), [target, ...items])));
+            return new Val(G.Conv('int32', G.Call(G.Ident('len'), [target])), 'int32');
+          }
+          case 'slice': return new Val(G.Call(G.Ident('jsSlice'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd')]), ot);
+          case 'join': return new Val(G.Call(G.Ident('jsJoin'), [obj.e, has(0) ? this.coerce(a(0), 'string') : G.Lit('","')]), 'string');
+          case 'indexOf': return new Val(G.Call(this.generic('jsIndexOf', this.goType(el)), [obj.e, this.coerce(a(0), el), has(1) ? this.coerce(a(1), 'goint') : G.Lit('0')]), 'int32');
+          case 'includes': return new Val(G.Binary('>=', G.Call(this.generic('jsIndexOf', this.goType(el)), [obj.e, this.coerce(a(0), el), G.Lit('0')]), G.Lit('0')), 'boolean');
+          case 'reverse': return new Val(G.Call(G.Ident('jsReverse'), [obj.e]), ot);
+          case 'fill': return new Val(G.Call(this.generic('jsFill', this.goType(el)), [obj.e, this.coerce(a(0), el), has(1) ? this.coerce(a(1), 'goint') : G.Lit('0'), has(2) ? this.coerce(a(2), 'goint') : G.Ident('jsNoEnd')]), ot);
+          case 'concat': return new Val(G.Call(G.Ident('jsConcat'), [obj.e, ...argNodes.map((x, i) => { const v = a(i); return isArrayType(canonicalType(v.t)) ? this.coerce(v, ot) : G.Composite(this.goType(ot), [this.coerce(v, el)]); })]), ot);
+          case 'pop': case 'shift': {
+            if (!this.isAssignable(obj.e)) throw new Error(`${key} on a temporary array`);
+            return new Val(G.Call(G.Ident(key === 'pop' ? 'jsPop' : 'jsShift'), [G.Unary('&', obj.e)]), el);
+          }
+          case 'unshift': {
+            if (!this.isAssignable(obj.e)) throw new Error('unshift on a temporary array');
+            return new Val(G.Call(this.generic('jsUnshift', this.goType(el)), [G.Unary('&', obj.e), ...argNodes.map((x, i) => this.coerce(a(i), el))]), 'int32');
+          }
+          case 'splice': {
+            if (!this.isAssignable(obj.e)) throw new Error('splice on a temporary array');
+            return new Val(G.Call(this.generic('jsSplice', this.goType(el)), [G.Unary('&', obj.e), has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd'), ...argNodes.slice(2).map((x, i) => this.coerce(a(i + 2), el))]), ot);
+          }
+          case 'set': return new Val(G.Call(G.Ident('jsTypedSet'), [obj.e, this.coerce(a(0), ot), has(1) ? this.coerce(a(1), 'goint') : G.Lit('0')]), 'void');
+          case 'subarray': return new Val(G.Call(G.Ident('jsSubarray'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd')]), ot);
+          case 'toString': return new Val(G.Call(G.Ident('jsJoin'), [obj.e, G.Lit('","')]), 'string');
+          case 'map': case 'filter': case 'forEach': case 'some': case 'every': case 'find': case 'findIndex': case 'reduce': case 'sort':
+            return this.arrayCallback(obj, ot, key, argNodes, rt);
+        }
+      }
+      if (isNumericType(ot) || isBigType(ot)) {
+        if (key === 'toString') {
+          if (isBigType(ot)) return new Val(G.Call(G.Ident('jsBigToString'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('10')]), 'string');
+          // An integer prints exactly (a 64-bit BigInt held as uint64 has no float form)
+          if (isIntType(ot)) return new Val(G.Call(G.Selector(G.Ident('strconv'), isSignedInt(ot) ? 'FormatInt' : 'FormatUint'), [G.Conv(isSignedInt(ot) ? 'int64' : 'uint64', obj.e), has(0) ? this.coerce(a(0), 'goint') : G.Lit('10')]), 'string');
+          return new Val(G.Call(G.Ident('jsNumToString'), [this.coerce(obj, 'float64'), has(0) ? this.coerce(a(0), 'goint') : G.Lit('10')]), 'string');
+        }
+        if (key === 'toFixed') return new Val(G.Call(G.Ident('jsToFixed'), [this.coerce(obj, 'float64'), has(0) ? this.coerce(a(0), 'goint') : G.Lit('0')]), 'string');
+      }
+      if (ot === 'Map') {
+        switch (key) {
+          case 'get': return new Val(G.Call(G.Selector(obj.e, 'MapGet'), [this.coerce(a(0), 'any')]), 'any');
+          case 'set': return new Val(G.Call(G.Selector(obj.e, 'MapSet'), [this.coerce(a(0), 'any'), this.coerce(a(1), 'any')]), 'Map');
+          case 'has': return new Val(G.Call(G.Selector(obj.e, 'MapHas'), [this.coerce(a(0), 'any')]), 'boolean');
+          case 'delete': return new Val(G.Call(G.Selector(obj.e, 'MapDelete'), [this.coerce(a(0), 'any')]), 'boolean');
+          case 'clear': return new Val(G.Call(G.Selector(obj.e, 'MapClear'), []), 'void');
+          case 'keys': return new Val(G.Call(G.Selector(obj.e, 'MapKeys'), []), 'any[]');
+          case 'values': return new Val(G.Call(G.Selector(obj.e, 'MapValues'), []), 'any[]');
+          case 'add': return new Val(G.Call(G.Selector(obj.e, 'MapSet'), [this.coerce(a(0), 'any'), this.coerce(a(0), 'any')]), 'Map');
+        }
+      }
+      if (key === 'toString' && argNodes.length === 0) return new Val(G.Call(G.Ident('jsStr'), [this.coerce(obj, 'any')]), 'string');
+      if (key === 'hasOwnProperty') return new Val(G.Call(G.Ident('jsIn'), [this.coerce(a(0), 'any'), this.coerce(obj, 'any')]), 'boolean');
+      return null;
+    }
+
+    /** map/filter/forEach/... with a callback: a loop the callback's closure is applied in. */
+    arrayCallback(obj, ot, key, argNodes, rt) {
+      const el = elementType(ot);
+      const cb = this.callbackValue(argNodes[0], [el, 'int32', ot]);
+      if (!cb) throw new Error(`array ${key} with a callback that is not a function literal`);
+      const fnE = cb.e;
+      switch (key) {
+        case 'map': {
+          const outEl = isArrayType(rt) ? elementType(rt) : cb.ret;
+          return new Val(G.Call(G.Ident('jsMap'), [obj.e, this.adaptCallback(cb, [el, 'int32'], outEl)]), (outEl || 'any') + '[]');
+        }
+        case 'filter': return new Val(G.Call(G.Ident('jsFilter'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'boolean')]), ot);
+        case 'forEach': return new Val(G.Call(G.Ident('jsForEach'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'void')]), 'void');
+        case 'some': return new Val(G.Call(G.Ident('jsSome'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'boolean')]), 'boolean');
+        case 'every': return new Val(G.Call(G.Ident('jsEvery'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'boolean')]), 'boolean');
+        case 'find': return new Val(G.Call(G.Ident('jsFind'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'boolean')]), el);
+        case 'findIndex': return new Val(G.Call(G.Ident('jsFindIndex'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'boolean')]), 'int32');
+        case 'sort': return new Val(G.Call(G.Ident('jsSort'), [obj.e, this.adaptCallback(cb, [el, el], 'float64')]), ot);
+        case 'reduce': {
+          const accT = rt && rt !== 'any' ? rt : (cb.ret || 'any');
+          const init = argNodes[1] ? this.coerce(this.expr(argNodes[1]), accT) : this.zero(accT);
+          return new Val(G.Call(G.Ident('jsReduce'), [obj.e, this.adaptCallback(cb, [accT, el, 'int32'], accT), init]), accT);
+        }
+      }
+      void fnE;
+      return null;
+    }
+
+    /** A function literal argument transformed with the parameter types its caller gives it. */
+    callbackValue(node, paramTypes) {
+      if (!node || !['ArrowFunction', 'ArrowFunctionExpression', 'FunctionExpression'].includes(node.type)) return null;
+      const v = this.funcLit(node, node.jsDoc);
+      v.ret = v.sig.ret.type;
+      return v;
+    }
+
+    /** Wrap a closure so its signature is exactly func(paramTypes...) retType. */
+    adaptCallback(cb, paramTypes, retType) {
+      const params = cb.sig.params;
+      const goParams = paramTypes.map((t, i) => ({ name: `jsA${i}`, type: this.goType(t) }));
+      const args = params.map((p, i) => i < paramTypes.length
+        ? this.coerce(new Val(G.Ident(`jsA${i}`), paramTypes[i]), this.typeOfNullable(p.type, p.nullable))
+        : this.zero(p.type));
+      const tmp = 'jsCb';
+      const call = G.Call(G.Ident(tmp), args);
+      const body = [G.Assign(G.Ident(tmp), ':=', cb.e)];
+      for (let i = 0; i < paramTypes.length; ++i) body.push(G.Assign(G.Ident('_'), '=', G.Ident(`jsA${i}`)));
+      if (retType === 'void') body.push(G.ExprStmt(call));
+      else if (cb.sig.ret.type === 'void') body.push(G.ExprStmt(call), G.Return(this.zero(retType)));
+      else body.push(G.Return(this.coerce(new Val(call, cb.sig.ret.type), retType)));
+      return G.FuncLit(goParams, retType === 'void' ? [] : [{ type: this.goType(retType) }], G.Block(body));
+    }
+
+    xThisMethodCall(node) {
+      const self = this.thisValue();
+      const rt = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      return this.methodCall(self, node.method, node.arguments || [], rt, node);
+    }
+
+    xParentMethodCall(node) {
+      const info = this.fn.cls;
+      const owner = this.fn.initOf || null;
+      void owner;
+      // super.m(): the version of m the base chain of the current method's class has
+      const methodOwner = this.fn.methodOwner || info;
+      let base = methodOwner && methodOwner.base;
+      let m = null;
+      for (let c = base; c && !m; c = c.base) m = c.methods.get(node.method) || null;
+      if (!m) throw new Error(`super.${node.method} has no base method`);
+      const key = `jsSuper_${m.owner.name}_${node.method}`;
+      if (!this.superCopies.has(key)) this.superCopies.set(key, { cls: info, fn: m.fn, jsDoc: m.jsDoc });
+      const params = Model.functionParams(m.fn, m.jsDoc);
+      return new Val(G.Call(G.Selector(G.Ident('this'), key), this.callArgs(node.arguments || [], params)), this.signatureReturn(m.fn, m.jsDoc).type);
+    }
+
+    xParentConstructorCall(node) {
+      this.fn.pre.push(...this.parentConstructorCall(node));
+      return new Val(G.Lit('nil'), 'void');
+    }
+
+    xNewExpression(node) {
+      const callee = node.callee;
+      // new AlgorithmFramework.X(...) is new X(...)
+      const name = callee && (callee.name || (callee.type === 'MemberExpression' && callee.object && callee.object.name === 'AlgorithmFramework' ? propKey(callee.property) : null));
+      const rt = canonicalType(node.resultType) || 'any';
+      const args = node.arguments || [];
+      if (name && this.model.classes.has(name) && this.emittedClasses.has(name)) return this.newObject(this.model.classes.get(name), args);
+      switch (name) {
+        case 'Error': case 'TypeError': case 'RangeError': case 'SyntaxError':
+          return new Val(G.Call(G.Ident('jsNewError'), [G.Lit(this.goString(name)), args[0] ? this.coerce(this.expr(args[0]), 'string') : G.Lit('""')]), 'Error');
+        case 'Array': {
+          const el = isArrayType(rt) ? elementType(rt) : 'any';
+          if (args.length === 1) {
+            const n = this.expr(args[0]);
+            if (isNumericType(canonicalType(n.t))) return new Val(G.Call(G.Ident('make'), [G.Ident(this.goType(el + '[]')), this.coerce(n, 'goint')]), el + '[]');
+          }
+          return new Val(G.Composite(this.goType(el + '[]'), args.map(a => this.coerce(this.expr(a), el))), el + '[]');
+        }
+        case 'Map': case 'Set': return new Val(G.Call(G.Ident('jsNewMap'), []), 'Map');
+        case 'Object': return new Val(G.Call(G.Ident('jsNewMap'), []), 'object');
+      }
+      if (/^(Uint8|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|Uint8Clamped|BigUint64|BigInt64)Array$/.test(name || '')) {
+        return this.typedArray(rt, args[0]);
+      }
+      if (name && this.model.classes.has(name)) throw new Error(`new ${name}: the class is abstract here`);
+      this.warnings.push(`new ${name}`);
+      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString('new ' + name))]), rt);
+    }
+
+    newObject(info, args) {
+      const chain = info.chain();
+      const ctorOwner = [...chain].reverse().find(c => c.ctor) || null;
+      const params = ctorOwner ? Model.functionParams(ctorOwner.ctor, ctorOwner.ctorDoc) : [];
+      return new Val(G.Call(G.Ident('New' + this.className(info.name)), this.callArgs(args, params)), info.name);
+    }
+
+    typedArray(rt, arg) {
+      const t = isArrayType(rt) ? rt : 'uint8[]';
+      if (!arg) return new Val(G.Composite(this.goType(t), []), t);
+      const v = this.expr(arg);
+      const vt = canonicalType(v.t) || 'any';
+      if (isNumericType(vt)) return new Val(G.Call(G.Ident('make'), [G.Ident(this.goType(t)), this.coerce(v, 'goint')]), t);
+      if (isArrayType(vt)) {
+        if (this.goType(vt) === this.goType(t)) return new Val(G.Call(G.Ident('jsCopy'), [v.e]), t);
+        return new Val(this.coerce(v, t), t);
+      }
+      return new Val(G.Call(G.Index(G.Ident('jsTypedFrom'), G.Ident(this.goType(elementType(t)))), [this.coerce(v, 'any')]), t);
+    }
+
+    // ---------------------------------------------------------- literals
+
+    xArrayExpression(node) {
+      const rt = canonicalType(node.resultType) || 'any[]';
+      const t = isArrayType(rt) ? rt : 'any[]';
+      const el = elementType(t);
+      const elems = node.elements || [];
+      if (elems.some(e => e && e.type === 'SpreadElement')) return new Val(this.spreadList(elems, el), t);
+      return new Val(G.Composite(this.goType(t), elems.map(e => e ? this.coerce(this.expr(e), el) : this.zero(el))), t);
+    }
+
+    xArrayLiteral(node) { return this.xArrayExpression(node); }
+
+    xObjectLiteral(node) {
+      const args = [];
+      for (const p of node.properties || []) {
+        if (p.type === 'SpreadElement' || p.type === 'SpreadProperty') {
+          args.push(G.Lit('"..."'), this.coerce(this.expr(p.argument), 'any'));
+          continue;
+        }
+        const key = p.computed ? this.coerce(this.expr(p.key), 'any') : G.Lit(this.goString(propKey(p.key)));
+        let value;
+        if (p.value && ['FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression'].includes(p.value.type)) value = this.funcLit(p.value, p.value.jsDoc).e;
+        else value = this.anyOf(this.expr(p.value));
+        args.push(p.computed ? G.Call(G.Ident('jsKey'), [key]) : key, value);
+      }
+      const rt = canonicalType(node.resultType) || 'object';
+      return new Val(G.Call(G.Ident('jsMapOf'), args), rt === 'any' ? 'object' : rt);
+    }
+
+    xObjectExpression(node) { return this.xObjectLiteral(node); }
+
+    xFunctionExpression(node) { return this.funcLit(node, node.jsDoc); }
+    xArrowFunction(node) { return this.funcLit(node, node.jsDoc); }
+    xArrowFunctionExpression(node) { return this.funcLit(node, node.jsDoc); }
+
+    xSpreadElement(node) { return this.expr(node.argument); }
+
+    xTemplateLiteral(node) {
+      const parts = [];
+      (node.quasis || []).forEach((q, i) => {
+        const text = q.value && (q.value.cooked !== undefined ? q.value.cooked : q.value.raw);
+        if (text) parts.push(G.Lit(this.goString(text)));
+        if (node.expressions && node.expressions[i]) parts.push(this.coerce(this.expr(node.expressions[i]), 'string'));
+      });
+      if (!parts.length) return new Val(null, 'string', '');
+      return new Val(parts.reduce((a, b) => G.Binary('+', a, b)), 'string');
+    }
+
+    xStringInterpolation(node) {
+      const parts = (node.parts || []).map(p => p.type === 'StringPart' ? G.Lit(this.goString(p.value)) : this.coerce(this.expr(p.expression), 'string'));
+      if (!parts.length) return new Val(null, 'string', '');
+      return new Val(parts.reduce((a, b) => G.Binary('+', a, b)), 'string');
+    }
+
+    // ---------------------------------------------------------- IL nodes
+
+    xErrorCreation(node) {
+      const msg = node.message ? this.coerce(this.expr(node.message), 'string') : G.Lit('""');
+      return new Val(G.Call(G.Ident('jsNewError'), [G.Lit(this.goString(node.errorType || 'Error')), msg]), 'Error');
+    }
+
+    xCast(node) {
+      const arg = this.expr(node.arguments[0]);
+      const target = canonicalType(node.targetType === 'int' ? 'int32' : node.targetType) || canonicalType(node.resultType);
+      const method = node.opCodesMethod;
+      const at = canonicalType(arg.t) || 'any';
+      // JavaScript's own conversion: ToUint32 is x >>> 0, ToInt is x | 0, ToByte x & 0xFF, ...
+      const masks = { ToUint32: ['>>>', 0, 'uint32'], ToDWord: ['>>>', 0, 'uint32'], ToInt: ['|', 0, 'int32'], ToInt32: ['|', 0, 'int32'],
+        ToByte: ['&', 0xFF, 'uint8'], ToUint8: ['&', 0xFF, 'uint8'], ToWord: ['&', 0xFFFF, 'uint16'], ToUint16: ['&', 0xFFFF, 'uint16'] };
+      if (masks[method] && !isBigType(at) && !(at === 'uint64' || at === 'int64') || (masks[method] && (at === 'uint64' || at === 'int64'))) {
+        const [op, k, t] = masks[method];
+        if (isBigType(at)) return new Val(this.coerce(new Val(G.Call(G.Ident('jsBigAsUintN'), [G.Lit('32'), arg.e]), 'bigint'), target || t), target || t);
+        const r = this.bitwise(op, arg, new Val(null, 'int32', k), t, false);
+        return target && target !== r.t ? new Val(this.coerce(r, target), target) : r;
+      }
+      if (method === 'ToQWord') {
+        if (isBigType(at)) return new Val(G.Call(G.Ident('jsBigToU64'), [G.Call(G.Ident('jsBigAsUintN'), [G.Lit('64'), arg.e])]), 'uint64');
+        if (isFloatType(at)) return new Val(G.Conv('uint64', G.Call(G.Ident('jsF2I'), [arg.e])), 'uint64');
+        return new Val(this.coerce(arg, 'uint64'), 'uint64');
+      }
+      if (method === 'ToLong' || method === 'ToShort' || method === 'ToChar' || method === 'ToSByte') {
+        return new Val(this.coerce(arg, target), target);
+      }
+      return new Val(this.coerce(arg, target || 'any'), target || 'any');
+    }
+
+    xBigIntCast(node) {
+      const v = this.expr(node.argument);
+      const rt = canonicalType(node.resultType) || 'bigint';
+      const vt = canonicalType(v.t);
+      if (vt === 'string') return new Val(G.Call(G.Ident('jsBigParse'), [v.e]), 'bigint');
+      if (v.isConst && typeof v.c === 'number') return new Val(null, rt, BigInt(Math.trunc(v.c)));
+      return new Val(this.coerce(v, rt), rt);
+    }
+
+    xHexDecode(node) {
+      const v = this.expr(node.arguments[0]);
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      const fn = { Hex8ToBytes: 'jsHex8ToBytes', Hex16ToWords: 'jsHex16ToWords', Hex32ToDWords: 'jsHex32ToDWords', HexToBytes: 'jsHex8ToBytes' }[node.opCodesMethod] || 'jsHex8ToBytes';
+      const natural = fn === 'jsHex32ToDWords' ? 'uint32[]' : fn === 'jsHex16ToWords' ? 'uint16[]' : 'uint8[]';
+      const res = new Val(G.Call(G.Ident(fn), [this.coerce(v, 'string')]), natural);
+      return rt === natural ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xStringToBytes(node) {
+      const v = this.expr(node.arguments[0]);
+      const fn = { AnsiToBytes: 'jsAnsiToBytes', AsciiToBytes: 'jsAsciiToBytes', Utf8ToBytes: 'jsUtf8ToBytes', StringToBytes: 'jsAsciiToBytes' }[node.opCodesMethod] || (node.encoding === 'utf8' ? 'jsUtf8ToBytes' : 'jsAsciiToBytes');
+      return new Val(G.Call(G.Ident(fn), [this.coerce(v, 'string')]), 'uint8[]');
+    }
+
+    xBytesToString(node) {
+      const v = this.expr(node.arguments[0]);
+      const fn = { BytesToAnsi: 'jsBytesToAnsi', BytesToAscii: 'jsBytesToAscii', BytesToUtf8: 'jsBytesToUtf8', BytesToString: 'jsBytesToAscii' }[node.opCodesMethod] || 'jsBytesToAscii';
+      return new Val(G.Call(G.Ident(fn), [this.coerce(v, 'uint8[]')]), 'string');
+    }
+
+    xPackBytes(node) {
+      const bits = node.bits || 32;
+      const le = node.endian === 'little';
+      const rt = canonicalType(node.resultType) || (bits === 16 ? 'uint16' : 'uint32');
+      const args = node.arguments || [];
+      const n = bits / 8;
+      let byteExprs;
+      if (args.length === 1 || args.some(a => a.type === 'SpreadElement')) {
+        const list = this.spreadList(args, 'int32');
+        const tmp = this.tmp('p');
+        this.fn.pre.push(G.Assign(G.Ident(tmp), ':=', list));
+        byteExprs = Array.from({ length: n }, (_, i) => G.Call(G.Ident('jsByteAt'), [G.Ident(tmp), G.Lit(String(i))]));
+      } else {
+        byteExprs = args.map(a => {
+          const v = this.expr(a);
+          return this.toInt32Bits(v, 'int32');
+        });
+      }
+      // Pack32BE: ((b0 & 0xFF) << 24 | ...) >>> 0, Pack16: without the >>> 0 (an int32)
+      const order = le ? byteExprs.map((_, i) => n - 1 - i) : byteExprs.map((_, i) => i);
+      let acc = null;
+      const goT = bits === 64 ? 'uint64' : 'uint32';
+      byteExprs.forEach((b, i) => {
+        const shift = (n - 1 - order.indexOf(i)) * 8;
+        let part = G.Conv(goT, G.Binary('&', b, G.Lit('0xFF')));
+        if (shift) part = G.Binary('<<', part, G.Lit(String(shift)));
+        acc = acc ? G.Binary('|', acc, part) : part;
+      });
+      const natural = bits === 16 ? 'int32' : (bits === 64 ? 'uint64' : 'uint32');
+      const res = new Val(bits === 16 ? G.Conv('int32', acc) : acc, natural);
+      return rt === natural ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xUnpackBytes(node) {
+      const bits = node.bits || 32;
+      const le = node.endian === 'little';
+      const v = this.expr(node.arguments[0]);
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      let res;
+      if (bits === 64) {
+        const vt = canonicalType(v.t);
+        res = new Val(G.Call(G.Ident(le ? 'jsUnpack64LE' : 'jsUnpack64BE'), [isBigType(vt) ? G.Call(G.Ident('jsBigToU64'), [G.Call(G.Ident('jsBigAsUintN'), [G.Lit('64'), v.e])]) : this.coerce(v, 'uint64')]), 'uint8[]');
+      } else {
+        const w = this.toInt32Bits(v, 'uint32');
+        res = new Val(G.Call(G.Ident(`jsUnpack${bits}${le ? 'LE' : 'BE'}`), [w]), 'uint8[]');
+      }
+      return rt === 'uint8[]' ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xRotateLeft(node) { return this.rotate(node, true); }
+    xRotateRight(node) { return this.rotate(node, false); }
+
+    rotate(node, left) {
+      const bits = node.bits || 32;
+      const v = this.expr(node.value);
+      const amt = this.expr(node.amount);
+      const rt = canonicalType(node.resultType) || (bits === 64 ? 'uint64' : 'uint32');
+      let res;
+      if (bits === 64) {
+        const vt = canonicalType(v.t);
+        const x = isBigType(vt) ? G.Call(G.Ident('jsBigToU64'), [G.Call(G.Ident('jsBigAsUintN'), [G.Lit('64'), v.e])]) : this.coerce(v, 'uint64');
+        const k = this.coerce(amt, 'goint');
+        res = new Val(G.Call(G.Selector(G.Ident('bits'), 'RotateLeft64'), [x, left ? k : G.Unary('-', k)]), 'uint64');
+      } else {
+        const goT = bits === 8 ? 'uint8' : bits === 16 ? 'uint16' : 'uint32';
+        // value masked to the width, positions masked to width-1 (OpCodes.RotL8/16/32)
+        const x = bits === 32 ? this.toInt32Bits(v, 'uint32') : G.Conv(goT, this.toInt32Bits(v, 'uint32'));
+        const k = amt.isConst ? G.Lit(String((Number(amt.c) | 0) & (bits - 1))) : G.Binary('&', G.Conv('int', this.toInt32Bits(amt, 'int32')), G.Lit(String(bits - 1)));
+        const fn = bits === 8 ? 'RotateLeft8' : bits === 16 ? 'RotateLeft16' : 'RotateLeft32';
+        res = new Val(G.Call(G.Selector(G.Ident('bits'), fn), [x, left ? k : G.Unary('-', k.kind === 'Lit' ? k : G.Paren(k))]), goT);
+      }
+      return rt === res.t ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xArrayXor(node) {
+      const a = this.coerce(this.expr(node.arguments[0]), 'uint8[]');
+      const b = this.coerce(this.expr(node.arguments[1]), 'uint8[]');
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      const res = new Val(G.Call(G.Ident('jsXorArrays'), [a, b]), 'uint8[]');
+      return rt === 'uint8[]' ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xArrayClear(node) {
+      const a = this.expr(node.arguments[0]);
+      return new Val(G.Call(G.Ident('jsClear'), [a.e]), 'void');
+    }
+
+    xArrayAppend(node) {
+      const arr = this.expr(node.array);
+      const at = canonicalType(arr.t) || 'any[]';
+      const el = isArrayType(at) ? elementType(at) : 'any';
+      const values = node.values || (node.value ? [node.value] : []);
+      const items = [];
+      let spread = false;
+      for (const v of values) {
+        if (v && v.type === 'SpreadElement') {
+          spread = true;
+          items.push({ spread: true, e: this.coerce(this.expr(v.argument), at) });
+        } else items.push({ e: this.coerce(this.expr(v), el) });
+      }
+      if (!isArrayType(at)) {
+        return new Val(G.Call(G.Ident('jsPushAny'), [this.coerce(arr, 'any'), ...items.map(i => i.e)]), 'int32');
+      }
+      let target = arr.e;
+      if (!this.isAssignable(target)) throw new Error('push onto a temporary array');
+      let appended;
+      if (!spread) appended = G.Call(G.Ident('append'), [target, ...items.map(i => i.e)]);
+      else if (items.length === 1) appended = G.Call(G.Ident('append'), [target, items[0].e], true);
+      else appended = G.Call(G.Ident('append'), [target, G.Call(G.Ident('jsConcat'), items.map(i => i.spread ? i.e : G.Composite(this.goType(at), [i.e])))], true);
+      this.fn.pre.push(G.Assign(target, '=', appended));
+      return new Val(G.Conv('int32', G.Call(G.Ident('len'), [target])), 'int32');
+    }
+
+    xArrayCreation(node) {
+      const rt = canonicalType(node.resultType) || ((node.elementType || 'any') + '[]');
+      const t = isArrayType(rt) ? rt : 'any[]';
+      if (!node.size) return new Val(G.Composite(this.goType(t), []), t);
+      const n = this.expr(node.size);
+      return new Val(G.Call(G.Ident('make'), [G.Ident(this.goType(t)), this.coerce(n, 'goint')]), t);
+    }
+
+    xTypedArrayCreation(node) {
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      if (node.buffer) {
+        const b = this.expr(node.buffer);
+        return new Val(G.Call(G.Index(G.Ident('jsTypedFrom'), G.Ident(this.goType(elementType(rt)))), [this.coerce(b, 'any')]), rt);
+      }
+      return this.typedArray(rt, node.size);
+    }
+
+    xBufferCreation(node) {
+      return new Val(G.Call(G.Ident('make'), [G.Ident('[]uint8'), this.coerce(this.expr(node.size), 'goint')]), 'uint8[]');
+    }
+
+    xArrayFrom(node) {
+      const rt = canonicalType(node.resultType) || 'any[]';
+      const t = isArrayType(rt) ? rt : 'any[]';
+      const el = elementType(t);
+      if (node.mapFunction) {
+        const cb = this.callbackValue(node.mapFunction, []);
+        if (!cb) throw new Error('Array.from with a map function that is not a literal');
+        if (node.length || (node.iterable && node.iterable.type === 'ObjectLiteral')) {
+          let len = node.length;
+          if (!len && node.iterable && node.iterable.type === 'ObjectLiteral') {
+            const p = node.iterable.properties.find(x => propKey(x.key) === 'length');
+            len = p && p.value;
+          }
+          const n = this.coerce(this.expr(len), 'goint');
+          return new Val(G.Call(G.Ident('jsFromLength'), [n, this.adaptCallback(cb, ['any', 'int32'], el)]), t);
+        }
+        const src = this.expr(node.iterable);
+        const st = canonicalType(src.t) || 'any[]';
+        const srcEl = isArrayType(st) ? elementType(st) : 'any';
+        return new Val(G.Call(G.Ident('jsMap'), [isArrayType(st) ? src.e : this.coerce(src, 'any[]'), this.adaptCallback(cb, [isArrayType(st) ? srcEl : 'any', 'int32'], el)]), t);
+      }
+      if (node.length || (node.iterable && node.iterable.type === 'ObjectLiteral')) {
+        let len = node.length;
+        if (!len) {
+          const p = node.iterable.properties.find(x => propKey(x.key) === 'length');
+          len = p && p.value;
+        }
+        return new Val(G.Call(G.Ident('make'), [G.Ident(this.goType(t)), this.coerce(this.expr(len), 'goint')]), t);
+      }
+      const src = this.expr(node.iterable);
+      const st = canonicalType(src.t) || 'any';
+      if (isArrayType(st) && this.goType(st) === this.goType(t)) return new Val(G.Call(G.Ident('jsCopy'), [src.e]), t);
+      if (st === 'string') return new Val(this.coerce(new Val(G.Call(G.Ident('jsStringChars'), [src.e]), 'string[]'), t), t);
+      return new Val(this.coerce(src, t), t);
+    }
+
+    xArraySlice(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any';
+      const start = node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0');
+      const end = node.end ? this.coerce(this.expr(node.end), 'goint') : G.Ident('jsNoEnd');
+      if (at === 'string') return new Val(G.Call(G.Ident('jsStrSlice'), [a.e, start, end]), 'string');
+      const rt = canonicalType(node.resultType) || at;
+      const res = new Val(G.Call(G.Ident('jsSlice'), [isArrayType(at) ? a.e : this.coerce(a, rt), start, end]), isArrayType(at) ? at : rt);
+      return this.sameGo(res.t, rt) ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xTypedArraySubarray(node) {
+      const a = this.expr(node.array);
+      const start = node.begin ? this.coerce(this.expr(node.begin), 'goint') : G.Lit('0');
+      const end = node.end ? this.coerce(this.expr(node.end), 'goint') : G.Ident('jsNoEnd');
+      return new Val(G.Call(G.Ident('jsSubarray'), [a.e, start, end]), canonicalType(a.t));
+    }
+
+    xTypedArraySet(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t);
+      const src = this.coerce(this.expr(node.source), at);
+      const off = node.offset ? this.coerce(this.expr(node.offset), 'goint') : G.Lit('0');
+      return new Val(G.Call(G.Ident('jsTypedSet'), [a.e, src, off]), 'void');
+    }
+
+    xArrayConcat(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any[]';
+      const t = isArrayType(at) ? at : (canonicalType(node.resultType) || 'any[]');
+      const el = elementType(t);
+      const parts = [this.coerce(a, t)];
+      for (const x of node.arrays || []) {
+        const v = this.expr(x.type === 'SpreadElement' ? x.argument : x);
+        const vt = canonicalType(v.t) || 'any';
+        parts.push(isArrayType(vt) ? this.coerce(v, t) : G.Composite(this.goType(t), [this.coerce(v, el)]));
+      }
+      return new Val(G.Call(G.Ident('jsConcat'), parts), t);
+    }
+
+    xArrayFill(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || canonicalType(node.resultType) || 'any[]';
+      const el = isArrayType(at) ? elementType(at) : 'any';
+      const start = node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0');
+      const end = node.end ? this.coerce(this.expr(node.end), 'goint') : G.Ident('jsNoEnd');
+      return new Val(G.Call(this.generic('jsFill', this.goType(el)), [a.e, this.coerce(this.expr(node.value), el), start, end]), at);
+    }
+
+    xArrayIndexOf(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any';
+      if (at === 'string') return new Val(G.Call(G.Ident('jsStrIndexOf'), [a.e, this.coerce(this.expr(node.value), 'string'), node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0')]), 'int32');
+      const el = isArrayType(at) ? elementType(at) : 'any';
+      return new Val(G.Call(this.generic('jsIndexOf', this.goType(isArrayType(at) ? el : 'any')), [isArrayType(at) ? a.e : this.coerce(a, 'any[]'), this.coerce(this.expr(node.value), isArrayType(at) ? el : 'any'), node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0')]), 'int32');
+    }
+
+    xArrayIncludes(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any';
+      if (at === 'string') return new Val(G.Call(G.Selector(G.Ident('strings'), 'Contains'), [a.e, this.coerce(this.expr(node.value), 'string')]), 'boolean');
+      const el = isArrayType(at) ? elementType(at) : 'any';
+      return new Val(G.Binary('>=', G.Call(this.generic('jsIndexOf', this.goType(isArrayType(at) ? el : 'any')), [isArrayType(at) ? a.e : this.coerce(a, 'any[]'), this.coerce(this.expr(node.value), isArrayType(at) ? el : 'any'), G.Lit('0')]), G.Lit('0')), 'boolean');
+    }
+
+    xArrayJoin(node) {
+      const a = this.expr(node.array);
+      return new Val(G.Call(G.Ident('jsJoin'), [a.e, node.separator ? this.coerce(this.expr(node.separator), 'string') : G.Lit('","')]), 'string');
+    }
+
+    xArrayReverse(node) {
+      const a = this.expr(node.array);
+      return new Val(G.Call(G.Ident('jsReverse'), [a.e]), canonicalType(a.t));
+    }
+
+    xArrayPop(node) { return this.builtinMethod(this.expr(node.array), canonicalType(this.expr(node.array).t), 'pop', [], null, node) || this.unsupported(node); }
+    xArrayShift(node) { const a = this.expr(node.array); return this.builtinMethod(a, canonicalType(a.t), 'shift', [], null, node) || this.unsupported(node); }
+
+    xArrayUnshift(node) {
+      const a = this.expr(node.array);
+      const el = elementType(canonicalType(a.t)) || 'any';
+      return new Val(G.Call(this.generic('jsUnshift', this.goType(el)), [G.Unary('&', a.e), this.coerce(this.expr(node.value), el)]), 'int32');
+    }
+
+    xArraySplice(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t);
+      const el = elementType(at) || 'any';
+      const start = node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0');
+      const del = node.deleteCount ? this.coerce(this.expr(node.deleteCount), 'goint') : G.Ident('jsNoEnd');
+      return new Val(G.Call(this.generic('jsSplice', this.goType(el)), [G.Unary('&', a.e), start, del, ...(node.items || []).map(i => this.coerce(this.expr(i), el))]), at);
+    }
+
+    xArrayMap(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'map', [node.callback], canonicalType(node.resultType)); }
+    xArrayFilter(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'filter', [node.callback], canonicalType(node.resultType)); }
+    xArrayForEach(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'forEach', [node.callback], 'void'); }
+    xArraySort(node) {
+      const a = this.expr(node.array);
+      if (!node.compareFn) return new Val(G.Call(G.Ident('jsSortDefault'), [a.e]), canonicalType(a.t));
+      return this.arrayCallback(a, canonicalType(a.t), 'sort', [node.compareFn], canonicalType(a.t));
+    }
+
+    xIsArrayCheck(node) {
+      const v = this.expr(node.value);
+      const t = canonicalType(v.t) || 'any';
+      if (isArrayType(t)) return new Val(G.Binary('!=', v.e, G.Lit('nil')), 'boolean');
+      return new Val(G.Call(G.Ident('jsIsArray'), [this.coerce(v, 'any')]), 'boolean');
+    }
+
+    xIsIntegerCheck(node) {
+      const v = this.expr(node.value);
+      const t = canonicalType(v.t);
+      if (isIntType(t)) return new Val(null, 'boolean', true);
+      return new Val(G.Call(G.Ident('jsIsInteger'), [this.coerce(v, 'any')]), 'boolean');
+    }
+
+    xObjectFreeze(node) { return this.expr(node.object); }
+
+    xMapCreation(node) {
+      const args = [];
+      for (const e of node.entries || []) {
+        if (e && e.type === 'ArrayExpression' && e.elements.length === 2) args.push(this.coerce(this.expr(e.elements[0]), 'any'), this.coerce(this.expr(e.elements[1]), 'any'));
+      }
+      return new Val(G.Call(G.Ident('jsNewMapOf'), args), 'Map');
+    }
+
+    xFloor(node) { return this.mathUnary(node, 'Floor'); }
+    xCeil(node) { return this.mathUnary(node, 'Ceil'); }
+    xRound(node) { return this.mathUnary(node, 'jsRound'); }
+    xTruncate(node) { return this.mathUnary(node, 'Trunc'); }
+    xAbs(node) { return this.mathUnary(node, 'Abs'); }
+    xSqrt(node) { return this.mathUnary(node, 'Sqrt'); }
+    xLog(node) { return this.mathUnary(node, 'Log'); }
+    xLog2(node) { return this.mathUnary(node, 'Log2'); }
+    xExp(node) { return this.mathUnary(node, 'Exp'); }
+    xSin(node) { return this.mathUnary(node, 'Sin'); }
+    xCos(node) { return this.mathUnary(node, 'Cos'); }
+    xTanh(node) { return this.mathUnary(node, 'Tanh'); }
+
+    mathUnary(node, fn) {
+      const v = this.expr(node.argument);
+      const rt = canonicalType(node.resultType) || 'float64';
+      const vt = canonicalType(v.t);
+      // Floor/Ceil/Trunc/Round/Abs of an integer is the integer
+      if (isIntType(vt) && ['Floor', 'Ceil', 'Trunc', 'jsRound'].includes(fn)) return isIntType(rt) || !isNumericType(rt) ? new Val(this.coerce(v, rt && isNumericType(rt) ? rt : vt), rt && isNumericType(rt) ? rt : vt) : new Val(this.coerce(v, 'float64'), 'float64');
+      if (v.isConst && typeof v.c === 'number') {
+        const f = { Floor: Math.floor, Ceil: Math.ceil, jsRound: Math.round, Trunc: Math.trunc, Abs: Math.abs, Sqrt: Math.sqrt, Log: Math.log, Log2: Math.log2, Exp: Math.exp, Sin: Math.sin, Cos: Math.cos, Tanh: Math.tanh }[fn];
+        if (f) return new Val(null, rt, f(v.c));
+      }
+      const callee = fn.startsWith('js') ? G.Ident(fn) : G.Selector(G.Ident('math'), fn);
+      const res = new Val(G.Call(callee, [this.coerce(v, 'float64')]), 'float64');
+      return isFloatType(rt) || !isNumericType(rt) ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xMin(node) { return this.minMax('min', (node.arguments || []).map(a => this.expr(a)), canonicalType(node.resultType)); }
+    xMax(node) { return this.minMax('max', (node.arguments || []).map(a => this.expr(a)), canonicalType(node.resultType)); }
+
+    xPower(node) { return this.power(this.expr(node.base), this.expr(node.exponent), canonicalType(node.resultType)); }
+
+    xMathCall(node) {
+      const args = (node.arguments || []).map(a => this.expr(a));
+      const rt = canonicalType(node.resultType);
+      if (node.method === 'imul') return new Val(G.Conv('int32', G.Binary('*', this.toInt32Bits(args[0], 'uint32'), this.toInt32Bits(args[1], 'uint32'))), 'int32');
+      const r = this.mathCall(node.method, args, rt);
+      if (r) return r;
+      return this.unsupported(node);
+    }
+
+    xMathConstant(node) { return new Val(null, 'float64', node.value !== undefined ? node.value : Math[node.name]); }
+    xNumberConstant(node) { return new Val(null, canonicalType(node.resultType) || 'float64', node.value); }
+    xRandom() { return new Val(G.Call(G.Ident('jsRandom'), []), 'float64'); }
+
+    xCountLeadingZeros(node) {
+      const v = this.expr(node.argument);
+      const bits = node.bits || 32;
+      return new Val(G.Conv('int32', G.Call(G.Selector(G.Ident('bits'), bits === 64 ? 'LeadingZeros64' : 'LeadingZeros32'), [this.toInt32Bits(v, 'uint32')])), 'int32');
+    }
+
+    xStringCharAt(node) {
+      const s = this.expr(node.string);
+      return new Val(G.Call(G.Ident('jsCharAt'), [this.coerce(s, 'string'), this.coerce(this.expr(node.index), 'goint')]), 'string');
+    }
+
+    xStringCharCodeAt(node) {
+      const s = this.expr(node.string);
+      return new Val(G.Call(G.Ident('jsCharCodeAt'), [this.coerce(s, 'string'), node.index ? this.coerce(this.expr(node.index), 'goint') : G.Lit('0')]), canonicalType(node.resultType) === 'uint16' ? 'int32' : 'int32');
+    }
+
+    xStringFromCharCodes(node) {
+      return new Val(G.Call(G.Ident('jsFromCharCodes'), [this.spreadList(node.charCodes || [], 'int32')]), 'string');
+    }
+
+    xStringTransform(node) {
+      const s = this.expr(node.string);
+      return this.builtinMethod(s, 'string', node.method, [], 'string', node) || this.unsupported(node);
+    }
+
+    xStringRepeat(node) {
+      return new Val(G.Call(G.Selector(G.Ident('strings'), 'Repeat'), [this.coerce(this.expr(node.string), 'string'), this.coerce(this.expr(node.count), 'goint')]), 'string');
+    }
+
+    xStringReplace(node) {
+      return new Val(G.Call(G.Ident(node.method === 'replaceAll' ? 'jsReplaceAll' : 'jsReplace'), [this.coerce(this.expr(node.string), 'string'), this.coerce(this.expr(node.searchValue), 'any'), this.coerce(this.expr(node.replaceValue), 'any')]), 'string');
+    }
+
+    xStringIndexOf(node) {
+      const s = this.coerce(this.expr(node.string), 'string');
+      const sub = this.coerce(this.expr(node.searchValue), 'string');
+      if (node.method === 'lastIndexOf') return new Val(G.Conv('int32', G.Call(G.Selector(G.Ident('strings'), 'LastIndex'), [s, sub])), 'int32');
+      return new Val(G.Call(G.Ident('jsStrIndexOf'), [s, sub, node.fromIndex ? this.coerce(this.expr(node.fromIndex), 'goint') : G.Lit('0')]), 'int32');
+    }
+
+    xStringIncludes(node) {
+      const s = this.coerce(this.expr(node.string), 'string');
+      const sub = this.coerce(this.expr(node.searchValue), 'string');
+      const fn = node.method === 'startsWith' ? 'HasPrefix' : node.method === 'endsWith' ? 'HasSuffix' : 'Contains';
+      return new Val(G.Call(G.Selector(G.Ident('strings'), fn), [s, sub]), 'boolean');
+    }
+
+    xStringSubstring(node) {
+      const s = this.coerce(this.expr(node.string), 'string');
+      const start = node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0');
+      if (node.method === 'substr') return new Val(G.Call(G.Ident('jsSubstr'), [s, start, node.length ? this.coerce(this.expr(node.length), 'goint') : G.Lit('-1')]), 'string');
+      if (node.method === 'slice') return new Val(G.Call(G.Ident('jsStrSlice'), [s, start, node.end ? this.coerce(this.expr(node.end), 'goint') : G.Ident('jsNoEnd')]), 'string');
+      return new Val(G.Call(G.Ident('jsSubstring'), [s, start, node.end ? this.coerce(this.expr(node.end), 'goint') : G.Lit('-1')]), 'string');
+    }
+
+    xStringSplit(node) {
+      return new Val(G.Call(G.Ident('jsSplit'), [this.coerce(this.expr(node.string), 'string'), node.separator ? this.coerce(this.expr(node.separator), 'any') : G.Lit('nil')]), 'string[]');
+    }
+
+    xStringPad(node) {
+      const fn = node.method === 'padEnd' ? 'jsPadEnd' : 'jsPadStart';
+      return new Val(G.Call(G.Ident(fn), [this.coerce(this.expr(node.string), 'string'), this.coerce(this.expr(node.targetLength), 'goint'), node.padString ? this.coerce(this.expr(node.padString), 'string') : G.Lit('" "')]), 'string');
+    }
+
+    xDebugOutput(node) {
+      return new Val(G.Call(G.Ident('jsLog'), (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'))), 'void');
+    }
+
+    xOpCodesCall(node) {
+      return this.opCodesCall(node.method || node.opCodesMethod, node.arguments || [], this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable), node);
+    }
+
+    /** OpCodes methods the IL keeps as calls: the runtime's op* functions with their JSDoc signatures. */
+    opCodesCall(method, argNodes, rt, node) {
+      const sig = OPCODES_SIGNATURES[method];
+      if (!sig) {
+        this.warnings.push(`OpCodes.${method}`);
+        return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString('OpCodes.' + method))]), rt || 'any');
+      }
+      if (sig.special) return sig.special.call(this, argNodes, rt, node);
+      const args = sig.params.map((t, i) => i < argNodes.length ? this.coerce(this.expr(argNodes[i]), t) : (sig.defaults && sig.defaults[i] !== undefined ? G.Lit(sig.defaults[i]) : this.zero(t)));
+      const res = new Val(G.Call(G.Ident('op' + method), args), sig.returns);
+      return rt && rt !== 'any' && !this.sameGo(rt, sig.returns) ? new Val(this.coerce(res, rt), rt) : res;
+    }
+
+    unsupported(node) {
+      this.warnings.push(`unsupported ${node.type}`);
+      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString(node.type))]), canonicalType(node.resultType) || 'any');
+    }
   }
 
-  // Export
-  const exports = { GoTransformer };
+  /**
+   * OpCodes methods the IL leaves as calls, with the parameter and return IL
+   * types of their JSDoc. Generic ones (whose element type follows the
+   * argument) have a `special` transform.
+   */
+  const OPCODES_SIGNATURES = {
+    GetByte: { params: ['uint32', 'int32'], returns: 'uint8' },
+    GF256Mul: { params: ['int32', 'int32'], returns: 'uint8' },
+    GFMul: { params: ['int32', 'int32', 'int32', 'int32'], returns: 'int32' },
+    SetBit: { params: ['uint32', 'int32', 'int32'], returns: 'uint32' },
+    GetBit: { params: ['uint32', 'int32'], returns: 'boolean' },
+    BitMask: { params: ['int32'], returns: 'uint32' },
+    Shr32Signed: { params: ['int32', 'int32'], returns: 'int32' },
+    MulHi32: { params: ['uint32', 'uint32'], returns: 'uint32' },
+    PopCount: { params: ['uint32'], returns: 'int32' },
+    PopCountFast: { params: ['uint32'], returns: 'int32' },
+    BitCountN: { params: ['bigint'], returns: 'int32' },
+    Hex32ToDWords: { params: ['string'], returns: 'uint32[]' },
+    SecureCompare: { params: ['uint8[]', 'uint8[]'], returns: 'boolean' },
+    ConstantTimeCompare: { params: ['uint8[]', 'uint8[]', 'int32'], returns: 'boolean' },
+    ArraysEqual: { params: ['uint8[]', 'uint8[]'], returns: 'boolean' },
+    BytesToChars: { params: ['uint8[]'], returns: 'string' },
+    Words32ToBytesBE: { params: ['uint32[]'], returns: 'uint8[]' },
+    BytesToWords32BE: { params: ['uint8[]'], returns: 'uint32[]' },
+    XorArrayWithByte: { params: ['uint8[]', 'int32'], returns: 'uint8[]' },
+    GHashMul: { params: ['uint8[]', 'uint8[]'], returns: 'uint8[]' },
+    GCMIncrement: { params: ['uint8[]'], returns: 'uint8[]' },
+    EncodeMsgLength64LE: { params: ['float64'], returns: 'uint8[]' },
+    SecureRandomBytes: { params: ['int32'], returns: 'uint8[]' },
+    RotL64n: { params: ['bigint', 'int32'], returns: 'bigint' },
+    RotR64n: { params: ['bigint', 'int32'], returns: 'bigint' },
+    RotL128n: { params: ['bigint', 'int32'], returns: 'bigint' },
+    GcdN: { params: ['bigint', 'bigint'], returns: 'bigint' },
+    ModN: { params: ['bigint', 'bigint'], returns: 'bigint' },
+    AddMod: { params: ['bigint', 'bigint', 'bigint'], returns: 'bigint' },
+    SubMod: { params: ['bigint', 'bigint', 'bigint'], returns: 'bigint' },
+    MulModN: { params: ['bigint', 'bigint', 'bigint'], returns: 'bigint' },
+    SquareModN: { params: ['bigint', 'bigint'], returns: 'bigint' },
+    ModPowN: { params: ['bigint', 'bigint', 'bigint'], returns: 'bigint' },
+    ModInverseN: { params: ['bigint', 'bigint'], returns: 'bigint' },
+    GetBitN: { params: ['bigint', 'int32'], returns: 'int32' },
+    ToLong: { params: ['float64'], returns: 'int64' },
+    ToShort: { params: ['float64'], returns: 'int16' },
+    Add3L64: { params: ['uint32', 'uint32', 'uint32'], returns: 'float64' },
+    Add3H64: { params: ['float64', 'uint32', 'uint32', 'uint32'], returns: 'uint32' },
+    CreateUint64ArrayFromHex: { params: ['string'], returns: 'uint64[]' },
+    CreateArray: {
+      special(argNodes, rt) {
+        const t = rt && isArrayType(rt) ? rt : 'uint8[]';
+        const n = this.coerce(this.expr(argNodes[0]), 'goint');
+        const v = argNodes[1] ? this.coerce(this.expr(argNodes[1]), elementType(t)) : this.zero(elementType(t));
+        return new Val(G.Call(this.generic('jsMakeFilled', this.goType(elementType(t))), [n, v]), t);
+      }
+    },
+    CopyArray: {
+      special(argNodes, rt) {
+        const v = this.expr(argNodes[0]);
+        const vt = canonicalType(v.t);
+        const res = new Val(G.Call(G.Ident('jsCopy'), [isArrayType(vt) ? v.e : this.coerce(v, rt || 'uint8[]')]), isArrayType(vt) ? vt : (rt || 'uint8[]'));
+        return rt && rt !== 'any' && !this.sameGo(rt, res.t) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+    },
+    ConcatArrays: {
+      special(argNodes, rt) {
+        const v = this.expr(argNodes[0]);
+        const t = rt && isArrayType(rt) ? rt : 'uint8[]';
+        if (argNodes[0].type === 'ArrayExpression') {
+          const parts = argNodes[0].elements.map(e => this.coerce(this.expr(e), t));
+          return new Val(G.Call(G.Ident('jsConcat'), parts), t);
+        }
+        return new Val(G.Call(G.Ident('jsConcat'), [this.coerce(v, t + '[]')], true), t);
+      }
+    },
+    ArraySlice: {
+      special(argNodes, rt) {
+        const v = this.expr(argNodes[0]);
+        const vt = canonicalType(v.t);
+        const start = argNodes[1] ? this.coerce(this.expr(argNodes[1]), 'goint') : G.Lit('0');
+        const end = argNodes[2] ? this.coerce(this.expr(argNodes[2]), 'goint') : G.Ident('jsNoEnd');
+        return new Val(G.Call(G.Ident('jsSlice'), [v.e, start, end]), vt);
+      }
+    },
+    RotL64_HL: {
+      special(argNodes) {
+        return new Val(G.Call(G.Ident('opRotL64_HL'), argNodes.map((a, i) => this.coerce(this.expr(a), i < 2 ? 'uint32' : 'int32'))), 'object');
+      }
+    },
+    Split64: {
+      special(argNodes) {
+        return new Val(G.Call(G.Ident('opSplit64'), [this.coerce(this.expr(argNodes[0]), 'any')]), 'object');
+      }
+    },
+    CreateBitStream: {
+      special(argNodes) {
+        return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit('"OpCodes.CreateBitStream"')]), 'object');
+      }
+    }
+  };
 
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = exports;
-  }
-  if (typeof global !== 'undefined') {
-    global.GoTransformer = GoTransformer;
-  }
+  // ==========================================================================
+  // GO RUNTIME: the JavaScript semantics the generated code calls
+  // ==========================================================================
 
-})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : this);
+  const GO_RUNTIME = String.raw`// ===== JavaScript runtime for transpiled code =====
+
+// JsObject is any JavaScript object: members are resolved by name, as
+// JavaScript does. Every transpiled class implements it.
+type JsObject interface {
+	JsGet(name string) any
+	JsSet(name string, value any)
+	JsCall(name string, args ...any) any
+	JsHas(name string) bool
+	JsHasMethod(name string) bool
+}
+
+// JsError is a thrown JavaScript value: an Error (Name, Message) or any other value.
+type JsError struct {
+	Name    string
+	Message string
+	Value   any
+}
+
+func (e *JsError) Error() string {
+	if e.Name == "" {
+		return e.Message
+	}
+	return e.Name + ": " + e.Message
+}
+func (e *JsError) JsGet(name string) any {
+	switch name {
+	case "message":
+		return e.Message
+	case "name":
+		return e.Name
+	}
+	return nil
+}
+func (e *JsError) JsSet(name string, value any) {
+	switch name {
+	case "message":
+		e.Message = jsStr(value)
+	case "name":
+		e.Name = jsStr(value)
+	}
+}
+func (e *JsError) JsCall(name string, args ...any) any {
+	if name == "toString" {
+		return e.Error()
+	}
+	panic(jsNewError("TypeError", "Error."+name+" is not a function"))
+}
+func (e *JsError) JsHas(name string) bool       { return name == "message" || name == "name" }
+func (e *JsError) JsHasMethod(name string) bool { return name == "toString" }
+
+func jsNewError(name string, message string) *JsError {
+	return &JsError{Name: name, Message: message}
+}
+
+// jsThrowable is the panic value of a throw statement.
+func jsThrowable(v any) any {
+	if e, ok := v.(*JsError); ok {
+		return e
+	}
+	return &JsError{Message: jsStr(v), Value: v}
+}
+
+// jsCaught is what a catch clause receives: the thrown value, or a TypeError
+// for a fault of the Go runtime (an index out of range, a nil access).
+func jsCaught(r any) any {
+	switch x := r.(type) {
+	case *JsError:
+		if x.Value != nil {
+			return x.Value
+		}
+		return x
+	case error:
+		return &JsError{Name: "TypeError", Message: x.Error()}
+	}
+	return &JsError{Name: "Error", Message: fmt.Sprint(r)}
+}
+
+func jsUnsupported(what string) any {
+	panic(jsNewError("Error", "not transpiled: "+what))
+}
+
+// ----- plain objects and Maps
+
+// JsMap is a JavaScript object literal (string keys) or Map (any keys), in insertion order.
+type JsMap struct {
+	keys []any
+	vals map[any]any
+}
+
+func jsNewMap() *JsMap { return &JsMap{vals: map[any]any{}} }
+
+func jsMapOf(kv ...any) *JsMap {
+	m := jsNewMap()
+	for i := 0; i+1 < len(kv); i += 2 {
+		if s, ok := kv[i].(string); ok && s == "..." {
+			for _, k := range jsKeys(kv[i+1]) {
+				m.JsSet(k, jsGetProp(kv[i+1], k))
+			}
+			continue
+		}
+		m.JsSet(jsKey(kv[i]), kv[i+1])
+	}
+	return m
+}
+
+func jsNewMapOf(kv ...any) *JsMap {
+	m := jsNewMap()
+	for i := 0; i+1 < len(kv); i += 2 {
+		m.MapSet(kv[i], kv[i+1])
+	}
+	return m
+}
+
+func jsMapKey(k any) any {
+	switch x := k.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32:
+		return jsF64(x)
+	}
+	return k
+}
+
+func (m *JsMap) MapGet(k any) any { return m.vals[jsMapKey(k)] }
+func (m *JsMap) MapSet(k, v any) *JsMap {
+	k = jsMapKey(k)
+	if _, ok := m.vals[k]; !ok {
+		m.keys = append(m.keys, k)
+	}
+	m.vals[k] = v
+	return m
+}
+func (m *JsMap) MapHas(k any) bool { _, ok := m.vals[jsMapKey(k)]; return ok }
+func (m *JsMap) MapDelete(k any) bool {
+	k = jsMapKey(k)
+	if _, ok := m.vals[k]; !ok {
+		return false
+	}
+	delete(m.vals, k)
+	for i, x := range m.keys {
+		if x == k {
+			m.keys = append(m.keys[:i:i], m.keys[i+1:]...)
+			break
+		}
+	}
+	return true
+}
+func (m *JsMap) MapClear()        { m.keys = nil; m.vals = map[any]any{} }
+func (m *JsMap) MapKeys() []any   { return append([]any{}, m.keys...) }
+func (m *JsMap) MapValues() []any {
+	out := make([]any, len(m.keys))
+	for i, k := range m.keys {
+		out[i] = m.vals[k]
+	}
+	return out
+}
+func (m *JsMap) JsGet(name string) any {
+	if name == "size" {
+		if _, ok := m.vals[name]; !ok {
+			return int32(len(m.keys))
+		}
+	}
+	return m.vals[name]
+}
+func (m *JsMap) JsSet(name string, value any) { m.MapSet(name, value) }
+func (m *JsMap) JsCall(name string, args ...any) any {
+	if f, ok := m.vals[name]; ok {
+		return jsCallFunc(f, args...)
+	}
+	switch name {
+	case "get":
+		return m.MapGet(jsArg(args, 0))
+	case "set":
+		return m.MapSet(jsArg(args, 0), jsArg(args, 1))
+	case "has":
+		return m.MapHas(jsArg(args, 0))
+	case "delete":
+		return m.MapDelete(jsArg(args, 0))
+	case "hasOwnProperty":
+		return m.MapHas(jsArg(args, 0))
+	}
+	panic(jsNewError("TypeError", "object."+name+" is not a function"))
+}
+func (m *JsMap) JsHas(name string) bool       { _, ok := m.vals[name]; return ok }
+func (m *JsMap) JsHasMethod(name string) bool { return jsIsFunc(m.vals[name]) }
+
+// jsKey is a property key: JavaScript turns numbers into their string form.
+func jsKey(k any) string {
+	if s, ok := k.(string); ok {
+		return s
+	}
+	return jsStr(k)
+}
+
+func jsGetProp(o any, name string) any {
+	switch x := o.(type) {
+	case JsObject:
+		return x.JsGet(name)
+	case nil:
+		panic(jsNewError("TypeError", "Cannot read properties of null (reading '"+name+"')"))
+	}
+	rv := reflect.ValueOf(o)
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.String {
+		if name == "length" {
+			return int32(rv.Len())
+		}
+		if i, err := strconv.Atoi(name); err == nil && i >= 0 && i < rv.Len() {
+			return rv.Index(i).Interface()
+		}
+	}
+	return nil
+}
+
+func jsToObject(v any) JsObject {
+	if v == nil {
+		return nil
+	}
+	if o, ok := v.(JsObject); ok {
+		if jsIsNull(o) {
+			return nil
+		}
+		return o
+	}
+	panic(jsNewError("TypeError", fmt.Sprintf("%T is not an object", v)))
+}
+
+func jsKeys(o any) []string {
+	switch x := o.(type) {
+	case *JsMap:
+		out := []string{}
+		for _, k := range x.keys {
+			out = append(out, jsKey(k))
+		}
+		return out
+	case nil:
+		return []string{}
+	}
+	rv := reflect.ValueOf(o)
+	if rv.Kind() == reflect.Slice {
+		out := make([]string, rv.Len())
+		for i := range out {
+			out[i] = strconv.Itoa(i)
+		}
+		return out
+	}
+	return []string{}
+}
+
+func jsValues(o any) []any {
+	out := []any{}
+	for _, k := range jsKeys(o) {
+		out = append(out, jsGetProp(o, k))
+	}
+	return out
+}
+
+func jsEntries(o any) []any {
+	out := []any{}
+	for _, k := range jsKeys(o) {
+		out = append(out, []any{k, jsGetProp(o, k)})
+	}
+	return out
+}
+
+func jsAssign(target any, sources ...any) any {
+	t := jsToObject(target)
+	for _, s := range sources {
+		for _, k := range jsKeys(s) {
+			t.JsSet(k, jsGetProp(s, k))
+		}
+	}
+	return target
+}
+
+func jsIn(key any, o any) bool {
+	switch x := o.(type) {
+	case JsObject:
+		return x.JsHas(jsKey(key))
+	}
+	rv := reflect.ValueOf(o)
+	if rv.Kind() == reflect.Slice {
+		i, err := strconv.Atoi(jsKey(key))
+		return err == nil && i >= 0 && i < rv.Len() || jsKey(key) == "length"
+	}
+	return false
+}
+
+func jsDelete(o any, key string) bool {
+	if m, ok := o.(*JsMap); ok {
+		m.MapDelete(key)
+	}
+	return true
+}
+
+func jsBind(o JsObject, name string) any {
+	return func(args ...any) any { return o.JsCall(name, args...) }
+}
+
+func jsIterValues(v any) []any {
+	switch x := v.(type) {
+	case *JsMap:
+		return x.MapValues()
+	case nil:
+		return nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice {
+		out := make([]any, rv.Len())
+		for i := range out {
+			out[i] = rv.Index(i).Interface()
+		}
+		return out
+	}
+	return nil
+}
+
+// ----- the algorithm registry (AlgorithmFramework.RegisterAlgorithm / Find)
+
+var jsAlgorithms []JsObject
+
+func jsRegisterAlgorithm(a JsObject) {
+	if a == nil {
+		panic(jsNewError("Error", "RegisterAlgorithm: Invalid algorithm object"))
+	}
+	jsAlgorithms = append(jsAlgorithms, a)
+}
+
+func jsFindAlgorithm(name string) JsObject {
+	for i := len(jsAlgorithms) - 1; i >= 0; i-- {
+		if jsStr(jsAlgorithms[i].JsGet("name")) == name {
+			return jsAlgorithms[i]
+		}
+	}
+	return nil
+}
+
+// ----- functions
+
+func jsArg(args []any, i int) any {
+	if i < len(args) {
+		return args[i]
+	}
+	return nil
+}
+
+func jsArgOr(args []any, i int, dflt any) any {
+	if i < len(args) && args[i] != nil {
+		return args[i]
+	}
+	return dflt
+}
+
+func jsIsFunc(f any) bool {
+	return f != nil && reflect.TypeOf(f).Kind() == reflect.Func
+}
+
+func jsCallFunc(f any, args ...any) any {
+	if f == nil {
+		panic(jsNewError("TypeError", "undefined is not a function"))
+	}
+	if g, ok := f.(func(...any) any); ok {
+		return g(args...)
+	}
+	fv := reflect.ValueOf(f)
+	ft := fv.Type()
+	if ft.Kind() != reflect.Func {
+		panic(jsNewError("TypeError", fmt.Sprintf("%T is not a function", f)))
+	}
+	in := make([]reflect.Value, ft.NumIn())
+	for i := range in {
+		in[i] = jsConvertValue(jsArg(args, i), ft.In(i))
+	}
+	out := fv.Call(in)
+	if len(out) == 0 {
+		return nil
+	}
+	return out[0].Interface()
+}
+
+// ----- values and conversions
+
+func jsIsNull(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Func:
+		return rv.IsNil()
+	}
+	return false
+}
+
+func jsTruthy(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return x
+	case string:
+		return x != ""
+	case float64:
+		return x != 0 && !math.IsNaN(x)
+	case *big.Int:
+		return x.Sign() != 0
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return jsF64(x) != 0
+	}
+	return !jsIsNull(v)
+}
+
+func jsTruthyF64(f float64) bool { return f != 0 && !math.IsNaN(f) }
+
+func jsB2I(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// jsF2I truncates a float as JavaScript's ToInt32/ToUint32 do before wrapping.
+func jsF2I(f float64) int64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0
+	}
+	f = math.Trunc(f)
+	if f >= -9.223372036854775e18 && f < 9.223372036854775e18 {
+		return int64(f)
+	}
+	m := math.Mod(f, 18446744073709551616.0)
+	if m < 0 {
+		m += 18446744073709551616.0
+	}
+	if m >= 9.223372036854775808e18 {
+		return int64(uint64(m))
+	}
+	return int64(m)
+}
+
+func jsToInt32(f float64) int32 { return int32(jsF2I(f)) }
+
+func jsF64(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case float32:
+		return float64(x)
+	case int:
+		return float64(x)
+	case int8:
+		return float64(x)
+	case int16:
+		return float64(x)
+	case int32:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case uint:
+		return float64(x)
+	case uint8:
+		return float64(x)
+	case uint16:
+		return float64(x)
+	case uint32:
+		return float64(x)
+	case uint64:
+		return float64(x)
+	case bool:
+		if x {
+			return 1
+		}
+		return 0
+	case string:
+		return jsToNumber(x)
+	case *big.Int:
+		return jsBigToF64(x)
+	case nil:
+		return 0
+	}
+	return math.NaN()
+}
+
+// jsI64 is a value as a 64-bit integer, exact for integers of every Go type.
+func jsI64(v any) int64 {
+	switch x := v.(type) {
+	case int:
+		return int64(x)
+	case int8:
+		return int64(x)
+	case int16:
+		return int64(x)
+	case int32:
+		return int64(x)
+	case int64:
+		return x
+	case uint:
+		return int64(x)
+	case uint8:
+		return int64(x)
+	case uint16:
+		return int64(x)
+	case uint32:
+		return int64(x)
+	case uint64:
+		return int64(x)
+	case *big.Int:
+		return jsBigToI64(x)
+	}
+	return jsF2I(jsF64(v))
+}
+
+func jsToNumber(s string) float64 {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return 0
+	}
+	if strings.HasPrefix(t, "0x") || strings.HasPrefix(t, "0X") {
+		if n, err := strconv.ParseUint(t[2:], 16, 64); err == nil {
+			return float64(n)
+		}
+		return math.NaN()
+	}
+	f, err := strconv.ParseFloat(t, 64)
+	if err != nil {
+		if t == "Infinity" || t == "+Infinity" {
+			return math.Inf(1)
+		}
+		if t == "-Infinity" {
+			return math.Inf(-1)
+		}
+		return math.NaN()
+	}
+	return f
+}
+
+func jsToNumberInt(s string) int64 { return jsF2I(jsToNumber(s)) }
+
+func jsIsFinite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
+
+func jsIsInteger(v any) bool {
+	switch x := v.(type) {
+	case float64:
+		return !math.IsNaN(x) && !math.IsInf(x, 0) && x == math.Trunc(x)
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return true
+	}
+	return false
+}
+
+func jsParseInt(s string, radix int) float64 {
+	t := strings.TrimSpace(s)
+	neg := false
+	if strings.HasPrefix(t, "-") {
+		neg = true
+		t = t[1:]
+	} else if strings.HasPrefix(t, "+") {
+		t = t[1:]
+	}
+	if radix == 0 {
+		radix = 10
+	}
+	if (radix == 16 || radix == 10 && false) && (strings.HasPrefix(t, "0x") || strings.HasPrefix(t, "0X")) {
+		t = t[2:]
+	}
+	end := 0
+	for end < len(t) {
+		c := t[end]
+		d := 99
+		switch {
+		case c >= '0' && c <= '9':
+			d = int(c - '0')
+		case c >= 'a' && c <= 'z':
+			d = int(c-'a') + 10
+		case c >= 'A' && c <= 'Z':
+			d = int(c-'A') + 10
+		}
+		if d >= radix {
+			break
+		}
+		end++
+	}
+	if end == 0 {
+		return math.NaN()
+	}
+	r := 0.0
+	for _, c := range t[:end] {
+		d := 0
+		switch {
+		case c >= '0' && c <= '9':
+			d = int(c - '0')
+		case c >= 'a' && c <= 'z':
+			d = int(c-'a') + 10
+		default:
+			d = int(c-'A') + 10
+		}
+		r = r*float64(radix) + float64(d)
+	}
+	if neg {
+		return -r
+	}
+	return r
+}
+
+// jsTo converts a value to a Go type with JavaScript's conversions (numbers
+// between widths, arrays element by element, objects by assertion).
+func jsTo[T any](v any) T {
+	if x, ok := v.(T); ok {
+		return x
+	}
+	var z T
+	rt := reflect.TypeOf(&z).Elem()
+	if v == nil {
+		return z
+	}
+	rv := jsConvertValue(v, rt)
+	return rv.Interface().(T)
+}
+
+func jsConvertValue(v any, rt reflect.Type) reflect.Value {
+	if v == nil {
+		return reflect.Zero(rt)
+	}
+	vv := reflect.ValueOf(v)
+	if vv.Type() == rt {
+		return vv
+	}
+	switch rt.Kind() {
+	case reflect.Interface:
+		if vv.Type().Implements(rt) {
+			r := reflect.New(rt).Elem()
+			r.Set(vv)
+			return r
+		}
+		if rt.NumMethod() == 0 {
+			r := reflect.New(rt).Elem()
+			r.Set(vv)
+			return r
+		}
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
+		return reflect.ValueOf(jsI64(v)).Convert(rt)
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+		return reflect.ValueOf(uint64(jsI64(v))).Convert(rt)
+	case reflect.Float64, reflect.Float32:
+		return reflect.ValueOf(jsF64(v)).Convert(rt)
+	case reflect.Bool:
+		return reflect.ValueOf(jsTruthy(v))
+	case reflect.String:
+		return reflect.ValueOf(jsStr(v))
+	case reflect.Slice:
+		if vv.Kind() == reflect.Slice {
+			out := reflect.MakeSlice(rt, vv.Len(), vv.Len())
+			for i := 0; i < vv.Len(); i++ {
+				out.Index(i).Set(jsConvertValue(vv.Index(i).Interface(), rt.Elem()))
+			}
+			return out
+		}
+		if vv.Kind() == reflect.String && rt.Elem().Kind() == reflect.String {
+			s := v.(string)
+			out := reflect.MakeSlice(rt, len(s), len(s))
+			for i := 0; i < len(s); i++ {
+				out.Index(i).Set(reflect.ValueOf(s[i : i+1]))
+			}
+			return out
+		}
+	case reflect.Ptr:
+		if rt == reflect.TypeOf((*big.Int)(nil)) {
+			return reflect.ValueOf(jsBigOf(v))
+		}
+		if vv.Type().AssignableTo(rt) {
+			return vv
+		}
+	}
+	if vv.Type().ConvertibleTo(rt) {
+		return vv.Convert(rt)
+	}
+	panic(jsNewError("TypeError", fmt.Sprintf("cannot convert %T to %v", v, rt)))
+}
+
+// ----- strings (Latin-1: one byte per character code)
+
+func jsStr(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "undefined"
+	case string:
+		return x
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return jsNumToString(x, 10)
+	case float32:
+		return jsNumToString(float64(x), 10)
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprint(x)
+	case *big.Int:
+		return x.String()
+	case *JsError:
+		return x.Error()
+	case JsObject:
+		if jsIsNull(x) {
+			return "null"
+		}
+		return "[object " + "Object]"
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice {
+		parts := make([]string, rv.Len())
+		for i := range parts {
+			e := rv.Index(i).Interface()
+			if e != nil {
+				parts[i] = jsStr(e)
+			}
+		}
+		return strings.Join(parts, ",")
+	}
+	return fmt.Sprint(v)
+}
+
+func jsNumToString(f float64, radix int) string {
+	if math.IsNaN(f) {
+		return "NaN"
+	}
+	if math.IsInf(f, 1) {
+		return "Infinity"
+	}
+	if math.IsInf(f, -1) {
+		return "-Infinity"
+	}
+	if radix != 10 {
+		if f == math.Trunc(f) && math.Abs(f) < 1e300 {
+			b, _ := new(big.Float).SetFloat64(f).Int(nil)
+			return b.Text(radix)
+		}
+	}
+	if f == math.Trunc(f) && math.Abs(f) < 1e21 {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if strings.Contains(s, "e") {
+		mant, exp, _ := strings.Cut(s, "e")
+		if exp[0] == '+' {
+			exp = exp[1:]
+			return mant + "e+" + strings.TrimLeft(exp, "0")
+		}
+		return mant + "e-" + strings.TrimLeft(exp[1:], "0")
+	}
+	return s
+}
+
+func jsToFixed(f float64, digits int) string { return strconv.FormatFloat(f, 'f', digits, 64) }
+
+const jsNoEnd = math.MaxInt
+
+func jsCharAt(s string, i int) string {
+	if i < 0 || i >= len(s) {
+		return ""
+	}
+	return s[i : i+1]
+}
+
+func jsCharCodeAt(s string, i int) int32 {
+	if i < 0 || i >= len(s) {
+		return 0
+	}
+	return int32(s[i])
+}
+
+func jsFromCharCodes(codes []int32) string {
+	b := make([]byte, len(codes))
+	for i, c := range codes {
+		b[i] = byte(c)
+	}
+	return string(b)
+}
+
+func jsStringChars(s string) []string {
+	out := make([]string, len(s))
+	for i := range out {
+		out[i] = s[i : i+1]
+	}
+	return out
+}
+
+func jsClampIndex(i, n int) int {
+	if i < 0 {
+		i += n
+		if i < 0 {
+			i = 0
+		}
+	}
+	if i > n {
+		i = n
+	}
+	return i
+}
+
+func jsSubstring(s string, a, b int) string {
+	n := len(s)
+	if b < 0 && b == -1 {
+		b = n
+	}
+	a = max(0, min(a, n))
+	b = max(0, min(b, n))
+	if a > b {
+		a, b = b, a
+	}
+	return s[a:b]
+}
+
+func jsSubstr(s string, a, length int) string {
+	n := len(s)
+	a = jsClampIndex(a, n)
+	if length < 0 || a+length > n {
+		length = n - a
+	}
+	return s[a : a+length]
+}
+
+func jsStrSlice(s string, a, b int) string {
+	n := len(s)
+	a = jsClampIndex(a, n)
+	if b == jsNoEnd {
+		b = n
+	}
+	b = jsClampIndex(b, n)
+	if a >= b {
+		return ""
+	}
+	return s[a:b]
+}
+
+func jsStrIndexOf(s, sub string, from int) int32 {
+	if from < 0 {
+		from = 0
+	}
+	if from > len(s) {
+		if sub == "" {
+			return int32(len(s))
+		}
+		return -1
+	}
+	i := strings.Index(s[from:], sub)
+	if i < 0 {
+		return -1
+	}
+	return int32(i + from)
+}
+
+func jsToUpper(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'a' && c <= 'z' {
+			b[i] = c - 32
+		}
+	}
+	return string(b)
+}
+
+func jsToLower(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 32
+		}
+	}
+	return string(b)
+}
+
+func jsSplit(s string, sep any) []string {
+	switch x := sep.(type) {
+	case nil:
+		return []string{s}
+	case string:
+		if x == "" {
+			return jsStringChars(s)
+		}
+		return strings.Split(s, x)
+	case *regexp.Regexp:
+		return x.Split(s, -1)
+	}
+	return []string{s}
+}
+
+func jsPadStart(s string, n int, pad string) string {
+	for len(s) < n && pad != "" {
+		need := n - len(s)
+		p := strings.Repeat(pad, need/len(pad)+1)[:need]
+		s = p + s
+	}
+	return s
+}
+
+func jsPadEnd(s string, n int, pad string) string {
+	for len(s) < n && pad != "" {
+		need := n - len(s)
+		s = s + strings.Repeat(pad, need/len(pad)+1)[:need]
+	}
+	return s
+}
+
+func jsReplace(s string, search any, repl any) string {
+	r := jsStr(repl)
+	switch x := search.(type) {
+	case string:
+		return strings.Replace(s, x, r, 1)
+	case *regexp.Regexp:
+		return x.ReplaceAllString(s, strings.ReplaceAll(r, "$&", "${0}"))
+	}
+	return s
+}
+
+func jsReplaceAll(s string, search any, repl any) string {
+	switch x := search.(type) {
+	case string:
+		return strings.ReplaceAll(s, x, jsStr(repl))
+	}
+	return jsReplace(s, search, repl)
+}
+
+func jsMatch(s string, re any) []string {
+	if r, ok := re.(*regexp.Regexp); ok {
+		return r.FindAllString(s, -1)
+	}
+	return nil
+}
+
+func jsTypeOf(v any) string {
+	switch v.(type) {
+	case nil:
+		return "undefined"
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return "number"
+	case *big.Int:
+		return "bigint"
+	}
+	if jsIsFunc(v) {
+		return "function"
+	}
+	return "object"
+}
+
+func jsStrictEquals(a, b any) bool {
+	if a == nil || b == nil {
+		return jsIsNull(a) && jsIsNull(b)
+	}
+	switch x := a.(type) {
+	case string:
+		y, ok := b.(string)
+		return ok && x == y
+	case bool:
+		y, ok := b.(bool)
+		return ok && x == y
+	case *big.Int:
+		y, ok := b.(*big.Int)
+		return ok && x.Cmp(y) == 0
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		switch b.(type) {
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+			return jsF64(a) == jsF64(b)
+		}
+		return false
+	}
+	ra, rb := reflect.ValueOf(a), reflect.ValueOf(b)
+	if ra.Kind() == reflect.Slice && rb.Kind() == reflect.Slice {
+		return ra.Pointer() == rb.Pointer() && ra.Len() == rb.Len()
+	}
+	if ra.Type().Comparable() && rb.Type().Comparable() {
+		return a == b
+	}
+	return false
+}
+
+func jsLooseEquals(a, b any) bool {
+	if jsIsNull(a) || jsIsNull(b) {
+		return jsIsNull(a) && jsIsNull(b)
+	}
+	if jsStrictEquals(a, b) {
+		return true
+	}
+	switch a.(type) {
+	case string, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		switch b.(type) {
+		case string, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+			return jsF64(a) == jsF64(b)
+		}
+	}
+	return false
+}
+
+func jsInstanceOfBuiltin(v any, name string) bool {
+	_, ok := v.(*JsError)
+	return ok
+}
+
+func jsLength(v any) int32 {
+	switch x := v.(type) {
+	case string:
+		return int32(len(x))
+	case JsObject:
+		return int32(jsI64(x.JsGet("length")))
+	case nil:
+		panic(jsNewError("TypeError", "Cannot read properties of null (reading 'length')"))
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice {
+		return int32(rv.Len())
+	}
+	return 0
+}
+
+func jsLog(args ...any) {
+	parts := make([]string, len(args))
+	for i, a := range args {
+		parts[i] = jsStr(a)
+	}
+	fmt.Fprintln(os.Stderr, strings.Join(parts, " "))
+}
+
+func jsJSON(v any) string { return fmt.Sprint(v) }
+
+func jsIf[T any](c bool, a, b T) T {
+	if c {
+		return a
+	}
+	return b
+}
+
+// ----- math
+
+func jsRound(f float64) float64 { return math.Floor(f + 0.5) }
+func jsSign(f float64) float64 {
+	switch {
+	case f > 0:
+		return 1
+	case f < 0:
+		return -1
+	}
+	return f
+}
+func jsFround(f float64) float64 { return float64(float32(f)) }
+func jsClz32(f float64) float64  { return float64(bits.LeadingZeros32(uint32(jsF2I(f)))) }
+func jsMinF(xs ...float64) float64 {
+	r := math.Inf(1)
+	for _, x := range xs {
+		if math.IsNaN(x) {
+			return x
+		}
+		if x < r {
+			r = x
+		}
+	}
+	return r
+}
+func jsMaxF(xs ...float64) float64 {
+	r := math.Inf(-1)
+	for _, x := range xs {
+		if math.IsNaN(x) {
+			return x
+		}
+		if x > r {
+			r = x
+		}
+	}
+	return r
+}
+
+var jsRandState uint64 = 0x9E3779B97F4A7C15
+
+func jsRandom() float64 {
+	jsRandState ^= jsRandState << 13
+	jsRandState ^= jsRandState >> 7
+	jsRandState ^= jsRandState << 17
+	return float64(jsRandState>>11) / 9007199254740992.0
+}
+
+// ----- BigInt
+
+func jsBigI(v int64) *big.Int { return big.NewInt(v) }
+func jsBigLit(s string) *big.Int {
+	b, _ := new(big.Int).SetString(s, 10)
+	return b
+}
+func jsBigFromI64(v int64) *big.Int  { return big.NewInt(v) }
+func jsBigFromU64(v uint64) *big.Int { return new(big.Int).SetUint64(v) }
+func jsBigFromF64(f float64) *big.Int {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f != math.Trunc(f) {
+		panic(jsNewError("RangeError", "The number cannot be converted to a BigInt because it is not an integer"))
+	}
+	b, _ := new(big.Float).SetFloat64(f).Int(nil)
+	return b
+}
+func jsBigOf(v any) *big.Int {
+	switch x := v.(type) {
+	case *big.Int:
+		return x
+	case float64:
+		return jsBigFromF64(x)
+	case uint64:
+		return jsBigFromU64(x)
+	case string:
+		return jsBigParse(x)
+	case nil:
+		return nil
+	}
+	return big.NewInt(jsI64(v))
+}
+func jsBigParse(s string) *big.Int {
+	t := strings.TrimSpace(s)
+	base := 10
+	if strings.HasPrefix(t, "0x") || strings.HasPrefix(t, "0X") {
+		base, t = 16, t[2:]
+	} else if strings.HasPrefix(t, "0b") || strings.HasPrefix(t, "0B") {
+		base, t = 2, t[2:]
+	} else if strings.HasPrefix(t, "0o") || strings.HasPrefix(t, "0O") {
+		base, t = 8, t[2:]
+	}
+	if t == "" {
+		return big.NewInt(0)
+	}
+	b, ok := new(big.Int).SetString(t, base)
+	if !ok {
+		panic(jsNewError("SyntaxError", "Cannot convert "+s+" to a BigInt"))
+	}
+	return b
+}
+func jsBigToF64(b *big.Int) float64 { f, _ := new(big.Float).SetInt(b).Float64(); return f }
+func jsBigToI64(b *big.Int) int64 {
+	return int64(jsBigToU64(b))
+}
+func jsBigToU64(b *big.Int) uint64 {
+	m := new(big.Int).And(b, jsMask64)
+	return m.Uint64()
+}
+
+var jsMask64 = new(big.Int).SetUint64(0xFFFFFFFFFFFFFFFF)
+
+func jsBigAdd(a, b *big.Int) *big.Int { return new(big.Int).Add(a, b) }
+func jsBigSub(a, b *big.Int) *big.Int { return new(big.Int).Sub(a, b) }
+func jsBigMul(a, b *big.Int) *big.Int { return new(big.Int).Mul(a, b) }
+func jsBigDiv(a, b *big.Int) *big.Int {
+	if b.Sign() == 0 {
+		panic(jsNewError("RangeError", "Division by zero"))
+	}
+	return new(big.Int).Quo(a, b)
+}
+func jsBigMod(a, b *big.Int) *big.Int {
+	if b.Sign() == 0 {
+		panic(jsNewError("RangeError", "Division by zero"))
+	}
+	return new(big.Int).Rem(a, b)
+}
+func jsBigPow(a, b *big.Int) *big.Int {
+	if b.Sign() < 0 {
+		panic(jsNewError("RangeError", "Exponent must be non-negative"))
+	}
+	return new(big.Int).Exp(a, b, nil)
+}
+func jsBigAnd(a, b *big.Int) *big.Int { return new(big.Int).And(a, b) }
+func jsBigOr(a, b *big.Int) *big.Int  { return new(big.Int).Or(a, b) }
+func jsBigXor(a, b *big.Int) *big.Int { return new(big.Int).Xor(a, b) }
+func jsBigNot(a *big.Int) *big.Int    { return new(big.Int).Not(a) }
+func jsBigNeg(a *big.Int) *big.Int    { return new(big.Int).Neg(a) }
+func jsBigShl(a *big.Int, n int) *big.Int {
+	if n < 0 {
+		return jsBigShr(a, -n)
+	}
+	return new(big.Int).Lsh(a, uint(n))
+}
+func jsBigShr(a *big.Int, n int) *big.Int {
+	if n < 0 {
+		return jsBigShl(a, -n)
+	}
+	return new(big.Int).Rsh(a, uint(n))
+}
+func jsBigCmp(a, b *big.Int) int { return a.Cmp(b) }
+func jsBigAsUintN(n int, a *big.Int) *big.Int {
+	m := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(n)), big.NewInt(1))
+	return new(big.Int).And(a, m)
+}
+func jsBigAsIntN(n int, a *big.Int) *big.Int {
+	u := jsBigAsUintN(n, a)
+	if n > 0 && u.Bit(n-1) == 1 {
+		u.Sub(u, new(big.Int).Lsh(big.NewInt(1), uint(n)))
+	}
+	return u
+}
+func jsBigToString(b *big.Int, radix int) string { return b.Text(radix) }
+
+// ----- arrays
+
+func jsCopy[T any](a []T) []T {
+	if a == nil {
+		return nil
+	}
+	out := make([]T, len(a))
+	copy(out, a)
+	return out
+}
+
+func jsSlice[T any](a []T, start, end int) []T {
+	n := len(a)
+	start = jsClampIndex(start, n)
+	if end == jsNoEnd {
+		end = n
+	}
+	end = jsClampIndex(end, n)
+	if start >= end {
+		return []T{}
+	}
+	out := make([]T, end-start)
+	copy(out, a[start:end])
+	return out
+}
+
+func jsSubarray[T any](a []T, start, end int) []T {
+	n := len(a)
+	start = jsClampIndex(start, n)
+	if end == jsNoEnd {
+		end = n
+	}
+	end = jsClampIndex(end, n)
+	if start >= end {
+		return a[start:start]
+	}
+	return a[start:end:end]
+}
+
+func jsConcat[T any](parts ...[]T) []T {
+	n := 0
+	for _, p := range parts {
+		n += len(p)
+	}
+	out := make([]T, 0, n)
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	return out
+}
+
+func jsSetAt[T any](a []T, i int, v T) []T {
+	if i < len(a) {
+		a[i] = v
+		return a
+	}
+	if i < 0 {
+		return a
+	}
+	for len(a) < i {
+		var z T
+		a = append(a, z)
+	}
+	return append(a, v)
+}
+
+func jsSetLength[T any](a []T, n int) []T {
+	if n <= len(a) {
+		return a[:n]
+	}
+	for len(a) < n {
+		var z T
+		a = append(a, z)
+	}
+	return a
+}
+
+func jsMakeFilled[T any](n int, v T) []T {
+	out := make([]T, n)
+	for i := range out {
+		out[i] = v
+	}
+	return out
+}
+
+func jsFill[T any](a []T, v T, start, end int) []T {
+	n := len(a)
+	start = jsClampIndex(start, n)
+	if end == jsNoEnd {
+		end = n
+	}
+	end = jsClampIndex(end, n)
+	for i := start; i < end; i++ {
+		a[i] = v
+	}
+	return a
+}
+
+func jsClear[T any](a []T) {
+	var z T
+	for i := range a {
+		a[i] = z
+	}
+}
+
+func jsReverse[T any](a []T) []T {
+	for i, j := 0, len(a)-1; i < j; i, j = i+1, j-1 {
+		a[i], a[j] = a[j], a[i]
+	}
+	return a
+}
+
+func jsIndexOf[T any](a []T, v T, from int) int32 {
+	if from < 0 {
+		from += len(a)
+		if from < 0 {
+			from = 0
+		}
+	}
+	for i := from; i < len(a); i++ {
+		if jsStrictEquals(any(a[i]), any(v)) {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+func jsJoin[T any](a []T, sep string) string {
+	parts := make([]string, len(a))
+	for i, x := range a {
+		if !jsIsNull(any(x)) {
+			parts[i] = jsStr(any(x))
+		}
+	}
+	return strings.Join(parts, sep)
+}
+
+func jsPop[T any](p *[]T) T {
+	var z T
+	a := *p
+	if len(a) == 0 {
+		return z
+	}
+	v := a[len(a)-1]
+	*p = a[:len(a)-1]
+	return v
+}
+
+func jsShift[T any](p *[]T) T {
+	var z T
+	a := *p
+	if len(a) == 0 {
+		return z
+	}
+	v := a[0]
+	*p = a[1:]
+	return v
+}
+
+func jsUnshift[T any](p *[]T, items ...T) int32 {
+	*p = append(append([]T{}, items...), (*p)...)
+	return int32(len(*p))
+}
+
+func jsSplice[T any](p *[]T, start, deleteCount int, items ...T) []T {
+	a := *p
+	n := len(a)
+	start = jsClampIndex(start, n)
+	if deleteCount == jsNoEnd || start+deleteCount > n {
+		deleteCount = n - start
+	}
+	if deleteCount < 0 {
+		deleteCount = 0
+	}
+	removed := append([]T{}, a[start:start+deleteCount]...)
+	rest := append([]T{}, a[start+deleteCount:]...)
+	*p = append(append(a[:start:start], items...), rest...)
+	return removed
+}
+
+func jsPushAny(a any, items ...any) int32 {
+	panic(jsNewError("TypeError", "push on a value that is not an array"))
+}
+
+func jsTypedSet[T any](dst []T, src []T, offset int) {
+	if offset+len(src) > len(dst) {
+		panic(jsNewError("RangeError", "offset is out of bounds"))
+	}
+	copy(dst[offset:], src)
+}
+
+func jsTypedFrom[T any](v any) []T {
+	return jsTo[[]T](v)
+}
+
+func jsFromLength[T any](n int, f func(any, int32) T) []T {
+	out := make([]T, n)
+	for i := range out {
+		out[i] = f(nil, int32(i))
+	}
+	return out
+}
+
+func jsMap[A, B any](a []A, f func(A, int32) B) []B {
+	out := make([]B, len(a))
+	for i, x := range a {
+		out[i] = f(x, int32(i))
+	}
+	return out
+}
+
+func jsFilter[A any](a []A, f func(A, int32) bool) []A {
+	out := []A{}
+	for i, x := range a {
+		if f(x, int32(i)) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+func jsForEach[A any](a []A, f func(A, int32)) {
+	for i, x := range a {
+		f(x, int32(i))
+	}
+}
+
+func jsSome[A any](a []A, f func(A, int32) bool) bool {
+	for i, x := range a {
+		if f(x, int32(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsEvery[A any](a []A, f func(A, int32) bool) bool {
+	for i, x := range a {
+		if !f(x, int32(i)) {
+			return false
+		}
+	}
+	return true
+}
+
+func jsFind[A any](a []A, f func(A, int32) bool) A {
+	for i, x := range a {
+		if f(x, int32(i)) {
+			return x
+		}
+	}
+	var z A
+	return z
+}
+
+func jsFindIndex[A any](a []A, f func(A, int32) bool) int32 {
+	for i, x := range a {
+		if f(x, int32(i)) {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+func jsReduce[A, R any](a []A, f func(R, A, int32) R, init R) R {
+	acc := init
+	for i, x := range a {
+		acc = f(acc, x, int32(i))
+	}
+	return acc
+}
+
+func jsSort[A any](a []A, cmp func(A, A) float64) []A {
+	sort.SliceStable(a, func(i, j int) bool { return cmp(a[i], a[j]) < 0 })
+	return a
+}
+
+func jsSortDefault[A any](a []A) []A {
+	sort.SliceStable(a, func(i, j int) bool { return jsStr(any(a[i])) < jsStr(any(a[j])) })
+	return a
+}
+
+func jsIsArray(v any) bool {
+	if v == nil {
+		return false
+	}
+	return reflect.TypeOf(v).Kind() == reflect.Slice
+}
+
+func jsByteAt(a []int32, i int) int32 {
+	if i < len(a) {
+		return a[i]
+	}
+	return 0
+}
+
+// ----- bytes (OpCodes conversions)
+
+func jsHexDigit(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	}
+	return -1
+}
+
+func jsHex8ToBytes(s string) []uint8 {
+	out := make([]uint8, 0, len(s)/2)
+	for i := 0; i+1 < len(s); i += 2 {
+		h, l := jsHexDigit(s[i]), jsHexDigit(s[i+1])
+		if h < 0 || l < 0 {
+			panic(jsNewError("Error", "Hex8ToBytes: Invalid hex characters found"))
+		}
+		out = append(out, uint8(h<<4|l))
+	}
+	return out
+}
+
+func jsHex16ToWords(s string) []uint16 {
+	out := []uint16{}
+	for i := 0; i+3 < len(s); i += 4 {
+		v, _ := strconv.ParseUint(s[i:i+4], 16, 16)
+		out = append(out, uint16(v))
+	}
+	return out
+}
+
+func jsHex32ToDWords(s string) []uint32 {
+	out := []uint32{}
+	for i := 0; i < len(s); i += 8 {
+		e := min(i+8, len(s))
+		v, _ := strconv.ParseUint(s[i:e], 16, 32)
+		out = append(out, uint32(v))
+	}
+	return out
+}
+
+func jsAnsiToBytes(s string) []uint8 {
+	out := make([]uint8, len(s))
+	for i := 0; i < len(s); i++ {
+		out[i] = s[i] & 0x7F
+	}
+	return out
+}
+
+func jsAsciiToBytes(s string) []uint8 { return []uint8(s) }
+
+func jsUtf8ToBytes(s string) []uint8 {
+	out := []uint8{}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x80 {
+			out = append(out, c)
+		} else {
+			out = append(out, 0xC0|c>>6, 0x80|c&0x3F)
+		}
+	}
+	return out
+}
+
+func jsBytesToAnsi(b []uint8) string {
+	out := make([]byte, len(b))
+	for i, c := range b {
+		out[i] = c & 0x7F
+	}
+	return string(out)
+}
+
+func jsBytesToAscii(b []uint8) string { return string(b) }
+
+func jsBytesToUtf8(b []uint8) string {
+	out := []byte{}
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		if c < 0x80 {
+			out = append(out, c)
+		} else if c&0xE0 == 0xC0 && i+1 < len(b) {
+			out = append(out, byte((uint16(c&0x1F)<<6)|uint16(b[i+1]&0x3F)))
+			i++
+		} else {
+			out = append(out, '?')
+		}
+	}
+	return string(out)
+}
+
+func jsUnpack16BE(w uint32) []uint8 { return []uint8{uint8(w >> 8), uint8(w)} }
+func jsUnpack16LE(w uint32) []uint8 { return []uint8{uint8(w), uint8(w >> 8)} }
+func jsUnpack32BE(w uint32) []uint8 { return []uint8{uint8(w >> 24), uint8(w >> 16), uint8(w >> 8), uint8(w)} }
+func jsUnpack32LE(w uint32) []uint8 { return []uint8{uint8(w), uint8(w >> 8), uint8(w >> 16), uint8(w >> 24)} }
+func jsUnpack64BE(w uint64) []uint8 {
+	return []uint8{uint8(w >> 56), uint8(w >> 48), uint8(w >> 40), uint8(w >> 32), uint8(w >> 24), uint8(w >> 16), uint8(w >> 8), uint8(w)}
+}
+func jsUnpack64LE(w uint64) []uint8 {
+	return []uint8{uint8(w), uint8(w >> 8), uint8(w >> 16), uint8(w >> 24), uint8(w >> 32), uint8(w >> 40), uint8(w >> 48), uint8(w >> 56)}
+}
+
+func jsXorArrays(a, b []uint8) []uint8 {
+	n := min(len(a), len(b))
+	out := make([]uint8, n)
+	for i := 0; i < n; i++ {
+		out[i] = a[i] ^ b[i]
+	}
+	return out
+}
+
+// ----- OpCodes methods the IL keeps as calls
+
+func opGetByte(word uint32, n int32) uint8 { return uint8(word >> (uint32(n*8) & 31)) }
+func opGF256Mul(a, b int32) uint8 {
+	x, y := uint8(a), uint8(b)
+	var r uint8
+	for i := 0; i < 8; i++ {
+		if y&1 != 0 {
+			r ^= x
+		}
+		hi := x & 0x80
+		x <<= 1
+		if hi != 0 {
+			x ^= 0x1B
+		}
+		y >>= 1
+	}
+	return r
+}
+func opGFMul(a, b, poly, width int32) int32 {
+	var r int32
+	mask := int32(1)<<uint32(width) - 1
+	top := int32(1) << uint32(width-1)
+	for b != 0 {
+		if b&1 != 0 {
+			r ^= a
+		}
+		hi := a & top
+		a = (a << 1) & mask
+		if hi != 0 {
+			a ^= poly & mask
+		}
+		b >>= 1
+	}
+	return r
+}
+func opSetBit(v uint32, bit int32, on int32) uint32 {
+	if on != 0 {
+		return v | 1<<(uint32(bit)&31)
+	}
+	return v &^ (1 << (uint32(bit) & 31))
+}
+func opGetBit(v uint32, bit int32) bool { return (v>>(uint32(bit)&31))&1 != 0 }
+func opBitMask(n int32) uint32 {
+	if n >= 32 {
+		return 0xFFFFFFFF
+	}
+	if n <= 0 {
+		return 0
+	}
+	return uint32(int32(1)<<uint32(n) - 1)
+}
+func opShr32Signed(v, n int32) int32 { return v >> (uint32(n) & 31) }
+func opMulHi32(a, b uint32) uint32  { return uint32((uint64(a) * uint64(b)) >> 32) }
+func opPopCount(v uint32) int32     { return int32(bits.OnesCount32(v)) }
+func opPopCountFast(v uint32) int32 { return int32(bits.OnesCount32(v)) }
+func opBitCountN(v *big.Int) int32 {
+	n := 0
+	for _, w := range new(big.Int).Abs(v).Bits() {
+		n += bits.OnesCount64(uint64(w))
+	}
+	return int32(n)
+}
+func opHex32ToDWords(s string) []uint32 { return jsHex32ToDWords(s) }
+func opSecureCompare(a, b []uint8) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var r uint8
+	for i := range a {
+		r |= a[i] ^ b[i]
+	}
+	return r == 0
+}
+func opConstantTimeCompare(a, b []uint8, n int32) bool {
+	l := int(n)
+	if l == 0 {
+		l = min(len(a), len(b))
+	}
+	r := 0
+	for i := 0; i < l; i++ {
+		var x, y uint8
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		r |= int(x ^ y)
+	}
+	r |= len(a) ^ len(b)
+	return r == 0
+}
+func opArraysEqual(a, b []uint8) bool { return opSecureCompare(a, b) }
+func opBytesToChars(b []uint8) string { return string(b) }
+func opWords32ToBytesBE(w []uint32) []uint8 {
+	out := make([]uint8, 0, len(w)*4)
+	for _, x := range w {
+		out = append(out, jsUnpack32BE(x)...)
+	}
+	return out
+}
+func opBytesToWords32BE(b []uint8) []uint32 {
+	out := make([]uint32, 0, len(b)/4)
+	for i := 0; i+3 < len(b); i += 4 {
+		out = append(out, uint32(b[i])<<24|uint32(b[i+1])<<16|uint32(b[i+2])<<8|uint32(b[i+3]))
+	}
+	return out
+}
+func opXorArrayWithByte(a []uint8, v int32) []uint8 {
+	out := make([]uint8, len(a))
+	for i, x := range a {
+		out[i] = x ^ uint8(v)
+	}
+	return out
+}
+func opGCMIncrement(c []uint8) []uint8 {
+	out := jsCopy(c)
+	for i := len(out) - 1; i >= len(out)-4 && i >= 0; i-- {
+		out[i]++
+		if out[i] != 0 {
+			break
+		}
+	}
+	return out
+}
+func opGHashMul(x, y []uint8) []uint8 {
+	z := make([]uint8, 16)
+	v := jsCopy(y)
+	for i := 0; i < 128; i++ {
+		if (x[i>>3]>>(7-uint(i&7)))&1 != 0 {
+			for j := 0; j < 16; j++ {
+				z[j] ^= v[j]
+			}
+		}
+		lsb := v[15] & 1
+		for j := 15; j > 0; j-- {
+			v[j] = v[j]>>1 | v[j-1]<<7
+		}
+		v[0] >>= 1
+		if lsb != 0 {
+			v[0] ^= 0xE1
+		}
+	}
+	return z
+}
+func opEncodeMsgLength64LE(n float64) []uint8 {
+	bitsLen := uint64(n) * 8
+	return jsUnpack64LE(bitsLen)
+}
+func opSecureRandomBytes(n int32) []uint8 {
+	out := make([]uint8, n)
+	for i := range out {
+		out[i] = uint8(jsRandom() * 256)
+	}
+	return out
+}
+func opRotL64n(v *big.Int, n int32) *big.Int {
+	x := jsBigToU64(v)
+	return jsBigFromU64(bits.RotateLeft64(x, int(n&63)))
+}
+func opRotR64n(v *big.Int, n int32) *big.Int {
+	x := jsBigToU64(v)
+	return jsBigFromU64(bits.RotateLeft64(x, -int(n&63)))
+}
+func opRotL128n(v *big.Int, n int32) *big.Int {
+	m := jsBigAsUintN(128, v)
+	k := uint(n & 127)
+	if k == 0 {
+		return m
+	}
+	l := new(big.Int).Lsh(m, k)
+	r := new(big.Int).Rsh(m, 128-k)
+	return jsBigAsUintN(128, l.Or(l, r))
+}
+func opGcdN(a, b *big.Int) *big.Int {
+	x, y := new(big.Int).Abs(a), new(big.Int).Abs(b)
+	return new(big.Int).GCD(nil, nil, x, y)
+}
+func opModN(a, m *big.Int) *big.Int {
+	r := new(big.Int).Rem(a, m)
+	if r.Sign() < 0 {
+		r.Add(r, m)
+	}
+	return r
+}
+func opAddMod(a, b, m *big.Int) *big.Int    { return opModN(new(big.Int).Add(a, b), m) }
+func opSubMod(a, b, m *big.Int) *big.Int    { return opModN(new(big.Int).Sub(a, b), m) }
+func opMulModN(a, b, m *big.Int) *big.Int   { return opModN(new(big.Int).Mul(a, b), m) }
+func opSquareModN(a, m *big.Int) *big.Int   { return opModN(new(big.Int).Mul(a, a), m) }
+func opModPowN(b, e, m *big.Int) *big.Int {
+	if m.Cmp(big.NewInt(1)) == 0 {
+		return big.NewInt(0)
+	}
+	return new(big.Int).Exp(opModN(b, m), e, m)
+}
+func opModInverseN(a, m *big.Int) *big.Int {
+	r := new(big.Int).ModInverse(opModN(a, m), m)
+	if r == nil {
+		panic(jsNewError("Error", "Modular inverse does not exist"))
+	}
+	return r
+}
+func opGetBitN(v *big.Int, n int32) int32 { return int32(new(big.Int).Rsh(v, uint(n)).Bit(0)) }
+func opToLong(f float64) int64            { return jsF2I(f) }
+func opToShort(f float64) int16           { return int16(jsF2I(f)) }
+func opAdd3L64(a, b, c uint32) float64    { return float64(uint64(a) + uint64(b) + uint64(c)) }
+func opAdd3H64(lo float64, a, b, c uint32) uint32 {
+	return uint32(uint64(a) + uint64(b) + uint64(c) + uint64(lo/4294967296))
+}
+func opCreateUint64ArrayFromHex(s string) []uint64 {
+	out := []uint64{}
+	for i := 0; i < len(s); i += 16 {
+		v, _ := strconv.ParseUint(s[i:min(i+16, len(s))], 16, 64)
+		out = append(out, v)
+	}
+	return out
+}
+func opRotL64_HL(h, l uint32, n int32) JsObject {
+	x := bits.RotateLeft64(uint64(h)<<32|uint64(l), int(n&63))
+	return jsMapOf("high", uint32(x>>32), "low", uint32(x))
+}
+func opSplit64(v any) JsObject {
+	x := uint64(jsI64(v))
+	return jsMapOf("high32", uint32(x>>32), "low32", uint32(x))
+}
+
+// ===== end of the runtime =====
+`;
+
+  const exported = { GoTransformer, GO_RUNTIME, OPCODES_SIGNATURES };
+  if (typeof module !== 'undefined' && module.exports) module.exports = exported;
+  if (global) { global.GoTransformer = GoTransformer; global.GoTransformerModule = exported; }
+})(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this));
