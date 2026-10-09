@@ -2356,30 +2356,39 @@ JS_FAMILY2(AeadAlgorithm, CryptoAlgorithm, Array<Any> SupportedTagSizes; bool Su
 JS_FAMILY2(RandomGenerationAlgorithm, Algorithm, bool IsDeterministic = false; bool IsCryptographicallySecure = true; Array<Any> SupportedSeedSizes;,
   IsDeterministic = false; IsCryptographicallySecure = true; SupportedSeedSizes = Array<Any>::create(0);, F_RNG)
 
+// A framework field an algorithm class may redefine as an accessor (in
+// JavaScript the framework constructor's assignment then runs that setter):
+// the field's value goes through virtual __get_x/__set_x everywhere.
+#define JS_VFIELD(T, name, init) \
+  T name init; \
+  virtual T __get_##name() { return name; } \
+  virtual void __set_##name(T v) { name = v; }
+
 struct IAlgorithmInstance : Object {
-  Algorithm* algorithm = nullptr;
-  bool isInverse = false;
-  Array<uint8_t> inputBuffer;
+  JS_VFIELD(Algorithm*, algorithm, = nullptr)
+  JS_VFIELD(bool, isInverse, = false)
+  JS_VFIELD(Array<uint8_t>, inputBuffer, )
   static const char16_t* __staticClassName() { return u"IAlgorithmInstance"; }
   const char16_t* __className() const override { return u"IAlgorithmInstance"; }
-  IAlgorithmInstance* __ctor(Algorithm* algorithm = nullptr) { this->algorithm = algorithm; isInverse = false; inputBuffer = Array<uint8_t>::create(0); return this; }
+  IAlgorithmInstance* __ctor(Algorithm* algorithm = nullptr) { __set_algorithm(algorithm); __set_isInverse(false); __set_inputBuffer(Array<uint8_t>::create(0)); return this; }
   virtual void Feed(Array<uint8_t> data) {
     if (data.isNull() || data.length() == 0) return;
-    if (inputBuffer.isNull()) inputBuffer = Array<uint8_t>::create(0);
-    for (int32_t i = 0; i < data.length(); ++i) inputBuffer.push(data.get(i));
+    Array<uint8_t> buffer = __get_inputBuffer();
+    if (buffer.isNull()) { buffer = Array<uint8_t>::create(0); __set_inputBuffer(buffer); }
+    for (int32_t i = 0; i < data.length(); ++i) buffer.push(data.get(i));
   }
   virtual Array<uint8_t> Result() { throwValue(Any(String(u"Result() not implemented"))); }
-  virtual void Dispose() { if (!inputBuffer.isNull()) inputBuffer.setLength(0); }
+  virtual void Dispose() { Array<uint8_t> buffer = __get_inputBuffer(); if (!buffer.isNull()) buffer.setLength(0); }
   bool __get(const std::u16string& k, Any& out) override {
-    if (k == u"algorithm") { out = algorithm; return true; }
-    if (k == u"isInverse") { out = isInverse; return true; }
-    if (k == u"inputBuffer") { out = inputBuffer; return true; }
+    if (k == u"algorithm") { out = __get_algorithm(); return true; }
+    if (k == u"isInverse") { out = __get_isInverse(); return true; }
+    if (k == u"inputBuffer") { out = __get_inputBuffer(); return true; }
     return Object::__get(k, out);
   }
   bool __set(const std::u16string& k, const Any& v) override {
-    if (k == u"algorithm") { algorithm = fromAny<Algorithm*>(v); return true; }
-    if (k == u"isInverse") { isInverse = v.truthy(); return true; }
-    if (k == u"inputBuffer") { inputBuffer = fromAny<Array<uint8_t>>(v); return true; }
+    if (k == u"algorithm") { __set_algorithm(fromAny<Algorithm*>(v)); return true; }
+    if (k == u"isInverse") { __set_isInverse(v.truthy()); return true; }
+    if (k == u"inputBuffer") { __set_inputBuffer(fromAny<Array<uint8_t>>(v)); return true; }
     return Object::__set(k, v);
   }
   bool __has(const std::u16string& k) override { return k == u"algorithm" || k == u"isInverse" || k == u"inputBuffer" || k == u"Feed" || k == u"Result" || k == u"Dispose" || Object::__has(k); }
@@ -2398,47 +2407,50 @@ inline bool Algorithm::__call(const std::u16string& k, std::vector<Any>& args, A
 }
 
 struct IBlockCipherInstance : IAlgorithmInstance {
-  int32_t BlockSize = 0, KeySize = 0;
-  Array<uint8_t> _key;
+  JS_VFIELD(int32_t, BlockSize, = 0)
+  JS_VFIELD(int32_t, KeySize, = 0)
+  JS_VFIELD(Array<uint8_t>, _key, )
   static const char16_t* __staticClassName() { return u"IBlockCipherInstance"; }
   const char16_t* __className() const override { return u"IBlockCipherInstance"; }
-  IBlockCipherInstance* __ctor(Algorithm* algorithm = nullptr) { IAlgorithmInstance::__ctor(algorithm); BlockSize = 0; KeySize = 0; _key = Array<uint8_t>(); return this; }
-  virtual void __set_key(Array<uint8_t> keyBytes) { _key = keyBytes; }
-  virtual Array<uint8_t> __get_key() { return _key; }
+  IBlockCipherInstance* __ctor(Algorithm* algorithm = nullptr) { IAlgorithmInstance::__ctor(algorithm); __set_BlockSize(0); __set_KeySize(0); __set__key(Array<uint8_t>()); return this; }
+  virtual void __set_key(Array<uint8_t> keyBytes) { __set__key(keyBytes); }
+  virtual Array<uint8_t> __get_key() { return __get__key(); }
   virtual Array<uint8_t> EncryptBlock(Array<uint8_t> block) { (void)block; throwValue(Any(String(u"EncryptBlock() not implemented"))); }
   virtual Array<uint8_t> DecryptBlock(Array<uint8_t> block) { (void)block; throwValue(Any(String(u"DecryptBlock() not implemented"))); }
   virtual int32_t RequireBlockMultiple(int32_t blockSize = 0) {
-    int32_t size = blockSize ? blockSize : BlockSize;
+    int32_t size = blockSize ? blockSize : __get_BlockSize();
     if (!(size > 0)) throwError(u"Error", u"BlockSize not set");
-    int32_t length = inputBuffer.isNull() ? 0 : inputBuffer.length();
+    Array<uint8_t> buffer = __get_inputBuffer();
+    int32_t length = buffer.isNull() ? 0 : buffer.length();
     if (length % size != 0) throwError(u"Error", u"Input length must be multiple of " + str(size).s() + u" bytes");
     return length / size;
   }
   Array<uint8_t> Result() override {
     if (!truthy(__get_key())) throwError(u"Error", u"Key not set");
-    if (inputBuffer.isNull() || inputBuffer.length() == 0) throwError(u"Error", u"No data fed");
-    int32_t blockSize = BlockSize;
+    Array<uint8_t> buffer = __get_inputBuffer();
+    if (buffer.isNull() || buffer.length() == 0) throwError(u"Error", u"No data fed");
+    int32_t blockSize = __get_BlockSize();
     RequireBlockMultiple(blockSize);
     Array<uint8_t> output = Array<uint8_t>::create(0);
-    for (int32_t offset = 0; offset < inputBuffer.length(); offset += blockSize) {
-      Array<uint8_t> block = inputBuffer.slice(offset, offset + blockSize);
-      Array<uint8_t> processed = isInverse ? DecryptBlock(block) : EncryptBlock(block);
+    for (int32_t offset = 0; offset < buffer.length(); offset += blockSize) {
+      Array<uint8_t> block = buffer.slice(offset, offset + blockSize);
+      Array<uint8_t> processed = __get_isInverse() ? DecryptBlock(block) : EncryptBlock(block);
       for (int32_t i = 0; i < processed.length(); ++i) output.push(processed.get(i));
     }
-    inputBuffer = Array<uint8_t>::create(0);
+    __set_inputBuffer(Array<uint8_t>::create(0));
     return output;
   }
   bool __get(const std::u16string& k, Any& out) override {
-    if (k == u"BlockSize") { out = BlockSize; return true; }
-    if (k == u"KeySize") { out = KeySize; return true; }
-    if (k == u"_key") { out = _key; return true; }
+    if (k == u"BlockSize") { out = __get_BlockSize(); return true; }
+    if (k == u"KeySize") { out = __get_KeySize(); return true; }
+    if (k == u"_key") { out = __get__key(); return true; }
     if (k == u"key") { out = __get_key(); return true; }
     return IAlgorithmInstance::__get(k, out);
   }
   bool __set(const std::u16string& k, const Any& v) override {
-    if (k == u"BlockSize") { BlockSize = fromAny<int32_t>(v); return true; }
-    if (k == u"KeySize") { KeySize = fromAny<int32_t>(v); return true; }
-    if (k == u"_key") { _key = fromAny<Array<uint8_t>>(v); return true; }
+    if (k == u"BlockSize") { __set_BlockSize(fromAny<int32_t>(v)); return true; }
+    if (k == u"KeySize") { __set_KeySize(fromAny<int32_t>(v)); return true; }
+    if (k == u"_key") { __set__key(fromAny<Array<uint8_t>>(v)); return true; }
     if (k == u"key") { __set_key(fromAny<Array<uint8_t>>(v)); return true; }
     return IAlgorithmInstance::__set(k, v);
   }
@@ -2452,23 +2464,51 @@ struct IBlockCipherInstance : IAlgorithmInstance {
   }
 };
 
-#define JS_INSTANCE(Name, Decl, Init, Fields) \
-  struct Name : IAlgorithmInstance { \
-    Decl \
-    static const char16_t* __staticClassName() { return u"" #Name; } \
-    const char16_t* __className() const override { return u"" #Name; } \
-    Name* __ctor(Algorithm* algorithm = nullptr) { IAlgorithmInstance::__ctor(algorithm); Init return this; } \
-    bool __get(const std::u16string& k, Any& out) override { Fields(JS_FIELD_GET) return IAlgorithmInstance::__get(k, out); } \
-    bool __set(const std::u16string& k, const Any& v) override { Fields(JS_FIELD_SET) return IAlgorithmInstance::__set(k, v); } \
-    bool __has(const std::u16string& k) override { Any out; Fields(JS_FIELD_GET) return IAlgorithmInstance::__has(k); } \
-  };
-#define F_NONE(X)
-#define F_IHASH(X) X(OutputSize)
-JS_INSTANCE(IHashFunctionInstance, int32_t OutputSize = 0;, OutputSize = 0;, F_IHASH)
-#define F_IKDF(X) X(OutputSize) X(Iterations)
-JS_INSTANCE(IKdfInstance, int32_t OutputSize = 0; int32_t Iterations = 0;, OutputSize = 0; Iterations = 0;, F_IKDF)
-#define F_IAEAD(X) X(aad) X(tagSize)
-JS_INSTANCE(IAeadInstance, Array<uint8_t> aad; int32_t tagSize = 0;, aad = Array<uint8_t>::create(0); tagSize = 0;, F_IAEAD)
+struct IHashFunctionInstance : IAlgorithmInstance {
+  JS_VFIELD(int32_t, OutputSize, = 0)
+  static const char16_t* __staticClassName() { return u"IHashFunctionInstance"; }
+  const char16_t* __className() const override { return u"IHashFunctionInstance"; }
+  IHashFunctionInstance* __ctor(Algorithm* algorithm = nullptr) { IAlgorithmInstance::__ctor(algorithm); __set_OutputSize(0); return this; }
+  bool __get(const std::u16string& k, Any& out) override { if (k == u"OutputSize") { out = __get_OutputSize(); return true; } return IAlgorithmInstance::__get(k, out); }
+  bool __set(const std::u16string& k, const Any& v) override { if (k == u"OutputSize") { __set_OutputSize(fromAny<int32_t>(v)); return true; } return IAlgorithmInstance::__set(k, v); }
+  bool __has(const std::u16string& k) override { return k == u"OutputSize" || IAlgorithmInstance::__has(k); }
+};
+struct IKdfInstance : IAlgorithmInstance {
+  JS_VFIELD(int32_t, OutputSize, = 0)
+  JS_VFIELD(int32_t, Iterations, = 0)
+  static const char16_t* __staticClassName() { return u"IKdfInstance"; }
+  const char16_t* __className() const override { return u"IKdfInstance"; }
+  IKdfInstance* __ctor(Algorithm* algorithm = nullptr) { IAlgorithmInstance::__ctor(algorithm); __set_OutputSize(0); __set_Iterations(0); return this; }
+  bool __get(const std::u16string& k, Any& out) override {
+    if (k == u"OutputSize") { out = __get_OutputSize(); return true; }
+    if (k == u"Iterations") { out = __get_Iterations(); return true; }
+    return IAlgorithmInstance::__get(k, out);
+  }
+  bool __set(const std::u16string& k, const Any& v) override {
+    if (k == u"OutputSize") { __set_OutputSize(fromAny<int32_t>(v)); return true; }
+    if (k == u"Iterations") { __set_Iterations(fromAny<int32_t>(v)); return true; }
+    return IAlgorithmInstance::__set(k, v);
+  }
+  bool __has(const std::u16string& k) override { return k == u"OutputSize" || k == u"Iterations" || IAlgorithmInstance::__has(k); }
+};
+struct IAeadInstance : IAlgorithmInstance {
+  JS_VFIELD(Array<uint8_t>, aad, )
+  JS_VFIELD(int32_t, tagSize, = 0)
+  static const char16_t* __staticClassName() { return u"IAeadInstance"; }
+  const char16_t* __className() const override { return u"IAeadInstance"; }
+  IAeadInstance* __ctor(Algorithm* algorithm = nullptr) { IAlgorithmInstance::__ctor(algorithm); __set_aad(Array<uint8_t>::create(0)); __set_tagSize(0); return this; }
+  bool __get(const std::u16string& k, Any& out) override {
+    if (k == u"aad") { out = __get_aad(); return true; }
+    if (k == u"tagSize") { out = __get_tagSize(); return true; }
+    return IAlgorithmInstance::__get(k, out);
+  }
+  bool __set(const std::u16string& k, const Any& v) override {
+    if (k == u"aad") { __set_aad(fromAny<Array<uint8_t>>(v)); return true; }
+    if (k == u"tagSize") { __set_tagSize(fromAny<int32_t>(v)); return true; }
+    return IAlgorithmInstance::__set(k, v);
+  }
+  bool __has(const std::u16string& k) override { return k == u"aad" || k == u"tagSize" || IAlgorithmInstance::__has(k); }
+};
 
 struct IMacInstance : IAlgorithmInstance {
   static const char16_t* __staticClassName() { return u"IMacInstance"; }

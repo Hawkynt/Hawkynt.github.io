@@ -185,6 +185,9 @@
     MerkleDamgardBlocks: { params: [['held', 'uint8[]'], ['pending', 'int32'], ['totalLength', 'float64'], ['options', 'object']], ret: 'uint8[][]', cpp: 'js::MerkleDamgardBlocks' }
   };
   const FW_ENUMS = new Set(['CategoryType', 'SecurityStatus', 'ComplexityType', 'CountryCode']);
+  // instance classes whose fields the runtime reaches through virtual __get_x/__set_x, so an
+  // algorithm class may redefine one as an accessor (the framework constructor then runs its setter)
+  const FW_VFIELD_CLASSES = new Set(['IAlgorithmInstance', 'IBlockCipherInstance', 'IHashFunctionInstance', 'IKdfInstance', 'IAeadInstance']);
   const GLOBAL_OBJECTS = new Set(['OpCodes', 'AlgorithmFramework', 'Math', 'Number', 'String', 'Array', 'Object', 'JSON', 'console', 'BigInt', 'Date', 'Symbol', 'Reflect', 'globalThis', 'window', 'global', 'self', 'module', 'exports', 'require', 'define', 'ArrayBuffer', 'Uint8Array', 'Uint16Array', 'Uint32Array', 'Int8Array', 'Int16Array', 'Int32Array', 'Float32Array', 'Float64Array', 'BigUint64Array', 'BigInt64Array', 'DataView', 'Map', 'Set', 'Promise', 'TextEncoder', 'TextDecoder', 'Buffer', 'crypto', 'performance', 'process']);
 
   // ========================[ THE TRANSFORMER ]========================
@@ -479,6 +482,7 @@
     // ------------------------------------------------------------ class analysis
 
     analyzeClasses() {
+      this.fwVirtualUsed = new Set(); // framework fields an algorithm class redefines as accessors
       for (const c of this.classes.values()) {
         if (!this.classes.has(c.base) && !FRAMEWORK[c.base]) { c.baseUnknown = true; c.base = 'Object'; }
       }
@@ -582,6 +586,7 @@
           for (let b = c.base; b; b = this.baseOf(b)) {
             const bc = this.classes.get(b);
             if (bc && bc.fields.has(a.name)) { bc.virtualAccessors.add(a.name); a.type = a.setType = bc.fields.get(a.name).type; break; }
+            if (!bc && FW_VFIELD_CLASSES.has(b) && FRAMEWORK[b].fields[a.name]) { this.fwVirtualUsed.add(a.name); a.type = a.setType = this.type(FRAMEWORK[b].fields[a.name]); break; }
           }
         }
       }
@@ -657,7 +662,7 @@
       const f = FRAMEWORK[clsName];
       if (!f) return null;
       if (f.accessors && f.accessors[name]) { const a = f.accessors[name]; return { kind: 'accessor', owner: clsName, type: this.type(a.type), hasGet: !!a.get, hasSet: !!a.set, fw: true }; }
-      if (f.fields && f.fields[name]) return { kind: 'field', owner: clsName, type: this.type(f.fields[name]), fw: true };
+      if (f.fields && f.fields[name]) return { kind: 'field', owner: clsName, type: this.type(f.fields[name]), fw: true, virtual: FW_VFIELD_CLASSES.has(clsName) && !!this.fwVirtualUsed && this.fwVirtualUsed.has(name) };
       if (f.methods && f.methods[name]) return { kind: 'method', owner: clsName, method: { name, fw: true, sig: this.fwSig(f.methods[name]) } };
       return null;
     }
@@ -1017,6 +1022,7 @@
       for (let b = clsName; b; b = this.baseOf(b)) {
         const u = this.classes.get(b);
         if (u && u.virtualAccessors.has(name)) return true;
+        if (!u && FW_VFIELD_CLASSES.has(b) && FRAMEWORK[b].fields[name]) return true;
       }
       return false;
     }
