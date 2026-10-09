@@ -1243,6 +1243,7 @@ namespace ${namespace}
         public static void Fill(byte[] arr, byte value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
         public static void Fill(uint[] arr, uint value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
         public static void Fill(int[] arr, int value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
+        public static void Fill<T>(T[] arr, T value) => Array.Fill(arr, value);
         // JS's array.sort([compareFn]) both mutates IN PLACE and yields the SAME array
         // reference as its value - unlike System.Array.Sort, which is void and cannot be
         // used as an expression (e.g. const sorted = arr.sort(cmp)). These sort in

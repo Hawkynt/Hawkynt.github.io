@@ -12527,8 +12527,21 @@
             return this.transformExpression(a);
           });
           this.currentArrayElementType = prevArrayElementTypeForArgs;
+          // An int parameter (an index, a length, a count) takes its argument as int
+          node.arguments.forEach((a, i) => {
+            const expected = argParamTypes?.[i];
+            if (expected && !expected.isArray && expected.name === 'int')
+              args[i] = this.castIfNeeded(args[i], this.inferFullExpressionType(a), expected);
+          });
           // Handle specific OpCodes methods that need special C# translation
           switch (node.method) {
+            case 'Fill': {
+              // The fill value takes the array's element type
+              const arrayType = this.inferFullExpressionType(node.arguments[0]);
+              if (arrayType?.isArray && args[1] && !arrayType.elementType?.isArray)
+                args[1] = this.castIfNeeded(args[1], this.inferFullExpressionType(node.arguments[1]), arrayType.elementType);
+              break;
+            }
             case 'CreateArray': {
               // An array of the element type its context expects (the IL's), filled
               const arrayType = this.mapILType(node.contextType) || this.mapILType(node.resultType);
@@ -13983,6 +13996,17 @@
         if (!isSimpleLiteral) {
           right = new CSharpCast(CSharpType.Int(), right);
         }
+      }
+
+      // A JavaScript bitwise or shift operator takes a float operand as an integer
+      // (ToInt32); C# has no such operator on double, so the operand is truncated
+      if (['|', '&', '^', '<<', '>>', '>>>'].includes(op)) {
+        const isFloat = n => ['double', 'float'].includes(this.inferFullExpressionType(n)?.name);
+        const toInteger = expr => op === '<<'
+          ? new CSharpCast(CSharpType.Int(), new CSharpCast(new CSharpType('long'), expr))
+          : new CSharpCast(new CSharpType('long'), expr);
+        if (isFloat(node.left)) left = toInteger(left);
+        if (!['<<', '>>', '>>>'].includes(op) && isFloat(node.right)) right = toInteger(right);
       }
 
       // For bitwise OR/AND/XOR operations, ensure type compatibility
@@ -16322,6 +16346,10 @@
       // hard compile error (CS1503) with no cast anywhere to fix it. Reuses the same
       // lookup castArgumentsToParameterTypes already falls back to for unqualified
       // names (scanning all registered signatures for one ending in `.MethodName`).
+      // The global isNaN/isFinite test a number
+      if ((funcName === 'isNaN' || funcName === 'isFinite') && args.length === 1)
+        return new CSharpMethodCall(new CSharpIdentifier('double'), funcName === 'isNaN' ? 'IsNaN' : 'IsFinite',
+          [new CSharpCast(CSharpType.Double(), args[0])]);
       const pascalFuncName = this.toPascalCase(funcName);
       const castedArgs = this.castArgumentsToParameterTypes({ type: 'Unresolved' }, pascalFuncName, args, node.arguments);
       // Qualified where a member every framework subclass inherits has the same name:
@@ -23433,7 +23461,11 @@
 
           // Determine element type and cast fill value if needed
           let elemType = null;
-          if (arrayNode.elementType) {
+          // The IL type of the filled array names its element type
+          const ilArrayType = this.mapILType(node.resultType);
+          if (ilArrayType?.isArray) {
+            elemType = ilArrayType.elementType;
+          } else if (arrayNode.elementType) {
             elemType = this.mapTypeFromKnowledge(arrayNode.elementType);
           } else if (node.elementType) {
             elemType = this.mapTypeFromKnowledge(node.elementType);
@@ -23510,7 +23542,11 @@
       // the return value isn't used in variable declaration
       // Using OpCodes.Fill for .NET Framework compatibility (Array.Fill is .NET Core 2.0+)
       const array = this.transformExpression(node.array);
-      const value = this.transformExpression(node.value);
+      let value = this.transformExpression(node.value);
+      // The fill value takes the array's element type
+      const filledType = this.inferFullExpressionType(node.array);
+      if (filledType?.isArray && filledType.elementType && !filledType.elementType.isArray)
+        value = this.castIfNeeded(value, this.inferFullExpressionType(node.value), filledType.elementType);
       // OpCodes.Fill(array, value)
       return new CSharpMethodCall(
         new CSharpIdentifier('OpCodes'),
@@ -24897,8 +24933,8 @@
           return this.transformArrayUnshift(node);
 
         case 'ArraySplice': {
-          const start = this.transformExpression(node.start);
-          const deleteCount = node.deleteCount ? this.transformExpression(node.deleteCount) : CSharpLiteral.Int(0);
+          const start = this.ensureIntIndex(this.transformExpression(node.start), node.start);
+          const deleteCount = node.deleteCount ? this.ensureIntIndex(this.transformExpression(node.deleteCount), node.deleteCount) : CSharpLiteral.Int(0);
           const arrayType = this.inferFullExpressionType(node.array);
           const elementType = (arrayType?.isArray && arrayType.elementType) || CSharpType.Object();
 

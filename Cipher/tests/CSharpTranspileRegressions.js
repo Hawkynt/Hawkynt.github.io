@@ -298,6 +298,18 @@ check('IL types: a counter field keeps its JSDoc type, not a guess from its name
 });
 
 // ---------------------------------------------------------------------------
+// Numeric operands
+// ---------------------------------------------------------------------------
+check('numeric: a float operand of a bitwise operator is truncated as JavaScript does', () => {
+  const code = transpile('/**\n * @param {float64} x - value\n * @returns {int32} low byte\n */\nfunction lowByte(x) { return x & 255; }');
+  expectMatch(code, /\(long\)\(x\)\) & 255|\(long\)x & 255/, '(long)x & 255');
+});
+check('numeric: the global isNaN tests a double', () => {
+  const code = transpile('/**\n * @param {float64} x - value\n * @returns {boolean} not a number\n */\nfunction nan(x) { return isNaN(x); }');
+  expectMatch(code, /double\.IsNaN\(/, 'double.IsNaN(...)');
+});
+
+// ---------------------------------------------------------------------------
 // OpCodes helpers
 // ---------------------------------------------------------------------------
 check('OpCodes.CreateArray: the array has the element type its target is declared with', () => {
