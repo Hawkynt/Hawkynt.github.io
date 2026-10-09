@@ -891,7 +891,11 @@
       };
       if (fnNode.body && fnNode.body.type !== 'BlockStatement') {
         const t = parseType(fnNode.body.contextType) || declared || parseType(fnNode.body.resultType);
-        return t && !isNullT(t) ? t : (t || T.void);
+        if (t) return t;
+        // an untyped expression body still yields its value (`(_, i) => i`);
+        // a call or assignment body may be there for its effect only
+        const forEffect = ['CallExpression', 'AssignmentExpression', 'UpdateExpression'].includes(fnNode.body.type);
+        return forEffect ? T.void : T.any;
       }
       visit(fnNode.body);
       if (returns.length === 0) return T.void;
