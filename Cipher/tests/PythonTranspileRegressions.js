@@ -401,6 +401,14 @@ check('cast: OpCodes.ToInt wraps to a signed 32-bit value, from an int or a floa
   return expectOutput(runPython(js, 'print(f(0xFFFFFFFF, 2.5e9), f(5, 7.9))'), ['[-1, -1794967296, True] [5, 7, False]']);
 });
 
+check('bigint: / truncates toward zero and % keeps the dividend sign, exactly past 2^53', () => {
+  const js = '/** @param {BigInt} a @param {BigInt} b @returns {BigInt[]} */\nfunction f(a, b) { return [a / b, a % b]; }\n' +
+    '/** @returns {BigInt} */\nfunction g() { return (10n ** 30n + 1n) / 3n; }';
+  // Given every sign combination and a quotient far above 2^53
+  return expectOutput(runPython(js, 'print(f(-7, 2), f(7, -2), f(-7, -2), f(7, 2), g())'),
+    ['[-3, -1] [-3, 1] [3, -1] [3, 1] 333333333333333333333333333333']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

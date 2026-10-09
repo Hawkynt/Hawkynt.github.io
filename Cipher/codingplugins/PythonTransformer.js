@@ -2935,6 +2935,20 @@ class OpCodes(metaclass=_OpCodesMeta):
           '        return obj.pop(key, None) is not None\n' +
           '    return obj.delete(key)'
       });
+      // BigInt `/` truncates toward zero and `%` keeps the dividend's sign;
+      // Python's // and % floor instead, which differs for a negative operand
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_idiv(a, b):\n' +
+          '    q = abs(a) // abs(b)\n' +
+          '    return q if (a < 0) == (b < 0) else -q'
+      });
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_imod(a, b):\n' +
+          '    r = abs(a) % abs(b)\n' +
+          '    return -r if a < 0 else r'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def _js_len(x):\n' +
@@ -8196,6 +8210,11 @@ class OpCodes(metaclass=_OpCodesMeta):
         return new PythonCall(new PythonIdentifier('isinstance'), [left, right]);
       }
 
+      // BigInt division and remainder: exact, truncating toward zero
+      if ((operator === '/' || operator === '%') && this._isBigIntOperation(node)) {
+        return new PythonCall(new PythonIdentifier(operator === '/' ? '_js_idiv' : '_js_imod'), [left, right]);
+      }
+
       // Handle division - use integer division when dividing by integer literals
       // This is safe for cryptographic code where most division is integer division
       if (operator === '/') {
@@ -8497,6 +8516,18 @@ class OpCodes(metaclass=_OpCodesMeta):
     // actually BigInt at runtime (64-bit PRNG/hash state, explicit qword/long
     // casts, BigInt literals) rather than a plain 32-bit-truncated JS Number.
     static WIDE_INT_RESULT_TYPES = new Set(['bigint', 'uint64', 'int64', 'qword']);
+
+    /**
+     * True if the IL types a binary operation as BigInt arithmetic: its
+     * result or an operand is a BigInt, or an operand is a BigInt literal.
+     * @param {Object} node - IL BinaryExpression
+     * @returns {boolean}
+     */
+    _isBigIntOperation(node) {
+      const isBig = (n) => !!n && (String(n.resultType || '').toLowerCase() === 'bigint' ||
+        (n.type === 'Literal' && typeof n.value === 'bigint'));
+      return isBig(node) || isBig(node.left) || isBig(node.right);
+    }
     static isWideIntResultType(resultType) {
       return PythonTransformer.WIDE_INT_RESULT_TYPES.has(resultType);
     }
