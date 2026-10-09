@@ -1917,9 +1917,9 @@ template <class T> inline std::u16string traceText(const T& v) {
   else if constexpr (std::is_same_v<T, Fun>) return v ? u"fn" : u"null";
   else return u"?";
 }
+inline long long& traceBudget() { static long long b = std::getenv("JS_TRACE_BUDGET") ? std::atoll(std::getenv("JS_TRACE_BUDGET")) : 400000; return b; }
 template <class T> inline T trace(int64_t site, T v) {
-  static long long budget = 400000;
-  if (budget-- > 0) std::fprintf(stderr, "@T %lld|%s\n", (long long)site, toUtf8(traceText(v)).c_str());
+  if (traceBudget()-- > 0) std::fprintf(stderr, "@T %lld|%s\n", (long long)site, toUtf8(traceText(v)).c_str());
   return v;
 }
 
