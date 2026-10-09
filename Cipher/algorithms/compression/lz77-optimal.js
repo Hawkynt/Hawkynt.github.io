@@ -508,7 +508,7 @@
 
   class LZ77OptimalInstance extends IAlgorithmInstance {
     /**
-     * @param {LZ77Optimal} algorithm - Parent algorithm
+     * @param {LZ77OptimalCompression} algorithm - Parent algorithm
      * @param {boolean} [isInverse=false] - True for the inverse transform
      */
     constructor(algorithm, isInverse = false) {
