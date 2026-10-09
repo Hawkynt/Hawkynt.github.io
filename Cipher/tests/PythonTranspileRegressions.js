@@ -553,6 +553,15 @@ check('hints: nullable value types are Optional, tuples a list of their kinds, @
   return expectOutput(runPython(js, 'print(filled(2, 7), f(None), f(3), maybe, K().m(None), K().m(0))'), ['[7, 7] -1 4 None True False']);
 });
 
+check('props: obj[name] with a computed name reads a class instance field and an object key', () => {
+  const js = 'class Params { constructor(n, size) { this.name = n; this.privateKeySize = size; } }\n' +
+    'const SETS = [new Params("a", 10), new Params("b", 20)];\n' +
+    '/** @param {int32} length @param {string} field */\nfunction byLength(length, field) { for (let i = 0; i < SETS.length; i++) { const set = SETS[i]; if (set[field] === length) return set.name; } return null; }\n' +
+    '/** @param {string} k */\nfunction table(k) { const o = { alpha: 1 }; o[k] = 5; return [o[k], o["alpha"]]; }';
+  // Given a field name held in a string, read off class instances, and an object written and read by a computed key
+  return expectOutput(runPython(js, 'print(by_length(20, "privateKeySize"), by_length(30, "privateKeySize"), table("beta"))'), ['b None [5, 1]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

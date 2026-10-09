@@ -3081,6 +3081,21 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    r = math.floor(x)\n' +
           '    return r + 1 if x - r >= 0.5 else r'
       });
+      // obj[name] on an instance of a class: its attribute, under the name
+      // the transpiler gives a member (camelCase to snake_case)
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_getprop(obj, key):\n' +
+          '    if not isinstance(key, str) or hasattr(type(obj), "__getitem__"):\n' +
+          '        return obj[key]\n' +
+          '    if key.upper() == key:\n' +
+          '        name = key\n' +
+          '    else:\n' +
+          '        name = "".join(("_" + c.lower()) if c.isupper() and i > 0 and (key[i - 1].islower() or key[i - 1].isdigit()) else c.lower() for i, c in enumerate(key))\n' +
+          '    if hasattr(obj, name):\n' +
+          '        return getattr(obj, name)\n' +
+          '    return getattr(obj, key, None)'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def _js_reverse(a):\n' +
@@ -10002,7 +10017,15 @@ class OpCodes(metaclass=_OpCodesMeta):
         } else {
           property = this.transformExpression(prop);
         }
-        return new PythonSubscript(object, property);
+        const subscript = new PythonSubscript(object, property);
+        // obj[name] with a computed string name reads a property of any
+        // object; on an instance of a class Python needs getattr (the emitter
+        // keeps a plain subscript where this is assigned to)
+        const objectType = String(node.object && node.object.resultType || '');
+        if (prop && prop.resultType === 'string' && prop.type !== 'Literal' &&
+            !/(\[\]|Array|^string|^Map\b|^Set\b)$/.test(objectType))
+          subscript.isJsPropRead = true;
+        return subscript;
       } else {
         // Dot access: obj.prop
         const propName = node.property.name || node.property.value;

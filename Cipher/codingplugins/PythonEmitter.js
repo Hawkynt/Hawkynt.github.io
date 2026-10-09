@@ -277,7 +277,10 @@
     }
 
     emitAssignment(node, asExpression = false) {
-      const target = this.emit(node.target);
+      const savedTarget = this._assignTarget;
+      this._assignTarget = node.target;
+      let target;
+      try { target = this.emit(node.target); } finally { this._assignTarget = savedTarget; }
       const value = this.emit(node.value);
 
       let code = target;
@@ -324,7 +327,9 @@
 
     emitDelete(node) {
       // `del target` (maps from JavaScript's `delete obj.prop` / `delete obj[key]`)
-      return `del ${this.emit(node.target)}`;
+      const savedTarget = this._assignTarget;
+      this._assignTarget = node.target;
+      try { return `del ${this.emit(node.target)}`; } finally { this._assignTarget = savedTarget; }
     }
 
     emitReturn(node) {
@@ -866,6 +871,9 @@
     }
 
     emitSubscript(node) {
+      // a computed-name property read (see the transformer)
+      if (node.isJsPropRead && node !== this._assignTarget && !(node.index && node.index.nodeType === 'Slice'))
+        return `_js_getprop(${this.emit(node.object)}, ${this.emit(node.index)})`;
       let obj = this.emit(node.object);
 
       // Same grouping rule as emitMemberAccess (see its comment) but for
