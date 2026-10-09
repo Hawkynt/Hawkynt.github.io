@@ -129,8 +129,13 @@ class CSharpPlugin extends LanguagePlugin {
       // Emit C# source code
       let code = emitter.emit(csAst);
 
-      // Add framework type stubs if needed
-      if (mergedOptions.generateFrameworkStubs !== false) {
+      // A dependency bundled ahead of another algorithm's code (asDependency): no
+      // stubs, no using directives and no Main - the main code brings those once.
+      if (mergedOptions.asDependency) {
+        code = code.replace(/^using\s+[^;]+;\s*$/gm, '')
+          .replace(/(\s*\/\/\/[^\n]*\n)*\s*public\s+static\s+void\s+Main\s*\([^)]*\)\s*\{[^}]*\}/, '')
+          .replace(/^\s*\n/, '');
+      } else if (mergedOptions.generateFrameworkStubs !== false) {
         code = this._addFrameworkStubs(code, mergedOptions.namespace || 'CipherValidation');
       }
 

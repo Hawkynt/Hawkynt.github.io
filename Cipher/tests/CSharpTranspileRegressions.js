@@ -239,6 +239,16 @@ check('registry: an algorithm registered through a module helper is listed', () 
   expectMatch(code, /Algorithms = new Algorithm\[\] \{ new A\(\) \}/, 'Algorithms = { new A() }');
   expectMatch(code, /static void RegisterAlgorithm\(Algorithm algorithm\)/, 'a RegisterAlgorithm method for the helper');
 });
+check('registry: a dependency transpiled asDependency brings no usings, stubs or Main', () => {
+  const code = quiet(() => {
+    const ast = new TypeAwareJSASTParser('class D extends HashFunctionAlgorithm { constructor() { super(); this.name = "D"; } }\nRegisterAlgorithm(new D());').parse();
+    return plugin.GenerateFromAST(ast, { namespace: 'RegressionTest', className: 'DepGenerated', asDependency: true }).code;
+  });
+  expectNoMatch(code, /^using /m, 'a using directive');
+  expectNoMatch(code, /static void Main\(/, 'a Main method');
+  expectNoMatch(code, /class IAlgorithmInstance/, 'the framework stubs');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{ new D\(\) \}/, 'its own registry');
+});
 check('module bindings: a const the module grows is not readonly (CS0198)', () => {
   const code = transpile('/** @type {uint32[]} */\nconst TABLE = [];\nfunction fill() { TABLE.push(1); }');
   expectNoMatch(code, /readonly uint\[\] TABLE/, 'a readonly TABLE');
