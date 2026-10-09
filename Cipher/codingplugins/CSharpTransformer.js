@@ -14840,7 +14840,7 @@
       if (sourceType.isArray !== targetType.isArray) return expr;
 
       // A base class value into a subclass-typed target (the IL types it as the subclass)
-      if (!sourceType.isArray && this.isClassTypeName(sourceType.name) && this.isClassTypeName(targetType.name))
+      if (!sourceType.isArray && (this.isClassTypeName(sourceType.name) || sourceType.name === 'object') && this.isClassTypeName(targetType.name))
         return new CSharpCast(targetType, expr);
 
       // Both arrays but differing primitive element type (e.g. `c = this._leftShift(c, n)`
@@ -15272,7 +15272,45 @@
         return new CSharpMemberAccess(target, 'Url');
       }
 
-      return new CSharpMemberAccess(target, this.toPascalCase(member));
+      // A framework-typed value (an instance a registered algorithm created) holds a
+      // concrete subclass; a member the framework type does not declare is that
+      // subclass's own, reached at runtime
+      const memberName = this.toPascalCase(member);
+      if (targetType && !targetType.isArray && this.isFrameworkInstanceType(targetType.name) &&
+          !this.stubChainDeclares(targetType.name, memberName)) {
+        return new CSharpMemberAccess(new CSharpParenthesized(new CSharpCast(CSharpType.Dynamic(), target)), memberName);
+      }
+
+      return new CSharpMemberAccess(target, memberName);
+    }
+
+    /**
+     * Whether a type name is a framework algorithm or instance stub class.
+     * @param {string} name - C# type name
+     * @returns {boolean}
+     */
+    isFrameworkInstanceType(name) {
+      for (let hops = 0; name && hops < 32; ++hops) {
+        if (name === 'Algorithm' || name === 'IAlgorithmInstance') return true;
+        name = this.stubMembers.get(name)?.base;
+      }
+      return false;
+    }
+
+    /**
+     * Whether a stub class or one of its stub bases declares a member (any kind).
+     * @param {string} name - stub class name
+     * @param {string} csName - C# member name
+     * @returns {boolean}
+     */
+    stubChainDeclares(name, csName) {
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (!stub) return false;
+        if (stub.members.has(csName)) return true;
+        name = stub.base;
+      }
+      return false;
     }
 
     transformCallExpression(node) {

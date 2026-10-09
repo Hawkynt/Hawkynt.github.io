@@ -310,6 +310,16 @@ check('numeric: the global isNaN tests a double', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Framework-typed values
+// ---------------------------------------------------------------------------
+check('framework: a member the framework type lacks is read through dynamic', () => {
+  const code = transpile('class K extends IAlgorithmInstance {\n  /** @param {Algorithm} hash - hash algorithm */\n' +
+    '  use(hash) { /** @type {IMacInstance} */ const mac = hash.CreateInstance(false); mac.key = [1, 2]; return mac; }\n}');
+  expectMatch(code, /\(dynamic\)\(?mac\)?\)?\)?\.Key/, '((dynamic)mac).Key');
+  expectMatch(code, /\(IMacInstance\)/, 'the created instance cast to IMacInstance');
+});
+
+// ---------------------------------------------------------------------------
 // OpCodes helpers
 // ---------------------------------------------------------------------------
 check('OpCodes.CreateArray: the array has the element type its target is declared with', () => {
