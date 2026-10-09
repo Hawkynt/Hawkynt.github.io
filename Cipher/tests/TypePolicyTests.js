@@ -265,10 +265,11 @@ test('context: given KeySize objects stored into the same field, when typed, the
 });
 
 // ------------------------------------------------------------ walker
-test('walk: given an untyped parameter read twice, when counted, then both reads are sites with line and expression', () => {
+test('walk: given an untyped parameter read twice, when counted, then the parameter and both reads are sites with line and expression', () => {
   const s = sites('function f(a) {\n  const x = a;\n  return a;\n}');
-  equal(s.length, 2);
-  equal(s[0].line, 2); equal(s[0].expression, 'a'); equal(s[1].line, 3);
+  equal(s.length, 3);
+  equal(s[0].line, 1); ok(/parameter 'a' has no type/.test(s[0].reason), s[0].reason);
+  equal(s[1].line, 2); equal(s[1].expression, 'a'); equal(s[2].line, 3);
 });
 test('walk: given declaration names, keys, callees and statements, when counted, then only the undeclared object literal is a site', () => {
   const s = sites('/** @returns {uint8} */\nfunction g() { return 1; }\nconst o = { k: g() };\ng();');
@@ -281,10 +282,10 @@ test('walk: given the same object literal declared with @type, when counted, the
 test('walk: given test vectors in this.tests, when counted, then they are skipped', () => {
   equal(sites('class A extends HashFunctionAlgorithm { constructor() { super(); this.tests = [{ input: [1, 2], expected: [3] }]; } }').length, 0);
 });
-test('walk: given a local JSDoc {number}, when read, then it is counted as untyped with the reason', () => {
+test('walk: given a local JSDoc {number}, when read, then the parameter and its read are counted as untyped with the reason', () => {
   const s = sites('/** @param {number} n */\nfunction f(n) { return n; }');
-  equal(s.length, 1);
-  ok(/states no width/.test(s[0].reason), s[0].reason);
+  equal(s.length, 2);
+  ok(s.every(x => /states no width/.test(x.reason)), s.map(x => x.reason).join('; '));
 });
 
 test('walk: given a genuine float, when read, then it is typed (float64 is not number)', () => {
@@ -370,6 +371,104 @@ test('tuple: given a tuple type, when checked, then each position is checked', (
   equal(check(['', 'x', ' ']), 'element-string');
   equal(check('abc'), 'string');
   equal(TypeSoundness.checkerFor('[string,int32][]')([['a', 1], ['b', 2.5]]), 'element-fraction');
+});
+
+// ------------------------------------------------------------ storage: declarators, parameters, fields
+test('storage: given `let a, b;` without JSDoc, when counted, then each declarator is a site', () => {
+  const s = sites('/** @returns {int32} */\nfunction f() {\n  let a, b;\n  return 0;\n}');
+  equal(s.length, 2);
+  ok(s.every(x => x.line === 3 && /variable '[ab]' has no type/.test(x.reason)), s.map(x => x.reason).join('; '));
+});
+test('storage: given `let a;` with @type {uint32}, when counted, then nothing is a site', () => {
+  equal(sites('/** @returns {int32} */\nfunction f() {\n  /** @type {uint32} */\n  let a;\n  return 0;\n}').length, 0);
+});
+test('storage: given new Array(n) without JSDoc, when counted, then it is one site (the value, not the declarator again)', () => {
+  const s = sites('/** @param {int32} n */\nfunction f(n) { const a = new Array(n); }');
+  equal(s.length, 1);
+  equal(s[0].expression, 'new Array(n)');
+});
+test('storage: given new Array(n) with @type {uint32[]}, when counted, then nothing is a site', () => {
+  equal(sites('/** @param {int32} n */\nfunction f(n) {\n  /** @type {uint32[]} */\n  const a = new Array(n);\n}').length, 0);
+});
+test('storage: given a call typed only after narrowing (no @returns), when counted, then its declarator is a site', () => {
+  const s = sites('function g() { return 1; }\n/** @returns {int32} */\nfunction f() { const v = g(); return 0; }');
+  ok(s.some(x => /variable 'v' has no type/.test(x.reason)), s.map(x => x.reason).join('; '));
+});
+test('storage: given a parameter without @param that is never read, when counted, then the parameter is a site', () => {
+  const s = sites('/** @returns {int32} */\nfunction f(unused) { return 0; }');
+  equal(s.length, 1);
+  ok(/parameter 'unused'/.test(s[0].reason), s[0].reason);
+});
+test('storage: given a default parameter without JSDoc, when counted, then it is a site', () => {
+  ok(sites('/** @returns {int32} */\nfunction f(n = 4) { return 0; }').some(x => /parameter 'n'/.test(x.reason)), 'default parameter reported');
+});
+test('storage: given an array callback, when the array is typed, then its parameters are typed (no site)', () => {
+  equal(sites('/**\n * @param {uint8[]} b\n * @returns {uint8[]}\n */\nfunction f(b) { return b.filter((v, i) => i > 0); }').length, 0);
+});
+test('storage: given an array callback on a call result, when the call declares @returns, then its parameters are typed', () => {
+  equal(sites('/** @returns {uint8[]} */\nfunction g() { return [1]; }\n/** @returns {int32[]} */\nfunction f() { return g().map(v => v + 1); }').filter(x => /parameter/.test(x.reason)).length, 0);
+});
+test('storage: given a callback passed to a framework function-typed parameter, when typed, then its parameters take that signature', () => {
+  const ast = il('class H extends IHashFunctionInstance { constructor() { super(null); /** @type {BlockAbsorber} */ this._a = new BlockAbsorber(64, block => this._p(block)); } /** @param {uint8[]} b */ _p(b) { } }');
+  const arrow = find(ast, n => n.type === 'ArrowFunction');
+  equal(arrow.params[0].resultType, 'uint8[]');
+});
+test('storage: given a field only ever assigned null, when counted, then the field is a site', () => {
+  ok(sites('class A { constructor() { this.k = null; } }').some(x => /field 'k' is typed 'null'/.test(x.reason)), 'null field reported');
+});
+test('storage: given a field with @type {uint8[]|null} assigned null, when counted, then nothing is a site', () => {
+  equal(sites('class A { constructor() { /** @type {uint8[]|null} */ this.k = null; } }').length, 0);
+});
+test('storage: given a field typed by its assignments, when counted, then it is no site (boundary)', () => {
+  equal(sites('class A { constructor() { this.k = OpCodes.RotL32(1, 2); } }').length, 0);
+});
+
+// ------------------------------------------------------------ weak types and their array forms
+test('weak: given any, any[], number[][], Array<*> and Object[], when judged, then each is weak', () => {
+  for (const t of ['any', 'any[]', 'number[][]', 'Array<*>', 'Object[]', 'Array', '', null, 'undefined'])
+    ok(TypeCoverage.isWeakType(t), `${t} should be weak`);
+});
+test('weak: given uint8[], string[][], KeySize[] and bigint, when judged, then none is weak (boundary)', () => {
+  for (const t of ['uint8[]', 'string[][]', 'KeySize[]', 'bigint', 'Array<uint32>'])
+    ok(!TypeCoverage.isWeakType(t), `${t} should not be weak`);
+});
+test('weak: given a value typed any[] by JSDoc, when read, then the read is counted', () => {
+  ok(sites('/**\n * @param {any[]} q\n * @returns {int32}\n */\nfunction f(q) { const w = q; return 0; }').some(x => /'any\[\]'/.test(x.reason)), 'any[] reported');
+});
+// ------------------------------------------------------------ kinds: booleans, BigInts, accessors
+test('kind: given a boolean added to a number, when counted, then the boolean operand is a site', () => {
+  const r = reasons('/**\n * @param {uint32} x\n * @returns {int32}\n */\nfunction f(x) { let n = 0; n += OpCodes.GetBit(x, 0); return n; }');
+  ok(r.some(x => /boolean used as a number/.test(x)), r.join('; '));
+});
+test('kind: given the boolean converted with ? 1 : 0, when counted, then nothing is a site', () => {
+  equal(sites('/**\n * @param {uint32} x\n * @returns {int32}\n */\nfunction f(x) { let n = 0; n += OpCodes.GetBit(x, 0) ? 1 : 0; return n; }').length, 0);
+});
+test('kind: given 1 - a boolean, when counted, then the boolean is a site (exceptional)', () => {
+  ok(reasons('/**\n * @param {uint32} x\n * @returns {int32}\n */\nfunction f(x) { return 1 - OpCodes.GetBit(x, 0); }').some(x => /boolean used as a number/.test(x)), 'reported');
+});
+test('kind: given a number where a boolean parameter is declared, when counted, then it is a site', () => {
+  ok(reasons('/**\n * @param {uint8[]} b\n * @returns {uint32}\n */\nfunction f(b) { return OpCodes.SetBit(0, 1, b[0]); }').some(x => /where boolean is declared/.test(x)), 'reported');
+});
+test('kind: given a comparison where a boolean parameter is declared, when counted, then nothing is a site (boundary)', () => {
+  equal(sites('/**\n * @param {uint8[]} b\n * @returns {uint32}\n */\nfunction f(b) { return OpCodes.SetBit(0, 1, b[0] !== 0); }').length, 0);
+});
+test('kind: given a BigInt literal where a byte is declared, when counted, then it is a site', () => {
+  ok(reasons('/** @returns {uint8[]} */\nfunction f() { return OpCodes.CreateArray(4, 0n); }').some(x => /BigInt value where uint8/.test(x)), 'reported');
+});
+test('kind: given a shift amount of an inlined BigInt shift, when typed, then its context is the BigInt the operator takes', () => {
+  equal(sites('/**\n * @param {BigInt} v\n * @returns {BigInt}\n */\nfunction f(v) { return OpCodes.ShiftLn(v, 8n); }').length, 0);
+  equal(sites('/**\n * @param {BigInt} v\n * @param {int32} n\n * @returns {BigInt}\n */\nfunction f(v, n) { return OpCodes.ShiftLn(v, n); }').length, 0);
+});
+test('accessor: given a setter of uint8[] and a getter of string, when counted, then the setter is a site', () => {
+  ok(reasons('class A {\n /** @param {uint8[]} k */\n set key(k) { this._k = String.fromCharCode(...k); }\n /** @returns {string} */\n get key() { return this._k; } }')
+    .some(x => /accessor 'key' takes uint8\[\] but returns string/.test(x)), 'reported');
+});
+test('accessor: given a setter and getter of one type, when counted, then nothing is a site', () => {
+  equal(sites('class A {\n /** @param {uint8[]} k */\n set key(k) { /** @type {uint8[]} */ this._k = k; }\n /** @returns {uint8[]} */\n get key() { return this._k; } }').length, 0);
+});
+test('accessor: given a getter with @returns, when this.prop is assigned, then the property has the getter type', () => {
+  const ast = il('class A {\n constructor() { this.curve = null; }\n /** @param {string|null} n */\n set curve(n) { this._n = n; }\n /** @returns {string|null} */\n get curve() { return this._n; }\n m() { const c = this.curve; return c; } }');
+  equal(declOf(ast, 'c').resultType, 'string');
 });
 
 // ------------------------------------------------------------ inference fixes

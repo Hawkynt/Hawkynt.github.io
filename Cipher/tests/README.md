@@ -69,7 +69,12 @@ applied to numbers, an unannotated parameter.
 `TypeCoverage.js` parses a file into the same typed IL AST the language emitters use
 and counts those sites (value positions only; declaration names, keys, callees,
 conditions and test vectors are not values), attributing each to the tier whose gap it
-is. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
+is. A type that states no width counts as none, its array forms too (`any`, `any[]`,
+`number[]`, `Array<*>`). Besides values it counts storage and kinds: every variable
+(`let a, b;` included), parameter and field whose type is missing or weak; a value of
+one kind where its context declares another (a number for a `boolean` parameter, a
+BigInt literal for a `uint8`); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
+and an accessor whose setter takes another type than its getter returns. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
 rises above it, a budget of 0 means the file is policy-clean, and
 `--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
 given as well to raise one or add a file). `--verbose` lists every site with file, line,

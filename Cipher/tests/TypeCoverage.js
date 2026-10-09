@@ -16,6 +16,20 @@
  *     literal-magnitude array, `a || []`, raw `a + b` on fixed-width values,
  *     a BigInt helper applied to numbers, ...).
  *
+ * A type that states no width counts as none, its array forms too ('any[]',
+ * 'number[][]', 'Array<*>').
+ *
+ * Storage and kinds are counted as well, whether or not a value site shows them:
+ *
+ *   - every variable (`let a, b;` included), parameter and field whose type is
+ *     missing, weak or only `null` (a declarator whose initializer is itself a
+ *     counted site is not counted twice);
+ *   - a value of one kind where its context declares another: a number where a
+ *     `boolean` parameter is declared, a BigInt literal for a `uint8`, ...;
+ *   - a boolean used as a number (`n += OpCodes.GetBit(x, i)`, `1 - flag`);
+ *   - an accessor whose setter takes another type than its getter returns (a
+ *     property no typed language declares with one type).
+ *
  * `number` versus float: the IL names a genuine floating-point value
  * 'float64'/'float32' (fractional literals, `/`, Math.sqrt, ...). A bare
  * 'number' only survives where nothing stated a width - most often a local
@@ -55,6 +69,25 @@ function parserClass() {
 /** resultTypes that state no width or signedness. */
 const WEAK_TYPES = new Set(['', 'any', 'number', 'object', 'Object', 'unknown', '*', 'Array', 'mixed', 'undefined']);
 
+/** Types that say nothing about what a variable, parameter or field holds. */
+const EMPTY_STORAGE_TYPES = new Set(['null', 'void']);
+
+/**
+ * Does a type state no width or signedness? An array of such a type (`any[]`,
+ * `number[][]`, `Array<*>`) states none either.
+ * @param {*} t - resultType (string or JSDoc type object)
+ * @returns {boolean} true when weak
+ */
+function isWeakType(t) {
+  let name = typeName(t).trim();
+  for (;;) {
+    if (name.endsWith('[]')) { name = name.slice(0, -2).trim(); continue; }
+    const generic = name.match(/^Array<(.*)>$/);
+    if (generic) { name = generic[1].trim(); continue; }
+    return WEAK_TYPES.has(name);
+  }
+}
+
 /** Nodes that are not values themselves (their children may be). */
 const NOT_VALUES = new Set([
   'Program', 'ExpressionStatement', 'VariableDeclaration', 'VariableDeclarator', 'ReturnStatement',
@@ -70,7 +103,7 @@ const NOT_VALUES = new Set([
 
 /** Keys that never hold a value. */
 const SKIP_KEYS = new Set(['loc', 'range', 'leadingComments', 'trailingComments', 'comments', 'parent',
-  'typeInfo', 'jsDoc', 'id', 'key', 'params', 'callee', 'label', 'superClass', 'decorators', 'quasis']);
+  'typeInfo', 'jsDoc', 'id', 'key', 'params', 'callee', 'label', 'superClass', 'decorators', 'quasis', 'recordTypes']);
 
 /** Guesses a declared context type settles (the value is converted to it). */
 const CONTEXT_SETTLES = new Set(['literal-array', 'raw-arithmetic', 'raw-bitwise']);
@@ -89,7 +122,45 @@ function typeName(t) {
   return String(t);
 }
 
+/**
+ * The kind of value a type holds, for telling one kind from another: a
+ * number, a BigInt, a 64-bit integer (which may be either), a string, a
+ * boolean, nothing (null). Null for arrays, references and untyped values.
+ * @param {string} t - type name
+ * @param {Object} [node] - the value, when a literal says more than its type (`8n` is a BigInt)
+ * @returns {string|null} kind
+ */
+function valueKind(t, node) {
+  if (node && node.type === 'Literal' && typeof node.value === 'bigint') return 'bigint';
+  if (!t) return null;
+  if (/^(u?int(8|16|32)|float(32|64))$/.test(t)) return 'number';
+  if (/^u?int64$/.test(t)) return 'wide';
+  if (t === 'bigint' || t === 'BigInt') return 'bigint';
+  if (t === 'string' || t === 'boolean') return t;
+  if (t === 'null') return 'nothing';
+  return null;
+}
+
+/**
+ * Do two kinds differ? A 64-bit integer is a number or a BigInt; null is
+ * judged by nullability, not here.
+ * @param {string|null} a - kind
+ * @param {string|null} b - kind
+ * @returns {boolean} true when no value has both kinds
+ */
+function kindsDiffer(a, b) {
+  if (!a || !b || a === b || a === 'nothing' || b === 'nothing') return false;
+  if (a === 'wide') return b !== 'number' && b !== 'bigint';
+  if (b === 'wide') return a !== 'number' && a !== 'bigint';
+  return true;
+}
+
+/** Operators that treat their operands as numbers. */
+const NUMERIC_OPERATORS = new Set(['+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', '>>>']);
+
 const FUNCTION_NODES = new Set(['FunctionExpression', 'ArrowFunctionExpression']);
+/** Nodes that declare parameters. */
+const FUNCTION_DECLARATIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction']);
 
 /**
  * The function a call invokes in place: `(function () {...})()`,
@@ -151,7 +222,9 @@ function analyzeSource(code, filePath) {
   // The framework interface of the class declares the member (typed or not).
   const frameworkDeclares = (className, member, kind) => parser._frameworkMember(className, member, kind) !== null;
 
+  const recorded = new Set();
   const record = (node, where, reason, tier) => {
+    recorded.add(node);
     sites.push({
       line: (node.loc && node.loc.line) || where.line || 0,
       expression: expressionText(node.range || where.range),
@@ -173,10 +246,19 @@ function analyzeSource(code, filePath) {
       return;
     }
     const t = typeName(node.resultType);
-    if (!WEAK_TYPES.has(t) || node.contextType) return;
+    // A value of one kind where the context declares another (a boolean
+    // where a number is declared, a number where a boolean is, ...).
+    const context = typeName(node.contextType);
+    const kind = valueKind(t, node), expected = valueKind(context);
+    if (kindsDiffer(kind, expected)) {
+      record(node, where, `a ${kind === 'bigint' ? 'BigInt' : t} value where ${context} is declared; convert it explicitly`, 'local');
+      return;
+    }
+    if (!isWeakType(t) || node.contextType) return;
     let tier = 'local';
     let reason = t === 'number'
       ? "declared 'number', which states no width or signedness"
+      : t && t !== 'undefined' ? `typed '${t}', which states no width or signedness`
       : `no tier types this ${node.type === 'Identifier' ? `name '${node.name}'` : node.type}`;
     if (node.opCodesMethod && !(parser.typeKnowledge.opCodesTypes || {})[node.opCodesMethod]) {
       tier = 'opcodes';
@@ -245,6 +327,75 @@ function analyzeSource(code, filePath) {
       else if (node.type === 'ForStatement' && (key === 'init' || key === 'update')) childIsValue = false;
       walk(child, childIsValue, childWhere);
     }
+    storage(node, here);
+  };
+
+  // Storage: every variable, parameter and field must be declared with a type,
+  // whether or not a read of it is a value site (an emitter declares it with
+  // the type its uses happen to suggest otherwise).
+  const isFunctionValue = n => n && /^(FunctionExpression|ArrowFunctionExpression|ArrowFunction|ClassExpression|FunctionDeclaration)$/.test(n.ilNodeType || n.type);
+  const storageWeak = t => isWeakType(t) || EMPTY_STORAGE_TYPES.has(typeName(t));
+  const storageReason = (what, t) => t && t !== 'undefined'
+    ? `${what} is typed '${t}', which states no width or signedness; declare it with a JSDoc type`
+    : `${what} has no type; declare it with a JSDoc type or a typed initializer`;
+  const fieldsSeen = new Set();
+  // A boolean that arithmetic treats as 0 or 1 (`n += OpCodes.GetBit(x, i)`):
+  // no typed language adds a boolean to a number.
+  const booleanArithmetic = (node, where) => {
+    const operands = [];
+    if (node.type === 'BinaryExpression' && NUMERIC_OPERATORS.has(node.operator) &&
+        !(node.operator === '+' && [node.left, node.right].some(o => o && typeName(o.resultType) === 'string')))
+      operands.push(node.left, node.right);
+    else if (node.type === 'AssignmentExpression' && NUMERIC_OPERATORS.has(String(node.operator).slice(0, -1)))
+      operands.push(node.right);
+    else if ((node.type === 'UnaryExpression' && ['-', '+', '~'].includes(node.operator)) ||
+             (node.type === 'UpdateExpression'))
+      operands.push(node.argument);
+    for (const o of operands)
+      if (o && typeName(o.resultType) === 'boolean' && !recorded.has(o))
+        record(o, { ...where, line: (o.loc && o.loc.line) || where.line, range: o.range || where.range },
+          'a boolean used as a number; convert it with `? 1 : 0`', 'local');
+  };
+  const storage = (node, where) => {
+    booleanArithmetic(node, where);
+    // set p(v: S) beside get p(): G with S != G - a property of no one type
+    if (node.type === 'MethodDefinition' && node.kind === 'set' && where.className && node.key && parser.accessorTypeConflict) {
+      const name = node.key.name || node.key.value;
+      const conflict = parser.accessorTypeConflict(where.className, name);
+      if (conflict)
+        record(node.key, where, `accessor '${name}' takes ${conflict.set} but returns ${conflict.get}; a property has one type`, 'local');
+      return;
+    }
+    // let x; const y = untypedCall(); - unless the initializer is itself a counted site
+    if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' &&
+        node.ilNodeType !== 'DestructureTemp' && !isFunctionValue(node.init) &&
+        storageWeak(node.resultType) && !(node.init && recorded.has(node.init))) {
+      record(node.id, where, storageReason(`variable '${node.id.name}'`, typeName(node.resultType)), 'local');
+      return;
+    }
+    // function f(a) - a parameter without @param (or one the framework types)
+    if (FUNCTION_DECLARATIONS.has(node.type) && Array.isArray(node.params)) {
+      for (const p of node.params) {
+        const param = p && p.type === 'AssignmentPattern' ? p.left : p && p.type === 'RestElement' ? p.argument : p;
+        if (!param || param.type !== 'Identifier' || !storageWeak(param.resultType)) continue;
+        record(param, { ...where, line: (param.loc && param.loc.line) || where.line, range: param.range || where.range },
+          storageReason(`parameter '${param.name}'`, typeName(param.resultType)), 'local');
+      }
+      return;
+    }
+    // this.f = v - a field typed by neither the framework, a JSDoc @type nor its assignments
+    if (node.type === 'AssignmentExpression' && node.left && node.left.type === 'ThisPropertyAccess' &&
+        !node.left.computed && where.className && typeof node.left.property === 'string') {
+      const key = `${where.className}.${node.left.property}`;
+      if (fieldsSeen.has(key)) return;
+      fieldsSeen.add(key);
+      if (isFunctionValue(node.right)) return;
+      const t = parser.lookupClassFieldType(where.className, node.left.property);
+      if (!storageWeak(t)) return;
+      const framework = frameworkDeclares(where.className, node.left.property, 'property');
+      record(node.left, where, framework ? `framework member '${node.left.property}' has no declared type`
+        : storageReason(`field '${node.left.property}'`, typeName(t)), framework ? 'framework' : 'local');
+    }
   };
 
   walk(ast, false, { line: 0, range: null, className: null, inCondition: false });
@@ -276,4 +427,4 @@ function byTier(sites) {
   return tally;
 }
 
-module.exports = { analyzeSource, analyzeFile, byTier, WEAK_TYPES };
+module.exports = { analyzeSource, analyzeFile, byTier, WEAK_TYPES, isWeakType };
