@@ -536,6 +536,11 @@ check('Math.round rounds a half up as JavaScript does, not to even', () => {
   expectNoMatch(code, /Math\.Round\(/, 'Math.Round (banker\'s rounding)');
 });
 
+check('BigInt literal: a hex literal with a leading digit 8-F stays positive', () => {
+  const code = transpile('/**\n * @param {bigint} k - key state\n * @returns {bigint} masked\n */\nfunction f(k) { return OpCodes.AndN(k, ~OpCodes.ShiftLn(0xFn, 120n)); }');
+  expectMatch(code, /BigInteger\.Parse\("0F", System\.Globalization\.NumberStyles\.HexNumber\)/, 'Parse("0F") (Parse("F") is -1)');
+});
+
 // ---------------------------------------------------------------------------
 // Array.prototype.slice
 // ---------------------------------------------------------------------------

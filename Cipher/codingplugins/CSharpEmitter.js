@@ -611,9 +611,13 @@
       }
 
       // BigInteger literal - use BigInteger.Parse for very large values
+      // HexNumber reads a leading digit 8-F as the sign (Parse("F") is -1), so the
+      // digits get a leading 0; a negative value is the negated magnitude
       if (node.isBigInteger) {
-        const hexStr = node.value.toString(16).toUpperCase();
-        return `BigInteger.Parse("${hexStr}", System.Globalization.NumberStyles.HexNumber)`;
+        const value = BigInt(node.value);
+        const negative = value < 0n;
+        const hexStr = '0' + (negative ? -value : value).toString(16).toUpperCase();
+        return `${negative ? '-' : ''}BigInteger.Parse("${hexStr}", System.Globalization.NumberStyles.HexNumber)`;
       }
 
       // Numeric literal
