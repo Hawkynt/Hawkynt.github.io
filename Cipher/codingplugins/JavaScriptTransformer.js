@@ -277,8 +277,9 @@
         return this.transformExpression(node);
       }
 
-      console.warn(`No transformer for node type: ${node.type}`);
-      return null;
+      // Any other IL node is an expression; transformExpression refuses one it
+      // cannot transform rather than dropping it
+      return this.transformExpression(node);
     }
 
     // ========================[ FUNCTION TRANSFORMATION ]========================
@@ -620,7 +621,9 @@
           return this.transformTryStatement(node);
 
         case 'BlockStatement':
-          return this.transformBlockStatement(node);
+          // A block among other statements is a scope of its own: emitting
+          // only its contents merges its declarations into the enclosing scope
+          return this.scopedBlock(this.transformBlockStatement(node));
 
         case 'EmptyStatement':
           return null;
@@ -632,9 +635,19 @@
           return this.transformFunctionDeclaration(node);
 
         default:
-          console.warn(`Unhandled statement type: ${node.type}`);
-          return null;
+          // Dropping a statement would change what the code does
+          throw new Error(`JavaScriptTransformer: no transformation for IL statement type '${node.type}'`);
       }
+    }
+
+    /**
+     * Mark a block that stands among statements, so it is emitted with its braces.
+     * @param {Object} block - JavaScriptBlock
+     * @returns {Object} the block
+     */
+    scopedBlock(block) {
+      if (block) block.scoped = true;
+      return block;
     }
 
     transformBlockStatement(node) {
@@ -795,7 +808,9 @@
       const label = node.test ? this.transformNode(node.test) : null;
       const caseStmt = new JavaScriptSwitchCase(label);
       for (const stmt of node.consequent) {
-        const transformed = this.transformNode(stmt);
+        const transformed = stmt && stmt.type === 'BlockStatement'
+          ? this.scopedBlock(this.transformBlockStatement(stmt))
+          : this.transformNode(stmt);
         if (transformed) {
           caseStmt.statements.push(transformed);
         }
@@ -1290,6 +1305,8 @@
         case 'ArrayLiteral': {
           // IL AST: array literal → JavaScript array literal
           const elements = (node.elements || []).map(el => el ? this.transformExpression(el) : JavaScriptLiteral.Undefined());
+          // Uint8Array.of(...) stays a typed array
+          if (node.arrayType) return new JavaScriptCall(new JavaScriptIdentifier(node.arrayType), 'of', elements);
           return new JavaScriptArrayLiteral(elements);
         }
 
@@ -1738,7 +1755,8 @@
           const args = argument ? [argument] : [];
           // Add mapFunction if present
           if (node.mapFunction) args.push(this.transformExpression(node.mapFunction));
-          return new JavaScriptCall(arrayObj, 'from', args);
+          // Uint8Array.from(x) stays a typed array: its subarray/set differ from an Array's
+          return new JavaScriptCall(node.arrayType ? new JavaScriptIdentifier(node.arrayType) : arrayObj, 'from', args);
         }
 
         case 'ObjectKeys': {
@@ -1840,6 +1858,40 @@
           const numberObj = new JavaScriptIdentifier('Number');
           return new JavaScriptCall(numberObj, 'isNaN', argument ? [argument] : []);
         }
+
+        case 'IsSafeIntegerCheck':
+          // IL AST: Number.isSafeInteger(x)
+          return new JavaScriptCall(new JavaScriptIdentifier('Number'), 'isSafeInteger', [this.transformExpression(node.value || node.argument)]);
+
+        case 'CountLeadingZeros':
+          // IL AST: Math.clz32(x) (the IL marks it bits: 32)
+          return new JavaScriptCall(new JavaScriptIdentifier('Math'), 'clz32', [this.transformExpression(node.argument)]);
+
+        case 'ArrayOf':
+          // IL AST: Array.of(...elements)
+          return new JavaScriptCall(new JavaScriptIdentifier('Array'), 'of', (node.elements || []).map(e => this.transformExpression(e)));
+
+        case 'ObjectSeal':
+          // IL AST: Object.seal(x)
+          return new JavaScriptCall(new JavaScriptIdentifier('Object'), 'seal', [this.transformExpression(node.object)]);
+
+        case 'ObjectPropertyNames':
+          // IL AST: Object.getOwnPropertyNames(x)
+          return new JavaScriptCall(new JavaScriptIdentifier('Object'), 'getOwnPropertyNames', [this.transformExpression(node.object)]);
+
+        case 'StringRaw':
+          // IL AST: String.raw(template, ...substitutions)
+          return new JavaScriptCall(new JavaScriptIdentifier('String'), 'raw',
+            [node.template, ...(node.substitutions || [])].filter(Boolean).map(e => this.transformExpression(e)));
+
+        case 'DataViewGetBuffer':
+          return new JavaScriptMemberAccess(this.transformExpression(node.view), 'buffer');
+
+        case 'DataViewGetByteOffset':
+          return new JavaScriptMemberAccess(this.transformExpression(node.view), 'byteOffset');
+
+        case 'DataViewGetByteLength':
+          return new JavaScriptMemberAccess(this.transformExpression(node.view), 'byteLength');
 
         case 'IsFiniteCheck': {
           // IL AST: Number.isFinite(x) → JavaScript: Number.isFinite(x)
@@ -2225,8 +2277,9 @@
         }
 
         default:
-          console.warn(`Unhandled expression type: ${node.type}`);
-          return new JavaScriptIdentifier(`/* ${node.type} */`);
+          // A placeholder comment where a value belongs only defers the error to
+          // a syntax error in the output; refuse it here, naming the node
+          throw new Error(`JavaScriptTransformer: no transformation for IL node type '${node.type}'`);
       }
     }
 
@@ -2258,6 +2311,12 @@
     }
 
     transformBinaryExpression(node) {
+      // A long `a + b + c + ...` chain (asymmetric/cross.js and faest.js
+      // spell their tables as ~1900 concatenated hex strings) is a left-deep
+      // tree as deep as it is long; recursing down it overflows the stack.
+      // Walk its spine iteratively instead.
+      if (node.operator === '+' && node.left && node.left.type === 'BinaryExpression' && node.left.operator === '+')
+        return this.transformAdditionChain(node);
       // type-aware-transpiler.js inlines OpCodes.Mul32(a, b) to a plain
       // `(a * b) & 0xFFFFFFFF` — a BinaryExpression '*' immediately wrapped
       // in a '&' mask — to emulate 32-bit overflow. That's exactly correct
@@ -2282,6 +2341,12 @@
         const mulLeft = this.transformExpression(node.left.left);
         const mulRight = this.transformExpression(node.left.right);
         const mul = new JavaScriptCall(new JavaScriptIdentifier('Math'), 'imul', [mulLeft, mulRight]);
+        // OpCodes.Mul32 is unsigned (`Math.imul(a, b) >>> 0`), but `& 0xFFFFFFFF`
+        // leaves Math.imul's result signed: a product past 2^31 came out
+        // negative (darkcrypt-pes.js's mulMod then reduced it wrongly). The
+        // inliner's provenance flag says the mask came from OpCodes.
+        if (node.right.value === 0xFFFFFFFF && Object.prototype.hasOwnProperty.call(node.left, 'bigint'))
+          return new JavaScriptBinaryExpression(mul, '>>>', JavaScriptLiteral.Number(0));
         const mask = this.transformExpression(node.right);
         return new JavaScriptBinaryExpression(mul, '&', mask);
       }
@@ -2326,6 +2391,41 @@
       const left = this.transformExpression(node.left);
       const right = this.transformExpression(node.right);
       return new JavaScriptBinaryExpression(left, node.operator, right);
+    }
+
+    /**
+     * Transform a left-deep chain of '+' without recursing down it. Adjacent
+     * string literals are joined: once a string literal has been added the
+     * running value is a string, and string concatenation is associative, so
+     * `(x + "a") + "b"` is `x + "ab"` whatever x is. That also keeps the
+     * emitted tree shallow.
+     * @param {Object} node - IL BinaryExpression '+' whose left is one too
+     * @returns {Object} JavaScript AST expression
+     */
+    transformAdditionChain(node) {
+      const operands = [];
+      let spine = node;
+      while (spine.type === 'BinaryExpression' && spine.operator === '+') {
+        operands.push(spine.right);
+        spine = spine.left;
+      }
+      operands.push(spine);
+      operands.reverse();
+
+      const isString = operand => operand.type === 'Literal' && typeof operand.value === 'string';
+      const joined = [];
+      for (const operand of operands) {
+        const previous = joined[joined.length - 1];
+        if (previous && isString(previous) && isString(operand))
+          joined[joined.length - 1] = { type: 'Literal', value: previous.value + operand.value };
+        else
+          joined.push(operand);
+      }
+
+      let result = this.transformExpression(joined[0]);
+      for (let i = 1; i < joined.length; ++i)
+        result = new JavaScriptBinaryExpression(result, '+', this.transformExpression(joined[i]));
+      return result;
     }
 
     transformUnaryExpression(node) {
@@ -2398,9 +2498,22 @@
     }
 
     transformNewExpression(node) {
-      const className = this.resolveConstructorName(node.callee);
       const args = node.arguments ? node.arguments.map(arg => this.transformExpression(arg)) : [];
-      return new JavaScriptNew(className, args);
+      // `new (getDES().DESAlgorithm)()` constructs whatever an expression
+      // yields; naming it by its last property would construct something else
+      if (node.callee && !this.isNamePath(node.callee))
+        return new JavaScriptNew(this.transformExpression(node.callee), args);
+      return new JavaScriptNew(this.resolveConstructorName(node.callee), args);
+    }
+
+    /**
+     * Whether a constructor reference is a plain name or a dotted path of names.
+     * @param {Object} callee - IL expression
+     * @returns {boolean}
+     */
+    isNamePath(callee) {
+      if (callee.type === 'Identifier' || (callee.name && !callee.object)) return true;
+      return callee.type === 'MemberExpression' && !callee.computed && !!callee.object && this.isNamePath(callee.object);
     }
 
     /**

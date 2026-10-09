@@ -1,14 +1,21 @@
 /**
  * Cross-language transpiler validation (the VALIDATION category of tests/TranspilerSuite.js)
  *
- * Comprehensive cross-language testing of the cipher transpiler:
- * 1. Detects available compilers/interpreters
- * 2. Validates algorithms with JavaScript first (reference outputs)
- * 3. Transpiles each algorithm to available target languages
- * 4. Generates executable test harnesses with embedded test vectors
- * 5. Compiles and runs native code to validate test vectors match
+ * For every algorithm file, in a worker process of its own:
+ * 1. Runs the original JavaScript through TestEngine (the reference). An
+ *    algorithm whose reference fails is reported and not held against any
+ *    language; the files it loads while running are its dependencies.
+ * 2. Transpiles the file (and its dependencies, where the language bundles
+ *    them) to every installed language.
+ * 3. Appends a vector harness (tests/validation-harness/) that applies every
+ *    vector with the semantics of TestEngine.ConfigureInstance and checks the
+ *    output, and the round trip where the reference made one.
+ * 4. Compiles it and, where the language has a vector harness, runs it.
  *
- * A language passes when every algorithm it transpiled also compiled.
+ * A language passes when every algorithm it transpiled also compiled and passed
+ * every vector. The transpile, compile and execute counts are kept apart, and
+ * every algorithm/language pair gets a result: the stage it failed at (or
+ * passed), the first error, its class, and the vectors passed out of total.
  *
  * Usage (it is slow unscoped, so it runs only when named):
  *   node tests/TranspilerSuite.js --only=validation                    # every algorithm
@@ -17,18 +24,24 @@
  *   node tests/TranspilerSuite.js --only=validation --algorithm=tea    # file names containing "tea"
  *   node tests/TranspilerSuite.js --only=validation --quick            # 3 algorithms per category
  *   node tests/TranspilerSuite.js --only=validation --compile-only     # no execution
- *   node tests/TranspilerSuite.js --only=validation --report           # JSON report
+ *   node tests/TranspilerSuite.js --only=validation --jobs=8           # 8 files at a time
+ *   node tests/TranspilerSuite.js --only=validation --report=out.json  # per-algorithm JSON
  */
 
+'use strict';
+
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 
 // Paths
 const CIPHER_DIR = path.join(__dirname, '..');
 const ALGORITHMS_DIR = path.join(CIPHER_DIR, 'algorithms');
 const CODINGPLUGINS_DIR = path.join(CIPHER_DIR, 'codingplugins');
+const HARNESS_DIR = path.join(__dirname, 'validation-harness');
 const OUTPUT_DIR = path.join(__dirname, 'transpiler-validation-output');
+const DEFAULT_REPORT = path.join(OUTPUT_DIR, 'validation-report.json');
 
 // ANSI colors
 const C = {
@@ -37,283 +50,341 @@ const C = {
   blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m'
 };
 
-// Options of the current run, set by run()
+// Options of the current run (or worker), set by run()/the worker entry
 const args = {
-  verbose: false, quick: false, report: false, compileOnly: false,
-  category: null, language: null, algorithm: null,
+  verbose: false, quick: false, report: null, compileOnly: false,
+  category: null, language: null, algorithm: null, jobs: null, timeout: null
 };
 
+// Seconds a compile or a run of one file may take before it counts as failed
+const DEFAULT_TIMEOUT = 120;
+// The limit grows to this many seconds per second the JavaScript reference took
+const TIMEOUT_PER_REFERENCE_SECOND = 100;
+// A worker handles one algorithm file in every language
+const WORKER_TIMEOUT_SECONDS = 4 * 3600;
+
 // ============================================================================
-// COMPILER/INTERPRETER DETECTION
+// TOOLS AND COMPILER/INTERPRETER DETECTION
 // ============================================================================
+
+// Tools that go by another name in some installations (FreeBASIC ships fbc
+// or fbc64), tried in order.
+const TOOL_ALTERNATIVES = { fbc64: ['fbc64', 'fbc'], fbc: ['fbc', 'fbc64'] };
+const resolvedTools = new Map();
+
+/**
+ * Where a tool lives and how to start it. On Windows a tool may be a .cmd or
+ * .bat shim (npm's tsc, kotlinc), which Node only starts through the shell.
+ * @param {string} name - command name
+ * @returns {{command: string, shell: boolean}|null} null when it is not on PATH
+ */
+function resolveTool(name) {
+  if (resolvedTools.has(name)) return resolvedTools.get(name);
+  let found = null;
+  for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
+    if (process.platform !== 'win32') {
+      const which = spawnSync('which', [candidate], { encoding: 'utf-8', timeout: 10000 });
+      if (which.status === 0 && which.stdout.trim()) found = { command: candidate, shell: false };
+    } else {
+      const where = spawnSync('where', [candidate], { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+      const paths = where.status === 0 ? where.stdout.split(/\r?\n/).map(l => l.trim()).filter(Boolean) : [];
+      // Prefer a real executable over a shim of the same name
+      const exe = paths.find(p => /\.(exe|com)$/i.test(p));
+      const shim = paths.find(p => /\.(cmd|bat)$/i.test(p));
+      if (exe) found = { command: exe, shell: false };
+      else if (shim) found = { command: shim, shell: true };
+    }
+    if (found) break;
+  }
+  resolvedTools.set(name, found);
+  return found;
+}
+
+/** An argument quoted for cmd.exe, for tools started through the shell. */
+function shellQuote(arg) {
+  const text = String(arg);
+  return /^[\w.:\\/=+-]+$/.test(text) ? text : `"${text.replace(/"/g, '""')}"`;
+}
+
+/**
+ * spawnSync for a named tool: resolves it on PATH (shims included). A tool
+ * that is not installed yields status null and an error, never a throw.
+ * @returns {object} spawnSync's result
+ */
+function spawnTool(name, argv, options = {}) {
+  const tool = resolveTool(name);
+  if (!tool) return { status: null, stdout: '', stderr: '', error: new Error(`${name} is not on PATH`) };
+  const opts = Object.assign({ encoding: 'utf-8', windowsHide: true }, options);
+  if (!tool.shell) return spawnSync(tool.command, argv, opts);
+  const line = [tool.command, ...argv].map(shellQuote).join(' ');
+  return spawnSync(line, [], Object.assign(opts, { shell: true, windowsVerbatimArguments: true }));
+}
+
+// Output that means a tool is present but cannot run
+const BROKEN_TOOL = /Could not create the Java Virtual Machine|Error occurred during initialization of VM|is not recognized as an internal or external command|No Java runtime present|command not found/i;
+
+/**
+ * Probe a tool: it must start, exit 0, say nothing that marks it broken, and
+ * print a version (to stdout or stderr) that matches the pattern.
+ * @param {string} name - command name
+ * @param {string[]} argv - version arguments
+ * @param {RegExp} pattern - the version line; its first group, when it has one, is the version
+ * @returns {{available: boolean, version?: string, reason?: string}}
+ */
+function probeTool(name, argv, pattern) {
+  let result;
+  try {
+    result = spawnTool(name, argv, { timeout: 60000 });
+  } catch (error) {
+    return { available: false, reason: error.message };
+  }
+  if (result.error) return { available: false, reason: result.error.message };
+  const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+  if (BROKEN_TOOL.test(output)) return { available: false, reason: firstLine(output.match(BROKEN_TOOL)[0]) };
+  if (result.status !== 0) return { available: false, reason: `${name} exited with ${result.status}` };
+  const line = output.split(/\r?\n/).map(l => l.trim()).find(l => pattern.test(l));
+  if (!line) return { available: false, reason: `${name} printed no version` };
+  const m = pattern.exec(line);
+  return { available: true, version: m[1] || line };
+}
+
+/** A detector needing every probe to pass; the first probe's version is reported. */
+const requireTools = (...probes) => () => {
+  let first = null;
+  for (const [name, argv, pattern] of probes) {
+    const r = probeTool(name, argv, pattern);
+    if (!r.available) return r;
+    if (!first) first = r;
+  }
+  return first;
+};
 
 const LANGUAGE_COMPILERS = {
-  c: {
-    name: 'C',
-    detect: () => {
-      try {
-        const version = execSync('gcc --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'c',
-    pluginFile: 'c.js',
-  },
-  cpp: {
-    name: 'C++',
-    detect: () => {
-      try {
-        const version = execSync('g++ --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'cpp',
-    pluginFile: 'cpp.js',
-  },
-  csharp: {
-    name: 'C#',
-    detect: () => {
-      try {
-        execSync('dotnet --version 2>&1', { stdio: 'pipe' });
-        return { available: true, version: execSync('dotnet --version', { encoding: 'utf-8' }).trim() };
-      } catch { return { available: false }; }
-    },
-    extension: 'cs',
-    pluginFile: 'csharp.js',
-  },
+  c: { name: 'C', detect: requireTools(['gcc', ['--version'], /^gcc.*?(\d+\.\d+\.\d+)/i]), extension: 'c', pluginFile: 'c.js' },
+  cpp: { name: 'C++', detect: requireTools(['g++', ['--version'], /^g\+\+.*?(\d+\.\d+\.\d+)/i]), extension: 'cpp', pluginFile: 'cpp.js' },
+  csharp: { name: 'C#', detect: requireTools(['dotnet', ['--version'], /^(\d+\.\d+\.\d+\S*)$/]), extension: 'cs', pluginFile: 'csharp.js' },
   java: {
     name: 'Java',
-    detect: () => {
-      try {
-        const version = execSync('java --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'java',
-    pluginFile: 'java.js',
+    detect: requireTools(['java', ['-version'], /version "?([\d._]+)/i], ['javac', ['-version'], /javac\s+([\d._]+)/i]),
+    extension: 'java', pluginFile: 'java.js'
   },
-  python: {
-    name: 'Python',
-    detect: () => {
-      try {
-        const version = execSync('python --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'py',
-    pluginFile: 'python.js',
-  },
-  php: {
-    name: 'PHP',
-    detect: () => {
-      try {
-        const version = execSync('php --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'php',
-    pluginFile: 'php.js',
-  },
-  perl: {
-    name: 'Perl',
-    detect: () => {
-      try {
-        const out = execSync('perl --version 2>&1', { encoding: 'utf-8' });
-        const match = out.match(/v(\d+\.\d+\.\d+)/);
-        return { available: true, version: match ? match[1] : 'unknown' };
-      } catch { return { available: false }; }
-    },
-    extension: 'pl',
-    pluginFile: 'perl.js',
-  },
-  ruby: {
-    name: 'Ruby',
-    detect: () => {
-      try {
-        const version = execSync('ruby --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'rb',
-    pluginFile: 'ruby.js',
-  },
-  go: {
-    name: 'Go',
-    detect: () => {
-      try {
-        const version = execSync('go version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'go',
-    pluginFile: 'go.js',
-  },
-  rust: {
-    name: 'Rust',
-    detect: () => {
-      try {
-        const version = execSync('rustc --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'rs',
-    pluginFile: 'rust.js',
-  },
-  javascript: {
-    name: 'JavaScript',
-    detect: () => {
-      try {
-        const version = execSync('node --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version: `Node.js ${version}` };
-      } catch { return { available: false }; }
-    },
-    extension: 'js',
-    pluginFile: 'javascript.js',
-  },
-  typescript: {
-    name: 'TypeScript',
-    detect: () => {
-      try {
-        const version = execSync('tsc --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'ts',
-    pluginFile: 'typescript.js',
-  },
-  basic: {
-    name: 'Basic',
-    detect: () => {
-      try {
-        const version = execSync('fbc64 -version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'bas',
-    pluginFile: 'basic.js',
-  },
-  delphi: {
-    name: 'Delphi/Pascal',
-    detect: () => {
-      try {
-        const out = execSync('fpc -h 2>&1', { encoding: 'utf-8' });
-        const match = out.match(/Free Pascal Compiler version ([\d.]+)/);
-        return { available: true, version: match ? `FPC ${match[1]}` : 'FreePascal' };
-      } catch { return { available: false }; }
-    },
-    extension: 'pas',
-    pluginFile: 'delphi.js',
-  },
-  kotlin: {
-    name: 'Kotlin',
-    detect: () => {
-      try {
-        const version = execSync('kotlinc -version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'kt',
-    pluginFile: 'kotlin.js',
-  },
+  python: { name: 'Python', detect: requireTools(['python', ['--version'], /^Python (\d+\.\d+\.\d+)/]), extension: 'py', pluginFile: 'python.js' },
+  php: { name: 'PHP', detect: requireTools(['php', ['--version'], /^PHP (\d+\.\d+\.\d+)/]), extension: 'php', pluginFile: 'php.js' },
+  perl: { name: 'Perl', detect: requireTools(['perl', ['--version'], /This is perl.*?v(\d+\.\d+\.\d+)/]), extension: 'pl', pluginFile: 'perl.js' },
+  ruby: { name: 'Ruby', detect: requireTools(['ruby', ['--version'], /^ruby (\d+\.\d+\.\d+)/]), extension: 'rb', pluginFile: 'ruby.js' },
+  go: { name: 'Go', detect: requireTools(['go', ['version'], /^go version go(\d+\.\d+(?:\.\d+)?)/]), extension: 'go', pluginFile: 'go.js' },
+  rust: { name: 'Rust', detect: requireTools(['rustc', ['--version'], /^rustc (\d+\.\d+\.\d+)/]), extension: 'rs', pluginFile: 'rust.js' },
+  javascript: { name: 'JavaScript', detect: requireTools(['node', ['--version'], /^v(\d+\.\d+\.\d+)/]), extension: 'js', pluginFile: 'javascript.js' },
+  typescript: { name: 'TypeScript', detect: requireTools(['tsc', ['--version'], /^Version (\d+\.\d+\.\d+)/]), extension: 'ts', pluginFile: 'typescript.js' },
+  basic: { name: 'Basic', detect: requireTools(['fbc64', ['-version'], /FreeBASIC Compiler - Version (\d+\.\d+\.\d+)/i]), extension: 'bas', pluginFile: 'basic.js' },
+  delphi: { name: 'Delphi/Pascal', detect: requireTools(['fpc', ['-iV'], /^(\d+\.\d+\.\d+)$/]), extension: 'pas', pluginFile: 'delphi.js' },
+  kotlin: { name: 'Kotlin', detect: requireTools(['kotlinc', ['-version'], /kotlinc-jvm (\d+\.\d+\.\d+)/]), extension: 'kt', pluginFile: 'kotlin.js' },
 };
 
+/**
+ * Every language whose toolchain is installed and works. A tool that is
+ * missing or broken is reported and left out; it never fails the run.
+ * @returns {Object<string, object>} language key -> config with version
+ */
 function detectCompilers() {
   console.log(`${C.cyan}Detecting compilers/interpreters...${C.reset}\n`);
   const available = {};
-
   for (const [key, config] of Object.entries(LANGUAGE_COMPILERS)) {
-    const result = config.detect();
+    let result;
+    try {
+      result = config.detect();
+    } catch (error) {
+      result = { available: false, reason: error.message };
+    }
     if (result.available) {
       available[key] = { ...config, ...result };
       console.log(`  ${C.green}✓${C.reset} ${config.name}: ${result.version}`);
     } else {
-      console.log(`  ${C.dim}- ${config.name}: not found${C.reset}`);
+      console.log(`  ${C.dim}- ${config.name}: ${result.reason || 'not found'}${C.reset}`);
     }
   }
-
   console.log('');
   return available;
 }
 
 // ============================================================================
-// JAVASCRIPT VALIDATION & TEST VECTOR EXTRACTION
+// REFERENCE RUN (the original JavaScript) AND THE HARNESS SPEC
 // ============================================================================
 
-function runJSValidation(algorithmFile) {
-  try {
-    const result = spawnSync('node', [
-      path.join(__dirname, 'TestSuite.js'),
-      path.basename(algorithmFile)
-    ], {
-      cwd: CIPHER_DIR,
-      encoding: 'utf-8',
-      timeout: 120000
-    });
+// Vector fields, as TestEngine._applyVectorProperties treats them: framework
+// fields the engine consumes, descriptive fields that configure nothing,
+// fields with a dedicated setter (in application order), and the seed (last).
+const FRAMEWORK_FIELDS = new Set(['input', 'expected', 'text', 'uri', 'inverse']);
+const DESCRIPTIVE_FIELDS = new Set(['roundTripOnly']);
+const SETTER_FIELDS = [
+  ['key', 'setKey'], ['iv', 'setIV'], ['nonce', 'setNonce'], ['iv1', 'setIV1'], ['iv2', 'setIV2'],
+  ['key2', 'setKey2'], ['tweak', 'setTweak'], ['tweakKey', 'setTweakKey'],
+  ['aad', 'setAAD'], ['tagSize', 'setTagSize'], ['tagLength', 'setTagLength'], ['tag', 'setTag'],
+  ['radix', 'setRadix'], ['alphabet', 'setAlphabet'],
+  ['salt', 'setSalt'], ['info', 'setInfo'], ['outputSize', 'setOutputSize'], ['OutputSize', 'setOutputSize'],
+  ['hashFunction', 'setHashFunction'], ['password', 'setPassword'], ['iterations', 'setIterations']
+];
+const SEED_FIELD = ['seed', 'setSeed'];
+// Cipher modes that split and manage their own keys (TestEngine keys no cipher for them)
+const MULTI_KEY_MODES = ['EDE', 'EEE'];
 
-    const output = (result.stdout || '') + (result.stderr || '');
-    const passed = output.includes('Function:✓') && !output.includes('Function:✗');
-    const testVectors = extractTestVectors(algorithmFile);
-
-    return {
-      passed,
-      testVectors,
-      output: args.verbose ? output : null,
-      algorithmInfo: testVectors.length > 0 ? testVectors[0] : null
-    };
-  } catch (e) {
-    return { passed: false, error: e.message, testVectors: [] };
-  }
+function categoryName(algorithm) {
+  if (!algorithm.category) return '';
+  return typeof algorithm.category === 'string' ? algorithm.category : (algorithm.category.name || String(algorithm.category));
 }
 
-function extractTestVectors(algorithmFile) {
+// TestEngine._requiresEncodingStability: these categories round-trip as
+// encode(decode(encode(x))) == encode(x) instead of decode(encode(x)) == x
+function requiresEncodingStability(algorithm) {
+  const name = categoryName(algorithm).toLowerCase();
+  return ['encoding', 'checksum', 'error correction'].some(c => name.includes(c));
+}
+
+function sameArray(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; ++i) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * How the harness applies and checks one vector, mirroring TestEngine.TestVector
+ * and ConfigureInstance. The checks are the ones the reference passed: the
+ * expected output unless the vector is round-trip only, and the round trip
+ * (or encoding stability) only where the reference made one successfully.
+ * @param {object} algorithm - registered reference algorithm
+ * @param {object} vector - its test vector
+ * @param {object} vectorResult - TestEngine.TestVector's result for it
+ * @param {boolean} isMode - whether TestEngine treats it as a cipher mode
+ * @param {object} categories - AlgorithmFramework.CategoryType
+ * @returns {object} { fields, steps, mode, inverse, expect, rt }
+ */
+function vectorPlan(algorithm, vector, vectorResult, isMode, categories) {
+  const fields = Object.keys(vector).filter(k => vector[k] !== undefined && !FRAMEWORK_FIELDS.has(k) && !DESCRIPTIVE_FIELDS.has(k));
+  const steps = [];
+  const step = (field, extra) => Object.assign({ field }, vector[field] === null ? { isNull: true } : {}, extra);
+  if (fields.includes('kek')) steps.push(step('kek', { kind: 'kek' }));
+  for (const [field, setter] of SETTER_FIELDS)
+    if (fields.includes(field)) steps.push(step(field, { setter }));
+  for (const field of fields)
+    if (field !== 'kek' && field !== SEED_FIELD[0] && !SETTER_FIELDS.some(([f]) => f === field)) steps.push(step(field));
+  if (fields.includes(SEED_FIELD[0])) steps.push(step(SEED_FIELD[0], { setter: SEED_FIELD[1] }));
+
+  const hasExpected = !!(vector.expected && vector.expected.length > 0);
+  const asymmetricRoundTrip = !!categories && algorithm.category === categories.ASYMMETRIC
+    && hasExpected && sameArray(vector.expected, vector.input);
+  const rt = vectorResult && vectorResult.roundTripSuccess === true
+    ? (requiresEncodingStability(algorithm) ? 'stability' : 'decode')
+    : null;
+  return {
+    fields,
+    steps,
+    mode: isMode ? { cipher: vector.cipher ? String(vector.cipher) : null, keyTruthy: !!vector.key, ivTruthy: !!vector.iv } : null,
+    inverse: vector.inverse === true,
+    expect: hasExpected && !asymmetricRoundTrip,
+    rt
+  };
+}
+
+/**
+ * Algorithm files loaded while the reference ran, children before parents
+ * (the order they must be defined in when bundled), the file itself excluded.
+ * Only files that register an algorithm count; .data libraries are bundled
+ * separately.
+ * @param {string} mainFile - absolute path of the file under test
+ * @returns {string[]} absolute paths
+ */
+function loadedDependencies(mainFile) {
+  const ordered = [];
+  const seen = new Set();
+  const isAlgorithmFile = file => file.toLowerCase().startsWith(ALGORITHMS_DIR.toLowerCase() + path.sep)
+    && file.endsWith('.js') && !file.endsWith('.data.js');
+  const visit = mod => {
+    if (!mod || seen.has(mod.filename)) return;
+    seen.add(mod.filename);
+    for (const child of mod.children || []) visit(child);
+    if (isAlgorithmFile(mod.filename) && path.resolve(mod.filename) !== path.resolve(mainFile)) ordered.push(mod.filename);
+  };
+  visit(require.cache[path.resolve(mainFile)]);
+  for (const mod of Object.values(require.cache)) visit(mod);
+  return ordered.filter(file => {
+    try { return /RegisterAlgorithm\s*\(/.test(fs.readFileSync(file, 'utf-8')); } catch (e) { return false; }
+  });
+}
+
+/**
+ * Run the original algorithm file through TestEngine in this process (a worker
+ * runs one file) and derive what the transpiled harness must reproduce.
+ * @param {string} algorithmFile - absolute path
+ * @returns {Promise<object>} { algorithms: [{ name, className, category, isMode,
+ *   multiKey, referenceError, vectors }], dependencies, sample, error }
+ */
+async function referenceRun(algorithmFile) {
+  const TestEngine = require('./TestEngine.js');
+  await TestEngine.LoadDependencies(true, false);
+  const AF = global.AlgorithmFramework;
+  const resolved = path.resolve(algorithmFile);
   try {
-    const frameworkPath = path.join(CIPHER_DIR, 'AlgorithmFramework.js');
-    const opcodesPath = path.join(CIPHER_DIR, 'OpCodes.js');
-
-    // Clear require cache
-    Object.keys(require.cache).forEach(key => {
-      if (key.includes('AlgorithmFramework') || key.includes('OpCodes') || key.includes('algorithms'))
-        delete require.cache[key];
-    });
-
-    const AlgorithmFramework = require(frameworkPath);
-    const OpCodes = require(opcodesPath);
-
-    global.AlgorithmFramework = AlgorithmFramework;
-    global.OpCodes = OpCodes;
-    AlgorithmFramework.Clear?.();
-
-    require(algorithmFile);
-
-    const algorithms = AlgorithmFramework.Algorithms || [];
-    const vectors = [];
-
-    for (const algo of algorithms) {
-      if (algo.tests && Array.isArray(algo.tests)) {
-        for (const test of algo.tests) {
-          if (test.input !== undefined && test.expected !== undefined) {
-            vectors.push({
-              algorithmName: algo.name,
-              algorithmCategory: algo.category,
-              text: test.text || 'Test',
-              input: Array.isArray(test.input) ? Array.from(test.input) : test.input,
-              key: test.key ? (Array.isArray(test.key) ? Array.from(test.key) : test.key) : null,
-              expected: Array.isArray(test.expected) ? Array.from(test.expected) : test.expected,
-              iv: test.iv ? (Array.isArray(test.iv) ? Array.from(test.iv) : test.iv) : null,
-              nonce: test.nonce ? (Array.isArray(test.nonce) ? Array.from(test.nonce) : test.nonce) : null,
-              associatedData: test.associatedData ? (Array.isArray(test.associatedData) ? Array.from(test.associatedData) : test.associatedData) : null,
-              outputSize: test.outputSize || null,
-            });
-          }
-        }
-      }
-    }
-
-    return vectors;
-  } catch (e) {
-    if (args.verbose) console.log(`  ${C.dim}Warning: Could not extract vectors: ${e.message}${C.reset}`);
-    return [];
+    require(resolved);
+  } catch (error) {
+    return { algorithms: [], dependencies: [], sample: null, error: `loading the original failed: ${error.message}` };
   }
+
+  const source = resolved.toLowerCase();
+  const registered = [...global.__algorithmSources].filter(([, file]) => file === source).map(([algorithm]) => algorithm);
+  const algorithms = [];
+  let sample = null;
+  for (const algorithm of registered) {
+    const entry = {
+      name: algorithm.name,
+      className: algorithm.constructor && algorithm.constructor.name || null,
+      category: categoryName(algorithm),
+      isMode: !!TestEngine.IsBlockCipherMode(algorithm),
+      multiKey: MULTI_KEY_MODES.includes(algorithm.name),
+      referenceError: null,
+      vectors: []
+    };
+    algorithms.push(entry);
+    let result;
+    try {
+      result = await TestEngine.TestAlgorithm(algorithm);
+    } catch (error) {
+      entry.referenceError = `TestEngine threw: ${error.message}`;
+      continue;
+    }
+    if (result.status !== 'passed') {
+      const first = result.errors.find(e => e) || {};
+      entry.referenceError = `reference ${result.status} (${result.passed}/${result.total} vectors)`
+        + (first.error || first.message ? `: ${first.error || first.message}` : '');
+      continue;
+    }
+    entry.vectors = algorithm.tests.map((vector, i) =>
+      vectorPlan(algorithm, vector, result.vectorResults[i], entry.isMode, AF.CategoryType));
+    if (!sample && algorithm.tests.length) {
+      const first = algorithm.tests[0];
+      sample = { input: Array.from(first.input || []), expected: Array.from(first.expected || []) };
+    }
+  }
+  return { algorithms, dependencies: loadedDependencies(resolved), sample, error: null };
+}
+
+/**
+ * The framework's class names, and every member a framework instance class
+ * gives an instance (own fields and prototype members) - what `name in
+ * instance` finds in JavaScript before the algorithm adds anything.
+ * @returns {{types: string[], members: string[]}}
+ */
+function frameworkSurface() {
+  const AF = require(path.join(CIPHER_DIR, 'AlgorithmFramework.js'));
+  const types = Object.keys(AF).filter(name => typeof AF[name] === 'function' && /^[A-Z]/.test(name));
+  const members = new Set();
+  for (const name of types.filter(n => /^I\w*Instance$/.test(n))) {
+    let instance = null;
+    try { instance = new AF[name](null); } catch (e) { instance = null; }
+    if (instance) for (const key of Object.keys(instance)) members.add(key);
+    for (let proto = AF[name].prototype; proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto))
+      for (const key of Object.getOwnPropertyNames(proto)) if (key !== 'constructor') members.add(key);
+  }
+  return { types: types.sort(), members: [...members].sort() };
 }
 
 // ============================================================================
@@ -324,259 +395,326 @@ let transpiler = null;
 const languagePlugins = {};
 
 function loadTranspiler() {
-  if (transpiler) return true;
-
-  try {
-    const { TypeAwareJSASTParser } = require(path.join(CIPHER_DIR, 'type-aware-transpiler.js'));
-    transpiler = TypeAwareJSASTParser;
-    return true;
-  } catch (e) {
-    console.error(`${C.red}Failed to load transpiler: ${e.message}${C.reset}`);
-    return false;
-  }
+  if (!transpiler) transpiler = require(path.join(CIPHER_DIR, 'type-aware-transpiler.js')).TypeAwareJSASTParser;
+  return transpiler;
 }
 
 function loadLanguagePlugin(language) {
   if (languagePlugins[language]) return languagePlugins[language];
-
-  try {
-    const { LanguagePlugins } = require(path.join(CODINGPLUGINS_DIR, 'LanguagePlugin.js'));
-    LanguagePlugins.Clear();
-
-    const pluginFile = LANGUAGE_COMPILERS[language]?.pluginFile;
-    if (!pluginFile) return null;
-
-    require(path.join(CODINGPLUGINS_DIR, pluginFile));
-    const plugins = LanguagePlugins.GetAll();
-
-    if (plugins.length > 0) {
-      languagePlugins[language] = plugins[0];
-      return plugins[0];
-    }
-  } catch (e) {
-    if (args.verbose) console.log(`  ${C.dim}Failed to load ${language} plugin: ${e.message}${C.reset}`);
-  }
-
-  return null;
+  const pluginFile = LANGUAGE_COMPILERS[language] && LANGUAGE_COMPILERS[language].pluginFile;
+  if (!pluginFile) throw new Error(`no language plugin for ${language}`);
+  const { LanguagePlugins } = require(path.join(CODINGPLUGINS_DIR, 'LanguagePlugin.js'));
+  LanguagePlugins.Clear();
+  require(path.join(CODINGPLUGINS_DIR, pluginFile));
+  const plugins = LanguagePlugins.GetAll();
+  if (plugins.length === 0) throw new Error(`${pluginFile} registered no language plugin`);
+  languagePlugins[language] = plugins[0];
+  return plugins[0];
 }
 
-// Cipher-mode test vectors name a dependency cipher (e.g. "AES"); map it to the
-// file that implements it so the harness can bundle it in.
-const DEP_CIPHER_FILES = {
-  'AES': 'algorithms/block/rijndael.js',
-  'Rijndael': 'algorithms/block/rijndael.js',
-  'Rijndael (AES)': 'algorithms/block/rijndael.js',
-  'DES': 'algorithms/block/des.js',
-  '3DES': 'algorithms/block/3des.js',
-  'Blowfish': 'algorithms/block/blowfish.js',
-  'Camellia': 'algorithms/block/camellia.js',
-  'ARIA': 'algorithms/block/aria.js',
-};
-
-// Bundling is currently implemented for languages whose prelude accumulates a
+// Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
 const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
-  const ast = new transpiler(source, parserOptions).parse();
-  return plugin.GenerateFromAST(ast, Object.assign({
+  const Parser = loadTranspiler();
+  const ast = new Parser(source, parserOptions).parse();
+  const result = plugin.GenerateFromAST(ast, Object.assign({
     namespace: 'CipherValidation',
     className: algoName + 'Generated',
     inlineOpCodes: true,
     generateTestHarness: true,
   }, extraOptions));
+  if (!result || !result.success || !result.code)
+    throw new Error((result && (result.error || (result.errors || []).join('; '))) || 'the plugin produced no code');
+  return result.code;
 }
 
-function transpileAlgorithm(algorithmFile, language) {
-  if (!loadTranspiler()) return { success: false, error: 'Transpiler not loaded' };
+/**
+ * The expression a .data library exports, in the shapes the libraries use:
+ * a UMD factory ending in "return { a, b };" or "return Name;", or an IIFE
+ * assigning "module.exports = ...;".
+ * @param {string} source - library source
+ * @returns {string|null} JavaScript expression, or null for an unknown shape
+ */
+function libraryExports(source) {
+  let m = source.match(/return\s*(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*;?\s*\}\s*\)\s*\)\s*;?\s*$/);
+  if (m) return m[1];
+  // Its own IIFE keeps the names local, so the bundle hands it a module
+  // object of its own to assign, and returns that
+  return /module\.exports\s*=/.test(source) ? 'module.exports' : null;
+}
 
-  const plugin = loadLanguagePlugin(language);
-  if (!plugin) return { success: false, error: 'Plugin not loaded' };
+/**
+ * The names a .data library exports: every name of an exported object
+ * literal, or the one variable it returns.
+ * @param {string} source - library source
+ * @returns {{names: string[], single: string|null}|null} null for an unknown shape
+ */
+function libraryExportNames(source) {
+  const exported = libraryExports(source);
+  if (!exported) return null;
+  let literal = exported;
+  if (exported === 'module.exports') {
+    const m = source.match(/module\.exports\s*=\s*(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*;/);
+    if (!m) return null;
+    literal = m[1];
+  }
+  if (!literal.startsWith('{')) return { names: [], single: literal };
+  const names = literal.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean)
+    .map(entry => entry.split(':')[0].trim());
+  return { names, single: null };
+}
 
-  // The IL AST built by TypeAwareJSASTParser is shared by every target
-  // language, so by default it stubs out require()-using methods (no
-  // equivalent in C#/Python/etc). When the target *is* JavaScript, require()
-  // is valid runnable code — keep it instead of throwing a "requires
-  // JavaScript runtime features" placeholder error at runtime.
-  const parserOptions = language === 'javascript' ? { keepModuleLoaderFunctions: true } : undefined;
+/** The Python transpiler's snake_case of a name (all-capitals names are kept). */
+function pythonSnake(name) {
+  if (name === name.toUpperCase()) return name;
+  return name.replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').replace(/([a-z\d])([A-Z])/g, '$1_$2').toLowerCase();
+}
 
-  try {
-    const source = fs.readFileSync(algorithmFile, 'utf-8');
-    const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
-    const result = transpileOne(source, plugin, algoName, undefined, parserOptions);
-    if (!result || !result.success) return result;
-
-    // For cipher modes, bundle in the real dependency cipher(s) referenced by
-    // the test vectors so the mode can actually be exercised end-to-end.
-    if (BUNDLE_LANGUAGES.has(language)) {
-      const cipherNames = new Set();
-      // Matches both the object-literal form (`cipher: "AES"`, most files'
-      // TestCase construction) and the assignment form used by a few modes
-      // that set it in a forEach over already-built tests (cfb.js/ctr.js/
-      // ofb.js: `test.cipher = "AES";`).
-      const re = /cipher\s*[:=]\s*['"]([^'"]+)['"]/g;
-      let m;
-      while ((m = re.exec(source)) !== null) cipherNames.add(m[1]);
-
-      // JavaScript embeds the real AlgorithmFramework.js/OpCodes.js verbatim
-      // as a "standalone prelude" ahead of the class code (see
-      // JavaScriptPlugin._buildStandalonePrelude). Re-emitting that prelude
-      // once per bundled file (main algorithm + every dependency, as the
-      // Python/Perl paths do for their own hand-written stubs) would re-run
-      // AlgorithmFramework.js's UMD wrapper multiple times in the same
-      // process, each time replacing global.AlgorithmFramework with a fresh
-      // module (fresh, empty Algorithms registry) — silently dropping every
-      // algorithm registered by the copies that ran earlier. So dependency
-      // code here is transpiled *without* its own prelude
-      // (generateTestHarness: false — pure class code, referencing the bare
-      // RegisterAlgorithm/BlockCipherAlgorithm/etc identifiers the shared
-      // prelude destructures) and spliced in right after the single prelude
-      // the main algorithm's transpile already produced.
-      const noPreludeOptions = language === 'javascript' ? { generateTestHarness: false } : undefined;
-
-      let prefix = '';
-      for (const name of cipherNames) {
-        const depRel = DEP_CIPHER_FILES[name];
-        if (!depRel) continue;
-        const depPath = path.join(CIPHER_DIR, depRel);
-        if (!fs.existsSync(depPath)) continue;
-        try {
-          const depName = path.basename(depRel, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
-          const depRes = transpileOne(fs.readFileSync(depPath, 'utf-8'), plugin, depName, noPreludeOptions, parserOptions);
-          if (depRes && depRes.success && depRes.code) {
-            // JS production sources commonly end with the pattern
-            // `const algorithmInstance = new X(); RegisterAlgorithm(algorithmInstance);`
-            // — a bare top-level identifier that collides (SyntaxError:
-            // Identifier already declared) if the main mode file's own
-            // source uses that same convention (e.g. DES + EDE/EEE both do).
-            // Wrap dependency code in its own function scope so its local
-            // declarations can never collide with the main file's or another
-            // bundled dependency's; RegisterAlgorithm/etc bare identifiers
-            // still resolve via the closure chain to the shared prelude.
-            prefix += language === 'javascript'
-              ? '(function () {\n' + depRes.code + '\n})();\n\n'
-              : depRes.code + '\n\n';
-          }
-        } catch (e) { /* dependency failed to transpile — mode will fall back to dummy */ }
-      }
-
-      // General algorithm-dependency bundling: some algorithms load a sibling
-      // *algorithm* file at runtime (e.g. 3des.js -> block/des.js, hmac.js ->
-      // a hash, mac/* -> block/des.js) via require() + AlgorithmFramework.Find().
-      // Bundle those in the same way as cipher dependencies so Find() resolves
-      // them from the accumulated registry. Only genuine algorithm files (that
-      // call RegisterAlgorithm) are bundled — .data libraries are handled below.
-      {
-        const reqRe = /require\(\s*['"]([^'"]+)['"]\s*\)/g;
-        const algorithmDir = path.dirname(algorithmFile);
-        const bundledDeps = new Set();
-        let rm;
-        while ((rm = reqRe.exec(source)) !== null) {
-          let rel = rm[1];
-          if (!/\.js$/.test(rel)) rel += '.js';
-          if (/AlgorithmFramework|OpCodes|DebugConfig|\.data\.js$/.test(rel)) continue;
-          if (!rel.startsWith('.')) continue; // skip node builtins like 'crypto'
-          const depPath = path.resolve(algorithmDir, rel);
-          if (!fs.existsSync(depPath) || bundledDeps.has(depPath) || depPath === path.resolve(algorithmFile)) continue;
-          // Only bundle files that actually register an algorithm.
-          let depSrc;
-          try { depSrc = fs.readFileSync(depPath, 'utf-8'); } catch (e) { continue; }
-          if (!/RegisterAlgorithm\s*\(/.test(depSrc)) continue;
-          bundledDeps.add(depPath);
-          try {
-            const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_adep';
-            const depRes = transpileOne(depSrc, plugin, depName, noPreludeOptions, parserOptions);
-            if (depRes && depRes.success && depRes.code) {
-              prefix += language === 'javascript'
-                ? '(function () {\n' + depRes.code + '\n})();\n\n'
-                : depRes.code + '\n\n';
-            }
-          } catch (e) { /* dependency failed to transpile — algorithm will surface its own error */ }
+/**
+ * Bundle the .data libraries an algorithm takes through its third factory
+ * parameter, for Python and Perl: the library's transpiled code, then the
+ * parameter bound to its exports. Python reads them as attributes (raw or
+ * snake_case names), Perl as hash entries or methods.
+ * @returns {{code: string, error?: string}}
+ */
+function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!paramName) return { code: '' };
+  let code = '';
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (!libPath) continue;
+    const libSrc = fs.readFileSync(libPath, 'utf-8');
+    const exported = libraryExportNames(libSrc);
+    if (!exported) return { code, error: 'library ' + path.basename(libPath) + ': its exports are in no shape the bundling knows' };
+    let libCode;
+    try {
+      libCode = transpileOne(libSrc, plugin, path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib', undefined, parserOptions);
+    } catch (e) {
+      return { code, error: 'library ' + path.basename(libPath) + ': ' + e.message };
+    }
+    // A library assigning module.exports from its own IIFE keeps its names
+    // local: it gets a module object to assign, and the parameter is bound to that
+    if (libraryExports(libSrc) === 'module.exports') {
+      code += language === 'python'
+        ? `import types as _vh_types\nmodule = _vh_types.SimpleNamespace(exports=_vh_types.SimpleNamespace())\n${libCode}\n${pythonSnake(paramName)} = module.exports\n\n`
+        : `our $module = { exports => {} };\n${libCode}\nour $${paramName} = $module->{exports};\n\n`;
+      continue;
+    }
+    code += libCode + '\n\n';
+    if (language === 'python') {
+      const target = pythonSnake(paramName);
+      if (exported.single) {
+        if (pythonSnake(exported.single) !== target) code += `${target} = ${pythonSnake(exported.single)}\n\n`;
+      } else {
+        const pick = name => `globals()[${JSON.stringify(name)}] if ${JSON.stringify(name)} in globals() else globals()[${JSON.stringify(pythonSnake(name))}]`;
+        const entries = [];
+        for (const name of exported.names) {
+          entries.push(`${JSON.stringify(name)}: ${pick(name)}`);
+          if (pythonSnake(name) !== name) entries.push(`${JSON.stringify(pythonSnake(name))}: ${pick(name)}`);
         }
+        code += `import types as _vh_types\n${target} = _vh_types.SimpleNamespace(**{${entries.join(', ')}})\n\n`;
       }
-
-      // A handful of files (fountain-code ECC variants: lt-codes.js,
-      // raptor-codes.js, raptorq-codes.js, ...) pull in a sibling utility
-      // "library" module via a third UMD factory parameter, e.g.
-      // `function (AlgorithmFramework, OpCodes, FountainFoundation)` fed by
-      // `require('./fountain-foundation.data')` in the Node.js UMD branch.
-      // The UMD-unwrap step (see tryUnwrapUMD) discards that whole branch
-      // along with the wrapper, so the bare `FountainFoundation` parameter
-      // name is left referencing nothing (ReferenceError). Bundle the sibling
-      // file in as a plain `const <Name> = (function(){ ...; return {...}; })();`
-      // — unlike the cipher/mode files above, these libraries don't call
-      // RegisterAlgorithm; they export via the UMD factory's `return {...}`,
-      // which is why they need the wrapping IIFE + explicit binding instead.
-      if (language === 'javascript') {
-        const localRequireRe = /require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g;
-        const localNames = new Set();
-        let lm;
-        while ((lm = localRequireRe.exec(source)) !== null) localNames.add(lm[1]);
-        const paramMatch = source.match(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/);
-        const paramName = paramMatch ? paramMatch[1] : null;
-        for (const localName of localNames) {
-          const candidates = [localName + '.js', localName + '.data.js'];
-          const algorithmDir = path.dirname(algorithmFile);
-          const libPath = candidates.map(c => path.join(algorithmDir, c)).find(p => fs.existsSync(p));
-          if (!libPath || !paramName) continue;
-          try {
-            const libSrc = fs.readFileSync(libPath, 'utf-8');
-            const exportsMatch = libSrc.match(/return\s*\{([^}]*)\}\s*;?\s*\}\s*\)\s*\)\s*;?\s*$/);
-            if (!exportsMatch) continue;
-            const exportNames = exportsMatch[1].split(',').map(s => s.trim()).filter(Boolean);
-            if (!exportNames.length) continue;
-            const libName = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib';
-            const libRes = transpileOne(libSrc, plugin, libName, { generateTestHarness: false }, parserOptions);
-            if (libRes && libRes.success && libRes.code) {
-              prefix += `const ${paramName} = (function () {\n${libRes.code}\nreturn { ${exportNames.join(', ')} };\n})();\n\n`;
-            }
-          } catch (e) { /* library failed to transpile — main file will ReferenceError, same as before this bundling existed */ }
+    } else if (language === 'perl') {
+      if (exported.single) {
+        if (exported.single !== paramName) code += `our $${paramName} = $${exported.single};\n\n`;
+      } else {
+        // A class is its package name, a function a method of the binding's
+        // own package, anything else the variable of that name
+        const pkg = `_VhLibrary_${paramName}`;
+        const entries = [];
+        const methods = [];
+        for (const name of exported.names) {
+          if (new RegExp(`^package ${name};`, 'm').test(libCode)) entries.push(`'${name}' => '${name}'`);
+          else if (new RegExp(`^sub ${name}\\b`, 'm').test(libCode)) methods.push(`sub ${name} { my $self = shift; return main::${name}(@_); }`);
+          else entries.push(`'${name}' => $${name}`);
         }
-      }
-
-      if (prefix && language === 'javascript' && typeof plugin.GetStandalonePrelude === 'function') {
-        const preludeText = plugin.GetStandalonePrelude();
-        // Splice dependency code in right after the prelude (so it never
-        // references RegisterAlgorithm/etc before the prelude's destructuring
-        // has executed) and before the main class code.
-        result.code = result.code.startsWith(preludeText)
-          ? preludeText + prefix + result.code.slice(preludeText.length)
-          : prefix + result.code;
-      } else if (prefix) {
-        result.code = prefix + result.code;
+        code += `package ${pkg};\n${methods.join('\n')}\npackage main;\nour $${paramName} = bless({ ${entries.join(', ')} }, '${pkg}');\n\n`;
       }
     }
+  }
+  return { code };
+}
 
-    return result;
+/**
+ * Transpile an algorithm file and, where the language bundles them, the
+ * algorithm files it loaded while its reference ran.
+ * @param {string} algorithmFile - absolute path
+ * @param {string} language - language key
+ * @param {string[]} dependencies - absolute paths, children before parents
+ * @returns {{success: boolean, code?: string, error?: string}}
+ */
+function transpileAlgorithm(algorithmFile, language, dependencies = []) {
+  let plugin;
+  try {
+    plugin = loadLanguagePlugin(language);
+  } catch (e) {
+    return { success: false, error: `plugin: ${e.message}` };
+  }
+
+  // The IL AST is shared by every target language, so by default it stubs out
+  // require()-using methods (no equivalent in C#/Python/etc). When the target
+  // *is* JavaScript, require() is valid runnable code - keep it.
+  const parserOptions = language === 'javascript' ? { keepModuleLoaderFunctions: true } : undefined;
+  const source = fs.readFileSync(algorithmFile, 'utf-8');
+  const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
+  let code;
+  try {
+    code = transpileOne(source, plugin, algoName, undefined, parserOptions);
   } catch (e) {
     return { success: false, error: e.message };
   }
+  if (!BUNDLE_LANGUAGES.has(language)) return { success: true, code };
+
+  // JavaScript embeds the real AlgorithmFramework.js/OpCodes.js as a single
+  // standalone prelude; dependency code is transpiled without its own prelude
+  // (a second copy would replace the registry) and wrapped in its own function
+  // scope so its top-level declarations cannot collide with the main file's.
+  // Python and Perl preludes keep their registry across repeated copies.
+  const noPreludeOptions = language === 'javascript' ? { generateTestHarness: false } : undefined;
+  // A JavaScript dependency also keeps what its factory returned, for a file
+  // that loads it through a loader parameter (see below).
+  const depExports = new Map();
+  let prefix = '';
+  for (const depPath of dependencies) {
+    const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
+    try {
+      const depSource = fs.readFileSync(depPath, 'utf-8');
+      const depCode = transpileOne(depSource, plugin, depName, noPreludeOptions, parserOptions);
+      if (language === 'javascript') {
+        const variable = '__validation_' + depName;
+        depExports.set(path.resolve(depPath).toLowerCase(), variable);
+        prefix += `const ${variable} = (function () {\nconst module = { exports: {} };\n${depCode}\nreturn ${libraryExports(depSource) || 'undefined'};\n})();\n\n`;
+      } else {
+        prefix += depCode + '\n\n';
+      }
+    } catch (e) {
+      return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
+    }
+  }
+
+  // A handful of files (SHARK, Brotli, Deflate, the fountain codes) pull in a
+  // sibling .data library through a third UMD factory parameter, fed by
+  // require('./x.data'). The UMD unwrap discards that branch, leaving the
+  // parameter unbound, so the library is bundled as
+  // const <Name> = (function () { ...; return <its exports>; })();
+  if (language === 'javascript') {
+    const localRequireRe = /require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g;
+    const localNames = new Set();
+    let lm;
+    while ((lm = localRequireRe.exec(source)) !== null) localNames.add(lm[1]);
+    // The factory is the last such function: an AMD branch may wrap it in one of its own
+    const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+    const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+    for (const localName of localNames) {
+      const libPath = [localName, localName + '.js', localName + '.data.js']
+        .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+      if (!libPath || !paramName) continue;
+      const libSrc = fs.readFileSync(libPath, 'utf-8');
+      const exported = libraryExports(libSrc);
+      if (!exported) return { success: false, error: 'library ' + path.basename(libPath) + ': its exports are in no shape the bundling knows' };
+      const libName = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib';
+      try {
+        const libCode = transpileOne(libSrc, plugin, libName, { generateTestHarness: false }, parserOptions);
+        prefix += 'const ' + paramName + ' = (function () {\nconst module = { exports: {} };\n'
+          + libCode + '\nreturn ' + exported + ';\n})();\n\n';
+      } catch (e) {
+        return { success: false, error: 'library ' + path.basename(libPath) + ': ' + e.message };
+      }
+    }
+    // A third parameter fed `function () { return require('../x/y'); }` is a
+    // loader for another algorithm file (mac/zuc128mac.js loads stream/zuc.js,
+    // darkcrypt-deal.js block/des.js, at first use). That file is bundled as a
+    // dependency, so the loader hands back what its factory returned.
+    const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (paramName && loader && !prefix.includes('const ' + paramName + ' = ')) {
+      const target = path.resolve(path.dirname(algorithmFile), loader[1].endsWith('.js') ? loader[1] : loader[1] + '.js').toLowerCase();
+      const variable = depExports.get(target);
+      if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
+      prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
+    }
+  } else {
+    // Python and Perl: the library's code goes ahead of the algorithm, and the
+    // factory parameter is bound to an object holding what it exports
+    const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
+    if (bundled.error) return { success: false, error: bundled.error };
+    prefix += bundled.code;
+  }
+
+  if (prefix && language === 'javascript' && typeof plugin.GetStandalonePrelude === 'function') {
+    // Dependency code goes right after the prelude (it references the
+    // prelude's RegisterAlgorithm/etc) and before the main class code.
+    const preludeText = plugin.GetStandalonePrelude();
+    code = code.startsWith(preludeText) ? preludeText + prefix + code.slice(preludeText.length) : prefix + code;
+  } else if (prefix) {
+    code = prefix + code;
+  }
+  return { success: true, code };
 }
 
 // ============================================================================
 // TEST HARNESS GENERATION (Language-specific)
 // ============================================================================
 
-function generateTestHarness(language, algorithmCode, testVectors, algorithmName) {
-  if (!testVectors || testVectors.length === 0)
-    return { success: false, error: 'No test vectors' };
+// Languages whose harness runs every vector; the others only prove the
+// generated code compiles and a run of theirs checks nothing.
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
 
-  // Select first vector for basic testing
-  const vector = testVectors[0];
+/**
+ * The harness spec handed to a vector harness: per algorithm the name, the
+ * class (C# looks it up by that), whether it is a cipher mode, and per vector
+ * its application plan and checks.
+ * @param {object[]} algorithms - referenceRun().algorithms that passed their reference
+ * @returns {object} { algorithms: [...] }
+ */
+function harnessSpec(algorithms) {
+  return {
+    algorithms: algorithms.map(a => ({
+      name: a.name, className: a.className, isMode: a.isMode, multiKey: a.multiKey, vectors: a.vectors
+    }))
+  };
+}
+
+/** JSON with every non-ASCII character escaped, so it embeds into any source encoding. */
+function asciiJson(value) {
+  return JSON.stringify(value).replace(/[^\x00-\x7e]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
+function readHarness(file) {
+  return fs.readFileSync(path.join(HARNESS_DIR, file), 'utf-8');
+}
+
+/**
+ * Append the language's harness to transpiled code.
+ * @param {string} language - language key
+ * @param {string} algorithmCode - transpiled code
+ * @param {object} spec - harnessSpec()
+ * @param {string} algorithmName - file base name, for messages
+ * @param {object} [sample] - { input, expected } of the first vector, for compile-only harnesses
+ * @returns {{success: boolean, code?: string, error?: string}}
+ */
+function generateTestHarness(language, algorithmCode, spec, algorithmName, sample) {
+  if (!spec || !spec.algorithms.length || spec.algorithms.every(a => a.vectors.length === 0))
+    return { success: false, error: 'No test vectors' };
+  const vector = sample || { input: [], expected: [] };
 
   switch (language) {
     case 'csharp':
-      return generateCSharpTestHarness(algorithmCode, vector, algorithmName);
+      return generateCSharpTestHarness(algorithmCode, spec, algorithmName);
     case 'c':
       return generateCTestHarness(algorithmCode, vector, algorithmName);
     case 'cpp':
       return generateCppTestHarness(algorithmCode, vector, algorithmName);
     case 'python':
-      return generatePythonTestHarness(algorithmCode, vector, algorithmName);
+      return generatePythonTestHarness(algorithmCode, spec, algorithmName);
     case 'php':
       return generatePHPTestHarness(algorithmCode, vector, algorithmName);
     case 'perl':
-      return generatePerlTestHarness(algorithmCode, vector, algorithmName);
+      return generatePerlTestHarness(algorithmCode, spec, algorithmName);
     case 'java':
       return generateJavaTestHarness(algorithmCode, vector, algorithmName);
     case 'go':
@@ -586,7 +724,7 @@ function generateTestHarness(language, algorithmCode, testVectors, algorithmName
     case 'rust':
       return generateRustTestHarness(algorithmCode, vector, algorithmName);
     case 'javascript':
-      return generateJavaScriptTestHarness(algorithmCode, vector, algorithmName);
+      return generateJavaScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'typescript':
       return generateTypeScriptTestHarness(algorithmCode, vector, algorithmName);
     case 'basic':
@@ -650,188 +788,56 @@ function stripMainFunction(code, language) {
   }
 }
 
-// C# Test Harness — actually exercises every test vector through the
-// transpiled algorithm (Feed/Result) and compares output to expected.
-// Mirrors the design of generatePythonTestHarness: it does not rebuild test
-// vectors from JS (the transpiled code already embeds them as `Tests` on the
-// generated Algorithm subclass), it just drives the registered instance.
-function generateCSharpTestHarness(algorithmCode, vector, algorithmName) {
-  // The transpiler always names the outer wrapper class "<Algo>Generated"
-  // and exposes a `public static readonly <Algo>Algorithm AlgorithmInstance`
-  // field on it (see CSharpTransformer.js transform()). Locate it so the
-  // harness can reach the registered algorithm/tests without needing to
-  // know the concrete algorithm or instance type.
-  const classMatch = algorithmCode.match(/class\s+(\w+Generated)\b/);
-  let outerClass = classMatch ? classMatch[1] : null;
+// C# vector harness (tests/validation-harness/Harness.cs). The transpiled code
+// carries its vectors as `Tests` on each generated Algorithm subclass; the
+// harness finds every algorithm the file registers by name, by reflection.
+const CSHARP_DUMMY_CLASSES = `    // The identity cipher of tests/DummyBlockCipher.js, for mode vectors naming no cipher
+    public sealed class ValidationDummyCipherAlgorithm : BlockCipherAlgorithm
+    {
+        public ValidationDummyCipherAlgorithm() { Name = "DummyBlockCipher"; BlockSize = 16; }
+        public override object CreateInstance(bool isInverse = false) { return new ValidationDummyCipherInstance(this); }
+    }
 
-  // Some algorithm shapes don't get a registered `AlgorithmInstance` static
-  // field (e.g. the JS source doesn't call RegisterAlgorithm() in a
-  // recognizable way, so the transformer never emits an Algorithm subclass
-  // wrapper). Referencing a nonexistent field would turn an otherwise-fine
-  // compile into a hard failure (CS0117), which is strictly worse than the
-  // previous COMPILE_OK-only harness - so only take the full vector-running
-  // path when the field is actually present.
-  if (outerClass && !new RegExp(`public\\s+static\\s+readonly\\s+\\w+\\s+AlgorithmInstance\\s*=`).test(algorithmCode)) {
-    outerClass = null;
-  }
+    public sealed class ValidationDummyCipherInstance : IBlockCipherInstance
+    {
+        private readonly System.Collections.Generic.List<byte> buffer = new System.Collections.Generic.List<byte>();
+        public ValidationDummyCipherInstance(Algorithm algorithm) : base(algorithm) { }
+        public int BlockSize { get; set; } = 16;
+        public override void Feed(byte[] data) { if (data != null) buffer.AddRange(data); }
+        public override byte[] Result()
+        {
+            if (Key == null || Key.Length == 0) throw new System.InvalidOperationException("Key not set");
+            var output = new System.Collections.Generic.List<byte>();
+            for (int i = 0; i < buffer.Count; i += 16)
+                for (int j = 0; j < 16; ++j)
+                    output.Add((byte)((i + j < buffer.Count ? buffer[i + j] : 0) ^ Key[j % Key.Length]));
+            buffer.Clear();
+            return output.ToArray();
+        }
+    }`;
 
-  // The transpiler also always emits a placeholder
-  // `public static void Main(string[] args) { ... }` on that wrapper class.
-  // Strip it (and its preceding /// doc-comment lines, if any) so our own
-  // Main doesn't collide with it (duplicate entry points are CS0017).
+function generateCSharpTestHarness(algorithmCode, spec, algorithmName) {
+  // The transpiler emits a placeholder `public static void Main(string[] args)`
+  // on the wrapper class; strip it (and its doc comment) so the harness Main is
+  // the only entry point (CS0017 otherwise).
   const cleanedCode = algorithmCode.replace(
     /(\s*\/\/\/[^\n]*\n)*\s*public\s+static\s+void\s+Main\s*\([^)]*\)\s*\{[^}]*\}\s*/,
     '\n'
   );
-
   const nsMatch = algorithmCode.match(/namespace\s+([\w.]+)/);
-  const namespaceName = nsMatch ? nsMatch[1] : 'CipherValidation';
-
-  if (!outerClass) {
-    // Unexpected shape - fall back to a minimal compile-only harness rather
-    // than failing the whole run outright.
-    return {
-      success: true,
-      code: `${cleanedCode}
-
-public static class TestHarness
-{
-    public static int Main(string[] args)
-    {
-        Console.WriteLine("Testing ${algorithmName}...");
-        Console.WriteLine("COMPILE_OK");
-        return 0;
-    }
-}`
-    };
-  }
-
-  return {
-    success: true,
-    code: `${cleanedCode}
-
-namespace ${namespaceName}
-{
-    public static class TestHarness
-    {
-        public static int Main(string[] args)
-        {
-            Console.WriteLine("Testing ${algorithmName}...");
-            try
-            {
-                dynamic algo = ${outerClass}.AlgorithmInstance;
-                dynamic testList = algo.Tests;
-                int total = 0;
-                int passed = 0;
-                int idx = 0;
-                foreach (dynamic t in testList)
-                {
-                    int vectorIndex = idx;
-                    idx = idx + 1;
-                    total = total + 1;
-                    try
-                    {
-                        dynamic inst = algo.CreateInstance(false);
-                        if (inst == null)
-                        {
-                            Console.WriteLine("Vector " + vectorIndex + ": SKIP (no instance)");
-                            passed = passed + 1;
-                            continue;
-                        }
-
-                        TrySet(inst, "Key", t.Key);
-                        TrySet(inst, "IV", t.Iv);
-                        TrySet(inst, "Nonce", t.Nonce);
-                        TrySet(inst, "AssociatedData", t.AssociatedData != null ? t.AssociatedData : t.Aad);
-                        TrySet(inst, "Tag", t.Tag);
-                        TrySet(inst, "Seed", t.Seed);
-                        TrySet(inst, "Salt", t.Salt);
-                        TrySet(inst, "Tweak", t.Tweak);
-                        TrySet(inst, "OutputSize", t.OutputSize);
-                        TrySet(inst, "OutputLength", t.OutputLength);
-                        TrySet(inst, "Iterations", t.Iterations);
-                        TrySet(inst, "PrivateKey", t.PrivateKey);
-                        TrySet(inst, "PublicKey", t.PublicKey);
-
-                        dynamic inputD = t.Input;
-                        byte[] input = inputD != null ? (byte[])inputD : new byte[0];
-                        inst.Feed(input);
-                        dynamic resultD = inst.Result();
-                        byte[] result = resultD != null ? (byte[])resultD : null;
-
-                        dynamic expectedD = t.Expected;
-                        byte[] expected = expectedD != null ? (byte[])expectedD : new byte[0];
-
-                        bool match = result != null && result.Length == expected.Length;
-                        if (match)
-                        {
-                            for (int i = 0; i < result.Length; ++i)
-                            {
-                                if (result[i] != expected[i]) { match = false; break; }
-                            }
-                        }
-
-                        if (match)
-                        {
-                            passed = passed + 1;
-                        }
-                        else
-                        {
-                            string got = result == null ? "null" : BitConverter.ToString(result).Replace("-", "");
-                            string exp = BitConverter.ToString(expected).Replace("-", "");
-                            Console.WriteLine("Vector " + vectorIndex + ": FAIL got=" + got + " exp=" + exp);
-                        }
-                    }
-                    catch (Exception vex)
-                    {
-                        Console.WriteLine("Vector " + vectorIndex + ": ERROR " + vex.Message);
-                    }
-                }
-
-                Console.WriteLine("Vectors passed: " + passed + "/" + total);
-                if (passed == total && total > 0)
-                {
-                    Console.WriteLine("ALL_VECTORS_PASSED");
-                    return 0;
-                }
-
-                Console.WriteLine("VECTOR_FAILED");
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("ERROR: " + ex.Message);
-                return 1;
-            }
-        }
-
-        private static void TrySet(dynamic inst, string name, dynamic value)
-        {
-            if (value == null) return;
-            try
-            {
-                switch (name)
-                {
-                    case "Key": inst.Key = value; break;
-                    case "IV": inst.IV = value; break;
-                    case "Nonce": inst.Nonce = value; break;
-                    case "AssociatedData": inst.AssociatedData = value; break;
-                    case "Tag": inst.Tag = value; break;
-                    case "Seed": inst.Seed = value; break;
-                    case "Salt": inst.Salt = value; break;
-                    case "Tweak": inst.Tweak = value; break;
-                    case "OutputSize": inst.OutputSize = value; break;
-                    case "OutputLength": inst.OutputLength = value; break;
-                    case "Iterations": inst.Iterations = value; break;
-                    case "PrivateKey": inst.PrivateKey = value; break;
-                    case "PublicKey": inst.PublicKey = value; break;
-                }
-            }
-            catch { }
-        }
-    }
-}`
-  };
+  const surface = frameworkSurface();
+  const literal = list => list.map(s => JSON.stringify(s)).join(', ');
+  const hasMode = spec.algorithms.some(a => a.isMode);
+  const harness = readHarness('Harness.cs')
+    .replace('__NAMESPACE__', nsMatch ? nsMatch[1] : 'CipherValidation')
+    .replace('__SPEC_JSON__', () => asciiJson(spec).replace(/"/g, '""'))
+    .replace('__FRAMEWORK_TYPES__', () => literal(surface.types))
+    .replace('__FRAMEWORK_MEMBERS__', () => literal(surface.members))
+    .replace('__DUMMY_CLASSES__', () => hasMode ? CSHARP_DUMMY_CLASSES : '')
+    .replace('__DUMMY_FACTORY__', () => hasMode
+      ? 'return new ValidationDummyCipherInstance(new ValidationDummyCipherAlgorithm());'
+      : `throw new InvalidOperationException("${algorithmName} is not a cipher mode");`);
+  return { success: true, code: `${cleanedCode}\n${harness}` };
 }
 
 // C Test Harness
@@ -894,230 +900,30 @@ int main() {
   };
 }
 
-// Python Test Harness — actually exercises every test vector through the
-// transpiled algorithm (Feed/Result) and compares output to expected.
-function generatePythonTestHarness(algorithmCode, vector, algorithmName) {
-  return {
-    success: true,
-    code: `#!/usr/bin/env python3
-${algorithmCode}
-
-def _as_bytes(v):
-    if v is None: return None
-    if isinstance(v, (bytes, bytearray)): return list(v)
-    return list(v)
-
-# Map a test vector's cipher name to the registered algorithm name(s) the
-# bundled dependency registers under.
-_CIPHER_NAME_MAP = {
-    "AES": ["Rijndael (AES)", "AES"],
-    "Rijndael": ["Rijndael (AES)", "Rijndael"],
-    "DES": ["DES"],
-    "3DES": ["3DES (Triple DES)", "3DES"],
-    "Blowfish": ["Blowfish"],
-    "Camellia": ["Camellia"],
-    "ARIA": ["ARIA"],
+// Python vector harness (tests/validation-harness/harness.py); the spec is
+// embedded as a JSON string literal, which is also a valid Python literal.
+function generatePythonTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.py').replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)));
+  return { success: true, code: `#!/usr/bin/env python3\n# Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
-# Identity block cipher (16-byte XOR-with-key) used to exercise cipher modes,
-# mirroring tests/DummyBlockCipher.js. Mode test vectors that name no real
-# cipher were computed against this dummy.
-class _DummyBlockAlgo:
-    def __init__(self): self.block_size = 16
-    def create_instance(self, is_inverse=False): return _DummyBlockInst(self)
-
-class _DummyBlockInst:
-    def __init__(self, algo):
-        self.algorithm = algo
-        self.block_size = 16
-        self._key = None
-        self._buf = []
-    @property
-    def key(self): return list(self._key) if self._key else None
-    @key.setter
-    def key(self, k): self._key = list(k) if k else None
-    def feed(self, data):
-        if data: self._buf.extend(data)
-    def result(self):
-        out = []
-        for i in range(0, len(self._buf), 16):
-            block = list(self._buf[i:i + 16])
-            while len(block) < 16: block.append(0)
-            for j in range(16):
-                out.append(block[j] ^ self._key[j % len(self._key)])
-        self._buf = []
-        return out
-
-def _setup_instance(inst, t):
-    is_mode = hasattr(inst, "set_block_cipher")
-    if is_mode:
-        # Cipher mode: inject either the named real cipher (bundled into
-        # this file) or the dummy identity cipher.
-        cipher_name = getattr(t, "cipher", None)
-        block_cipher = None
-        if cipher_name:
-            real = None
-            for cand in _CIPHER_NAME_MAP.get(cipher_name, [cipher_name]):
-                real = _algorithms_by_name.get(cand)
-                if real is not None: break
-            if real is not None:
-                block_cipher = real.create_instance(False)
-        if block_cipher is None:
-            block_cipher = _DummyBlockInst(_DummyBlockAlgo())
-        kv = getattr(t, "key", None)
-        if kv is not None:
-            try: block_cipher.key = _as_bytes(kv)
-            except Exception: pass
-        inst.set_block_cipher(block_cipher)
-        ivv = getattr(t, "iv", None)
-        if ivv is not None and hasattr(inst, "set_iv"):
-            inst.set_iv(_as_bytes(ivv))
-    # Drive every other mode/MAC/KDF/AEAD/PRNG setup contract a test
-    # vector might name, mirroring tests/TestEngine.js's
-    # _applyVectorProperties(): prefer a dedicated setter method
-    # (setKEK/setTweakKey/setNonce/... -> snake_case set_kek/...) and
-    # fall back to plain attribute assignment when the instance
-    # exposes the field as a property/plain attribute instead. Runs
-    # for every instance (mode or not) since e.g. KW/KWP's set_kek,
-    # XEX/LRW's set_tweak_key, and GCM/CCM/EAX/OCB/SIV's
-    # set_nonce/set_aad/set_tag* all sit on the mode instance itself,
-    # alongside set_block_cipher rather than instead of it.
-    for prop, setter in (
-        ("kek", "set_kek"), ("key", "set_key"), ("key2", "set_key2"),
-        ("iv", "set_iv"), ("iv1", "set_iv1"), ("iv2", "set_iv2"),
-        ("nonce", "set_nonce"),
-        ("tweak_key", "set_tweak_key"), ("tweak", "set_tweak"),
-        ("aad", "set_aad"),
-        ("tag_size", "set_tag_size"), ("tag_length", "set_tag_length"), ("tag", "set_tag"),
-        ("radix", "set_radix"), ("alphabet", "set_alphabet"),
-        ("salt", "set_salt"), ("info", "set_info"),
-        ("output_size", "set_output_size"), ("hash_function", "set_hash_function"),
-        ("password", "set_password"), ("iterations", "set_iterations"),
-        ("message_length", "set_message_length"),
-        ("counter", "set_counter"), ("block_size", "set_block_size"), ("key_size", "set_key_size"),
-    ):
-        val = getattr(t, prop, None)
-        if val is None: continue
-        pyval = _as_bytes(val) if isinstance(val, (bytes, bytearray, list)) else val
-        try:
-            setter_fn = getattr(inst, setter, None)
-            if callable(setter_fn):
-                setter_fn(pyval)
-            elif hasattr(inst, prop):
-                setattr(inst, prop, pyval)
-        except Exception:
-            pass
-    # Generic pass: apply every remaining vector field the explicit list above
-    # didn't cover (algorithm-specific params like multiplier/increment/modulo/
-    # skip/count for LCG-family PRNGs, associatedData, customization for
-    # cSHAKE/KMAC, p/q/g/s for BBS/Blum-Micali, etc.). Try a set_<snake> setter
-    # then a plain snake_case / raw attribute.
-    _reserved = ("input", "expected", "text", "uri", "cipher", "seed")
-    def _c2s(n):
-        out = []
-        for ch in n:
-            if ch.isupper(): out.append("_" + ch.lower())
-            else: out.append(ch)
-        return "".join(out).lstrip("_")
-    fields = getattr(t, "__dict__", None) or {}
-    for name in list(fields.keys()):
-        if name in _reserved: continue
-        val = fields[name]
-        if val is None: continue
-        pyval = _as_bytes(val) if isinstance(val, (bytes, bytearray, list)) else val
-        snake = _c2s(name)
-        try:
-            setter_fn = getattr(inst, "set_" + snake, None)
-            if callable(setter_fn):
-                setter_fn(pyval)
-            elif hasattr(inst, snake):
-                setattr(inst, snake, pyval)
-            elif hasattr(inst, name):
-                setattr(inst, name, pyval)
-        except Exception:
-            pass
-    # PRNG seed - applied after every other property (mirrors
-    # TestEngine.js applying it last, once stateSize/mode/etc. are set).
-    seedv = getattr(t, "seed", None)
-    if seedv is not None:
-        pyseed = _as_bytes(seedv) if isinstance(seedv, (bytes, bytearray, list)) else seedv
-        try:
-            if hasattr(inst, "set_seed"): inst.set_seed(pyseed)
-            elif hasattr(inst, "seed"): inst.seed = pyseed
-        except Exception:
-            pass
-
-def _run_vectors():
-    algo = None
-    try:
-        algo = algorithm_instance
-    except NameError:
-        try:
-            algo = _registered_algorithm
-        except NameError:
-            algo = None
-    if algo is None:
-        print("ERROR: no registered algorithm instance")
-        return False
-    tests = getattr(algo, "tests", None) or []
-    if not tests:
-        print("ERROR: no test vectors")
-        return False
-    total = 0
-    passed = 0
-    for idx, t in enumerate(tests):
-        total += 1
-        try:
-            inst = algo.create_instance(bool(getattr(t, "inverse", False)))
-            if inst is None:
-                print(f"Vector {idx}: SKIP (no instance)")
-                passed += 1
-                continue
-            _setup_instance(inst, t)
-            inp = _as_bytes(getattr(t, "input", None)) or []
-            inst.feed(inp)
-            out = list(inst.result())
-            exp = _as_bytes(getattr(t, "expected", None)) or []
-            if exp:
-                if list(out) == list(exp):
-                    passed += 1
-                else:
-                    oh = "".join("%02x" % (b & 0xff) for b in out)
-                    eh = "".join("%02x" % (b & 0xff) for b in exp)
-                    print(f"Vector {idx}: FAIL got={oh} exp={eh}")
-            else:
-                # No expected value on the vector (common for cipher-mode
-                # "round-trip" vectors, see tests/TestEngine.js TestVector):
-                # the vector passes if decrypting the output with a fresh
-                # inverse instance reproduces the original input.
-                rt_ok = False
-                try:
-                    dec = algo.create_instance(True)
-                    if dec is not None:
-                        _setup_instance(dec, t)
-                        dec.feed(out)
-                        rt_ok = list(dec.result()) == list(inp)
-                except Exception:
-                    rt_ok = False
-                if rt_ok:
-                    passed += 1
-                else:
-                    oh = "".join("%02x" % (b & 0xff) for b in out)
-                    print(f"Vector {idx}: FAIL got={oh} exp=<round-trip>")
-        except Exception as e:
-            print(f"Vector {idx}: ERROR {e}")
-    print(f"Vectors passed: {passed}/{total}")
-    return passed == total and total > 0
-
-if __name__ == "__main__":
-    print("Testing ${algorithmName}...")
-    ok = _run_vectors()
-    if ok:
-        print("ALL_VECTORS_PASSED")
-    else:
-        print("VECTOR_FAILED")
-        exit(1)`
+// Perl vector harness (tests/validation-harness/harness.pl). The transpiled
+// code records every registered instance in @main::_registered_algorithms
+// (see PerlEmitter.js), which the harness searches by name.
+function generatePerlTestHarness(algorithmCode, spec, algorithmName) {
+  const literal = "'" + asciiJson(spec).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+  const harness = readHarness('harness.pl').replace('__SPEC_JSON__', () => literal);
+  return {
+    success: true,
+    code: `#!/usr/bin/perl\n# Validation of ${algorithmName}\nuse strict;\nuse warnings;\nuse feature 'say';\n\n${algorithmCode}\n${harness}`
   };
+}
+
+// JavaScript vector harness (tests/validation-harness/harness.js), run after
+// the embedded AlgorithmFramework registered every bundled algorithm.
+function generateJavaScriptTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.js').replace('__SPEC_JSON__', () => asciiJson(spec));
+  return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
 // PHP Test Harness
@@ -1148,326 +954,6 @@ try {
     echo "COMPILE_OK\\n";
 } catch (Exception $e) {
     echo "ERROR: " . $e->getMessage() . "\\n";
-    exit(1);
-}`
-  };
-}
-
-// Perl Test Harness — actually exercises every test vector through the
-// transpiled algorithm (Feed/Result) and compares output to expected.
-//
-// The transpiled Perl output ends with one or both of:
-//   our $algorithmInstance; $algorithmInstance = SomeAlgorithm->new();
-//   RegisterAlgorithm($algorithmInstance);   # possibly several times,
-//                                            # possibly with other variable
-//                                            # names for multi-variant files
-// RegisterAlgorithm() (see PerlEmitter.js) records every registered
-// instance into @main::_registered_algorithms, which is the reliable,
-// naming-independent handle used below. $algorithmInstance is kept as a
-// fallback for the (rare) case a file defines the variable without ever
-// calling RegisterAlgorithm.
-function generatePerlTestHarness(algorithmCode, vector, algorithmName) {
-  return {
-    success: true,
-    code: `#!/usr/bin/perl
-use strict;
-use warnings;
-use feature 'say';
-
-${algorithmCode}
-
-# Reference the package globals the transpiled code above may have defined
-# via fully-qualified names rather than redeclaring them with "our" (which
-# would otherwise warn - or clash - when the algorithm code already
-# declared them).
-sub _bytes_eq {
-    my ($a, $b) = @_;
-    return 0 unless ref($a) eq 'ARRAY' && ref($b) eq 'ARRAY';
-    return 0 unless scalar(@$a) == scalar(@$b);
-    for (my $i = 0; $i < scalar(@$a); $i++) {
-        return 0 unless (($a->[$i] // 0) & 0xff) == (($b->[$i] // 0) & 0xff);
-    }
-    return 1;
-}
-
-sub _to_hex {
-    my ($bytes) = @_;
-    return '' unless ref($bytes) eq 'ARRAY';
-    return join('', map { sprintf('%02x', $_ & 0xff) } @$bytes);
-}
-
-sub _set_test_property {
-    my ($inst, $prop, $val) = @_;
-    return unless defined $val;
-    my $method = $inst->can($prop);
-    if ($method) {
-        eval { $inst->$prop($val); };
-    } else {
-        $inst->{$prop} = $val;
-    }
-}
-
-# Map a test vector's cipher name to the registered algorithm name(s) the
-# bundled dependency cipher (transpileAlgorithm's DEP_CIPHER_FILES) registers
-# under, mirroring the Python harness's _CIPHER_NAME_MAP.
-my %_CIPHER_NAME_MAP = (
-    'AES' => ['Rijndael (AES)', 'AES'],
-    'Rijndael' => ['Rijndael (AES)', 'Rijndael'],
-    'DES' => ['DES'],
-    '3DES' => ['3DES (Triple DES)', '3DES'],
-    'Blowfish' => ['Blowfish'],
-    'Camellia' => ['Camellia'],
-    'ARIA' => ['ARIA'],
-);
-
-# vector-property -> setter-method-name pairs for cipher-mode/AEAD instances,
-# mirroring tests/TestEngine.js's _applyVectorProperties/_applyProperty.
-my @_MODE_PROP_SETTERS = (
-    ['key', 'setKey'], ['kek', 'setKEK'], ['key2', 'setKey2'],
-    ['nonce', 'setNonce'], ['aad', 'setAAD'], ['associatedData', 'setAAD'],
-    ['tag', 'setTag'], ['counter', 'setCounter'],
-    ['tweak', 'setTweak'], ['tweakKey', 'setTweakKey'],
-    ['salt', 'setSalt'], ['info', 'setInfo'],
-    ['radix', 'setRadix'], ['alphabet', 'setAlphabet'],
-    ['preserveFormatChars', 'setPreserveFormatChars'],
-    ['tagSize', 'setTagSize'], ['tagLength', 'setTagLength'],
-    ['outputSize', 'setOutputSize'], ['messageLength', 'setMessageLength'],
-    ['ivs', 'setIVs'], ['word32LE', 'setWord32LE'],
-);
-
-sub _set_mode_property {
-    my ($inst, $vectorProp, $setterName, $val) = @_;
-    return unless defined $val;
-    if ($inst->can($setterName)) {
-        eval { $inst->$setterName($val); };
-    } elsif ($inst->can($vectorProp)) {
-        eval { $inst->$vectorProp($val); };
-    } else {
-        $inst->{$vectorProp} = $val;
-    }
-}
-
-# Identity block cipher (16-byte XOR-with-key) used to exercise cipher modes,
-# mirroring tests/DummyBlockCipher.js. Mode test vectors that name no real
-# (bundled) cipher were computed against this dummy.
-package _DummyBlockCipherAlgorithm;
-
-sub new {
-    my $class = shift;
-    return bless { BlockSize => 16 }, $class;
-}
-
-sub CreateInstance {
-    my ($self, $isInverse) = @_;
-    return _DummyBlockCipherInstance->new($self);
-}
-
-package _DummyBlockCipherInstance;
-
-sub new {
-    my ($class, $algorithm) = @_;
-    return bless { algorithm => $algorithm, BlockSize => 16, _key => undef, inputBuffer => [] }, $class;
-}
-
-sub key {
-    my $self = shift;
-    if (@_) { $self->{_key} = shift; }
-    return $self->{_key};
-}
-
-sub Feed {
-    my ($self, $data) = @_;
-    return unless $data && ref($data) eq 'ARRAY' && scalar(@$data);
-    push @{$self->{inputBuffer}}, @$data;
-}
-
-sub Result {
-    my ($self) = @_;
-    die "Key not set" unless $self->{_key};
-    my @buf = @{$self->{inputBuffer}};
-    my $klen = scalar(@{$self->{_key}});
-    my $out = [];
-    for (my $i = 0; $i < scalar(@buf); $i += 16) {
-        my $last = ($i + 15 < $#buf) ? $i + 15 : $#buf;
-        my @block = @buf[$i .. $last];
-        while (scalar(@block) < 16) { push @block, 0; }
-        for my $j (0 .. 15) {
-            push @$out, $block[$j] ^ $self->{_key}[$j % $klen];
-        }
-    }
-    $self->{inputBuffer} = [];
-    return $out;
-}
-
-package main;
-
-sub _find_registered_by_name {
-    my ($names) = @_;
-    for my $cand (@$names) {
-        for my $algo (@main::_registered_algorithms) {
-            next unless ref($algo) && defined $algo->{name};
-            return $algo if $algo->{name} eq $cand;
-        }
-    }
-    return undef;
-}
-
-# Build the block-cipher instance a mode/AEAD construction needs for
-# setBlockCipher(): either the real bundled cipher named by the vector's
-# "cipher" field, or the dummy XOR cipher, keyed from the vector's "key".
-sub _make_block_cipher {
-    my ($t) = @_;
-    my $inst;
-    if (defined $t->{cipher}) {
-        my $names = $_CIPHER_NAME_MAP{$t->{cipher}} || [$t->{cipher}];
-        my $real = _find_registered_by_name($names);
-        if ($real) {
-            eval { $inst = $real->CreateInstance(0); };
-        }
-    }
-    if (!$inst) {
-        $inst = _DummyBlockCipherInstance->new(_DummyBlockCipherAlgorithm->new());
-    }
-    if (defined $t->{key}) {
-        if ($inst->can('key')) {
-            eval { $inst->key($t->{key}); };
-        } else {
-            $inst->{key} = $t->{key};
-        }
-    }
-    return $inst;
-}
-
-sub _setup_instance_pl {
-    my ($inst, $t) = @_;
-    if ($inst->can('setBlockCipher')) {
-        my $blockCipher = _make_block_cipher($t);
-        eval { $inst->setBlockCipher($blockCipher); };
-        if (defined $t->{iv} && $inst->can('setIV')) {
-            eval { $inst->setIV($t->{iv}); };
-        }
-        for my $pair (@_MODE_PROP_SETTERS) {
-            _set_mode_property($inst, $pair->[0], $pair->[1], $t->{$pair->[0]});
-        }
-    } else {
-        for my $prop (qw(key iv nonce aad associatedData tag counter tweak salt info outputSize keySize blockSize rounds skip publicKey privateKey hashFunction skipBytes label iterations secret modulo count p m hashAlgorithm outputLength multiplier macSize keyInput customization n increment counterBits context aiv xofMode)) {
-            _set_test_property($inst, $prop, $t->{$prop}) if exists $t->{$prop};
-        }
-    }
-    # Use UNIVERSAL::isa (not ref eq HASH) so blessed TestCase objects -
-    # whose ref() is the class name, not the string HASH - still have their
-    # non-allowlisted vector properties (testMode, ...) applied.
-    if (ref($t) && UNIVERSAL::isa($t, 'HASH')) {
-        for my $prop (keys %$t) {
-            next if $prop =~ /^(input|expected|text|uri|cipher|seed)$/;
-            _set_test_property($inst, $prop, $t->{$prop}) if defined $t->{$prop};
-        }
-    }
-    # PRNG seed - applied after every other property (a generator's seed must be
-    # set last, once any order/config properties it depends on are in place;
-    # mirrors the Python harness). Perl hash iteration order is undefined, so
-    # relying on the generic pass above would set seed nondeterministically.
-    if (ref($t) && UNIVERSAL::isa($t, 'HASH') && defined $t->{seed}) {
-        _set_test_property($inst, 'seed', $t->{seed});
-    }
-}
-
-sub _run_vectors_for {
-    my ($algo) = @_;
-    my $tests = ref($algo) ? $algo->{tests} : undef;
-    return (0, 0) unless ref($tests) eq 'ARRAY' && scalar(@$tests) > 0;
-
-    my $total = 0;
-    my $passed = 0;
-    for (my $idx = 0; $idx < scalar(@$tests); $idx++) {
-        $total++;
-        my $t = $tests->[$idx];
-        eval {
-            my $inst = $algo->CreateInstance($t->{inverse} ? 1 : 0);
-            if (!defined $inst) {
-                say "Vector $idx: SKIP (no instance)";
-                $passed++;
-            } else {
-                _setup_instance_pl($inst, $t);
-                my $inp = $t->{input} || [];
-                $inst->Feed($inp);
-                my $out = $inst->Result();
-                my $exp = $t->{expected} || [];
-                if (ref($exp) eq 'ARRAY' && scalar(@$exp) > 0) {
-                    if (_bytes_eq($out, $exp)) {
-                        $passed++;
-                    } else {
-                        say "Vector $idx: FAIL got=" . _to_hex($out) . " exp=" . _to_hex($exp);
-                    }
-                } else {
-                    # No expected value: round-trip vector — decrypting the output
-                    # with a fresh inverse instance must reproduce the input.
-                    my $rt_ok = 0;
-                    eval {
-                        my $dec = $algo->CreateInstance(1);
-                        if (defined $dec) {
-                            _setup_instance_pl($dec, $t);
-                            $dec->Feed($out);
-                            $rt_ok = _bytes_eq($dec->Result(), $inp) ? 1 : 0;
-                        }
-                    };
-                    if ($rt_ok) {
-                        $passed++;
-                    } else {
-                        say "Vector $idx: FAIL got=" . _to_hex($out) . " exp=<round-trip>";
-                    }
-                }
-            }
-        };
-        if ($@) {
-            my $err = $@;
-            $err =~ s/\\s+\$//;
-            say "Vector $idx: ERROR $err";
-        }
-    }
-    return ($passed, $total);
-}
-
-sub _run_vectors {
-    my @algos = @main::_registered_algorithms;
-    push @algos, $main::algorithmInstance if defined $main::algorithmInstance && !grep { $_ == $main::algorithmInstance } @algos;
-
-    if (!@algos) {
-        say "ERROR: no registered algorithm instance";
-        return 0;
-    }
-
-    my $totalPassed = 0;
-    my $totalCount = 0;
-    for my $algo (@algos) {
-        my ($passed, $total) = _run_vectors_for($algo);
-        $totalPassed += $passed;
-        $totalCount += $total;
-    }
-
-    if ($totalCount == 0) {
-        say "ERROR: no test vectors";
-        return 0;
-    }
-
-    say "Vectors passed: $totalPassed/$totalCount";
-    return $totalPassed == $totalCount;
-}
-
-say "Testing ${algorithmName}...";
-my $ok = 0;
-eval {
-    $ok = _run_vectors();
-};
-if ($@) {
-    say "ERROR: $@";
-    say "VECTOR_FAILED";
-    exit(1);
-}
-if ($ok) {
-    say "ALL_VECTORS_PASSED";
-} else {
-    say "VECTOR_FAILED";
     exit(1);
 }`
   };
@@ -1512,37 +998,20 @@ function generateGoTestHarness(algorithmCode, vector, algorithmName) {
     .replace(/^import\s+"[^"]+"\s*\n?/gm, '')  // Remove single-line imports
     .replace(/^import\s+\([^)]*\)\s*\n?/gms, '');  // Remove multi-line import blocks (use 's' flag for dotAll)
 
-  // Build imports based on what's actually used in the code
-  const imports = ['"fmt"']; // fmt is always needed for test harness
-  if (codeWithoutPkg.includes('errors.')) {
-    imports.push('"errors"');
-  }
-  // Only include encoding/hex if hex package functions are used (not mustHexDecode which is inline)
-  if (codeWithoutPkg.includes('hex.DecodeString') || codeWithoutPkg.includes('hex.EncodeToString')) {
-    imports.push('"encoding/hex"');
-  }
-  if (codeWithoutPkg.includes('binary.')) {
-    imports.push('"encoding/binary"');
-  }
-  // math package for Floor, Ceil, Round, etc.
-  if (codeWithoutPkg.includes('math.')) {
-    imports.push('"math"');
-  }
-  // math/rand for random number generation
-  if (codeWithoutPkg.includes('rand.')) {
-    imports.push('"math/rand"');
-  }
-  // math/bits for bit rotation operations
-  if (codeWithoutPkg.includes('bits.')) {
-    imports.push('"math/bits"');
-  }
+  // The code's own imports, and fmt for the harness. Guessing imports from
+  // the code would hide an import the emitter forgot.
+  const imports = new Set(['"fmt"']);
+  for (const m of cleanedCode.matchAll(/^import\s+("[^"]+")/gm)) imports.add(m[1]);
+  for (const m of cleanedCode.matchAll(/^import\s+\(([^)]*)\)/gm))
+    for (const spec of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(spec);
+  imports.delete('');
 
   return {
     success: true,
     code: `package main
 
 import (
-\t${imports.join('\n\t')}
+\t${[...imports].join('\n\t')}
 )
 
 ${codeWithoutPkg}
@@ -1608,235 +1077,6 @@ fn main() {
   };
 }
 
-// JavaScript Test Harness
-function generateJavaScriptTestHarness(algorithmCode, vector, algorithmName) {
-  return {
-    success: true,
-    code: `${algorithmCode}
-
-// Test Harness
-(function () {
-    function _asBytes(v) {
-        if (v === null || v === undefined) return null;
-        if (Array.isArray(v)) return v.slice();
-        if (v instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(v))) return Array.from(v);
-        return v;
-    }
-
-    function _bytesEqual(a, b) {
-        if (!Array.isArray(a) || !Array.isArray(b)) return false;
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i++) if ((a[i] & 0xFF) !== (b[i] & 0xFF)) return false;
-        return true;
-    }
-
-    function _toHex(bytes) {
-        if (!Array.isArray(bytes)) return String(bytes);
-        return bytes.map(function (b) { return (b & 0xFF).toString(16).padStart(2, '0'); }).join('');
-    }
-
-    function _findRegisteredAlgorithm() {
-        try {
-            if (typeof AlgorithmFramework !== 'undefined' && AlgorithmFramework.Algorithms && AlgorithmFramework.Algorithms.length > 0)
-                return AlgorithmFramework.Algorithms[AlgorithmFramework.Algorithms.length - 1];
-        } catch (e) { /* fall through */ }
-        try {
-            if (typeof algorithmInstance !== 'undefined') return algorithmInstance;
-        } catch (e) { /* fall through */ }
-        return null;
-    }
-
-    // Map a test vector's "cipher" field (e.g. "AES") to the name(s) a
-    // bundled dependency cipher (see DEP_CIPHER_FILES/BUNDLE_LANGUAGES in
-    // TranspilerValidationSuite.js) registers itself under, so it can be
-    // looked up in the shared AlgorithmFramework.Algorithms registry.
-    var _CIPHER_NAME_MAP = {
-        "AES": ["Rijndael (AES)", "AES", "Rijndael"],
-        "Rijndael": ["Rijndael (AES)", "Rijndael"],
-        "DES": ["DES"],
-        "3DES": ["3DES (Triple DES)", "3DES"],
-        "Blowfish": ["Blowfish"],
-        "Camellia": ["Camellia"],
-        "ARIA": ["ARIA"]
-    };
-
-    function _findCipherAlgorithm(name) {
-        if (!name) return null;
-        try {
-            if (typeof AlgorithmFramework === 'undefined' || !AlgorithmFramework.Algorithms) return null;
-            const candidates = _CIPHER_NAME_MAP[name] || [name];
-            for (const cand of candidates) {
-                const found = AlgorithmFramework.Algorithms.find(function (a) { return a.name === cand; });
-                if (found) return found;
-            }
-        } catch (e) { /* fall through */ }
-        return null;
-    }
-
-    // Identity block cipher (16-byte XOR-with-key) used to exercise cipher
-    // modes when the test vector names no real cipher, or the named cipher
-    // could not be bundled/found. Mirrors tests/DummyBlockCipher.js.
-    function _dummyBlockCipherInstance() {
-        return {
-            BlockSize: 16,
-            algorithm: { CreateInstance: function () { return _dummyBlockCipherInstance(); } },
-            _key: null,
-            _buf: [],
-            get key() { return this._key ? this._key.slice() : null; },
-            set key(k) { this._key = k ? Array.prototype.slice.call(k) : null; },
-            Feed: function (data) { if (data) this._buf = this._buf.concat(Array.prototype.slice.call(data)); },
-            Result: function () {
-                const out = [];
-                for (let i = 0; i < this._buf.length; i += 16) {
-                    const block = this._buf.slice(i, i + 16);
-                    while (block.length < 16) block.push(0);
-                    for (let j = 0; j < 16; j++) out.push(block[j] ^ this._key[j % this._key.length]);
-                }
-                this._buf = [];
-                return out;
-            }
-        };
-    }
-
-    // Cipher-mode instances (CBC, CTR, GCM, KW, XTS, ...) expose
-    // setBlockCipher() instead of taking their key directly; wire in the
-    // real bundled cipher (or the dummy above) plus its key, then the mode's
-    // own IV if it has a setter, mirroring tests/TestEngine.js
-    // _setupBlockCipherMode()/_createDummyCipher().
-    function _setupBlockCipherMode(inst, t) {
-        const cipherAlgo = _findCipherAlgorithm(t.cipher);
-        const blockCipher = cipherAlgo ? cipherAlgo.CreateInstance(false) : _dummyBlockCipherInstance();
-        const kv = _asBytes(t.key);
-        if (kv) { try { blockCipher.key = kv; } catch (e) { /* not settable - ignore */ } }
-        inst.setBlockCipher(blockCipher);
-        if (typeof inst.setIV === 'function') {
-            const ivv = _asBytes(t.iv);
-            if (ivv) inst.setIV(ivv);
-        }
-    }
-
-    // Vector property -> preferred setter method. Falls back to direct
-    // property assignment when no setter method exists, mirroring
-    // tests/TestEngine.js _applyProperty(). Covers cipher-mode setup
-    // (setKEK for KW/KWP, setTweak/setTweakKey for XEX/LRW/XTS, setNonce/
-    // setAAD for GCM/SIV/OCB) as well as generic KDF/AEAD properties.
-    var _PROP_SETTERS = [
-        ["kek", "setKEK"], ["key", "setKey"], ["key2", "setKey2"],
-        ["iv", "setIV"], ["iv1", "setIV1"], ["iv2", "setIV2"], ["nonce", "setNonce"],
-        ["tweak", "setTweak"], ["tweakKey", "setTweakKey"],
-        ["aad", "setAAD"], ["tagSize", "setTagSize"], ["tagLength", "setTagLength"], ["tag", "setTag"],
-        ["radix", "setRadix"], ["alphabet", "setAlphabet"],
-        ["salt", "setSalt"], ["info", "setInfo"],
-        ["outputSize", "setOutputSize"], ["OutputSize", "setOutputSize"],
-        ["hashFunction", "setHashFunction"], ["password", "setPassword"],
-        ["iterations", "setIterations"], ["counter", "setCounter"],
-        ["keySize", "setKeySize"], ["blockSize", "setBlockSize"],
-        ["seed", "setSeed"]
-    ];
-
-    function _applyVectorProperties(inst, t) {
-        for (const [vectorProp, setterName] of _PROP_SETTERS) {
-            if (t[vectorProp] === undefined || t[vectorProp] === null) continue;
-            const val = Array.isArray(t[vectorProp]) ? _asBytes(t[vectorProp]) : t[vectorProp];
-            try {
-                if (typeof inst[setterName] === 'function') inst[setterName](val);
-                else if (vectorProp in inst) inst[vectorProp] = val;
-            } catch (e) { /* not settable on this instance type - ignore */ }
-        }
-        // Generic pass: apply any remaining algorithm-specific vector field
-        // (multiplier/increment/modulo/skip/count for LCG PRNGs, associatedData,
-        // customization for cSHAKE/KMAC, p/q/g/s for BBS/Blum-Micali, ...).
-        var _reserved = { input: 1, expected: 1, text: 1, uri: 1, cipher: 1 };
-        for (const k of Object.keys(t)) {
-            if (_reserved[k] || t[k] === undefined || t[k] === null) continue;
-            const val = Array.isArray(t[k]) ? _asBytes(t[k]) : t[k];
-            const setter = 'set' + k.charAt(0).toUpperCase() + k.slice(1);
-            try {
-                if (typeof inst[setter] === 'function') inst[setter](val);
-                else if (k in inst) inst[k] = val;
-            } catch (e) { /* ignore */ }
-        }
-    }
-
-    function _runVectors() {
-        const algo = _findRegisteredAlgorithm();
-        if (!algo) {
-            console.log("ERROR: no registered algorithm instance");
-            return false;
-        }
-        const tests = algo.tests || [];
-        if (tests.length === 0) {
-            console.log("ERROR: no test vectors");
-            return false;
-        }
-
-        let total = 0, passed = 0;
-        for (let idx = 0; idx < tests.length; idx++) {
-            const t = tests[idx];
-            total++;
-            try {
-                const inst = algo.CreateInstance(!!t.inverse);
-                if (!inst) {
-                    console.log("Vector " + idx + ": SKIP (no instance)");
-                    passed++;
-                    continue;
-                }
-                if (typeof inst.setBlockCipher === 'function') {
-                    _setupBlockCipherMode(inst, t);
-                }
-                _applyVectorProperties(inst, t);
-                const inp = _asBytes(t.input) || [];
-                inst.Feed(inp);
-                const out = _asBytes(inst.Result()) || [];
-                const exp = _asBytes(t.expected) || [];
-                if (exp && exp.length) {
-                    if (_bytesEqual(out, exp)) {
-                        passed++;
-                    } else {
-                        console.log("Vector " + idx + ": FAIL got=" + _toHex(out) + " exp=" + _toHex(exp));
-                    }
-                } else {
-                    // No expected value: round-trip vector — decrypting the output
-                    // with a fresh inverse instance must reproduce the input.
-                    let rtOk = false;
-                    try {
-                        const dec = algo.CreateInstance(true);
-                        if (dec) {
-                            if (typeof dec.setBlockCipher === 'function') _setupBlockCipherMode(dec, t);
-                            _applyVectorProperties(dec, t);
-                            dec.Feed(out);
-                            rtOk = _bytesEqual(_asBytes(dec.Result()) || [], inp);
-                        }
-                    } catch (e) { rtOk = false; }
-                    if (rtOk) passed++;
-                    else console.log("Vector " + idx + ": FAIL got=" + _toHex(out) + " exp=<round-trip>");
-                }
-            } catch (e) {
-                console.log("Vector " + idx + ": ERROR " + (e && e.message ? e.message : e));
-            }
-        }
-        console.log("Vectors passed: " + passed + "/" + total);
-        return passed === total && total > 0;
-    }
-
-    console.log("Testing ${algorithmName}...");
-    try {
-        const ok = _runVectors();
-        if (ok) {
-            console.log("ALL_VECTORS_PASSED");
-        } else {
-            console.log("VECTOR_FAILED");
-            process.exit(1);
-        }
-    } catch (error) {
-        console.log("ERROR: " + error.message);
-        process.exit(1);
-    }
-})();
-`
-  };
-}
-
 // TypeScript Test Harness
 function generateTypeScriptTestHarness(algorithmCode, vector, algorithmName) {
   const input = bytesToArrayLiteral(vector.input, 'typescript');
@@ -1899,14 +1139,17 @@ function generateDelphiTestHarness(algorithmCode, vector, algorithmName) {
   const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
   const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
 
+  // The plugin emits a unit: it is compiled from a file of its name, used by the program
+  const unit = algorithmCode.match(/^\s*unit\s+(\w+)\s*;/m);
   return {
     success: true,
+    extraFiles: unit ? { [unit[1] + '.pas']: algorithmCode } : undefined,
     code: `program TestHarness;
 {$MODE DELPHI}
 
-uses SysUtils;
+uses SysUtils${unit ? ', ' + unit[1] : ''};
 
-${algorithmCode}
+${unit ? '' : algorithmCode}
 
 const
   InputData: array[0..${inputLen > 0 ? inputLen - 1 : 0}] of Byte = (${inputBytes || '0'});
@@ -1953,7 +1196,12 @@ fun main() {
 // COMPILATION AND EXECUTION
 // ============================================================================
 
-function testCompilation(language, code, outputDir) {
+function testCompilation(language, code, outputDir, extraFiles) {
+  // Files the harness compiles alongside the program (a Pascal unit)
+  if (extraFiles) {
+    fs.mkdirSync(outputDir, { recursive: true });
+    for (const [name, text] of Object.entries(extraFiles)) fs.writeFileSync(path.join(outputDir, name), text);
+  }
   switch (language) {
     case 'c': return testCCompilation(code, outputDir);
     case 'cpp': return testCppCompilation(code, outputDir);
@@ -1979,14 +1227,14 @@ function testCCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.c');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only', '-o', '/dev/null'], {
+  const result = spawnTool('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only'], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1996,22 +1244,21 @@ function testCppCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.cpp');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only', '-o', '/dev/null'], {
+  const result = spawnTool('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only'], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
 
+
 function testCSharpCompilation(code, outputDir) {
-  if (fs.existsSync(outputDir)) {
-    try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch (e) {}
-  }
+  if (fs.existsSync(outputDir)) fs.rmSync(outputDir, { recursive: true, force: true });
   fs.mkdirSync(outputDir, { recursive: true });
 
   fs.writeFileSync(path.join(outputDir, 'Program.cs'), code);
@@ -2021,22 +1268,22 @@ function testCSharpCompilation(code, outputDir) {
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <NoWarn>CS0168;CS0219;CS0414;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
+    <NoWarn>CS0108;CS0114;CS0168;CS0219;CS0414;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 </Project>`);
 
-  const result = spawnSync('dotnet', ['build', outputDir, '-c', 'Release', '-v', 'q'], {
-    encoding: 'utf-8',
-    timeout: 60000
-  });
-
-  const errors = (result.stderr || '') + (result.stdout || '');
-  const success = result.status === 0;
-
+  // Each job builds in its own directory, so concurrent builds share no output;
+  // reused MSBuild nodes and the compiler server keep a build at seconds.
+  const result = runProcess('dotnet', ['build', outputDir, '-c', 'Release', '-v', 'q', '-nologo', '-clp:ErrorsOnly'],
+    { timeoutSeconds: timeoutSeconds() * 2 });
+  const errors = result.stdout + result.stderr;
   return {
-    success,
-    errors: errors,
-    output: result.stdout || ''
+    success: !result.timedOut && result.exitCode === 0,
+    errors: result.timedOut ? `dotnet build timed out after ${timeoutSeconds() * 2}s` : errors,
+    output: result.stdout
   };
 }
 
@@ -2045,34 +1292,34 @@ function testJavaCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'TestHarness.java');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('javac', [srcFile], {
+  const result = spawnTool('javac', ['-J-Duser.language=en', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000,
+    timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
 
-function testPythonSyntax(code, outputDir) {
+// A syntax check of an interpreted language: the file it will run, checked by the interpreter
+function syntaxCheck(code, outputDir, file, command, argv) {
   fs.mkdirSync(outputDir, { recursive: true });
-  const srcFile = path.join(outputDir, 'test.py');
+  const srcFile = path.join(outputDir, file);
   fs.writeFileSync(srcFile, code);
-
-  const result = spawnSync('python', ['-m', 'py_compile', srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
+  const result = runProcess(command, argv.concat([srcFile]), { cwd: outputDir });
   return {
-    success: result.status === 0,
-    errors: result.stderr || '',
-    output: result.stdout || ''
+    success: !result.timedOut && result.exitCode === 0,
+    errors: result.timedOut ? `${command} syntax check timed out after ${timeoutSeconds()}s` : (result.error || result.stderr || result.stdout),
+    output: result.stdout
   };
+}
+
+function testPythonSyntax(code, outputDir) {
+  return syntaxCheck(code, outputDir, 'test.py', 'python', ['-m', 'py_compile']);
 }
 
 function testPHPSyntax(code, outputDir) {
@@ -2080,33 +1327,20 @@ function testPHPSyntax(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.php');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('php', ['-l', srcFile], {
+  const result = spawnTool('php', ['-l', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || result.stdout || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
 
 function testPerlSyntax(code, outputDir) {
-  fs.mkdirSync(outputDir, { recursive: true });
-  const srcFile = path.join(outputDir, 'test.pl');
-  fs.writeFileSync(srcFile, code);
-
-  const result = spawnSync('perl', ['-c', srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  return {
-    success: result.status === 0 || (result.stderr || '').includes('syntax OK'),
-    errors: result.stderr || '',
-    output: result.stdout || ''
-  };
+  return syntaxCheck(code, outputDir, 'test.pl', 'perl', ['-c']);
 }
 
 function testRubySyntax(code, outputDir) {
@@ -2114,14 +1348,14 @@ function testRubySyntax(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.rb');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('ruby', ['-c', srcFile], {
+  const result = spawnTool('ruby', ['-c', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -2139,15 +1373,15 @@ function testGoCompilation(code, outputDir) {
   const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null';
 
   // Build from the output directory (required for go.mod to be found)
-  const result = spawnSync('go', ['build', '-o', nullDevice, '.'], {
+  const result = spawnTool('go', ['build', '-o', nullDevice, '.'], {
     cwd: outputDir,
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -2159,34 +1393,20 @@ function testRustCompilation(code, outputDir) {
   fs.writeFileSync(srcFile, code);
 
   // Compile to actual executable (works on all platforms)
-  const result = spawnSync('rustc', [srcFile, '-o', exeFile], {
+  const result = spawnTool('rustc', [srcFile, '-o', exeFile], {
     encoding: 'utf-8',
-    timeout: 60000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
 
 function testJavaScriptSyntax(code, outputDir) {
-  fs.mkdirSync(outputDir, { recursive: true });
-  const srcFile = path.join(outputDir, 'test.js');
-  fs.writeFileSync(srcFile, code);
-
-  // Node.js: --check for syntax validation without execution
-  const result = spawnSync('node', ['--check', srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  return {
-    success: result.status === 0,
-    errors: result.stderr || '',
-    output: result.stdout || ''
-  };
+  return syntaxCheck(code, outputDir, 'test.js', 'node', ['--check']);
 }
 
 function testTypeScriptSyntax(code, outputDir) {
@@ -2195,14 +1415,14 @@ function testTypeScriptSyntax(code, outputDir) {
   fs.writeFileSync(srcFile, code);
 
   // TypeScript: --noEmit for type checking without output
-  const result = spawnSync('tsc', ['--noEmit', '--skipLibCheck', srcFile], {
+  const result = spawnTool('tsc', ['--noEmit', '--skipLibCheck', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -2213,9 +1433,9 @@ function testBasicCompilation(code, outputDir) {
   fs.writeFileSync(srcFile, code);
 
   // FreeBASIC: -c for compile only (no linking)
-  const result = spawnSync('fbc64', ['-c', srcFile], {
+  const result = spawnTool('fbc64', ['-c', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000,
+    timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
 
@@ -2226,7 +1446,7 @@ function testBasicCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -2238,15 +1458,15 @@ function testDelphiCompilation(code, outputDir) {
 
   // FreePascal: -Cn = syntax check only (no code generation)
   // -Mdelphi = Delphi compatibility mode
-  const result = spawnSync('fpc', ['-Cn', '-Mdelphi', srcFile], {
+  const result = spawnTool('fpc', ['-Cn', '-Mdelphi', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000,
+    timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -2258,262 +1478,461 @@ function testKotlinCompilation(code, outputDir) {
 
   // Kotlin: compile to jar for syntax validation
   const jarFile = path.join(outputDir, 'test.jar');
-  const result = spawnSync('kotlinc', [srcFile, '-include-runtime', '-d', jarFile], {
+  const result = spawnTool('kotlinc', [srcFile, '-include-runtime', '-d', jarFile], {
     encoding: 'utf-8',
-    timeout: 120000, // Kotlin compilation is slow
+    timeout: timeoutSeconds() * 2000, // Kotlin compilation is slow
     cwd: outputDir
   });
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
 
-// Execution functions for runtime validation
-function executeCode(language, outputDir) {
-  if (args.compileOnly) return { success: true, output: 'COMPILE_ONLY', skipped: true };
+// ============================================================================
+// EXECUTION AND ITS RESULT
+// ============================================================================
 
+function timeoutSeconds() {
+  const value = Number(args.timeout);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT;
+}
+
+/**
+ * Run a process to completion or its timeout.
+ * @returns {{stdout: string, stderr: string, exitCode: number|null, timedOut: boolean, error: string|null}}
+ */
+function runProcess(command, argv, options = {}) {
+  const result = spawnTool(command, argv, {
+    encoding: 'utf-8',
+    cwd: options.cwd,
+    timeout: (options.timeoutSeconds || timeoutSeconds()) * 1000,
+    maxBuffer: 256 * 1024 * 1024,
+    windowsHide: true,
+    env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', DOTNET_CLI_UI_LANGUAGE: 'en', VSLANG: '1033' })
+  });
+  const timedOut = !!(result.error && result.error.code === 'ETIMEDOUT');
+  return {
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+    exitCode: result.status,
+    timedOut,
+    error: result.error && !timedOut ? result.error.message : null
+  };
+}
+
+/**
+ * Run a compiled vector harness.
+ * @param {string} language - one of VECTOR_HARNESS_LANGUAGES
+ * @param {string} outputDir - where testCompilation put it
+ * @returns {object} runProcess() result
+ */
+function executeCode(language, outputDir) {
   switch (language) {
-    case 'csharp': return executeCSharp(outputDir);
-    case 'python': return executePython(outputDir);
-    case 'php': return executePHP(outputDir);
-    case 'perl': return executePerl(outputDir);
-    case 'ruby': return executeRuby(outputDir);
-    case 'javascript': return executeJavaScript(outputDir);
-    case 'typescript': return executeTypeScript(outputDir);
-    case 'basic': return executeBasic(outputDir);
-    case 'delphi': return executeDelphi(outputDir);
-    case 'kotlin': return executeKotlin(outputDir);
-    case 'c':
-    case 'cpp':
-    case 'java':
-    case 'go':
-    case 'rust':
-      // These require additional build steps for execution
-      return { success: true, output: 'EXECUTION_SKIP', skipped: true };
-    default:
-      return { success: false, error: 'Unknown language' };
+    case 'javascript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
+    case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
+    case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
+    case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    default: throw new Error(`${language} has no vector harness to run`);
   }
 }
 
-function executeCSharp(outputDir) {
-  const result = spawnSync('dotnet', ['run', '--project', outputDir, '--no-build', '-c', 'Release'], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
+// Lines of tool output that are warnings or noise, never the error
+const NOISE_LINE = /^\s*$|^# \w+$|^Free Pascal Compiler|^Copyright \(c\)|^Target OS:|^Compiling |^Linking |^\d+ lines compiled|^Note:|^Hint:|redefined at|masks earlier declaration|used only once|Useless use|syntax OK|^\s*at |^\s*\^+\s*$|^Node\.js v|^\s*File "|^Traceback|^\s*~+\s*$|^warning|: warning |Build FAILED|^\s*\d+ Warning|^\s*\d+ Error|Time Elapsed/i;
 
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 &&
-      (output.includes('ALL_VECTORS_PASSED') || output.includes('COMPILE_OK')),
-    output: output,
-    exitCode: result.status
-  };
+/**
+ * The first line of tool output that states an error, cut to a readable length.
+ * @param {string} text - stderr/stdout of a compiler or a crashed run
+ * @param {string} language - language key, for its error shape
+ * @returns {string} the error, or '' when the text has none
+ */
+function firstError(text, language) {
+  const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(l => l && !NOISE_LINE.test(l));
+  if (lines.length === 0) return '';
+  const pick = pattern => lines.find(l => pattern.test(l));
+  let line;
+  if (language === 'csharp') line = pick(/error CS\d+/) || pick(/Unhandled exception|Exception:/);
+  else if (language === 'python') line = [...lines].reverse().find(l => /^\w+(Error|Exception|Exit)\b/.test(l));
+  else if (language === 'javascript') line = pick(/^\w*Error\b/) || pick(/Error:/);
+  else if (language === 'ruby') {
+    // Prism reports "syntax errors found", then each error under a caret
+    const caret = pick(/^\|\s*\^~*\s+\S/);
+    if (caret) line = 'syntax error: ' + caret.replace(/^\|\s*\^~*\s+/, '');
+  }
+  // Compilers: the first line that says error (gcc, javac, rustc, tsc, fpc, fbc, kotlinc, ...)
+  if (!line) line = pick(/\b(error|fatal)\b/i) || lines[0];
+  // Drop the location prefix: "...\test.c:12:5: ", "Program.cs(1,2): ", "test.pas(3,4) ", "ruby.exe: "
+  line = line.replace(/^.*?\.cs\(\d+,\d+\):\s*/, '').replace(/\s*\[[^\]]*\.csproj\]$/, '')
+    .replace(/^\S*ruby(\.exe)?:\s*/i, '')
+    .replace(/^(?:[A-Za-z]:)?[^:]*?[\\/.]?test\.\w+(?::\d+)*(?:\(\d+(?:,\d+)?\))?:?\s*/, '');
+  return line.length > 400 ? line.slice(0, 400) + '…' : line;
 }
 
-function executePython(outputDir) {
-  const srcFile = path.join(outputDir, 'test.py');
-  const result = spawnSync('python', [srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 &&
-      (output.includes('ALL_VECTORS_PASSED') || output.includes('COMPILE_OK')),
-    output: output,
-    exitCode: result.status
-  };
+/** What a compiler printed, both streams (tsc, fpc and fbc report on stdout), or why it did not run. */
+function compilerOutput(result) {
+  const text = (result.stderr || '') + (result.stdout || '');
+  if (text.trim()) return text;
+  if (result.error) return result.error.code === 'ETIMEDOUT' ? 'the compiler timed out' : result.error.message;
+  return result.status === null ? 'the compiler was killed' : '';
 }
 
-function executePHP(outputDir) {
-  const srcFile = path.join(outputDir, 'test.php');
-  const result = spawnSync('php', [srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 && output.includes('COMPILE_OK'),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executePerl(outputDir) {
-  const srcFile = path.join(outputDir, 'test.pl');
-  const result = spawnSync('perl', [srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    // ALL_VECTORS_PASSED means every test vector actually ran and matched.
-    // COMPILE_OK is kept as a fallback so harnesses without vector data
-    // (or older-style output) don't regress to worse-than-before.
-    success: output.includes('ALL_VECTORS_PASSED') ||
-      (result.status === 0 && output.includes('COMPILE_OK')),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executeRuby(outputDir) {
-  const srcFile = path.join(outputDir, 'test.rb');
-  const result = spawnSync('ruby', [srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 && output.includes('COMPILE_OK'),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executeJavaScript(outputDir) {
-  const srcFile = path.join(outputDir, 'test.js');
-  const result = spawnSync('node', [srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    // ALL_VECTORS_PASSED means every test vector actually ran and matched.
-    // COMPILE_OK is kept as a fallback so harnesses without vector data
-    // don't regress to worse-than-before.
-    success: output.includes('ALL_VECTORS_PASSED') ||
-      (result.status === 0 && output.includes('COMPILE_OK')),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executeTypeScript(outputDir) {
-  const srcFile = path.join(outputDir, 'test.ts');
-  const jsFile = path.join(outputDir, 'test.js');
-
-  // Compile to JavaScript first
-  const compileResult = spawnSync('tsc', ['--skipLibCheck', '--outDir', outputDir, srcFile], {
-    encoding: 'utf-8',
-    timeout: 30000,
-    cwd: outputDir
-  });
-
-  if (compileResult.status !== 0)
-    return { success: false, output: compileResult.stderr || 'Compilation failed' };
-
-  // Execute with Node.js
-  const result = spawnSync('node', [jsFile], {
-    encoding: 'utf-8',
-    timeout: 30000,
-    cwd: outputDir
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 && output.includes('COMPILE_OK'),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executeBasic(outputDir) {
-  const srcFile = path.join(outputDir, 'test.bas');
-  const exeFile = path.join(outputDir, process.platform === 'win32' ? 'test.exe' : 'test');
-
-  // Compile to executable
-  const compileResult = spawnSync('fbc64', [srcFile, '-x', exeFile], {
-    encoding: 'utf-8',
-    timeout: 30000,
-    cwd: outputDir
-  });
-
-  if (compileResult.status !== 0)
-    return { success: false, output: compileResult.stderr || 'Compilation failed' };
-
-  // Execute
-  const result = spawnSync(exeFile, [], {
-    encoding: 'utf-8',
-    timeout: 30000,
-    cwd: outputDir
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 && output.includes('COMPILE_OK'),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executeDelphi(outputDir) {
-  const srcFile = path.join(outputDir, 'test.pas');
-  const exeFile = path.join(outputDir, process.platform === 'win32' ? 'test.exe' : 'test');
-
-  // Compile to executable
-  const compileResult = spawnSync('fpc', ['-Mdelphi', '-o' + exeFile, srcFile], {
-    encoding: 'utf-8',
-    timeout: 60000,
-    cwd: outputDir
-  });
-
-  if (compileResult.status !== 0)
-    return { success: false, output: compileResult.stderr || 'Compilation failed' };
-
-  // Execute
-  const result = spawnSync(exeFile, [], {
-    encoding: 'utf-8',
-    timeout: 30000,
-    cwd: outputDir
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 && output.includes('COMPILE_OK'),
-    output: output,
-    exitCode: result.status
-  };
-}
-
-function executeKotlin(outputDir) {
-  const jarFile = path.join(outputDir, 'test.jar');
-
-  // Check if jar exists (compilation should have created it)
-  if (!fs.existsSync(jarFile))
-    return { success: false, output: 'JAR file not found' };
-
-  // Execute with java
-  const result = spawnSync('java', ['-jar', jarFile], {
-    encoding: 'utf-8',
-    timeout: 30000,
-    cwd: outputDir
-  });
-
-  const output = (result.stdout || '') + (result.stderr || '');
-  return {
-    success: result.status === 0 && output.includes('COMPILE_OK'),
-    output: output,
-    exitCode: result.status
-  };
+/**
+ * Read a vector harness run back: per spec algorithm, the vectors that passed
+ * and the first error. A vector the harness never reported (a crash, a
+ * timeout) counts as failed, and so does a run that exited non-zero.
+ * @param {object} spec - harnessSpec() the harness ran
+ * @param {object} run - runProcess() result
+ * @param {string} language - for reading a crash message
+ * @returns {object[]} per algorithm: { passed, total, error }
+ */
+function parseHarnessOutput(spec, run, language) {
+  const results = spec.algorithms.map(a => ({ passed: 0, total: a.vectors.length, error: null, reported: 0 }));
+  const lines = String(run.stdout || '').split(/\r?\n/);
+  let done = false;
+  for (const line of lines) {
+    let m;
+    if ((m = /^@@VEC (\d+) (\d+) (PASS|FAIL)(?: (.*))?$/.exec(line))) {
+      const r = results[Number(m[1])];
+      if (!r) continue;
+      ++r.reported;
+      if (m[3] === 'PASS') ++r.passed;
+      else if (!r.error) r.error = `vector ${m[2]}: ${m[4] || 'failed'}`;
+    } else if ((m = /^@@ALGO (\d+) MISSING (.*)$/.exec(line))) {
+      const r = results[Number(m[1])];
+      if (r && !r.error) r.error = m[2];
+    } else if ((m = /^@@ALGO (\d+) COUNT (\d+)$/.exec(line))) {
+      const r = results[Number(m[1])];
+      if (r && !r.error) r.error = `the transpiled algorithm has ${m[2]} vectors, the reference ${r.total}`;
+    } else if (line.trim() === '@@DONE') {
+      done = true;
+    }
+  }
+  const crash = run.timedOut
+    ? `timed out after ${timeoutSeconds()}s`
+    : run.error || firstError(run.stderr, language) || firstError(run.stdout.split(/\r?\n/).filter(l => !l.startsWith('@@')).join('\n'), language)
+      || `exited with code ${run.exitCode}`;
+  // A crash belongs to the algorithms whose vectors it cut short; a non-zero
+  // exit after every vector reported fails them all, as nothing else explains it.
+  for (const r of results) {
+    if (r.error) continue;
+    if (r.reported < r.total) r.error = crash;
+    else if (done && run.exitCode !== 0) r.error = `exited with code ${run.exitCode} after its vectors: ${crash}`;
+  }
+  return results.map(({ passed, total, error }) => ({ passed, total, error }));
 }
 
 // ============================================================================
-// MAIN TEST ORCHESTRATION
+// ERROR CLASSES
+// ============================================================================
+
+/** An error message with its particulars (names, numbers, bytes, paths) blanked. */
+function normalizeMessage(text) {
+  return String(text)
+    .replace(/\s+at\s+.+?\sline\s\d+(, <[^>]*> line \d+)?\.?/g, '')
+    .replace(/\(?(?:[A-Za-z]:)?[\\/][^:()\n]*?\.(?:py|pl|pm|cs|js|ts|c|cpp|java|go|rs|kt|bas|pas|php|rb)\b\)?(?::\d+)*/g, '<file>')
+    .replace(/'[^']*'|"[^"]*"|`[^`]*`|‘[^’]*’/g, "'…'")
+    .replace(/\b0x[0-9a-f]+\b/gi, 'N')
+    .replace(/\b[0-9a-f]{8,}\b/gi, '<hex>')
+    .replace(/\b\d+\b/g, 'N')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The class an error belongs to, for counting what to fix first: the stage,
+ * then the compiler code or the exception type and its message shape.
+ * @param {string} stage - transpile, compile, execute, harness
+ * @param {string|null} error - the record's first error
+ * @returns {string|null} e.g. "compile: CS0103", "execute: wrong output"
+ */
+function errorClass(stage, error) {
+  if (!error || stage === 'passed' || stage === 'compiled') return null;
+  const text = String(error).replace(/^vector \d+: /, '');
+  let m;
+  let kind;
+  if ((m = /\berror (CS\d+)\b/.exec(text))) kind = m[1];
+  else if (/^output .* expected /.test(text)) kind = 'wrong output';
+  else if (/^round trip gave /.test(text)) kind = 'round trip does not invert';
+  else if (/^encoding is not stable/.test(text)) kind = 'encoding not stable';
+  else if ((m = /Vector field '([^']+)' is not applied: no block cipher named/.exec(text))) kind = 'named block cipher not registered';
+  else if ((m = /Vector field '([^']+)' is not applied/.exec(text))) kind = `field not applied: ${m[1]}`;
+  else if ((m = /Vector field '([^']+)' is missing from the transpiled vector/.exec(text))) kind = `field missing from transpiled vector: ${m[1]}`;
+  else if ((m = /^Setting vector field '([^']+)' failed: (.*)$/.exec(text))) kind = `setting ${m[1]} fails: ${normalizeMessage(m[2]).slice(0, 80)}`;
+  else if (/no algorithm named .* is registered/.test(text)) kind = 'algorithm not registered';
+  else if (/^the transpiled algorithm has \d+ vectors/.test(text)) kind = 'vector count differs';
+  else if (/timed out after/.test(text)) kind = 'timeout';
+  else if (/^dependency /.test(text)) kind = 'dependency fails to transpile';
+  // The member a missing-member error names says what to implement; keep it
+  else if ((m = /^(AttributeError):.* has no attribute '(\w+)'/.exec(text))) kind = `${m[1]}: no attribute '${m[2]}'`;
+  else if ((m = /^(NameError|UnboundLocalError):.*?'(\w+)'/.exec(text))) kind = `${m[1]}: '${m[2]}'`;
+  else if ((m = /^(Can't locate object method) "(\w+)"/.exec(text))) kind = `${m[1]} '${m[2]}'`;
+  else if ((m = /^(Undefined subroutine) &?([\w:]+)/.exec(text))) kind = `${m[1]} '${m[2]}'`;
+  else if ((m = /^(ReferenceError|TypeError): (\w+) is not (defined|a function|a constructor)/.exec(text))) kind = `${m[1]}: ${m[2]} is not ${m[3]}`;
+  else kind = normalizeMessage(text).slice(0, 100);
+  return `${stage}: ${kind}`;
+}
+
+// ============================================================================
+// ONE ALGORITHM FILE (run in a worker process)
+// ============================================================================
+
+const firstLine = text => String(text || '').split(/\r?\n/).find(l => l.trim()) || String(text || '');
+
+/**
+ * Validate one algorithm file in every language: reference, transpile,
+ * harness, compile, run.
+ * @param {{category: string, file: string, path: string}} file - the algorithm file
+ * @param {string[]} languages - language keys
+ * @param {function(object): void} [progress] - receives the outcome so far, before each language
+ * @returns {Promise<object>} { file, category, records, reference, unregistered }
+ */
+async function validateFile(file, languages, progress = () => {}) {
+  const rel = `${file.category}/${file.file}`;
+  const outcome = { file: rel, category: file.category, records: [], reference: [], unregistered: false, current: null };
+  const referenceStarted = Date.now();
+  const reference = await referenceRun(file.path);
+  outcome.referenceSeconds = (Date.now() - referenceStarted) / 1000;
+  // A transpiled run takes many times the JavaScript reference's time (Python
+  // and Perl easily 100x on the big-number and PQC algorithms), so the limit
+  // of a compile or run scales with it, up to half an hour
+  args.timeout = Math.max(timeoutSeconds(), Math.min(1800, Math.ceil(outcome.referenceSeconds * TIMEOUT_PER_REFERENCE_SECOND)));
+  outcome.timeoutSeconds = timeoutSeconds();
+  if (reference.error) {
+    outcome.reference.push({ file: rel, algorithm: null, error: reference.error });
+    return outcome;
+  }
+  if (reference.algorithms.length === 0) {
+    outcome.unregistered = true;
+    return outcome;
+  }
+  for (const a of reference.algorithms)
+    if (a.referenceError || a.vectors.length === 0)
+      outcome.reference.push({ file: rel, algorithm: a.name, error: a.referenceError || 'no test vectors' });
+  const valid = reference.algorithms.filter(a => !a.referenceError && a.vectors.length > 0);
+  if (valid.length === 0) return outcome;
+
+  const spec = harnessSpec(valid);
+  const algoName = path.basename(file.file, '.js');
+  for (const language of languages) {
+    outcome.current = language;
+    const languageStarted = Date.now();
+    progress(outcome);
+    const records = valid.map(a => ({
+      file: rel, category: file.category, algorithm: a.name, language,
+      stage: null, error: null, errorClass: null, vectorsPassed: 0, vectorsTotal: a.vectors.length
+    }));
+    const fail = (stage, error) => { for (const r of records) { r.stage = stage; r.error = error; } };
+
+    const transpiled = transpileAlgorithm(file.path, language, reference.dependencies);
+    if (!transpiled.success) {
+      fail('transpile', firstLine(transpiled.error));
+    } else {
+      const harness = generateTestHarness(language, transpiled.code, spec, algoName, reference.sample);
+      const outputDir = path.join(OUTPUT_DIR, language, file.category, algoName);
+      const compiled = harness.success ? testCompilation(language, harness.code, outputDir, harness.extraFiles) : null;
+      if (!harness.success) {
+        fail('transpile', `harness: ${harness.error}`);
+      } else if (!compiled.success) {
+        const error = firstError(compiled.errors, language) || firstLine(compiled.errors) || 'compilation failed';
+        fail(/timed out/i.test(error) ? 'timeout' : 'compile', error);
+      } else if (args.compileOnly || !VECTOR_HARNESS_LANGUAGES.has(language)) {
+        fail('compiled', null);
+      } else {
+        const execution = executeCode(language, outputDir);
+        const results = parseHarnessOutput(spec, execution, language);
+        records.forEach((r, i) => {
+          r.vectorsPassed = results[i].passed;
+          r.error = results[i].error;
+          // A run cut off by its time limit says nothing about the code it ran
+          r.stage = !r.error ? 'passed' : execution.timedOut && /^timed out after/.test(r.error) ? 'timeout' : 'execute';
+        });
+      }
+    }
+    const seconds = (Date.now() - languageStarted) / 1000;
+    for (const r of records) {
+      r.errorClass = errorClass(r.stage, r.error);
+      r.seconds = seconds;
+    }
+    outcome.records.push(...records);
+  }
+  outcome.current = null;
+  return outcome;
+}
+
+// ============================================================================
+// THE RUN: WORKERS, SUMMARY, REPORT
 // ============================================================================
 
 /**
+ * Validate one file in a worker process of its own, so every file starts from
+ * a clean require cache and registry and runs in parallel with the others.
+ * A worker that dies or times out fails the language it was working on.
+ * @returns {Promise<object>} validateFile()'s outcome
+ */
+function runWorker(file, languages, scratchDir, index) {
+  const payloadFile = path.join(scratchDir, `job-${index}.json`);
+  const resultFile = path.join(scratchDir, `result-${index}.json`);
+  fs.writeFileSync(payloadFile, JSON.stringify({
+    file, languages, resultFile,
+    options: { compileOnly: args.compileOnly, timeout: args.timeout, verbose: args.verbose }
+  }));
+  return new Promise(resolve => {
+    const child = spawn(process.execPath, [__filename, '--worker', payloadFile], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-8192); });
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, WORKER_TIMEOUT_SECONDS * 1000);
+    child.on('close', code => {
+      clearTimeout(timer);
+      let outcome = null;
+      try { outcome = JSON.parse(fs.readFileSync(resultFile, 'utf-8')); } catch (e) { outcome = null; }
+      const rel = `${file.category}/${file.file}`;
+      const died = timedOut ? `the worker timed out after ${WORKER_TIMEOUT_SECONDS}s`
+        : `the worker exited with code ${code}: ${firstError(stderr, 'javascript') || 'no message'}`;
+      if (!outcome) {
+        outcome = { file: rel, category: file.category, records: [], reference: [], unregistered: false, current: null,
+          crash: `${died} before its reference finished` };
+      } else if (outcome.current || code !== 0) {
+        const done = new Set(outcome.records.map(r => r.language));
+        const names = [...new Set(outcome.records.map(r => r.algorithm))];
+        for (const language of languages.filter(l => !done.has(l)))
+          for (const algorithm of names.length ? names : [null])
+            outcome.records.push({ file: rel, category: file.category, algorithm, language, stage: 'harness',
+              error: language === outcome.current ? died : `not run: ${died}`, errorClass: 'harness: worker died',
+              vectorsPassed: 0, vectorsTotal: 0 });
+        outcome.crash = died;
+      }
+      resolve(outcome);
+    });
+  });
+}
+
+/** Run tasks with at most `limit` in flight, in order of submission. */
+async function pool(items, limit, task) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await task(items[i], i);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+}
+
+const STAGE_OK = new Set(['passed', 'compiled']);
+
+/**
+ * Count transpiled, compiled and executed algorithms per language and per
+ * category, decide each language, and rank its error classes.
+ * A language passes when every algorithm it transpiled also compiled and
+ * passed every vector (or compiled, where it has no vector harness or the run
+ * is compile-only), and no worker died on it.
+ * @param {object[]} records - every algorithm/language result
+ * @param {string[]} languages - language keys, in display order
+ * @returns {object} { byLanguage, byCategory }
+ */
+function summarize(records, languages) {
+  const counts = () => ({ considered: 0, transpiled: 0, compiled: 0, executed: 0, timedOut: 0 });
+  const add = (c, r) => {
+    ++c.considered;
+    if (r.stage !== 'transpile' && r.stage !== 'harness') ++c.transpiled;
+    if (r.stage === 'execute' || STAGE_OK.has(r.stage) || (r.stage === 'timeout' && !/compil|build|syntax/i.test(r.error || ''))) ++c.compiled;
+    if (r.stage === 'timeout') ++c.timedOut;
+    if (r.stage === 'passed') ++c.executed;
+  };
+  const byLanguage = {};
+  for (const language of languages) {
+    const mine = records.filter(r => r.language === language);
+    const c = counts();
+    mine.forEach(r => add(c, r));
+    const classes = {};
+    for (const r of mine) if (r.errorClass) classes[r.errorClass] = (classes[r.errorClass] || 0) + 1;
+    c.errorClasses = Object.entries(classes).map(([name, count]) => ({ class: name, count }))
+      .sort((a, b) => b.count - a.count || (a.class < b.class ? -1 : a.class > b.class ? 1 : 0));
+    // Timeouts are counted on their own and fail no language
+    c.passed = mine.every(r => r.stage === 'transpile' || r.stage === 'timeout' || STAGE_OK.has(r.stage));
+    byLanguage[language] = c;
+  }
+  const byCategory = {};
+  for (const category of [...new Set(records.map(r => r.category))].sort()) {
+    byCategory[category] = {};
+    for (const language of languages) {
+      const c = counts();
+      records.filter(r => r.category === category && r.language === language).forEach(r => add(c, r));
+      byCategory[category][language] = c;
+    }
+  }
+  return { byLanguage, byCategory };
+}
+
+function defaultJobs() {
+  return Math.max(1, Math.floor((os.cpus() || []).length / 2) || 1);
+}
+
+const STAGE_SHORT = { passed: 'ok', compiled: 'compiled', transpile: 'transpile', compile: 'compile', execute: 'execute', timeout: 'timeout', harness: 'harness' };
+
+function progressLine(outcome, done, total, seconds, languages) {
+  const head = `  [${String(done).padStart(String(total).length)}/${total}] ${outcome.file.padEnd(38)}`;
+  if (outcome.crash && outcome.records.length === 0) return `${head} ${C.red}${outcome.crash}${C.reset}`;
+  if (outcome.unregistered) return `${head} ${C.dim}registers no algorithm${C.reset}`;
+  if (outcome.records.length === 0) return `${head} ${C.yellow}reference fails${C.reset} (${outcome.reference.map(r => r.error).join('; ').slice(0, 100)})`;
+  const parts = languages.map(language => {
+    const mine = outcome.records.filter(r => r.language === language);
+    const bad = mine.filter(r => !STAGE_OK.has(r.stage));
+    if (bad.length === 0) return `${C.green}${language}:ok${C.reset}`;
+    const stages = [...new Set(bad.map(r => STAGE_SHORT[r.stage] || r.stage))].join('+');
+    const vectors = bad.some(r => r.stage === 'execute')
+      ? ` ${mine.reduce((s, r) => s + r.vectorsPassed, 0)}/${mine.reduce((s, r) => s + r.vectorsTotal, 0)}` : '';
+    return `${C.red}${language}:${stages}${vectors}${C.reset}`;
+  });
+  const skipped = outcome.reference.length ? ` ${C.yellow}(${outcome.reference.length} reference-failed)${C.reset}` : '';
+  return `${head} ${parts.join(' ')}${skipped} ${C.dim}${seconds.toFixed(1)}s${C.reset}`;
+}
+
+function printSummary(summary, languages, available, totals, elapsed) {
+  console.log(`\n${'═'.repeat(72)}`);
+  console.log(`${C.bright}Summary${C.reset} (${elapsed}s, ${totals.jobs} jobs)\n`);
+  console.log(`Files: ${totals.files} (${totals.unregistered} register no algorithm); `
+    + `algorithms: ${totals.algorithms} validated, ${totals.referenceFailed} failed their JavaScript reference (held against no language)`);
+  if (totals.crashed) console.log(`${C.red}Workers died on ${totals.crashed} file(s)${C.reset}`);
+
+  console.log('\nLanguage results (algorithms; transpiled of considered, compiled and executed of transpiled):');
+  for (const language of languages) {
+    const s = summary.byLanguage[language];
+    const verdict = s.passed ? `${C.green}PASS${C.reset}` : `${C.red}FAIL${C.reset}`;
+    console.log(`  ${(available[language] ? available[language].name : language).padEnd(12)} `
+      + `transpiled ${String(s.transpiled).padStart(5)}/${s.considered}  `
+      + `compiled ${String(s.compiled).padStart(5)}/${s.transpiled}  `
+      + (args.compileOnly || !VECTOR_HARNESS_LANGUAGES.has(language) ? 'executed     -  ' : `executed ${String(s.executed).padStart(5)}/${s.compiled}  `)
+      + verdict + (s.timedOut ? `  (${s.timedOut} timed out)` : ''));
+  }
+
+  console.log('\nBy category (transpiled/compiled/executed of considered):');
+  for (const [category, perLanguage] of Object.entries(summary.byCategory)) {
+    const any = Object.values(perLanguage)[0];
+    console.log(`  ${category.padEnd(12)} (${String(any.considered).padStart(3)}) `
+      + languages.map(l => `${l} ${perLanguage[l].transpiled}/${perLanguage[l].compiled}/${perLanguage[l].executed}`).join('  '));
+  }
+
+  const top = args.verbose ? 25 : 8;
+  console.log(`\nTop error classes (of ${top}):`);
+  for (const language of languages) {
+    const classes = summary.byLanguage[language].errorClasses;
+    if (!classes.length) continue;
+    console.log(`  ${language}:`);
+    for (const c of classes.slice(0, top)) console.log(`    ${String(c.count).padStart(5)}  ${c.class}`);
+  }
+}
+
+/**
  * VALIDATION: transpile every algorithm to every available language, compile
- * it and, for the interpreted ones, run its test vectors.
- * @param {object} options - { verbose, quick, report, compileOnly, category, language, algorithm }
+ * it and, where the language has a vector harness, run every vector.
+ * @param {object} options - { verbose, quick, report, compileOnly, category, language, algorithm, jobs, timeout }
+ *   report: true for the default path, or a path
  * @returns {Promise<object>} { passed, failed, detail } counted in languages
  */
 async function run(options = {}) {
@@ -2521,289 +1940,129 @@ async function run(options = {}) {
     args[key] = options[key] === undefined ? (typeof args[key] === 'boolean' ? false : null) : options[key];
 
   const startTime = Date.now();
-
-  // Detect compilers
   const availableCompilers = detectCompilers();
 
-  // Filter by requested language
   let targetLanguages = Object.keys(availableCompilers);
   if (args.language) {
-    if (availableCompilers[args.language]) {
-      targetLanguages = [args.language];
-    } else {
+    if (!availableCompilers[args.language]) {
       console.log(`${C.red}Language '${args.language}' not available.${C.reset}`);
       return { passed: 0, failed: 1, detail: `language ${args.language} not available` };
     }
+    targetLanguages = [args.language];
   }
-
   if (targetLanguages.length === 0) {
     console.log(`${C.red}No compilers/interpreters found.${C.reset}`);
     return { passed: 0, failed: 1, detail: 'no compilers/interpreters found' };
   }
+  console.log(`${C.cyan}Target languages: ${targetLanguages.map(l => availableCompilers[l].name).join(', ')}${C.reset}`);
 
-  console.log(`${C.cyan}Target languages: ${targetLanguages.map(l => availableCompilers[l].name).join(', ')}${C.reset}\n`);
-
-  // Find algorithm files
-  const categories = fs.readdirSync(ALGORITHMS_DIR).filter(d =>
-    fs.statSync(path.join(ALGORITHMS_DIR, d)).isDirectory()
-  );
-
-  let algorithmFiles = [];
+  const algorithmFiles = [];
+  const categories = fs.readdirSync(ALGORITHMS_DIR).filter(d => fs.statSync(path.join(ALGORITHMS_DIR, d)).isDirectory()).sort();
   for (const category of categories) {
     if (args.category && category !== args.category) continue;
-
-    const categoryPath = path.join(ALGORITHMS_DIR, category);
-    let files = fs.readdirSync(categoryPath)
-      .filter(f => f.endsWith('.js') && !f.endsWith('.backup'))
-      .map(f => ({ category, file: f, path: path.join(categoryPath, f) }));
-
-    // Filter by algorithm name first (before quick limit)
-    if (args.algorithm) {
-      files = files.filter(a =>
-        a.file.toLowerCase().includes(args.algorithm.toLowerCase())
-      );
-    }
-
-    // Apply quick limit per category
-    if (args.quick) {
-      algorithmFiles.push(...files.slice(0, 3));
-    } else {
-      algorithmFiles.push(...files);
-    }
+    let files = fs.readdirSync(path.join(ALGORITHMS_DIR, category))
+      .filter(f => f.endsWith('.js') && !f.endsWith('.data.js'))
+      .sort()
+      .map(f => ({ category, file: f, path: path.join(ALGORITHMS_DIR, category, f) }));
+    if (args.algorithm) files = files.filter(a => a.file.toLowerCase().includes(args.algorithm.toLowerCase()));
+    algorithmFiles.push(...(args.quick ? files.slice(0, 3) : files));
+  }
+  if (algorithmFiles.length === 0) {
+    console.log(`${C.red}No algorithm file matches.${C.reset}`);
+    return { passed: 0, failed: 1, detail: 'no algorithm file matches' };
   }
 
-  console.log(`${C.cyan}Found ${algorithmFiles.length} algorithms to test${C.reset}\n`);
-
-  // Create output directory
+  const jobs = Math.max(1, Number(args.jobs) || defaultJobs());
+  console.log(`${C.cyan}${algorithmFiles.length} algorithm files, ${jobs} at a time${C.reset}\n`);
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cipher-validation-'));
 
-  // Results tracking
-  const results = {
-    total: 0,
-    jsValidated: 0,
-    byCategory: {},
-    byLanguage: {},
-    details: [],
-    startTime: new Date().toISOString(),
-  };
-
-  for (const lang of targetLanguages) {
-    results.byLanguage[lang] = {
-      transpiled: 0,
-      compiled: 0,
-      executed: 0,
-      failed: 0,
-      errors: []
-    };
+  let done = 0;
+  let outcomes;
+  try {
+    // Largest files first: they take longest, and started last they would
+    // leave every other job idle at the end of the run
+    const schedule = [...algorithmFiles].sort((a, b) => fs.statSync(b.path).size - fs.statSync(a.path).size);
+    outcomes = await pool(schedule, jobs, async (file, i) => {
+      const started = Date.now();
+      const outcome = await runWorker(file, targetLanguages, scratchDir, i);
+      console.log(progressLine(outcome, ++done, algorithmFiles.length, (Date.now() - started) / 1000, targetLanguages));
+      return outcome;
+    });
+  } finally {
+    fs.rmSync(scratchDir, { recursive: true, force: true });
   }
 
-  // Group by category for display
-  const byCategory = {};
-  for (const algo of algorithmFiles) {
-    if (!byCategory[algo.category]) byCategory[algo.category] = [];
-    byCategory[algo.category].push(algo);
-  }
-
-  // Process each category
-  for (const [category, algos] of Object.entries(byCategory)) {
-    console.log(`\n${C.bright}━━━ ${category.toUpperCase()} (${algos.length} algorithms) ━━━${C.reset}`);
-
-    results.byCategory[category] = { total: 0, jsPass: 0, langResults: {} };
-    for (const lang of targetLanguages) {
-      results.byCategory[category].langResults[lang] = { transpiled: 0, compiled: 0, executed: 0 };
-    }
-
-    for (const algo of algos) {
-      results.total++;
-      results.byCategory[category].total++;
-
-      const algoName = path.basename(algo.file, '.js');
-      process.stdout.write(`  ${algoName.padEnd(25)} `);
-
-      // First validate with JavaScript
-      const jsResult = runJSValidation(algo.path);
-
-      if (!jsResult.passed) {
-        console.log(`${C.yellow}SKIP${C.reset} (JS validation failed)`);
-        continue;
-      }
-
-      if (!jsResult.testVectors || jsResult.testVectors.length === 0) {
-        console.log(`${C.yellow}SKIP${C.reset} (no test vectors)`);
-        continue;
-      }
-
-      results.jsValidated++;
-      results.byCategory[category].jsPass++;
-
-      const langResults = [];
-
-      // Test each language
-      for (const lang of targetLanguages) {
-        const outputDir = path.join(OUTPUT_DIR, lang, category, algoName);
-
-        // Transpile
-        const transpileResult = transpileAlgorithm(algo.path, lang);
-
-        if (!transpileResult.success || !transpileResult.code) {
-          langResults.push({ lang, status: 'transpile-fail', error: transpileResult.error });
-          results.byLanguage[lang].failed++;
-          continue;
-        }
-
-        results.byLanguage[lang].transpiled++;
-        results.byCategory[category].langResults[lang].transpiled++;
-
-        // Generate test harness
-        const harnessResult = generateTestHarness(
-          lang,
-          transpileResult.code,
-          jsResult.testVectors,
-          algoName
-        );
-
-        if (!harnessResult.success) {
-          langResults.push({ lang, status: 'harness-fail', error: harnessResult.error });
-          results.byLanguage[lang].failed++;
-          continue;
-        }
-
-        // Test compilation
-        const compileResult = testCompilation(lang, harnessResult.code, outputDir);
-
-        if (!compileResult.success) {
-          langResults.push({ lang, status: 'compile-fail', error: compileResult.errors?.substring(0, 200) });
-          results.byLanguage[lang].failed++;
-          results.byLanguage[lang].errors.push({
-            algo: algoName,
-            stage: 'compile',
-            error: compileResult.errors?.substring(0, 100)
-          });
-          continue;
-        }
-
-        results.byLanguage[lang].compiled++;
-        results.byCategory[category].langResults[lang].compiled++;
-
-        // Execute if not compile-only
-        const execResult = executeCode(lang, outputDir);
-
-        if (execResult.skipped) {
-          langResults.push({ lang, status: 'compiled' });
-        } else if (execResult.success) {
-          langResults.push({ lang, status: 'executed' });
-          results.byLanguage[lang].executed++;
-          results.byCategory[category].langResults[lang].executed++;
-        } else {
-          langResults.push({ lang, status: 'exec-fail', error: execResult.output?.substring(0, 100) });
-          results.byLanguage[lang].errors.push({
-            algo: algoName,
-            stage: 'execute',
-            error: execResult.output?.substring(0, 100)
-          });
-        }
-
-        // Store detail for report
-        results.details.push({
-          algorithm: algoName,
-          category,
-          language: lang,
-          transpiled: transpileResult.success,
-          compiled: compileResult.success,
-          executed: execResult.success,
-          testVectors: jsResult.testVectors?.length || 0
-        });
-      }
-
-      // Print result summary
-      // 'exec-fail' also means compilation succeeded, just execution failed
-      const compiled = langResults.filter(r => ['compiled', 'executed', 'exec-fail'].includes(r.status)).length;
-      const executed = langResults.filter(r => r.status === 'executed').length;
-      const transpiled = langResults.filter(r => r.status !== 'transpile-fail').length;
-
-      if (compiled === targetLanguages.length) {
-        if (executed === targetLanguages.length || args.compileOnly) {
-          console.log(`${C.green}OK${C.reset} (${compiled}/${targetLanguages.length})`);
-        } else {
-          console.log(`${C.green}COMPILED${C.reset} (${compiled}/${targetLanguages.length})`);
-        }
-      } else if (transpiled === targetLanguages.length) {
-        const failedLangs = langResults.filter(r => !['compiled', 'executed'].includes(r.status)).map(r => `${r.lang}:${r.status}`).join(',');
-        console.log(`${C.yellow}PARTIAL${C.reset} (compile: ${compiled}/${transpiled}) [${failedLangs}]`);
-      } else {
-        const failedLangs = langResults.filter(r => r.status === 'transpile-fail').map(r => r.lang).join(',');
-        console.log(`${C.red}FAIL${C.reset} (transpile: ${transpiled}/${targetLanguages.length}) [${failedLangs}]`);
-      }
-    }
-  }
-
-  // Print summary
+  const languageOrder = l => targetLanguages.indexOf(l);
+  const records = outcomes.flatMap(o => o.records).sort((a, b) =>
+    a.file.localeCompare(b.file) || String(a.algorithm).localeCompare(String(b.algorithm)) || languageOrder(a.language) - languageOrder(b.language));
+  const reference = outcomes.flatMap(o => o.reference);
+  const summary = summarize(records, targetLanguages);
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const totals = {
+    jobs,
+    files: algorithmFiles.length,
+    unregistered: outcomes.filter(o => o.unregistered).length,
+    algorithms: new Set(records.map(r => `${r.file}\u0000${r.algorithm}`)).size,
+    referenceFailed: reference.length,
+    crashed: outcomes.filter(o => o.crash).length
+  };
+  printSummary(summary, targetLanguages, availableCompilers, totals, elapsed);
 
-  console.log(`\n${'═'.repeat(60)}`);
-  console.log(`${C.bright}Summary${C.reset} (${elapsed}s)\n`);
-
-  console.log(`Algorithms: ${results.total} total, ${results.jsValidated} JS-validated\n`);
-
-  console.log('Language Results:');
-  for (const [lang, stats] of Object.entries(results.byLanguage)) {
-    const transpilePct = results.jsValidated > 0 ? Math.round(stats.transpiled / results.jsValidated * 100) : 0;
-    const compilePct = stats.transpiled > 0 ? Math.round(stats.compiled / stats.transpiled * 100) : 0;
-    const color = compilePct >= 90 ? C.green : (compilePct >= 50 ? C.yellow : C.red);
-
-    console.log(`  ${availableCompilers[lang]?.name || lang}:`);
-    console.log(`    Transpiled: ${stats.transpiled}/${results.jsValidated} (${transpilePct}%)`);
-    console.log(`    Compiled:   ${color}${stats.compiled}/${stats.transpiled} (${compilePct}%)${C.reset}`);
-    if (!args.compileOnly && stats.executed > 0) {
-      console.log(`    Executed:   ${stats.executed}/${stats.compiled}`);
-    }
-  }
-
-  // Category breakdown
-  console.log('\nBy Category:');
-  for (const [category, stats] of Object.entries(results.byCategory)) {
-    const langSummary = Object.entries(stats.langResults)
-      .map(([l, s]) => `${l}:${s.compiled}/${s.transpiled}`)
-      .join(' ');
-    console.log(`  ${category}: ${stats.jsPass}/${stats.total} JS-valid | ${langSummary}`);
-  }
-
-  // Generate report if requested
   if (args.report) {
-    results.endTime = new Date().toISOString();
-    results.elapsedSeconds = elapsed;
-    const reportPath = path.join(OUTPUT_DIR, 'validation-report.json');
-    fs.writeFileSync(reportPath, JSON.stringify(results, null, 2));
+    const reportPath = args.report === true ? DEFAULT_REPORT : path.resolve(String(args.report));
+    fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+    fs.writeFileSync(reportPath, JSON.stringify({
+      generated: new Date().toISOString(),
+      elapsedSeconds: Number(elapsed),
+      options: { quick: args.quick, compileOnly: args.compileOnly, category: args.category, language: args.language, algorithm: args.algorithm, jobs, timeout: timeoutSeconds() },
+      languages: Object.fromEntries(targetLanguages.map(l => [l, { name: availableCompilers[l].name, version: availableCompilers[l].version, vectorHarness: VECTOR_HARNESS_LANGUAGES.has(l) }])),
+      totals,
+      summary,
+      results: records,
+      referenceFailures: reference,
+      crashes: outcomes.filter(o => o.crash).map(o => ({ file: o.file, error: o.crash }))
+    }, null, 2));
     console.log(`\n${C.cyan}Report saved to: ${reportPath}${C.reset}`);
   }
 
-  // Show top errors if verbose
-  if (args.verbose) {
-    console.log(`\n${C.red}Sample Errors:${C.reset}`);
-    for (const [lang, stats] of Object.entries(results.byLanguage)) {
-      if (stats.errors.length > 0) {
-        console.log(`  ${lang}:`);
-        for (const err of stats.errors.slice(0, 3)) {
-          console.log(`    ${err.algo} [${err.stage}]: ${err.error?.substring(0, 80) || 'unknown'}`);
-        }
-      }
-    }
-  }
-
-  // A language passes when nothing failed, or when every algorithm it
-  // transpiled also compiled.
-  const languageOk = s => s.failed === 0 || (s.compiled === s.transpiled);
-  const languages = Object.entries(results.byLanguage);
-  const passedLanguages = languages.filter(([, s]) => languageOk(s)).length;
-
-  console.log(`\n${passedLanguages === languages.length ? C.green : C.yellow}Validation complete.${C.reset}`);
+  const failedLanguages = targetLanguages.filter(l => !summary.byLanguage[l].passed);
+  console.log(`\n${failedLanguages.length === 0 ? C.green : C.red}Validation complete${failedLanguages.length ? `: ${failedLanguages.join(', ')} failing` : ''}.${C.reset}`);
   return {
-    passed: passedLanguages,
-    failed: languages.length - passedLanguages,
-    detail: `${results.jsValidated}/${results.total} algorithms JS-validated; `
-      + languages.map(([lang, s]) => `${lang} compiled ${s.compiled}/${s.transpiled}`
-        + (!args.compileOnly && s.executed > 0 ? `, executed ${s.executed}/${s.compiled}` : '')).join('; ')
+    passed: targetLanguages.length - failedLanguages.length,
+    failed: failedLanguages.length,
+    detail: `${totals.algorithms} algorithms, ${totals.referenceFailed} reference-failed; `
+      + targetLanguages.map(l => {
+        const s = summary.byLanguage[l];
+        return `${l} transpiled ${s.transpiled}/${s.considered}, compiled ${s.compiled}/${s.transpiled}`
+          + (args.compileOnly || !VECTOR_HARNESS_LANGUAGES.has(l) ? '' : `, executed ${s.executed}/${s.compiled}`);
+      }).join('; ')
   };
 }
 
-module.exports = { run };
+/** Worker entry: validate the file named by the payload and write its outcome. */
+async function workerMain(payloadFile) {
+  const payload = JSON.parse(fs.readFileSync(payloadFile, 'utf-8'));
+  Object.assign(args, payload.options);
+  const write = outcome => fs.writeFileSync(payload.resultFile, JSON.stringify(outcome));
+  const outcome = await validateFile(payload.file, payload.languages, write);
+  write(outcome);
+}
+
+if (require.main === module) {
+  const at = process.argv.indexOf('--worker');
+  if (at < 0) {
+    console.error('Run the validation through the suite: node tests/TranspilerSuite.js --only=validation');
+    process.exit(2);
+  }
+  workerMain(process.argv[at + 1]).then(() => process.exit(0), error => {
+    console.error(error && error.stack || String(error));
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  run, validateFile, vectorPlan, harnessSpec, generateTestHarness, parseHarnessOutput,
+  errorClass, summarize, firstError, transpileAlgorithm, frameworkSurface, testCompilation, executeCode,
+  detectCompilers, probeTool, LANGUAGE_COMPILERS
+};
