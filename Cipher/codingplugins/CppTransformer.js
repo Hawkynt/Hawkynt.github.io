@@ -1618,7 +1618,13 @@
       if (!r || r.c === undefined) return { c: `js::unsupported(${u16Literal('expression ' + node.type)})`, t: T.any };
       // differential tracing: the value of a traced site of the source
       if (this.traceSites && node.range && this.traceSites.has(node.range[0] + ':' + node.range[1]) && !['void', 'sfn', 'null', 'undef'].includes(r.t.k))
-        return Object.assign({}, r, { c: `js::trace(${node.range[0]}, ${r.c})`, lvalue: false, accessor: null, array: null });
+      {
+        // traced as the IL types it (a 32-bit integer the code computes as int32 prints as its uint32)
+        const ilT = this.type(node.contextType || node.resultType);
+        const v = this.tmp('tv');
+        const shown = isInt(ilT) && isInt(r.t) ? this.cv({ c: v, t: r.t }, ilT) : v;
+        return Object.assign({}, r, { c: `({ auto ${v} = ${r.c}; js::trace(${node.range[0]}, ${shown}); ${v}; })`, lvalue: false, accessor: null, array: null });
+      }
       return r;
     }
 
