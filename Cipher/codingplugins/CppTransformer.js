@@ -2752,7 +2752,14 @@
           return { c: `${o.c}.sort(${f})`, t: o.t };
         }
         case 'map': {
-          const outE = rt.k === 'arr' ? rt.e : T.any;
+          let outE = rt.k === 'arr' ? rt.e : T.any;
+          // what the callback returns decides the elements (the IL may give the mapped
+          // array the source's element type although the callback builds objects)
+          const cb = args[0];
+          if (cb && /^(ArrowFunction|ArrowFunctionExpression|FunctionExpression)$/.test(cb.type)) {
+            const ret = this.returnTypeOf(cb, null);
+            if (ret.k === 'any' && outE.k === 'cls') outE = T.any;
+          }
           const f = this.callbackFor(args[0], [et, T.i32], outE);
           return { c: `js::arrayMap<${this.cpp(outE)}>(${o.c}, ${f})`, t: T.arr(outE) };
         }
