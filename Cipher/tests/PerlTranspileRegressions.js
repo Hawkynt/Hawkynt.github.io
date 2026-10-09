@@ -348,6 +348,14 @@ check('numbers: float64 arithmetic rounds as doubles do and reads an int32 with 
   expectOutput(runPerl(DOUBLE_SNIPPET, 'print main::lcg(0x89ABCDEF), "\\n";'), '1,1824502016');
 });
 
+const MULTIPLY_SNIPPET = '/** @param {uint32} value @returns {uint32} */ function h(value) { return OpCodes.ToUint32((value|0) * 0x27d4eb2d); }\n' +
+  '/** @returns {string} */ function f() { return [h(0x9E3779B9), h(12345), OpCodes.Mul32(0x9E3779B9, 0x85EBCA6B)].join(","); }';
+check('numbers: a raw 32-bit product is a rounded double of signed operands; Mul32 keeps the exact low bits', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f() is "3098622080,3397438725,3238976083"
+  expectOutput(runPerl(MULTIPLY_SNIPPET, 'print main::f(), "\\n";'), '3098622080,3397438725,3238976083');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

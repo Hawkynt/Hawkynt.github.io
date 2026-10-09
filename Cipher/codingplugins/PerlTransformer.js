@@ -9632,7 +9632,11 @@
       // up to 2**53 exactly, so forcing float arithmetic there changes
       // nothing about the result, only (negligibly) how it's computed.
       if (operator === '*' && !this._fileHasBigIntLiterals) {
-        return this._forceDoubleMultiply(left, right);
+        // OpCodes.Mul32 (Math.imul's spelling) keeps the exact low 32 bits,
+        // which Perl's exact integer product has
+        if (node.opCodesMethod === 'Mul32')
+          return new PerlBinaryExpression(new PerlGrouped(new PerlBinaryExpression(left, '*', right)), '&', PerlLiteral.Number(0xFFFFFFFF));
+        return this._forceDoubleMultiply(left, right, node.left, node.right);
       }
 
       // NOTE: a "+"/"-" immediately combining with a forced-double multiply
@@ -9715,9 +9719,16 @@
      * @param {PerlNode} right - already-transformed right operand
      * @returns {PerlBinaryExpression}
      */
-    _forceDoubleMultiply(left, right) {
-      const one = new PerlRawCode('1.0');
-      const result = new PerlBinaryExpression(new PerlBinaryExpression(one, '*', left), '*', right);
+    _forceDoubleMultiply(left, right, leftNode, rightNode) {
+      // Perl multiplies integral operands exactly however they are written
+      // ("1.0 * $a * $b" included); _F64 rounds the product to the double
+      // JavaScript computes. A stored int32 operand takes part with its sign.
+      const signed = (value, n) => /^(int32|int)$/.test(n?.resultType || '') &&
+        /^(Identifier|MemberExpression|ThisPropertyAccess|BinaryExpression)$/.test(n?.type || '') &&
+        !(n.type === 'BinaryExpression' && n.operator !== '|')
+        ? new PerlCall(new PerlIdentifier('main::_Int32', ''), [value]) : value;
+      const result = new PerlCall(new PerlIdentifier('main::_F64', ''),
+        [new PerlGrouped(new PerlBinaryExpression(signed(left, leftNode), '*', signed(right, rightNode)))]);
       // Marker consumed by _containsForcedDoubleMultiply (see the Cast/
       // 'uint32'/'int32' cases) - identifies which Cast operands actually
       // need the POSIX::fmod-backed OpCodes::u32mask safe extraction
