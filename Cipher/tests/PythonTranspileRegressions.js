@@ -535,6 +535,24 @@ check('defaults: a default reading an earlier parameter or building an array is 
     ["[3] [1] [5] 6 3 5 [3, 'q', -1]"]);
 });
 
+check('hints: nullable value types are Optional, tuples a list of their kinds, @template a TypeVar', () => {
+  const js = 'const ROWS = [["a", 1, "b"], ["c", 2, "d"]];\n/** @type {int32|null} */\nlet maybe = null;\n' +
+    '/** @template T @param {int32} n @param {T} v @returns {T[]} */\nfunction filled(n, v) { /** @type {T[]} */ const out = []; for (let i = 0; i < n; i++) out.push(v); return out; }\n' +
+    '/** @param {int32|null} x @returns {int32|null} */\nfunction f(x) { /** @type {int32|null} */ let y = x; const [p, q, r] = ROWS[0]; return y === null ? -1 : y + q; }\n' +
+    'class K { /** @param {uint32|null} a @returns {boolean} */ m(a) { return a === null; } }';
+  // Given a nullable module variable, parameter, local and return, a table of mixed rows and a generic helper
+  const code = transpile(js);
+  expectMatch(code, /^T = TypeVar\("T"\)$/m, 'a TypeVar for the template');
+  expectMatch(code, /def filled\(n: int = None, v: T = None, \*_js_extra_args\) -> List\[T\]:/, 'the generic signature');
+  expectMatch(code, /def f\(x: Optional\[int\] = None, \*_js_extra_args\) -> Optional\[int\]:/, 'Optional parameter and return');
+  expectMatch(code, /^\s+y: Optional\[int\] = x$/m, 'an Optional local');
+  expectMatch(code, /^maybe: Optional\[int\] = None$/m, 'an Optional module variable');
+  expectMatch(code, /: List\[List\[Union\[str, int\]\]\] = /, 'the tuple rows');
+  expectMatch(code, /return -1 if y is None else/, 'an identity test against None');
+  // Then the module still runs with the hints evaluated at definition time
+  return expectOutput(runPython(js, 'print(filled(2, 7), f(None), f(3), maybe, K().m(None), K().m(0))'), ['[7, 7] -1 4 None True False']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

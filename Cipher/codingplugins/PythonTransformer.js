@@ -459,6 +459,97 @@
     }
 
     /**
+     * The Python hint for an IL type: value types, arrays, positional tuples
+     * ('[string,int32]', held as a list, so List[Union[str, int]]) and
+     * @template parameters (a TypeVar). `nullable` (the IL flag on value
+     * types) makes it Optional. Other names - classes, which a hint
+     * evaluated at def time could not yet see - give null.
+     * @param {string} ilType - IL type
+     * @param {boolean} [nullable] - the IL node's nullable flag
+     * @returns {PythonType|null}
+     */
+    _pythonTypeOfIL(ilType, nullable = false) {
+      // a JSDoc union as written: `int32|null`
+      if (typeof ilType === 'string' && ilType.includes('|') && !/[\[<(]/.test(ilType)) {
+        const members = ilType.split('|').map(m => m.trim());
+        const rest = members.filter(m => m !== 'null' && m !== 'undefined');
+        if (rest.length !== 1) return null;
+        return this._pythonTypeOfIL(rest[0], nullable || rest.length < members.length);
+      }
+      const inner = this._pythonTypeOfILCore(ilType);
+      if (!inner) return null;
+      if (!nullable || inner.name === 'None' || inner.name === 'Any') return inner;
+      this.imports.add('Optional');
+      return PythonType.Optional(inner);
+    }
+
+    _pythonTypeOfILCore(ilType) {
+      if (typeof ilType !== 'string' || !ilType) return null;
+      const t = ilType.trim();
+      if (t.endsWith('[]')) {
+        const element = this._pythonTypeOfILCore(t.slice(0, -2));
+        if (!element) return null;
+        this.imports.add('List');
+        return PythonType.List(element);
+      }
+      if (t.startsWith('[') && t.endsWith(']')) {
+        const parts = PythonTransformer._splitTupleType(t.slice(1, -1)).map(e => this._pythonTypeOfILCore(e));
+        if (parts.length === 0 || parts.some(e => !e)) return null;
+        const distinct = [...new Map(parts.map(e => [e.toString(), e])).values()];
+        this.imports.add('List');
+        if (distinct.length === 1) return PythonType.List(distinct[0]);
+        this.imports.add('Union');
+        return PythonType.List(new PythonType(`Union[${distinct.map(e => e.toString()).join(', ')}]`));
+      }
+      if (/^(bigint|BigInt)$/.test(t)) return PythonType.Int();
+      const mapped = TYPE_MAP[t];
+      if (mapped === 'List') { this.imports.add('List'); this.imports.add('Any'); return PythonType.List(PythonType.Any()); }
+      if (mapped === 'Any') { this.imports.add('Any'); return PythonType.Any(); }
+      if (mapped) return this.createPythonType(mapped);
+      if (this._templateNames && this._templateNames.has(t)) {
+        (this._typeVars || (this._typeVars = new Set())).add(t);
+        return new PythonType(t);
+      }
+      return null;
+    }
+
+    /**
+     * The element types of a tuple type body, split at top-level commas.
+     * @param {string} body - e.g. 'string,int32[],[int32,int32]'
+     * @returns {string[]}
+     */
+    static _splitTupleType(body) {
+      const out = [];
+      let depth = 0, start = 0;
+      for (let i = 0; i < body.length; ++i) {
+        const c = body[i];
+        if (c === '[' || c === '<' || c === '(') ++depth;
+        else if (c === ']' || c === '>' || c === ')') --depth;
+        else if (c === ',' && depth === 0) { out.push(body.slice(start, i).trim()); start = i + 1; }
+      }
+      if (body.trim()) out.push(body.slice(start).trim());
+      return out;
+    }
+
+    /**
+     * The @template names a function's JSDoc declares.
+     * @param {Object} fn - IL function, method value or declaration
+     * @returns {string[]}
+     */
+    static _templateNamesOf(fn) {
+      const names = [];
+      const info = fn && fn.typeInfo;
+      if (info && Array.isArray(info.templates)) names.push(...info.templates.map(t => typeof t === 'string' ? t : t && t.name).filter(Boolean));
+      const doc = fn && (typeof fn.jsDoc === 'string' ? fn.jsDoc : fn.jsDoc && fn.jsDoc.raw);
+      if (typeof doc === 'string') {
+        const re = /@template\s+(?:\{[^}]*\}\s+)?([A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*)/g;
+        let m;
+        while ((m = re.exec(doc)) !== null) names.push(...m[1].split(',').map(n => n.trim()));
+      }
+      return names;
+    }
+
+    /**
      * Infer type from expression
      */
     inferFullExpressionType(node) {
@@ -596,6 +687,9 @@
 
       // Generate framework stub classes at the beginning of module
       const stubs = this.generateFrameworkStubs();
+      // @template parameters used in hints: `T = TypeVar("T")`
+      if (this._typeVars && this._typeVars.size > 0)
+        stubs.unshift({ nodeType: 'RawCode', code: [...this._typeVars].sort().map(n => `${n} = TypeVar("${n}")`).join('\n') });
       if (stubs.length > 0) {
         module.statements = [...stubs, ...module.statements];
       }
@@ -3162,13 +3256,16 @@ class OpCodes(metaclass=_OpCodesMeta):
       const imports = [];
 
       // Always add typing imports for type annotations
+      const hasTypeVars = this._typeVars && this._typeVars.size > 0;
       if (this.imports.has('List') || this.imports.has('Dict') ||
-          this.imports.has('Optional') || this.imports.has('Any')) {
+          this.imports.has('Optional') || this.imports.has('Any') || this.imports.has('Union') || hasTypeVars) {
         const typingItems = [];
         if (this.imports.has('List')) typingItems.push({ name: 'List', alias: null });
         if (this.imports.has('Dict')) typingItems.push({ name: 'Dict', alias: null });
         if (this.imports.has('Optional')) typingItems.push({ name: 'Optional', alias: null });
         if (this.imports.has('Any')) typingItems.push({ name: 'Any', alias: null });
+        if (this.imports.has('Union')) typingItems.push({ name: 'Union', alias: null });
+        if (hasTypeVars) typingItems.push({ name: 'TypeVar', alias: null });
         imports.push(new PythonImport('typing', typingItems));
       }
 
@@ -4114,6 +4211,54 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformMethodDefinition(node) {
+      return this._withTemplates([node, node.value], () => this._annotateFunction(this._transformMethodDefinitionCore(node), node.value && node.value.params, node.value || node));
+    }
+
+    /**
+     * Run a function transform with the @template names of its JSDoc known,
+     * so hints inside it can name them.
+     * @param {Object[]} nodes - IL nodes that may carry the JSDoc
+     * @param {Function} fn - the transform
+     * @returns {*} its result
+     */
+    _withTemplates(nodes, fn) {
+      const saved = this._templateNames;
+      const names = nodes.flatMap(n => PythonTransformer._templateNamesOf(n));
+      if (names.length > 0) this._templateNames = new Set([...(saved || []), ...names]);
+      try { return fn(); } finally { this._templateNames = saved; }
+    }
+
+    /**
+     * Parameter and return hints from the IL types of a function (value
+     * types, arrays, tuples, template parameters; Optional when nullable).
+     * Hints only: what the transform tracks for inference is unchanged.
+     * @param {Object} pyFunc - Python function (or anything else, passed through)
+     * @param {Object[]} params - IL parameters
+     * @param {Object} fnNode - IL function carrying typeInfo
+     * @returns {Object} pyFunc
+     */
+    _annotateFunction(pyFunc, params, fnNode) {
+      if (!this.addTypeHints || !pyFunc || pyFunc.nodeType !== 'Function') return pyFunc;
+      const own = (pyFunc.parameters || []).filter(p => p.name !== 'self' && !p.isRest);
+      (params || []).forEach((param, i) => {
+        const pyParam = own[i];
+        if (!pyParam || pyParam.type || !param || typeof param !== 'object') return;
+        const ilParam = param.type === 'AssignmentPattern' || param.type === 'AssignmentExpression' ? param.left : param;
+        if (!ilParam) return;
+        // every parameter defaults to None (an omitted argument), so a
+        // default-less one is Optional only when the IL says so
+        const hint = this._pythonTypeOfIL(ilParam.resultType, !!(ilParam.nullable || param.nullable));
+        if (hint) pyParam.type = hint;
+      });
+      const returns = fnNode && fnNode.typeInfo && fnNode.typeInfo.returns;
+      if (!pyFunc.returnType && returns && typeof returns.name === 'string' && !pyFunc.isProperty) {
+        const hint = returns.name === 'void' ? PythonType.None() : this._pythonTypeOfIL(returns.name, !!returns.isNullable);
+        if (hint) pyFunc.returnType = hint;
+      }
+      return pyFunc;
+    }
+
+    _transformMethodDefinitionCore(node) {
       let methodName = toSnakeCaseProperty(node.key.name);
       // Disambiguate methods that only collide after case-folding (see the
       // currentMethodNameOverrides comment in transformClassDeclaration).
@@ -4458,6 +4603,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformFunctionDeclaration(node) {
+      return this._withTemplates([node], () => this._annotateFunction(this._transformFunctionDeclarationCore(node), node.params, node));
+    }
+
+    _transformFunctionDeclarationCore(node) {
       const funcName = this.moduleConstRenames.get(node.id.name) || toSnakeCase(node.id.name);
       const pyFunc = new PythonFunction(funcName, [], null);
 
@@ -5140,13 +5289,20 @@ class OpCodes(metaclass=_OpCodesMeta):
           }
         }
 
+        // Track variable type: the inferred one, which later inference
+        // relies on; the hint shown is the IL type where that maps
+        const trackedType = assignment.type;
+        if (this.addTypeHints && !declarator.id.typeAnnotation) {
+          const ilHint = this._pythonTypeOfIL(declarator.declaredType || declarator.id.resultType, !!(declarator.id.nullable || declarator.nullable));
+          if (ilHint) assignment.type = ilHint;
+        }
+
         assignments.push(assignment);
         if (declaratorPostStatements.length > 0)
           assignments.push(...declaratorPostStatements);
 
-        // Track variable type
-        if (assignment.type) {
-          this.registerVariableType(declarator.id.name, assignment.type);
+        if (trackedType) {
+          this.registerVariableType(declarator.id.name, trackedType);
         }
       }
 
@@ -8385,6 +8541,11 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (operator === '!==') operator = '!=';
       if (operator === '&&') operator = 'and';
       if (operator === '||') operator = 'or';
+
+      // A comparison with null or undefined (both None) is an identity test
+      if ((operator === '==' || operator === '!=') &&
+          [node.left, node.right].some(n => isUndefinedOrNullLiteral(n) || (n && n.type === 'Literal' && n.value === null && !n.regex)))
+        return new PythonBinaryExpression(left, operator === '==' ? 'is' : 'is not', right);
 
       // Handle instanceof -> isinstance(left, right)
       if (operator === 'instanceof') {
