@@ -12578,7 +12578,7 @@
         case 'BinaryExpression':
         case 'LogicalExpression':
           if (node.operator === '**') return this.transformExponentiation(node);
-          return this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node)));
+          return this.asBigIntShift(node, this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node))));
 
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
@@ -25693,6 +25693,21 @@
       const rightType = this.inferFullExpressionType(node.right);
       if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
       return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
+    }
+
+    /**
+     * A BigInt shift (OpCodes.ShiftLn(BigInt(1), 128)) whose left operand the IL
+     * typed as a small uint64 literal: C# masks a ulong shift count to 6 bits, so the
+     * operand is made a BigInteger, as in JavaScript.
+     * @param {Object} node - the JS/IL binary expression
+     * @param {Object} result - its transformed C# expression
+     * @returns {Object} the C# expression to use
+     */
+    asBigIntShift(node, result) {
+      if (!node.bigint || !['<<', '>>'].includes(node.operator) || result?.nodeType !== 'BinaryExpression' || result.operator !== node.operator) return result;
+      const leftType = this.inferFullExpressionType(node.left);
+      if (leftType?.name === 'BigInteger' && !leftType.isArray) return result;
+      return new CSharpBinaryExpression(new CSharpCast(new CSharpType('BigInteger'), result.left), result.operator, result.right);
     }
 
     /**

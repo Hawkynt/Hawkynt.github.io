@@ -798,6 +798,10 @@ check('loops: a loop variable named like a keyword is escaped in the for header 
   const code = transpile('/**\n * @param {int32} n - n\n * @returns {int32} s\n */\nfunction f(n) { let s = 0; for (let base = 0; base < n; base += 2) s += base; return s; }');
   expectMatch(code, /for \(int @base = 0; @base < n;/, 'for (int @base = 0; ...)');
 });
+check('BigInt shifts: OpCodes.ShiftLn(BigInt(1), n) shifts a BigInteger, not a ulong (whose count C# masks to 6 bits)', () => {
+  const code = transpile('/**\n * @param {int32} b - b\n * @returns {bigint} r\n */\nfunction f(b) { /** @type {bigint} */ let n = BigInt(7); n += OpCodes.ShiftLn(BigInt(1), b * 8); return n; }');
+  expectMatch(code, /\(BigInteger\)\(1ul\) << /, '(BigInteger)1 << ...');
+});
 check('BigInt literal: a hex literal with a leading digit 8-F stays positive', () => {
   const code = transpile('/**\n * @param {bigint} k - key state\n * @returns {bigint} masked\n */\nfunction f(k) { return OpCodes.AndN(k, ~OpCodes.ShiftLn(0xFn, 120n)); }');
   expectMatch(code, /BigInteger\.Parse\("0F", System\.Globalization\.NumberStyles\.HexNumber\)/, 'Parse("0F") (Parse("F") is -1)');
