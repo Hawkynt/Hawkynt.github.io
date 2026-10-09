@@ -151,6 +151,11 @@ check('constructors: a parameter a caller may leave out defaults (JavaScript pas
     '  constructor(size, profile) { this.size = size; this.profile = profile; }\n}\n/** @returns {Engine} e */\nfunction make() { return new Engine(4); }');
   expectMatch(code, /public Engine\(int size = default, string profile = default\)/, 'Engine(int size = default, string profile = default)');
 });
+check('methods: a parameter a caller may leave out defaults (JavaScript passes undefined)', () => {
+  const code = transpile('class Shake {\n  /**\n   * @param {uint8[]} data - data\n   * @param {int32} offset - offset\n   * @param {int32} length - length\n   */\n' +
+    '  absorb(data, offset, length) { this.n = (offset || 0) + (length || data.length); }\n  /** @param {uint8[]} d - d */\n  run(d) { this.absorb(d); }\n}');
+  expectMatch(code, /Absorb\(byte\[\] data = (null|default), int offset = (0|default), int length = (0|default)\)/, 'Absorb with defaults for every parameter');
+});
 check('fields: two fields differing only in case keep their own values', () => {
   const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
     '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');
@@ -391,7 +396,7 @@ check('push: an array parameter the callee grows is passed by ref', () => {
 check('scope: parameters P and p get distinct C# names (CS0100)', () => {
   const code = transpile('/**\n * @param {int32} P - modulus\n * @param {int32} p - value\n * @returns {int32} r\n */\n' +
     'function red(P, p) { return p % P; }');
-  expectMatch(code, /Red\(int p, int p2\)/, 'Red(int p, int p2)');
+  expectMatch(code, /Red\(int p( = default)?, int p2( = default)?\)/, 'Red(int p, int p2)');
   expectMatch(code, /return p2 % p;/, 'the body reading p2 % p');
 });
 

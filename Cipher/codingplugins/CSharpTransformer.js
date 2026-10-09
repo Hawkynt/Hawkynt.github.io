@@ -11205,6 +11205,13 @@
         method.parameters.push(csParam);
       }
 
+      // A JavaScript caller may pass fewer arguments than the method names (the
+      // rest are undefined): every parameter without a default gets `default`
+      // (CROSS's absorb(data) for absorb(data, offset, length), CS7036 otherwise)
+      for (const p of method.parameters) {
+        if (!p.defaultValue && !p.isParams && !p.isRef && !p.isOut) p.defaultValue = new CSharpIdentifier('default');
+      }
+
       // A JavaScript override may declare fewer parameters than the framework method
       // (`CreateInstance()` for `CreateInstance(isInverse)`); the C# override takes
       // them all, the extra ones unused.
