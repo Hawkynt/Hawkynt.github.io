@@ -173,6 +173,7 @@
 
     /**
      * Alternative method for compatibility with IV-based interfaces
+     * @param {uint8[]} iv - Nonce bytes
      */
     setIV(iv) {
       this.setNonce(iv);

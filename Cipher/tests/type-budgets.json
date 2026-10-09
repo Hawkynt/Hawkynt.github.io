@@ -700,7 +700,7 @@
   "algorithms/modes/ccm.js": 0,
   "algorithms/modes/cfb.js": 0,
   "algorithms/modes/cmc.js": 0,
-  "algorithms/modes/ctr.js": 1,
+  "algorithms/modes/ctr.js": 0,
   "algorithms/modes/cts.js": 0,
   "algorithms/modes/eax.js": 0,
   "algorithms/modes/ecb.js": 0,
