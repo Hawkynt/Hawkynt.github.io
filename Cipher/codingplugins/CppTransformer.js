@@ -1184,7 +1184,7 @@
           // a module's top-level return is what it exports
           if (this.fn && this.fn.kind === 'init' && node.argument && (this.sawExports = true)) return [new CppExpressionStatement(`js::setModuleExports(${this.cv(this.expr(node.argument), T.any)})`), new CppReturn(null)];
           const ret = this.fn ? this.fn.ret : T.void;
-          if (!node.argument) return [new CppReturn(ret.k === 'void' || !this.fn || this.fn.kind === 'ctor' ? null : this.defaultOf(ret))];
+          if (!node.argument) return [new CppReturn(this.fn && this.fn.kind === 'ctor' ? 'this' : ret.k === 'void' || !this.fn ? null : this.defaultOf(ret))];
           if (this.fn && this.fn.kind === 'ctor') return [new CppExpressionStatement(`(void)(${this.expr(node.argument).c})`), new CppReturn('this')];
           if (ret.k === 'void') {
             const e = this.expr(node.argument);
