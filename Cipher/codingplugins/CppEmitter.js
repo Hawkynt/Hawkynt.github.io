@@ -686,6 +686,8 @@ struct ArrayBase {
   virtual void setAny(int64_t i, const Any& v) = 0;
   virtual void pushAny(const Any& v) = 0;
   virtual const std::type_info& elementType() const = 0;
+  // a method called on an array held dynamically (self: the shared storage)
+  virtual bool callMethod(const std::shared_ptr<void>& self, const std::u16string& k, std::vector<Any>& a, Any& out) = 0;
 };
 
 template <class E> struct Storage { using T = E; };
@@ -707,6 +709,7 @@ template <class E> struct ArrayData : ArrayBase {
   void setAny(int64_t i, const Any& x) override { at(i) = fromAny<E>(x); }
   void pushAny(const Any& x) override { push(fromAny<E>(x)); }
   const std::type_info& elementType() const override { return typeid(E); }
+  bool callMethod(const std::shared_ptr<void>& self, const std::u16string& k, std::vector<Any>& a, Any& out) override;
   S& at(int64_t i) {
     if (i >= 0 && i < n) return ptr[i];
     if (typed || base || i < 0 || i > 100000000) { scratch = S{}; return scratch; }
@@ -951,6 +954,20 @@ inline Any Any::call(std::vector<Any> args) const {
 }
 inline Any Any::callMethod(const String& name, std::vector<Any> args) const {
   if (tag == Tag::Obj) { Any out; if (o->__call(name.s(), args, out)) return out; }
+  if (tag == Tag::Arr) { Any out; if (asArr()->callMethod(r, name.s(), args, out)) return out; }
+  if (tag == Tag::Str) {
+    String s = asString(); const auto& k = name.s();
+    auto arg = [&](size_t i) { return i < args.size() ? args[i] : Any(); };
+    if (k == u"charCodeAt") return Any(s.charCodeAt(arg(0).isUndef() ? 0 : (int64_t)arg(0).toNumber()));
+    if (k == u"charAt") return Any(s.charAt((int64_t)arg(0).toNumber()));
+    if (k == u"indexOf") return Any(s.indexOf(str(arg(0)), arg(1).isUndef() ? 0 : (int64_t)arg(1).toNumber()));
+    if (k == u"slice" || k == u"substring") { double a = arg(0).isUndef() ? 0 : arg(0).toNumber(), b = arg(1).isUndef() ? (double)s.length() : arg(1).toNumber(); return Any(k == u"slice" ? s.slice(a, b) : s.substring(a, b)); }
+    if (k == u"split") return Any(arg(0).isUndef() ? s.split() : s.split(str(arg(0))));
+    if (k == u"toUpperCase") return Any(s.toUpperCase());
+    if (k == u"toLowerCase") return Any(s.toLowerCase());
+    if (k == u"trim") return Any(s.trim());
+    if (k == u"toString") return Any(s);
+  }
   Any f = get(name);
   if (f.tag == Tag::Fn) return (*f.asFun())(args);
   throwTypeError(describe(*this) + u"." + name.s() + u" is not a function");
@@ -1150,6 +1167,69 @@ template <class A, class B> inline bool ge(const A& a, const B& b) { return le(b
 
 // ---------------------------------------------------------------- string building
 template <class A, class B> inline String concat(const A& a, const B& b) { return String(str(a).s() + str(b).s()); }
+
+// ---------------------------------------------------------------- array methods on a dynamic value
+template <class E> bool ArrayData<E>::callMethod(const std::shared_ptr<void>& self, const std::u16string& k, std::vector<Any>& a, Any& out) {
+  Array<E> arr(std::static_pointer_cast<ArrayData<E>>(self));
+  auto arg = [&](size_t i) { return i < a.size() ? a[i] : Any(); };
+  auto num = [&](size_t i, double d) { return arg(i).isUndef() ? d : arg(i).toNumber(); };
+  auto fn = [&](size_t i) -> Fun { Any f = arg(i); if (f.tag != Tag::Fn) throwTypeError(describe(f) + u" is not a function"); return *f.asFun(); };
+  auto call = [&](const Fun& f, std::initializer_list<Any> xs) { std::vector<Any> v(xs); return f(v); };
+  int32_t n = arr.length();
+  if (k == u"push") { for (auto& x : a) arr.push(fromAny<E>(x)); out = Any(arr.length()); return true; }
+  if (k == u"pop") { out = Any(arr.pop()); return true; }
+  if (k == u"shift") { out = Any(arr.shift()); return true; }
+  if (k == u"unshift") { for (size_t i = a.size(); i-- > 0;) arr.unshift(fromAny<E>(a[i])); out = Any(arr.length()); return true; }
+  if (k == u"fill") { arr.fill(fromAny<E>(arg(0)), num(1, 0), num(2, n)); out = Any(arr); return true; }
+  if (k == u"slice") { out = Any(arr.slice(num(0, 0), num(1, n))); return true; }
+  if (k == u"subarray") { out = Any(arr.subarray(num(0, 0), num(1, n))); return true; }
+  if (k == u"reverse") { arr.reverse(); out = Any(arr); return true; }
+  if (k == u"join") { out = Any(arr.join(arg(0).isUndef() ? String(u",") : str(arg(0)))); return true; }
+  if (k == u"toString") { out = Any(arr.join(String(u","))); return true; }
+  if (k == u"indexOf" || k == u"includes" || k == u"lastIndexOf") {
+    int32_t found = -1;
+    if (k == u"lastIndexOf") { for (int32_t i = n; i-- > 0;) if (anyEq(Any(arr.get(i)), arg(0), true)) { found = i; break; } }
+    else for (int32_t i = (int32_t)std::max(0.0, num(1, 0)); i < n; ++i) if (anyEq(Any(arr.get(i)), arg(0), true)) { found = i; break; }
+    out = k == u"includes" ? Any(found >= 0) : Any(found); return true;
+  }
+  if (k == u"concat") {
+    Array<E> r = arr.slice(0); r.p->typed = false;
+    for (auto& x : a) { if (x.tag == Tag::Arr) { ArrayBase* b = x.asArr(); for (int32_t i = 0; i < b->length(); ++i) r.push(fromAny<E>(b->getAny(i))); } else r.push(fromAny<E>(x)); }
+    out = Any(r); return true;
+  }
+  if (k == u"splice") {
+    std::vector<E> items; for (size_t i = 2; i < a.size(); ++i) items.push_back(fromAny<E>(a[i]));
+    out = Any(arr.splice(num(0, 0), a.size() > 1 ? num(1, 0) : (double)n, items)); return true;
+  }
+  if (k == u"set") { Any src = arg(0); int64_t off = (int64_t)num(1, 0); if (src.tag == Tag::Arr) { ArrayBase* b = src.asArr(); for (int32_t i = 0; i < b->length(); ++i) arr.at(off + i) = fromAny<E>(b->getAny(i)); } return true; }
+  if (k == u"forEach") { Fun f = fn(0); for (int32_t i = 0; i < n; ++i) call(f, {Any(arr.get(i)), Any(i), Any(arr)}); return true; }
+  if (k == u"map") { Fun f = fn(0); Array<Any> r = Array<Any>::create(n); for (int32_t i = 0; i < n; ++i) r.at(i) = call(f, {Any(arr.get(i)), Any(i), Any(arr)}); out = Any(r); return true; }
+  if (k == u"filter") { Fun f = fn(0); Array<E> r = Array<E>::create(0); for (int32_t i = 0; i < n; ++i) if (call(f, {Any(arr.get(i)), Any(i), Any(arr)}).truthy()) r.push(arr.get(i)); out = Any(r); return true; }
+  if (k == u"some" || k == u"every" || k == u"find" || k == u"findIndex") {
+    Fun f = fn(0);
+    for (int32_t i = 0; i < n; ++i) {
+      bool t = call(f, {Any(arr.get(i)), Any(i), Any(arr)}).truthy();
+      if (k == u"some" && t) { out = Any(true); return true; }
+      if (k == u"every" && !t) { out = Any(false); return true; }
+      if (k == u"find" && t) { out = Any(arr.get(i)); return true; }
+      if (k == u"findIndex" && t) { out = Any(i); return true; }
+    }
+    out = k == u"some" ? Any(false) : k == u"every" ? Any(true) : k == u"findIndex" ? Any(-1) : Any();
+    return true;
+  }
+  if (k == u"reduce") {
+    Fun f = fn(0); int32_t i = 0; Any acc;
+    if (a.size() > 1) acc = a[1]; else { if (!n) throwTypeError(u"Reduce of empty array with no initial value"); acc = Any(arr.get(0)); i = 1; }
+    for (; i < n; ++i) acc = call(f, {acc, Any(arr.get(i)), Any(i), Any(arr)});
+    out = acc; return true;
+  }
+  if (k == u"sort") {
+    if (arg(0).tag == Tag::Fn) { Fun f = fn(0); arr.sort([&](const E& x, const E& y) { return call(f, {Any(x), Any(y)}).toNumber(); }); }
+    else arr.sort();
+    out = Any(arr); return true;
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------- arithmetic helpers
 // JavaScript operators on C++ values. The transpiler picks the operand types;
