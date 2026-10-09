@@ -520,6 +520,18 @@ check('harness: a dependency that fails to transpile names the dependency', () =
 });
 
 // ---------------------------------------------------------------------------
+// Numbers: JavaScript divides integers to a fraction
+// ---------------------------------------------------------------------------
+check('Math.ceil/round of an integer quotient divide as doubles, not as integers', () => {
+  const header = '/**\n * @param {int32} n - n\n * @param {int32} h - h\n * @returns {int32} r\n */\n';
+  const ceil = transpile(header + 'function f(n, h) { return Math.ceil(n / h); }');
+  expectMatch(ceil, /Math\.Ceiling\(\(double\)\(n\) \/ h\)/, 'Math.Ceiling((double)(n) / h)');
+  expectNoMatch(ceil, /\(double\)\(n \/ h\)/, 'the integer quotient converted afterwards');
+  const round = transpile(header + 'function f(n, h) { return Math.round(n / h); }');
+  expectNoMatch(round, /\(double\)\(n \/ h\)/, 'the integer quotient converted afterwards');
+});
+
+// ---------------------------------------------------------------------------
 // Array.prototype.slice
 // ---------------------------------------------------------------------------
 check('slice: a negative bound is passed on negative, for SliceArray to count from the end', () => {

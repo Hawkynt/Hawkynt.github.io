@@ -16435,7 +16435,7 @@
             if (args.length >= 1) {
               const argType = this.inferFullExpressionType(node.arguments[0]);
               if (argType?.name !== 'double') {
-                args[0] = new CSharpCast(CSharpType.Double(), args[0]);
+                args[0] = this.asDoubleOperand(node.arguments[0], args[0]);
               }
             }
           }
@@ -25038,6 +25038,27 @@
     }
 
     /**
+     * A Math.ceil/round operand as the double JavaScript computes. A quotient of
+     * two integers is a fraction in JavaScript, but C# divides integers to an
+     * integer, so `(double)(a / b)` already lost what ceil/round look at: the
+     * dividend is converted instead, `(double)a / b`.
+     * @param {Object} argNode - the JS/IL operand
+     * @param {Object} arg - its transformed C# expression
+     * @returns {Object} a double-typed C# expression
+     */
+    asDoubleOperand(argNode, arg) {
+      if (argNode && argNode.type === 'BinaryExpression' && argNode.operator === '/') {
+        const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+        const leftType = this.inferFullExpressionType(argNode.left);
+        const rightType = this.inferFullExpressionType(argNode.right);
+        if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray)
+          return new CSharpBinaryExpression(
+            new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left)), '/', this.transformExpression(argNode.right));
+      }
+      return new CSharpCast(CSharpType.Double(), arg);
+    }
+
+    /**
      * Transform Ceil to Math.Ceiling
      */
     transformCeil(node) {
@@ -25045,7 +25066,7 @@
       const ceilResult = new CSharpMethodCall(
         new CSharpIdentifier('Math'),
         'Ceiling',
-        [new CSharpCast(CSharpType.Double(), arg)]
+        [this.asDoubleOperand(node.argument, arg)]
       );
       return new CSharpCast(CSharpType.Int(), ceilResult);
     }
@@ -25140,7 +25161,7 @@
       const roundResult = new CSharpMethodCall(
         new CSharpIdentifier('Math'),
         'Round',
-        [new CSharpCast(CSharpType.Double(), arg)]
+        [this.asDoubleOperand(node.argument, arg)]
       );
       return new CSharpCast(CSharpType.Int(), roundResult);
     }
