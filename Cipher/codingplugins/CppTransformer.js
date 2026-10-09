@@ -2280,6 +2280,17 @@
           if (g) return g;
         }
         if (obj && obj.type === 'Super') return this.parentMethodCall({ method: prop, arguments: args, parentClass: this.fn && this.fn.cls && this.fn.cls.base });
+        // OpCodes.UInt64.<op>(...): 64-bit values as [high32, low32]
+        if (obj && obj.type === 'MemberExpression' && !obj.computed && obj.object && obj.object.type === 'Identifier' &&
+            obj.object.name === 'OpCodes' && !this.lookup('OpCodes') && obj.property && obj.property.name === 'UInt64') {
+          const W = T.arr(T.u32);
+          const fn = { xor: 'xor_', and: 'and_', or: 'or_', not: 'not_' }[prop] || prop;
+          const kinds = { create: [T.u32, T.u32], fromBytes: [T.arr(T.u8)], shr: [W, T.i32], shl: [W, T.i32], rotr: [W, T.i32], rotl: [W, T.i32], fromNumber: [T.f64] };
+          const pt = kinds[prop] || args.map(() => W);
+          const list = args.map((a, i) => this.cv(this.expr(a, pt[i] || W), pt[i] || W));
+          const ret = { toBytes: T.arr(T.u8), equals: T.bool, toNumber: T.f64 }[prop] || W;
+          return { c: `js::OpCodes::UInt64::${fn}(${list.join(', ')})`, t: ret };
+        }
         const o = this.expr(obj);
         return this.methodCall(o, prop, args, node);
       }

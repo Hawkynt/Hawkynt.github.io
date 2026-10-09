@@ -1611,6 +1611,35 @@ inline BigInt RotL128n(const BigInt& v, int32_t n) { return rotlBig(v, n, 128); 
 inline BigInt RotR128n(const BigInt& v, int32_t n) { return rotrBig(v, n, 128); }
 inline BigInt ToLong(const BigInt& v) { return v.asIntN(64); }
 inline int32_t ToShort(int32_t v) { v &= 0xFFFF; return v > 32767 ? v - 65536 : v; }
+// OpCodes.UInt64: 64-bit values as [high32, low32]
+namespace UInt64 {
+using W = Array<uint32_t>;
+inline W pair(uint32_t h, uint32_t l) { return W{h, l}; }
+inline W create(uint32_t h, uint32_t l) { return pair(h, l); }
+template <class E> inline W fromBytes(const Array<E>& b) {
+  uint32_t v[8] = {0}; int32_t n = b.length(), off = n < 8 ? 8 - n : 0;
+  for (int32_t i = 0; i < std::min(n, 8); ++i) v[off + i] = u32(b.get(i)) & 0xFF;
+  return pair(pack32(v[0], v[1], v[2], v[3]), pack32(v[4], v[5], v[6], v[7]));
+}
+inline Array<uint8_t> toBytes(const W& a) { Array<uint8_t> r = unpack(a.get(0), 4, true); r.pushAll(unpack(a.get(1), 4, true)); return r; }
+inline uint64_t join(const W& a) { return ((uint64_t)a.get(0) << 32) | a.get(1); }
+inline W split(uint64_t v) { return pair((uint32_t)(v >> 32), (uint32_t)v); }
+inline W add(const W& a, const W& b) { return split(join(a) + join(b)); }
+inline W sub(const W& a, const W& b) { return split(join(a) - join(b)); }
+inline W mul(const W& a, const W& b) { return split(join(a) * join(b)); }
+inline W rotr(const W& a, int32_t n) { if (n == 0) return a; return split(js::rotr<uint64_t>(join(a), n % 64, 64)); }
+inline W rotl(const W& a, int32_t n) { if (n == 0) return a; return rotr(a, 64 - (n % 64)); }
+inline W shr(const W& a, int32_t n) { if (n == 0) return a; if (n < 32) return pair(a.get(0) >> n, (a.get(1) >> n) | (uint32_t)shl32((int32_t)a.get(0), (uint32_t)(32 - n))); return pair(0, a.get(0) >> ((n - 32) & 31)); }
+inline W shl(const W& a, int32_t n) { if (n == 0) return a; if (n < 32) return pair((uint32_t)shl32((int32_t)a.get(0), (uint32_t)n) | (a.get(1) >> ((32 - n) & 31)), (uint32_t)shl32((int32_t)a.get(1), (uint32_t)n)); return pair((uint32_t)shl32((int32_t)a.get(1), (uint32_t)(n - 32)), 0); }
+inline W xor_(const W& a, const W& b) { return pair(a.get(0) ^ b.get(0), a.get(1) ^ b.get(1)); }
+inline W and_(const W& a, const W& b) { return pair(a.get(0) & b.get(0), a.get(1) & b.get(1)); }
+inline W or_(const W& a, const W& b) { return pair(a.get(0) | b.get(0), a.get(1) | b.get(1)); }
+inline W not_(const W& a) { return pair(~a.get(0), ~a.get(1)); }
+inline bool equals(const W& a, const W& b) { return a.get(0) == b.get(0) && a.get(1) == b.get(1); }
+inline W clone(const W& a) { return pair(a.get(0), a.get(1)); }
+inline double toNumber(const W& a) { return (double)a.get(0) * 4294967296.0 + a.get(1); }
+inline W fromNumber(double v) { return pair((uint32_t)d2u64(std::floor(v / 4294967296.0)), (uint32_t)d2u64(v)); }
+}
 template <class E> inline Array<E> ArraySlice(const Array<E>& a, double s, double e) { return a.slice(s, e); }
 template <class E> inline Array<E> ArraySlice(const Array<E>& a, double s) { return a.slice(s); }
 }
