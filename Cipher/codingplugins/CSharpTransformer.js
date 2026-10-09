@@ -1951,7 +1951,9 @@
           if (isFrameworkBase(className))
             for (const member of info.members) this._inheritableMemberNames.add(member);
       }
-      return this._inheritableMemberNames.has(csName);
+      // A member a class of this file declares hides a module constant of that name
+      // in the class too (the accessor combinationMode and const CombinationMode)
+      return this._inheritableMemberNames.has(csName) || !!this.fileClassMemberNames?.has(csName);
     }
 
     /**
@@ -7409,6 +7411,11 @@
       this.normalizeArrayCalls(jsAst);
       this.foldStringLiteralChains(jsAst);
       this.arrayHoldingConstructors = this.preScanArrayHoldingConstructors(jsAst);
+      // The PascalCase names of every class member this file declares (see isInheritableMemberName)
+      this.fileClassMemberNames = new Set();
+      this._walkAstNodes(jsAst, n => {
+        if (n.type === 'MethodDefinition' && n.key?.name && n.kind !== 'constructor') this.fileClassMemberNames.add(this.toPascalCase(n.key.name));
+      });
       this.renameCaseCollidingFields(jsAst);
       const unit = new CSharpCompilationUnit();
 

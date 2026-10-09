@@ -904,6 +904,15 @@ check('slice: a negative bound is passed on negative, for SliceArray to count fr
 // ---------------------------------------------------------------------------
 // Switch statements: JavaScript fall-through as an explicit jump
 // ---------------------------------------------------------------------------
+const MODE_CLASSES = 'class Modes {\n  constructor() { /** @type {int32} */ this.ADD = 0; /** @type {int32} */ this.XOR = 1; }\n}\n' +
+  '/** @type {Modes} */\nconst Mode = new Modes();\nclass Gen {\n  constructor() { /** @type {int32} */ this._mode = Mode.ADD; }\n' +
+  '  /** @param {int32} m - mode */\n  set mode(m) { this._mode = m; }\n  /** @returns {int32} m */\n  get mode() { return this._mode; }\n' +
+  '  /**\n   * @param {uint32} a - a\n   * @param {uint32} b - b\n   * @returns {uint32} r\n   */\n' +
+  '  combine(a, b) { switch (this._mode) { case Mode.ADD: return OpCodes.Add32(a, b); case Mode.XOR: return OpCodes.Xor32(a, b); default: return a; } }\n}';
+check('module binding: a module constant named like a member of a class is qualified inside the class', () => {
+  const code = transpile(MODE_CLASSES);
+  expectMatch(code, /this\._mode = Generated\.Mode\.ADD;/, 'Generated.Mode.ADD (the property Mode hides it)');
+});
 check('switch: a case falling through into default jumps with `goto default;`', () => {
   const code = transpile('function f(m) { let r = 0; switch (m) { case "a": r = 1; default: r += 2; } return r; }');
   expectMatch(code, /r = 1;\s*goto default;/, 'goto default; after the falling case');
