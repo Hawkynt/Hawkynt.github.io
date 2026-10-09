@@ -527,6 +527,14 @@ check('regex: a Unicode property escape \\p{L} matches what JavaScript matches',
     ['[[True, False, False], [True, False, False], [False, False, True], [True, True, False], [False, True, True]]']);
 });
 
+check('defaults: a default reading an earlier parameter or building an array is evaluated per call', () => {
+  const js = 'function f(w, n = w.length, acc = []) { acc.push(n); return acc; }\nconst g = (a, b = a * 2) => a + b;\n' +
+    'class C { m(x, y = x + 1) { return y; } }\nfunction h(x = 3, s = "q", z = -1) { return [x, s, z]; }';
+  // Given defaults from an earlier parameter (function, arrow, method), a fresh [] per call and constant defaults
+  return expectOutput(runPython(js, 'print(f([1, 2, 3]), f([1]), f([1], 5), g(2), g(2, 1), C().m(4), h())'),
+    ["[3] [1] [5] 6 3 5 [3, 'q', -1]"]);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

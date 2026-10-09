@@ -222,10 +222,22 @@
         code += this.line(`"""${node.docstring}"""`);
       }
 
+      // Parameter defaults that are evaluated per call (see the transformer's
+      // transformParameter)
+      let lateDefaults = 0;
+      for (const param of node.parameters || []) {
+        if (!param.lateDefault) continue;
+        code += this.line(`if ${param.name} is None:`);
+        this.indentLevel++;
+        code += this.line(`${param.name} = ${this.emit(param.lateDefault)}`);
+        this.indentLevel--;
+        ++lateDefaults;
+      }
+
       // Function body
       if (node.body && node.body.statements.length > 0) {
         code += this.emit(node.body);
-      } else {
+      } else if (!lateDefaults) {
         code += this.line('pass');
       }
 

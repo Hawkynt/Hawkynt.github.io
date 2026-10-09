@@ -4516,7 +4516,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       return pyFunc;
     }
 
-    transformParameter(node) {
+    transformParameter(node, allowLateDefault = true) {
       // Handle different parameter node structures:
       // - Identifier: { name: 'param' }
       // - AssignmentPattern: { left: { name: 'param' }, right: defaultValue }
@@ -4576,9 +4576,17 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       const isRest = node.type === 'RestElement' || node.type === 'RestParameter';
 
-      // Default value
+      // Default value. JavaScript evaluates a default at each call that
+      // omits the argument, in the scope of the earlier parameters; Python
+      // evaluates it once, when the def runs. Anything but a constant is
+      // applied in the body instead (`f(w, n = w.length)`, `f(a = [])`).
+      let lateDefault = null;
       if (defaultValueNode) {
         defaultValue = this.transformExpression(defaultValueNode);
+        if (allowLateDefault && !PythonTransformer._isConstantDefault(defaultValueNode)) {
+          lateDefault = defaultValue;
+          defaultValue = PythonLiteral.None();
+        }
       } else if (!isRest) {
         // JS never enforces call-site arity: `function f(x) {}` can be
         // called as `f()`, silently binding `x` to `undefined` - a common
@@ -4594,6 +4602,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       const pyParam = new PythonParameter(paramName, type, defaultValue);
+      if (lateDefault) pyParam.lateDefault = lateDefault;
       // A JS `...rest` parameter collects every remaining positional
       // argument into a real array (rest.length, rest[i], etc. all need to
       // work) - a Python `*name` catch-all is the direct equivalent (bound
@@ -4608,6 +4617,27 @@ class OpCodes(metaclass=_OpCodesMeta):
         pyParam.defaultValue = null;
       }
       return pyParam;
+    }
+
+    /**
+     * Whether a parameter default is a constant Python may evaluate once.
+     * @param {Object} node - IL default value
+     * @returns {boolean}
+     */
+    static _hasLateDefault(params) {
+      return (params || []).some(p => {
+        const d = p && typeof p === 'object' && (p.type === 'AssignmentPattern' || p.type === 'AssignmentExpression' ? p.right : p.defaultValue);
+        return d && !PythonTransformer._isConstantDefault(d);
+      });
+    }
+
+    static _isConstantDefault(node) {
+      if (!node) return true;
+      if (node.type === 'Literal') return !node.regex;
+      if (node.type === 'Identifier') return node.name === 'undefined';
+      if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+'))
+        return node.argument && node.argument.type === 'Literal' && typeof node.argument.value === 'number';
+      return false;
     }
 
     /**
@@ -7465,7 +7495,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
         // IL AST ArrowFunction - (x) => expr -> lambda x: expr
         case 'ArrowFunction': {
-          if (this._lambdaNeedsDef(node.body)) {
+          if (this._lambdaNeedsDef(node.body) || PythonTransformer._hasLateDefault(node.params)) {
             const params = (node.params || []).map(p => typeof p === 'string' ? { type: 'Identifier', name: p } : p);
             return this.transformLambdaExpression(Object.assign({}, node, { params }));
           }
@@ -11409,11 +11439,16 @@ class OpCodes(metaclass=_OpCodesMeta):
       // with an assignment or update whose side effect is the point, is
       // hoisted into a local def ahead of the current statement; reducing it
       // to its first expression silently dropped the rest of the body.
-      if (this._lambdaNeedsDef(bodyNode)) {
+      // A default computed per call (`(a, b = a * 2) => ...`) needs a body
+      // to be applied in, too
+      const lateDefault = PythonTransformer._hasLateDefault(node.params);
+      const needsDef = this._lambdaNeedsDef(bodyNode);
+      if (needsDef || lateDefault) {
         this._lambdaHelperCounter = (this._lambdaHelperCounter || 0) + 1;
         const fnName = `_fn_${this._lambdaHelperCounter}`;
         // An assignment body runs as a statement and returns the assigned target.
         const block = bodyNode.type === 'BlockStatement' ? bodyNode
+          : !needsDef ? { type: 'BlockStatement', body: [{ type: 'ReturnStatement', argument: bodyNode }] }
           : { type: 'BlockStatement', body: [{ type: 'ExpressionStatement', expression: bodyNode },
             ...(bodyNode.type === 'AssignmentExpression' ? [{ type: 'ReturnStatement', argument: bodyNode.left }] : [])] };
         const func = this.transformArrowToFunction(fnName, Object.assign({}, node, { body: block }));
@@ -11422,7 +11457,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         return new PythonIdentifier(fnName);
       }
 
-      const params = node.params.map(p => this.transformParameter(p));
+      // A lambda has no body to apply a default in
+      const params = node.params.map(p => this.transformParameter(p, false));
       let body;
       if (bodyNode.type === 'BlockStatement') {
         // BlockStatement body - extract the first statement's return value or expression
