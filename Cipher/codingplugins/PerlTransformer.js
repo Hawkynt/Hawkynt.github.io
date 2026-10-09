@@ -8187,7 +8187,11 @@
           // test-vector execution anyway (mirrors transformUnaryExpression's
           // identical jsGlobals handling for the sibling raw-UnaryExpression
           // "typeof" shape this IL node normally supersedes).
-          if (arg && arg.type === 'Identifier' && arg.name === 'require')
+          // The same for the other JavaScript host globals a module loader
+          // tests (AMD's define, CommonJS's module/exports, the browser's
+          // window/self): none exists in Perl.
+          if (arg && arg.type === 'Identifier' &&
+              ['require', 'define', 'module', 'exports', 'window', 'self', 'process'].includes(arg.name))
             return PerlLiteral.String('undefined', "'");
           // A 64-bit or BigInt IL type is a JavaScript BigInt, whose native
           // Perl value looks like a number
