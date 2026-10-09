@@ -7336,8 +7336,46 @@
       });
     }
 
+    /**
+     * Two fields of one class that differ only in case (`this.n` and `this.N`)
+     * are one C# property once PascalCased. Each field of such a pair whose name
+     * starts lower-case is renamed within its class (n -> nField), so both keep
+     * their own value.
+     * @param {Object} jsAst - the program, changed in place
+     */
+    renameCaseCollidingFields(jsAst) {
+      const fieldName = n => {
+        if (n?.type === 'ThisPropertyAccess') return typeof n.property === 'string' ? n.property : n.property?.name;
+        if (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression') return n.property?.name;
+        return null;
+      };
+      this._walkAstNodes(jsAst, cls => {
+        if (cls.type !== 'ClassDeclaration' && cls.type !== 'ClassExpression') return;
+        const assigned = new Set();
+        const memberNames = new Set();
+        this._walkAstNodes(cls.body, n => {
+          if (n.type === 'AssignmentExpression' && fieldName(n.left)) assigned.add(fieldName(n.left));
+          if (n.type === 'MethodDefinition' && n.key?.name) memberNames.add(n.key.name);
+        });
+        const renames = new Map();
+        for (const name of assigned) {
+          if (!/^[a-z]/.test(name) || memberNames.has(name)) continue;
+          const pascal = this.toPascalCase(name);
+          if (pascal !== name && assigned.has(pascal)) renames.set(name, name + 'Field');
+        }
+        if (renames.size === 0) return;
+        this._walkAstNodes(cls.body, n => {
+          const name = fieldName(n);
+          if (!name || !renames.has(name)) return;
+          if (n.type === 'ThisPropertyAccess' && typeof n.property === 'string') n.property = renames.get(name);
+          else n.property = Object.assign({}, n.property, { name: renames.get(name) });
+        });
+      });
+    }
+
     transform(jsAst) {
       this.foldStringLiteralChains(jsAst);
+      this.renameCaseCollidingFields(jsAst);
       const unit = new CSharpCompilationUnit();
 
       // Standard usings for crypto code. System.Buffers.Binary is required

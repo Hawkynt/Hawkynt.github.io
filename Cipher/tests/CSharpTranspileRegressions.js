@@ -141,6 +141,12 @@ check('scope: loop variable `r` next to parameter `R` does not redeclare it', ()
 // ---------------------------------------------------------------------------
 // Field typing
 // ---------------------------------------------------------------------------
+check('fields: two fields differing only in case keep their own values', () => {
+  const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
+    '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');
+  expectMatch(code, /this\.NField = /, 'n renamed to NField');
+  expectMatch(code, /return this\.NField \+ this\.N;/, 'both read apart');
+});
 check('fields: null-initialised then constructed field takes the class type', () => {
   const code = transpile('class H { constructor() { this._absorber = null; } set key(k) { this._absorber = new BlockAbsorber(64, b => this._p(b)); } _p(b) {} }');
   expectMatch(code, /BlockAbsorber\??\s+_absorber/, 'a BlockAbsorber-typed _absorber');
