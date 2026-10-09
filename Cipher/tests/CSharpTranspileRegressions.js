@@ -980,6 +980,12 @@ check('bigint rows: a frozen BigInt row stored into a uint64 table converts elem
   expectMatch(code, /table\[j\] = row\.Select\(_v => (unchecked\()?\(ulong\)\(?_v\)?\)?\)\.ToArray\(\);/, 'row.Select(_v => (ulong)_v).ToArray()');
   expectNoMatch(code, /\(row & ulong\.MaxValue\)/, 'the row masked as a number');
 });
+check('maps: a module Map filled with dynamic values takes the type its typed .get declares (CS0029)', () => {
+  const code = transpile('const HASH_CACHE = new Map();\n/**\n * @param {string} name - name\n * @returns {Algorithm} r\n */\n' +
+    'function findHash(name) {\n  /** @type {Algorithm} */\n  const cached = HASH_CACHE.get(name);\n  if (cached) return cached;\n' +
+    '  const found = AlgorithmFramework.Find(name);\n  HASH_CACHE.set(name, found);\n  return found;\n}');
+  expectMatch(code, /Dictionary<string, Algorithm> HASH_CACHE/, 'Dictionary<string, Algorithm>');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

@@ -4450,6 +4450,17 @@
           if (!ev) { ev = { keyTypes: [], valueTypes: [] }; evidenceByName.set(varName, ev); }
           this._collectMapCallEvidence(methodName, node, ev, bodyNode);
         }
+        // `/** @type {Algorithm} */ const cached = CACHE.get(name);` declares the value type
+        if (node.type === 'VariableDeclarator' && this._mapCallMethodName(node.init) === 'get' &&
+            node.init.callee.object?.type === 'Identifier' && typeof node.declaredType === 'string') {
+          const declared = this.mapILType(node.declaredType);
+          if (declared && declared.name !== 'object') {
+            const varName = node.init.callee.object.name;
+            let ev = evidenceByName.get(varName);
+            if (!ev) { ev = { keyTypes: [], valueTypes: [] }; evidenceByName.set(varName, ev); }
+            (ev.declaredValueTypes ||= []).push(declared);
+          }
+        }
         for (const key of Object.keys(node)) {
           if (key === 'loc' || key === 'range' || key === 'comments') continue;
           const child = node[key];
@@ -4460,7 +4471,11 @@
       const result = new Map();
       for (const [varName, ev] of evidenceByName) {
         const keyType = this._unifyMapEvidenceType(ev.keyTypes, false);
-        const valueType = this._unifyMapEvidenceType(ev.valueTypes, true);
+        let valueType = this._unifyMapEvidenceType(ev.valueTypes, true);
+        // Without reliable .set evidence, the type every typed .get declares
+        const declared = ev.declaredValueTypes || [];
+        if (!valueType && declared.length > 0 && declared.every(t => t.toString() === declared[0].toString()))
+          valueType = declared[0];
         // Store whichever of the two has real, unanimous evidence - and ONLY that one.
         // Filling in a made-up default for the OTHER (unresolved) side here would
         // permanently bake a guess into the tag, when the consumers (getExpressionType's
