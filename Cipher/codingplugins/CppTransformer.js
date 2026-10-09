@@ -2024,7 +2024,16 @@
         case 'void': return { c: `((void)(${a.c}), js::Any())`, t: T.undef };
         case '-':
           if (a.t.k === 'big') return { c: `(-${a.c})`, t: T.big };
-          if (isInt(a.t) && node.argument.type === 'Literal') {
+          if (node.argument.type === 'Literal' && (typeof node.argument.value === 'bigint' || node.argument.bigint !== undefined)) {
+            // -1n: a negative BigInt (a 64-bit integer where the IL types it signed 64-bit)
+            const text = typeof node.argument.value === 'bigint' ? node.argument.value.toString() : String(node.argument.bigint).replace(/n$/, '');
+            const v = -BigInt(text);
+            const rt = this.type(node.contextType || node.resultType);
+            if (isInt(rt) && rt.bits === 64 && rt.signed && v >= -(2n ** 63n)) return { c: `(${v + 1n}LL - 1)`, t: T.i64 };
+            if (v >= -(2n ** 62n)) return { c: `js::BigInt(${v}LL)`, t: T.big };
+            return { c: `js::BigInt::fromString("${v}")`, t: T.big };
+          }
+          if (isInt(a.t) && node.argument.type === 'Literal' && typeof node.argument.value === 'number') {
             const v = -node.argument.value;
             return this.numberLiteral(v, this.type(node.resultType), null);
           }
