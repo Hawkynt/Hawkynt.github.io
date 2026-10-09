@@ -222,6 +222,9 @@ sameAsJs('members: a framework subclass field read through a framework base is t
   'class Inst extends IBlockCipherInstance { constructor(a) { super(a); } /** @returns {int32} */ count() { return this.algorithm.SupportedKeySizes.length; } }\n' +
   '/** @returns {string} */ function probe() { return String(new Inst(new Alg()).count()); }', '1');
 
+sameAsJs('members: if (obj.method) holds for a method the class declares',
+  'class Box { Dispose() { this.gone = 1; } constructor() { this.gone = 0; } }\n' +
+  '/** @returns {string} */ function probe() { const b = new Box(); if (b.Dispose) { b.Dispose(); } return String(b.gone); }', '1');
 sameAsJs('members: Find destructured from AlgorithmFramework looks up the registry',
   'const { Find } = AlgorithmFramework;\n' +
   '/** @returns {string} */ function probe() { const a = Find("no such algorithm"); return a ? "found" : "missing"; }', 'missing');

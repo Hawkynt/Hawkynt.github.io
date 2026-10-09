@@ -1607,7 +1607,19 @@
       return A.exit(own ? this.conv({ e: own, t: this.fn.ownRet }, this.fn.retType) : this.conv(res, this.fn.retType));
     }
 
+    /** `if (obj.method)`: a method of the object's class exists, so the test holds. */
+    isMethodReference(node) {
+      if (!node || node.type !== 'MemberExpression' || node.computed || !node.property) return false;
+      let o;
+      try { [o] = this.capture(() => this.ex(node.object)); } catch (e) { if (e instanceof TranspileError) return false; throw e; }
+      if (!o || !o.t || o.t.k !== 'class') return false;
+      const c = this.classes.get(o.t.name);
+      const m = c && this.findMember(c, node.property.name);
+      return !!m && m.kind === 'method';
+    }
+
     ifStatement(node) {
+      if (this.isMethodReference(node.test)) return this.subBlock(node.consequent);
       const test = this.ex(node.test);
       // a branch the IL types rule out is not compiled
       if (test.constBool === true) return this.subBlock(node.consequent);
