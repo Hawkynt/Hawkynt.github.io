@@ -2658,8 +2658,18 @@
       let w = T.wider(ln.t, rn.t);
       if (T.isNumeric(resT) && op !== '%') w = T.wider(w, resT);
       // JavaScript multiplies doubles: a product past 2^53 is rounded. Two ints multiply exactly in a long
-      // (below 2^62); a wider operand multiplies as a double, rounding like JavaScript.
-      if (op === '*') w = ln.t === 'int' && rn.t === 'int' ? 'long' : 'double';
+      // (below 2^62), which is then rounded to a double unless an operand is narrow enough to keep the
+      // product below 2^53; a wider operand multiplies as a double, rounding like JavaScript.
+      if (op === '*') {
+        if (ln.t !== 'int' || rn.t !== 'int') w = 'double';
+        else {
+          const product = E.bin('*', E.cast(ln, 'long'), E.cast(rn, 'long'), 'long');
+          const narrow = (e, n) => (e.k === 'lit' && Math.abs(e.v) < 2 ** 21) ||
+            (n && ['uint8', 'int8', 'uint16', 'int16', 'byte', 'sbyte', 'boolean'].includes(ilNorm(n.resultType)));
+          if (narrow(ln, node && node.left) || narrow(rn, node && node.right)) return product;
+          return E.cast(E.cast(product, 'double'), 'long');
+        }
+      }
       if (op === '%' && w !== 'double') {
         // integer remainder by zero is NaN in JavaScript
         return E.scall('Js', 'rem', [this.conv(ln, w), this.conv(rn, w)], w);
