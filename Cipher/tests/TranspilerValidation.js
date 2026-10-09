@@ -795,14 +795,13 @@ const CSHARP_DUMMY_CLASSES = `    // The identity cipher of tests/DummyBlockCiph
     public sealed class ValidationDummyCipherAlgorithm : BlockCipherAlgorithm
     {
         public ValidationDummyCipherAlgorithm() { Name = "DummyBlockCipher"; BlockSize = 16; }
-        public override object CreateInstance(bool isInverse = false) { return new ValidationDummyCipherInstance(this); }
+        public override IBlockCipherInstance CreateInstance(bool isInverse = false) { return new ValidationDummyCipherInstance(this); }
     }
 
     public sealed class ValidationDummyCipherInstance : IBlockCipherInstance
     {
         private readonly System.Collections.Generic.List<byte> buffer = new System.Collections.Generic.List<byte>();
-        public ValidationDummyCipherInstance(Algorithm algorithm) : base(algorithm) { }
-        public int BlockSize { get; set; } = 16;
+        public ValidationDummyCipherInstance(Algorithm algorithm) : base(algorithm) { BlockSize = 16; }
         public override void Feed(byte[] data) { if (data != null) buffer.AddRange(data); }
         public override byte[] Result()
         {

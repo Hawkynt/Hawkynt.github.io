@@ -481,6 +481,19 @@ check('OpCodes.CreateArray: the array has the element type its target is declare
 });
 
 // ---------------------------------------------------------------------------
+// Validation harness (tests/TranspilerValidation.js, C# paths)
+// ---------------------------------------------------------------------------
+const Validation = quiet(() => require('./TranspilerValidation.js'));
+const MODE_SPEC = { algorithms: [{ name: 'M', className: 'M', isMode: true, multiKey: false, vectors: [{ fields: [], steps: [] }] }] };
+
+check('harness: the dummy cipher of a mode overrides CreateInstance with the block cipher instance type', () => {
+  const harness = quiet(() => Validation.generateTestHarness('csharp', 'namespace CipherValidation { }', MODE_SPEC, 'm'));
+  if (!harness.success) throw new Error(harness.error);
+  expectMatch(harness.code, /public override IBlockCipherInstance CreateInstance\(bool isInverse = false\)/, 'CreateInstance returning IBlockCipherInstance');
+  expectNoMatch(harness.code, /class ValidationDummyCipherInstance[\s\S]*public int BlockSize \{/, 'a redeclared BlockSize hiding the framework one');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
