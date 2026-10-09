@@ -6359,6 +6359,18 @@
           // (e.g. LZ-family match-finder results: { distance, length }) ->
           // $obj->{'length'} - a plain hash key, not the array/string length.
           const arrExpr = this.transformExpression(node.array);
+          // The receiver's IL type decides first: an array (or tuple) counts
+          // its elements, a string its characters, and an object - a class
+          // or record such as an LZ match { distance, length } - has a field.
+          const receiverType = node.array?.resultType;
+          if (typeof receiverType === 'string' && !receiverType.includes('|')) {
+            if (/\[\]$/.test(receiverType) || /^\[.*\]$/.test(receiverType) || /^(Uint|Int|Float|BigUint|BigInt)\d+(Clamped)?Array$|^Array$/.test(receiverType))
+              return new PerlCall('scalar', [this.wrapArrayDeref(arrExpr)]);
+            if (receiverType === 'string')
+              return new PerlCall('length', [arrExpr]);
+            if (receiverType === 'object' || (/^[A-Z][A-Za-z0-9_]*$/.test(receiverType) && !NON_CLASS_TYPE_NAMES.has(receiverType)))
+              return new PerlSubscript(arrExpr, PerlLiteral.String('length', "'"), 'hash', true);
+          }
           if (this.isStringType(node.array)) {
             return new PerlCall('length', [arrExpr]);
           }

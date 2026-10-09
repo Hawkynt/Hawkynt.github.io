@@ -283,6 +283,19 @@ check('BigInt: products, truncating division and remainder, toString(16) and ToQ
   expectOutput(out, '3000000000000000d,-7905747460161236408,-5,13,25,110680464442257309722');
 });
 
+// ---------------------------------------------------------------------------
+// .length by the receiver's IL type
+// ---------------------------------------------------------------------------
+const LENGTH_SNIPPET = '/**\n * @typedef {Object} Match\n * @property {int32} distance\n * @property {int32} length\n */\n' +
+  '/** @param {uint8[]} data @param {string} text @returns {string} */\n' +
+  'function f(data, text) { /** @type {Match} */ const match = { distance: 3, length: 9 }; return [match.length, data.length, text.length].join(","); }';
+check('length: a record\'s length field is a field, an array counts elements, a string characters', () => {
+  const code = transpile(LENGTH_SNIPPET);
+  expectMatch(code, /\$match->\{'length'\}/, "$match->{'length'}");
+  if (!hasPerl()) return 'skip';
+  expectOutput(runPerl(LENGTH_SNIPPET, 'print main::f([1, 2], "abcd"), "\\n";'), '9,2,4');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }
