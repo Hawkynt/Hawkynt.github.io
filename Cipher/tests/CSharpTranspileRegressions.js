@@ -487,7 +487,8 @@ check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul
     '  constructor(algorithm) { super(algorithm); this.BlockSize = 2; }\n' +
     '  EncryptBlock(block) { return [block[0] ^ this.key[0], block[1] ^ this.key[1]]; }\n' +
     '  DecryptBlock(block) { return this.EncryptBlock(block); }\n}\n' +
-    '/**\n * @param {BigInt} x - value\n * @returns {BigInt} low 64 bits\n */\nfunction wrap64(x) { return OpCodes.ToQWord(x); }', true)
+    '/**\n * @param {BigInt} x - value\n * @returns {BigInt} low 64 bits\n */\nfunction wrap64(x) { return OpCodes.ToQWord(x); }\n' +
+    'class XorAlgorithm extends BlockCipherAlgorithm { constructor() { super(); this.name = "XorProbe"; } }\nRegisterAlgorithm(new XorAlgorithm());', true)
     .replace(/public static void Main\s*\([^)]*\)\s*\{[^}]*\}/, '');
   const program = `${stubs}
 namespace RegressionTest {
@@ -563,6 +564,10 @@ namespace RegressionTest {
       Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
       Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
       Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
+      // The registry finds a registered algorithm by name, and nothing for an unknown one
+      Eq("find", AlgorithmFramework.Find("XorProbe")?.Name, "XorProbe");
+      Eq("find-none", AlgorithmFramework.Find("NoSuchAlgorithm") == null, true);
+      Eq("getall", AlgorithmFramework.GetAll().Length >= 1, true);
       // ParseBigInt reads JavaScript BigInt text; PadString repeats its pad
       Eq("parsebigint-hex", FrameworkFunctions.ParseBigInt("0xff"), 255);
       Eq("parsebigint-dec", FrameworkFunctions.ParseBigInt("-12"), -12);

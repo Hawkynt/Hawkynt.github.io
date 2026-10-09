@@ -7498,41 +7498,8 @@
         mainClass.nestedTypes.push(ic);
       }
 
-      // Emit a minimal AlgorithmFramework.Find(name) stub if the source referenced it (see
-      // transformCallExpression) - a single-file compile target has no real cross-algorithm
-      // registry to back a genuine lookup, but the call site still needs a declared method
-      // to bind to (CS0103 otherwise). Always returns null/no-op, matching what an isolated
-      // lookup that can never find anything registered would observe.
-      if (this.needsAlgorithmFrameworkStub) {
-        const stubClass = new CSharpClass('AlgorithmFramework');
-        stubClass.isStatic = true;
-        const findMethod = new CSharpMethod('Find', CSharpType.Dynamic());
-        findMethod.isStatic = true;
-        findMethod.parameters.push(new CSharpParameter('name', CSharpType.String()));
-        findMethod.body = new CSharpBlock();
-        findMethod.body.statements.push(new CSharpReturn(CSharpLiteral.Null()));
-        stubClass.members.push(findMethod);
-        const registerMethod = new CSharpMethod('RegisterAlgorithm', CSharpType.Void());
-        registerMethod.isStatic = true;
-        registerMethod.parameters.push(new CSharpParameter('algorithm', CSharpType.Dynamic()));
-        registerMethod.body = new CSharpBlock();
-        stubClass.members.push(registerMethod);
-        // `AlgorithmFramework.GetAll()` (e.g. gost28147wrap.js's `const algorithms =
-        // AlgorithmFramework.GetAll ? AlgorithmFramework.GetAll() : [];`, then
-        // `.find(...)`-ing the real algorithm by name out of the whole registry) - same
-        // "no real cross-algorithm registry in a single-file compile target" situation
-        // as Find/RegisterAlgorithm above; an empty dynamic[] is the correct "nothing is
-        // registered" answer and keeps the immediately-following `.find(...)`/`.Find(...)`
-        // call resolvable against a real array instead of CS0103.
-        const getAllMethod = new CSharpMethod('GetAll', CSharpType.Array(CSharpType.Dynamic()));
-        getAllMethod.isStatic = true;
-        getAllMethod.body = new CSharpBlock();
-        const emptyGetAllCall = new CSharpMethodCall(new CSharpIdentifier('Array'), 'Empty', []);
-        emptyGetAllCall.typeArguments = [CSharpType.Dynamic()];
-        getAllMethod.body.statements.push(new CSharpReturn(emptyGetAllCall));
-        stubClass.members.push(getAllMethod);
-        unit.namespace.types.push(stubClass);
-      }
+      // AlgorithmFramework.Find/RegisterAlgorithm/GetAll resolve to the runtime's
+      // registry class (csharp.js), which looks up every bundled algorithm.
 
       return unit;
     }

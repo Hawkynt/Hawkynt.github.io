@@ -847,6 +847,47 @@ namespace ${namespace}
         }
     }
 
+    // AlgorithmFramework.js's registry: every algorithm of every generated class in the
+    // program (each lists its registrations in a static Algorithms array), so an
+    // algorithm finds another bundled one by name, as AlgorithmFramework.Find does.
+    public static class AlgorithmFramework
+    {
+        private static List<Algorithm> registry;
+        private static bool scanning;
+
+        private static List<Algorithm> Scan()
+        {
+            var found = new List<Algorithm>();
+            foreach (var type in typeof(AlgorithmFramework).Assembly.GetTypes())
+            {
+                var field = type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (field == null || field.FieldType != typeof(Algorithm[])) continue;
+                try
+                {
+                    if (field.GetValue(null) is Algorithm[] algorithms)
+                        foreach (var algorithm in algorithms) if (algorithm != null) found.Add(algorithm);
+                }
+                catch (Exception) { }
+            }
+            return found;
+        }
+
+        public static List<Algorithm> All()
+        {
+            if (registry != null) return registry;
+            // A lookup while the registry is being built (a module constant looking up
+            // another algorithm during its own initialization) sees what exists so far
+            if (scanning) return Scan();
+            scanning = true;
+            try { registry = Scan(); } finally { scanning = false; }
+            return registry;
+        }
+
+        public static dynamic Find(string name) => All().LastOrDefault(a => a.Name == name);
+        public static void RegisterAlgorithm(object algorithm) { }
+        public static dynamic[] GetAll() => All().Cast<dynamic>().ToArray();
+    }
+
     // Mirrors AlgorithmFramework.js's free padding functions; imported with
     // "using static" so the bare JS calls resolve unchanged.
     public static class FrameworkFunctions
