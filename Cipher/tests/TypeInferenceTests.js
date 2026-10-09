@@ -1840,6 +1840,33 @@ class TypeInferenceTestSuite {
       check(fl + 'const x = Math.floor(Math.log2(a)); return x; }', 'x', 'int32', 'given Math.floor(Math.log2(uint32)), then int32 (a logarithm is small)');
       check(fl + 'const x = Math.floor(t / a); return x; }', 'x', 'float64', 'given Math.floor(float / uint32), then float64 (divisor range holds 0)');
 
+      // Arithmetic stored into a float64 is double arithmetic
+      const initOf = (code, name) => this.inferType(code, ast => {
+        const find = n => {
+          if (!n || typeof n !== 'object') return null;
+          if (n.type === 'VariableDeclarator' && n.id && n.id.name === name) return n.init;
+          for (const k in n) { if (k === 'loc' || k === 'range') continue; const r = find(n[k]); if (r) return r; }
+          return null;
+        };
+        return find(ast);
+      });
+      const lcg = '/** @param {int32} seed\n * @param {uint32} u */\nfunction f(seed, u) {\n';
+      const grandCru = lcg + '/** @type {float64} */\nconst product = 1103515245 * seed + 12345;\nreturn product; }';
+      this.assertEqual(initOf(grandCru, 'product'), 'float64', 'given @type {float64} on 1103515245 * seed + 12345, then the sum is float64 (Grand Cru)', 'product');
+      this.assertEqual(this.inferType(grandCru, ast => this.findVarInit(ast).left), 'float64',
+        'given the same, then the product inside is float64 too (was int64)', '1103515245 * seed');
+      this.assertEqual(this.inferType(grandCru, ast => this.findVarInit(ast).left.left), 'float64',
+        'given the same, then the literal multiplier is float64 (no float64 constant needed)', '1103515245');
+      this.assertEqual(this.inferType(grandCru, ast => this.findVarInit(ast).left.right), 'int32',
+        'given the same, then the variable operand keeps its own type', 'seed');
+      this.assertEqual(this.inferType(lcg + '/** @type {float64} */\nlet g = 0;\ng = u * u;\nreturn g; }', ast => {
+        const a = this.findNodeOfType(ast, 'AssignmentExpression'); return a && a.right; }), 'float64',
+        'given an assignment of uint32 * uint32 to a declared float64, then the product is float64', 'g = u * u');
+      this.assertEqual(initOf(lcg + '/** @type {uint64} */\nconst p = u * u;\nreturn p; }', 'p'), 'uint64',
+        'given a uint64 target, then the product stays integer (only float64 retypes)', 'p');
+      this.assertEqual(initOf(lcg + 'const p = u * u;\nreturn p; }', 'p'), 'uint64',
+        'given no declared target, then the product stays integer', 'p');
+
     });
   }
 

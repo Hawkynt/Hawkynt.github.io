@@ -2576,6 +2576,7 @@
         ilNode.resultType = this._commonTypeOf([ilNode.consequent, ilNode.alternate]) || ilNode.resultType;
         return;
       }
+      if (type === 'float64' && this._retypeAsDouble(ilNode)) return;
       if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
         ilNode.resultType = type;
         delete ilNode.typeGuess;
@@ -2604,6 +2605,42 @@
         }
         this._applyContextualType(ilNode.value, elementType);
       }
+    }
+
+    /**
+     * Arithmetic stored into a float64 is double arithmetic: JavaScript forms
+     * `a * b + c` on Numbers in double precision (a product beyond 2^53 is
+     * rounded), so a target that declares float64 types the arithmetic that
+     * forms its value - every + - * / % node on Numbers down to its leaves -
+     * float64, and its number literals with it. Variables and calls among the
+     * leaves keep their own types (they are converted on use).
+     * @param {Object} ilNode - value stored into a float64 target
+     * @returns {boolean} true when ilNode is such arithmetic (now float64)
+     * @private
+     */
+    _retypeAsDouble(ilNode) {
+      const ARITHMETIC = new Set(['+', '-', '*', '/', '%']);
+      const isArithmetic = n => n && n.type === 'BinaryExpression' && ARITHMETIC.has(n.operator) &&
+        !n.bigint && !TypeAwareJSASTParser._isBigIntValue(n.left) && !TypeAwareJSASTParser._isBigIntValue(n.right) &&
+        n.resultType !== 'string' && n.left && n.left.resultType !== 'string' && n.right && n.right.resultType !== 'string';
+      if (!isArithmetic(ilNode)) return false;
+      const visit = n => {
+        if (isArithmetic(n)) {
+          n.resultType = 'float64';
+          if (n.typeGuessKind === 'raw-arithmetic') { delete n.typeGuess; delete n.typeGuessKind; }
+          visit(n.left);
+          visit(n.right);
+        } else if (n && n.type === 'UnaryExpression' && (n.operator === '-' || n.operator === '+') && n.argument &&
+                   (isArithmetic(n.argument) || (n.argument.type === 'Literal' && typeof n.argument.value === 'number'))) {
+          n.resultType = 'float64';
+          visit(n.argument);
+        } else if (n && n.type === 'Literal' && typeof n.value === 'number') {
+          n.resultType = 'float64';
+          delete n.typeGuess;
+        }
+      };
+      visit(ilNode);
+      return true;
     }
 
     /**
