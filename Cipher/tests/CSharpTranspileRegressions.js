@@ -593,6 +593,10 @@ check('harness: a .data library taken through a factory parameter is bundled, an
     expectMatch(bundled.code, /public static dynamic Tables = ValidationLibraries\.Exports\(typeof\(tables_data_libGenerated\)\);/, 'Tables bound to the library\'s exports');
     expectMatch(bundled.code, /class tables_data_libGenerated[\s\S]*\bSBOX\b/, 'the library class with its SBOX table');
     expectMatch(bundled.code, /class ValidationLibraryExports : System\.Dynamic\.DynamicObject/, 'the exports object');
+    // A parameter the code never reads (the stubs stand in for it) gets no library
+    const unused = '// Tables is provided by the stubs\nnamespace CipherValidation { public class mainGenerated { public static dynamic Tables = null; } }';
+    const plain = quiet(() => Validation.bundleCSharpDependencies(unused, [], plugin, undefined, main));
+    expectNoMatch(plain.code, /tables_data_libGenerated/, 'the library bundled for an unused parameter');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

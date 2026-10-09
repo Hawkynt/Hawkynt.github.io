@@ -567,7 +567,11 @@ function bundleCSharpDependencies(code, dependencies, plugin, parserOptions, alg
   const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
   const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
   const binding = paramName && new RegExp(`(static\\s+dynamic\\s+${paramName}\\s*=\\s*)null;`);
-  if (binding && binding.test(code)) {
+  // Only where the code reads the parameter: one the stubs stand in for (the
+  // fountain-code foundation classes) is declared but never used
+  const codeLines = paramName ? code.split('\n').filter(line => !/^\s*\/\//.test(line)).join('\n') : '';
+  const used = paramName && (codeLines.match(new RegExp(`\\b${paramName}\\b`, 'g')) || []).length > 1;
+  if (binding && used && binding.test(code)) {
     for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
       const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
         .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
