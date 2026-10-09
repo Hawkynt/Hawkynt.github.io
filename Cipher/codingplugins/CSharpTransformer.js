@@ -13835,14 +13835,10 @@
         }
 
         // IL AST TypeOfExpression - typeof x -> x.GetType().Name or type check
-        case 'TypeOfExpression': {
-          const arg = this.transformExpression(node.argument);
-          return new CSharpMethodCall(
-            new CSharpMethodCall(arg, 'GetType', []),
-            'ToString',
-            []
-          );
-        }
+        // typeof x names the JavaScript kind of the value (FrameworkFunctions.JsTypeOf):
+        // self-shrinking-generator.js's `typeof polynomial === 'number'`
+        case 'TypeOfExpression':
+          return new CSharpMethodCall(null, 'JsTypeOf', [this.transformExpression(node.argument)]);
 
         // IL AST ObjectFreeze - Object.freeze(x) -> just return x (C# has no direct equivalent)
         case 'ObjectFreeze': {

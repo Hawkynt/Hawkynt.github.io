@@ -971,6 +971,13 @@ check('accessors: a dynamic property setter telling kinds of values apart keeps 
     '    else this._state = BigInt(seedValue.length);\n  }\n  /** @returns {BigInt} the state */\n  get seed() { return this._state; }\n}');
   expectNoMatch(code, /byte\[\] seedValue = value;/, 'a byte[] seedValue local');
 });
+check('typeof: a typeof test names the JavaScript kind of the value', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    /** @type {BigInt} */\n    this._state = 0n;\n  }\n' +
+    '  /** @param {uint8[]} seedValue - seed */\n  set seed(seedValue) {\n    if (typeof seedValue === "bigint") this._state = seedValue;\n' +
+    '    else this._state = BigInt(seedValue.length);\n  }\n  /** @returns {BigInt} the state */\n  get seed() { return this._state; }\n}');
+  expectMatch(code, /JsTypeOf\(\w+\) == "bigint"/, 'JsTypeOf(value) == "bigint"');
+  expectNoMatch(code, /GetType\(\)\.ToString\(\)/, 'the C# type name');
+});
 check('length: storing the length member of an object assigns its Length, not a new array (CS0029)', () => {
   const code = transpile('class Register {\n  constructor() {\n    /** @type {int32} */\n    this.length = 0;\n  }\n}\n' +
     '/**\n * @param {int32} n - length\n * @returns {Register} r\n */\nfunction make(n) {\n  const reg = new Register();\n  reg.length = n;\n  return reg;\n}\n' +
@@ -1304,6 +1311,12 @@ namespace RegressionTest {
       var bag = new TestCase { Text = "t" };
       Eq("member-camel", (string)FrameworkFunctions.JsMember(bag, "text"), "t");
       Eq("member-missing", (object)FrameworkFunctions.JsMember(bag, "nothing") == null, true);
+      // JsTypeOf names the JavaScript kind of a value
+      Eq("typeof-number", FrameworkFunctions.JsTypeOf(5), "number");
+      Eq("typeof-bigint", FrameworkFunctions.JsTypeOf(new BigInteger(5)), "bigint");
+      Eq("typeof-string", FrameworkFunctions.JsTypeOf("x"), "string");
+      Eq("typeof-undefined", FrameworkFunctions.JsTypeOf(null), "undefined");
+      Eq("typeof-object", FrameworkFunctions.JsTypeOf(new byte[1]), "object");
       // ArrayAs converts a copy back to the element type of the array it came from
       Eq("array-as", Convert.ToHexString(FrameworkFunctions.ArrayAs(new int[] { 1, 255, 256 }, new byte[0])), "01FF00");
       Eq("array-as-int", string.Join(",", FrameworkFunctions.ArrayAs(new byte[] { 7 }, new int[0])), "7");

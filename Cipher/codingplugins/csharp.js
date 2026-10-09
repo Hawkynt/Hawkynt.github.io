@@ -1008,6 +1008,18 @@ namespace ${namespace}
         }
 
         // JavaScript's string.slice: a negative bound counts from the end, both clamp
+        // JavaScript typeof: a 64-bit integer stands for a BigInt, the narrower ones and
+        // floating point for a number, a missing value (null) for undefined
+        public static string JsTypeOf(object value) => value switch
+        {
+            null => "undefined",
+            bool => "boolean",
+            string or char => "string",
+            System.Numerics.BigInteger or long or ulong => "bigint",
+            byte or sbyte or short or ushort or int or uint or float or double or decimal => "number",
+            System.Delegate => "function",
+            _ => "object"
+        };
         // A converted copy of an array, converted back to the element type of the array
         // it was made from (like), as a JavaScript array holding the same numbers
         public static T[] ArrayAs<T, S>(S[] source, T[] like) =>
