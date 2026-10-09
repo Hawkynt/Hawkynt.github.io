@@ -10342,15 +10342,6 @@
       if (node.operator === '=' && node.left.type === 'MemberExpression' &&
           !node.left.computed) {
         const propName = node.left.property?.name || node.left.property?.value;
-        if (CROSS_INSTANCE_ACCESSOR_PROPS.has(propName) && this._isCipherInstanceRef(node.left.object)) {
-          const objExpr = this.transformExpression(node.left.object);
-          const rightExpr = this.transformExpression(node.right);
-          return new PerlMemberAccess(
-            objExpr,
-            new PerlCall(new PerlIdentifier(propName), [rightExpr]),
-            '->'
-          );
-        }
         // A setter of a class instance, by the object's IL type (see
         // _classPropertyAccess): a setter is code, not a hash store.
         if (node.left.object?.type !== 'ThisExpression') {
@@ -10362,6 +10353,15 @@
               return new PerlMemberAccess(objExpr, new PerlCall(new PerlIdentifier(propName), [rightExpr]), '->');
             return new PerlCall(new PerlIdentifier('main::_JsSetProp', ''), [objExpr, PerlLiteral.String(propName, "'"), rightExpr]);
           }
+        }
+        if (CROSS_INSTANCE_ACCESSOR_PROPS.has(propName) && this._isCipherInstanceRef(node.left.object)) {
+          const objExpr = this.transformExpression(node.left.object);
+          const rightExpr = this.transformExpression(node.right);
+          return new PerlMemberAccess(
+            objExpr,
+            new PerlCall(new PerlIdentifier(propName), [rightExpr]),
+            '->'
+          );
         }
       }
 
@@ -10870,10 +10870,6 @@
         // must go through its get/set accessor - see _isCipherInstanceRef()
         // and CROSS_INSTANCE_ACCESSOR_PROPS' doc comments for why
         // classAccessors can't see this.
-        if (CROSS_INSTANCE_ACCESSOR_PROPS.has(member) && this._isCipherInstanceRef(node.object)) {
-          return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
-        }
-
         // A property of a class instance, by the object's IL type: an
         // accessor of a class of this file is called, and one of a class
         // this file cannot see (another file's, a framework base) is
@@ -10884,6 +10880,10 @@
             return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
           if (access === 'runtime')
             return new PerlCall(new PerlIdentifier('main::_JsGetProp', ''), [object, PerlLiteral.String(member, "'")]);
+        }
+
+        if (CROSS_INSTANCE_ACCESSOR_PROPS.has(member) && this._isCipherInstanceRef(node.object)) {
+          return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
         }
 
         // Bare (non-computed, non-call) property read/write target - obj.prop
