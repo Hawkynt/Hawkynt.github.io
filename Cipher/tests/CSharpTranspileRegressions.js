@@ -932,6 +932,19 @@ check('return: a null module sentinel returned from an array-typed function is c
     'function f(n) { if (n < 0) return FAIL; return [[1, 2]]; }');
   expectMatch(code, /return \(uint\[\]\[\]\)\(?FAIL\)?;/, 'return (uint[][])FAIL;');
 });
+const OVERRIDING_CLASSES = 'class Base {\n  /** @param {uint8[]} s - state */\n  run(s) { this.step(s); }\n' +
+  '  /** @param {uint8[]} s - state */\n  step(s) { throw new Error("abstract"); }\n}\n' +
+  'class Derived extends Base {\n  /** @param {uint8[]} s - state */\n  step(s) { s[0] = 1; }\n}\n' +
+  'class Other extends Base {\n  /**\n   * @param {uint8[]} s - state\n   * @param {int32} n - count\n   */\n  step(s, n) { s[0] = n; }\n}';
+check('inheritance: a method a subclass redeclares with the same signature is virtual, the redeclaration an override', () => {
+  const code = transpile(OVERRIDING_CLASSES);
+  expectMatch(code, /public virtual void Step\(byte\[\] s( = null)?\)/, 'virtual Step in the base');
+  expectMatch(code, /public override void Step\(byte\[\] s( = null)?\)/, 'override Step in the subclass');
+});
+check('inheritance: a redeclaration with a different signature stays a separate method', () => {
+  const code = transpile(OVERRIDING_CLASSES);
+  expectMatch(code, /public void Step\(byte\[\] s( = default)?, int n( = default)?\)/, 'plain Step(byte[], int)');
+});
 check('switch: a case falling through into default jumps with `goto default;`', () => {
   const code = transpile('function f(m) { let r = 0; switch (m) { case "a": r = 1; default: r += 2; } return r; }');
   expectMatch(code, /r = 1;\s*goto default;/, 'goto default; after the falling case');

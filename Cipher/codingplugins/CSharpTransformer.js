@@ -7628,7 +7628,47 @@
       // registry class (csharp.js), which looks up every bundled algorithm.
 
       this.applyRefArgumentsEverywhere(unit);
+      this.linkLocalOverrides(unit);
       return unit;
+    }
+
+    /**
+     * A JavaScript method a subclass redeclares is dispatched on the object, so a
+     * base-class call `this.shiftRows(s)` reaches the subclass's method (kupyna.js).
+     * A C# method of a class this file declares, which a subclass (also declared
+     * here) redeclares with the identical signature, becomes virtual and the
+     * redeclaration an override. Signatures that differ stay separate methods.
+     * @param {CSharpCompilationUnit} unit - the transformed unit
+     */
+    linkLocalOverrides(unit) {
+      const classes = new Map();
+      const collect = types => {
+        for (const t of types || []) {
+          if (t?.nodeType !== 'Class') continue;
+          classes.set(t.name, t);
+          collect(t.nestedTypes);
+          collect((t.members || []).filter(m => m?.nodeType === 'Class'));
+        }
+      };
+      collect(unit.namespace?.types);
+      const signature = m => `${m.returnType?.toString()}(${m.parameters.map(p => `${p.isRef ? 'ref ' : ''}${p.isOut ? 'out ' : ''}${p.type?.toString()}`).join(',')})`;
+      const instanceMethods = c => (c.members || []).filter(m => m?.nodeType === 'Method' && !m.isStatic);
+      for (const cls of classes.values()) {
+        for (const method of instanceMethods(cls)) {
+          if (method.isOverride) continue;
+          const sig = signature(method);
+          let base = classes.get(cls.baseClass?.name);
+          for (let hops = 0; base && hops < 32; ++hops, base = classes.get(base.baseClass?.name)) {
+            const inherited = instanceMethods(base).find(m => m.name === method.name);
+            if (!inherited) continue;
+            if (signature(inherited) === sig && inherited.accessModifier === method.accessModifier && method.accessModifier !== 'private') {
+              if (!inherited.isOverride && !inherited.isAbstract) inherited.isVirtual = true;
+              method.isOverride = true;
+            }
+            break;
+          }
+        }
+      }
     }
 
     /**
