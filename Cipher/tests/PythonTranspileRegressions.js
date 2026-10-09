@@ -576,6 +576,17 @@ check('math: a whole Math.log2/Math.sqrt result sizes and indexes arrays like th
   return expectOutput(runPython(js, 'r = f(8)\nprint(r[0], r[1], r[2], list(r[3]), r[4])'), ['3 9 7 [1, 1, 1] True']);
 });
 
+check('modules: a data library keeps its module.exports assignment for the bundling host', () => {
+  const js = '(function () {\n  const TABLE = [1, 2, 3];\n  if (typeof module !== "undefined" && module.exports) {\n    module.exports = { TABLE };\n  } else {\n    this.Table = { TABLE };\n  }\n}).call(this);\n' +
+    'if (typeof require !== "undefined") { require("./other"); }';
+  // Given an IIFE library exporting through a module guard, and a plain require guard
+  const code = transpile(js);
+  expectMatch(code, /if globals\(\)\.get\("module"\) is not None:\s+module\.exports = JSObject\(\{"TABLE": TABLE\}\)/, 'the export kept behind a module check');
+  expectNoMatch(code, /\.\/other/, 'the require guard');
+  // Then without a host-provided module the library still loads
+  return expectOutput(runPython(js, 'print("loaded")'), ['loaded']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

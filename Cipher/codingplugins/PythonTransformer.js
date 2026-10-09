@@ -3532,7 +3532,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         // 'require' has no meaning in Python and these blocks only lazy-load sibling
         // algorithm files that are irrelevant when transpiling a single algorithm.
         if (stmt.type === 'IfStatement') {
-          if (this.isNodeMainCheck(stmt.test) || this.isRequireGuard(stmt.test)) {
+          if (this.isNodeMainCheck(stmt.test) ||
+              (this.isRequireGuard(stmt.test) && !PythonTransformer._moduleExportsAssignment(stmt.consequent))) {
             continue;
           }
         }
@@ -3596,6 +3597,25 @@ class OpCodes(metaclass=_OpCodesMeta):
      * chaining AES+Serpent). 'require' doesn't exist in Python and the guarded code
      * has no Python equivalent, so the whole if-statement is dropped.
      */
+    /**
+     * The `module.exports = ...` assignment a module-system guard's body
+     * consists of, if that is all it does.
+     * @param {Object} body - IL statement or block
+     * @returns {Object|null} the assignment expression
+     */
+    static _moduleExportsAssignment(body) {
+      const statements = body && body.type === 'BlockStatement' ? body.body : [body];
+      if (!statements || statements.length !== 1) return null;
+      const stmt = statements[0];
+      const expr = stmt && stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+      if (!expr || expr.type !== 'AssignmentExpression' || expr.operator !== '=') return null;
+      const left = expr.left;
+      const isModuleExports = left && left.type === 'MemberExpression' && !left.computed &&
+        left.object && left.object.type === 'Identifier' && left.object.name === 'module' &&
+        left.property && (left.property.name || left.property.value) === 'exports';
+      return isModuleExports && expr.right && (expr.right.type === 'ObjectExpression' || expr.right.type === 'ObjectLiteral') ? expr : null;
+    }
+
     isRequireGuard(testNode) {
       if (!testNode) return false;
 
@@ -3753,7 +3773,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         // own top-level loop already applies, and transform anything else
         // normally instead of discarding it.
         if (stmt.type === 'IfStatement') {
-          if (this.isNodeMainCheck(stmt.test) || this.isRequireGuard(stmt.test)) continue;
+          if (this.isNodeMainCheck(stmt.test) ||
+              (this.isRequireGuard(stmt.test) && !PythonTransformer._moduleExportsAssignment(stmt.consequent))) continue;
           const transformed = this.transformStatement(stmt);
           if (transformed) {
             if (Array.isArray(transformed)) declarations.push(...transformed);
@@ -5673,9 +5694,21 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformIfStatement(node) {
-      // Drop CommonJS dependency-loading guards wherever they appear (not just at
-      // module top level) - 'require' has no meaning in transpiled Python.
-      if (this.isRequireGuard(node.test)) return null;
+      // A data library inside an IIFE exports its tables through
+      // `if (typeof module !== 'undefined' && module.exports) module.exports
+      // = {...}`; that assignment is how a bundling host reaches them, so it
+      // stays, run when the host provides a `module`
+      if (this.isRequireGuard(node.test)) {
+        const exportsAssignment = PythonTransformer._moduleExportsAssignment(node.consequent);
+        if (!exportsAssignment) return null;
+        const block = new PythonBlock();
+        const assignment = this.transformExpression(exportsAssignment);
+        block.statements.push(...(Array.isArray(assignment) ? assignment : [assignment]));
+        const hasModule = new PythonBinaryExpression(
+          new PythonCall(new PythonMemberAccess(new PythonCall(new PythonIdentifier('globals'), []), 'get'), [PythonLiteral.Str('module')]),
+          'is not', PythonLiteral.None());
+        return new PythonIf(hasModule, block, [], null);
+      }
 
       // Check if the condition contains UpdateExpression (++/--) that needs extraction
       const preStatements = [];
