@@ -275,6 +275,19 @@ check('BigInteger: a 64-bit shift of a BigInteger is not cast down to ulong', ()
 });
 
 // ---------------------------------------------------------------------------
+// Truthiness and mixed-sign arithmetic
+// ---------------------------------------------------------------------------
+check('truthiness: !bigint compares with zero', () => {
+  const code = transpile('/**\n * @param {BigInt} x - value\n * @returns {boolean} zero\n */\nfunction z(x) { return !x; }');
+  expectMatch(code, /x == 0/, 'x == 0');
+});
+check('arithmetic: ulong += int takes the int as ulong (CS0034)', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {uint64} */ this.total = 0n; }\n' +
+    '  /** @param {int32} n - count */\n  add(n) { this.total += n; }\n}');
+  expectMatch(code, /Total \+= unchecked\(\(ulong\)\(n\)\)|Total \+= \(ulong\)\(?n\)?/, 'Total += (ulong)n');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {

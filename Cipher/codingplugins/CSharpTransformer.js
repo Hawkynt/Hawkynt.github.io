@@ -14449,7 +14449,7 @@
         }
 
         // For numeric types, !x -> x == 0
-        const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+        const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double', 'BigInteger'];
         if (operandType && numericTypes.includes(operandType.name)) {
           return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Int(0));
         }
@@ -14705,6 +14705,13 @@
         // Decompose: x op= y into x = x op y
         // Get the binary operation result type
         const binaryOp = node.operator.slice(0, -1); // Remove the '=' to get the operator
+        // C# defines no ulong operator with a signed operand (CS0034): `x += n` with a
+        // ulong x takes n as ulong
+        const operandType = this.inferFullExpressionType(node.right);
+        if (targetType?.name === 'ulong' && !targetType.isArray && !operandType?.isArray &&
+            ['int', 'long', 'short', 'sbyte'].includes(operandType?.name) && !['<<', '>>', '>>>'].includes(binaryOp)) {
+          value = new CSharpCast(new CSharpType('ulong'), value);
+        }
         // Create a fake binary expression node to infer the result type
         const fakeBinaryNode = { type: 'BinaryExpression', operator: binaryOp, left: node.left, right: node.right };
         const resultType = this.inferBinaryExpressionType(fakeBinaryNode);
@@ -18473,21 +18480,8 @@
           // For numeric types, use !value -> value == 0
           // BUT: single-letter parameter names might be arrays (e.g., !x || x.length)
           // so only convert to == 0 if we're confident it's numeric
-          const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+          const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double', 'BigInteger'];
           if (numericTypes.includes(inferredArgType.name)) {
-            // Check if this is a single-letter identifier - could be an array parameter
-            const isSingleLetterIdent = node.argument.type === 'Identifier' &&
-                                        node.argument.name.length === 1;
-
-            if (isSingleLetterIdent) {
-              // Single-letter params in crypto code are often arrays - use null check
-              return new CSharpBinaryExpression(
-                this.transformExpression(node.argument),
-                '==',
-                CSharpLiteral.Null()
-              );
-            }
-
             return new CSharpBinaryExpression(
               this.transformExpression(node.argument),
               '==',
@@ -18567,7 +18561,7 @@
       }
 
       // For numeric types, add != 0
-      const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double'];
+      const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double', 'BigInteger'];
       if (type && numericTypes.includes(type.name)) {
         return new CSharpBinaryExpression(expr, '!=', CSharpLiteral.Int(0));
       }
