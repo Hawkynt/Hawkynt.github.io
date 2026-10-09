@@ -24069,6 +24069,31 @@
      */
     transformArrayPatternAssignmentToStatements(node) {
       const elements = node.left.elements || [];
+      // [a, b, c] = [x, y, z] (a swap or rotation): each value goes to a temporary of
+      // its target's own type first, then to the target - an array literal of the
+      // values would take one element type for all (byte), cutting uint words (THX)
+      const right = node.right;
+      if ((right?.type === 'ArrayExpression' || right?.type === 'ArrayLiteral') && right.elements?.length === elements.length &&
+          right.elements.every(e => e && e.type !== 'SpreadElement') && elements.every(e => e && (e.type === 'Identifier' || e.type === 'MemberExpression' || e.type === 'ThisPropertyAccess'))) {
+        const statements = [];
+        const temps = [];
+        elements.forEach((elem, i) => {
+          let name = `swap${i}`;
+          while (this.methodDeclaredVars.has(name)) name += '_';
+          this.methodDeclaredVars.add(name);
+          const targetType = elem.type === 'Identifier' ? this.getVariableType(elem.name) || this.inferFullExpressionType(elem) : this.inferFullExpressionType(elem);
+          const value = this.castIfNeeded(this.transformExpression(right.elements[i]), this.inferFullExpressionType(right.elements[i]), targetType);
+          statements.push(new CSharpVariableDeclaration(name, targetType && targetType.name !== 'object' ? targetType : CSharpType.Var(), value));
+          temps.push(name);
+        });
+        elements.forEach((elem, i) => {
+          const target = elem.type === 'Identifier'
+            ? new CSharpIdentifier(this.toCamelCase(this.variableNameMap.get(elem.name) || elem.name))
+            : this.transformExpression(elem);
+          statements.push(new CSharpExpressionStatement(new CSharpAssignment(target, '=', new CSharpIdentifier(temps[i]))));
+        });
+        return statements;
+      }
       const sourceExpr = this.transformExpression(node.right);
 
       let tempName = 'destructured';
