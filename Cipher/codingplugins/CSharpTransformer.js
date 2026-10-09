@@ -25275,7 +25275,7 @@
       const floorResult = new CSharpMethodCall(
         new CSharpIdentifier('Math'),
         'Floor',
-        [new CSharpCast(CSharpType.Double(), arg)]
+        [this.asDoubleOperand(node.argument, arg)]
       );
       // Use int as default (matches transformCeil behavior)
       // If uint is needed, the assignment context will handle proper casting
@@ -25319,9 +25319,14 @@
         const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
         const leftType = this.inferFullExpressionType(argNode.left);
         const rightType = this.inferFullExpressionType(argNode.right);
-        if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray)
-          return new CSharpBinaryExpression(
-            new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left)), '/', this.transformExpression(argNode.right));
+        if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray) {
+          // A product as the dividend (y * 256 / m) is a double too, not an integer that wraps
+          const product = argNode.left;
+          const dividend = product.type === 'BinaryExpression' && product.operator === '*' && !product.opCodesMethod
+            ? new CSharpBinaryExpression(new CSharpCast(CSharpType.Double(), this.transformExpression(product.left)), '*', this.transformExpression(product.right))
+            : new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left));
+          return new CSharpBinaryExpression(dividend, '/', this.transformExpression(argNode.right));
+        }
       }
       return new CSharpCast(CSharpType.Double(), arg);
     }

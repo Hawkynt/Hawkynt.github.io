@@ -614,6 +614,10 @@ check('OpCodes.Unpack32LE of a call evaluates the call once', () => {
   expectMatch(code, /OpCodes\.Unpack32LE\(unchecked\(\(uint\)\(this\.Next\(\)\)\)\)|OpCodes\.Unpack32LE\(\(uint\)\(?this\.Next\(\)\)?\)/, 'OpCodes.Unpack32LE((uint)this.Next())');
   if ((code.match(/this\.Next\(\)/g) || []).length !== 1) throw new Error('expected one call of Next()');
 });
+check('Math.floor of a product over an integer divides in doubles, so the product does not wrap', () => {
+  const code = transpile('/**\n * @param {int32} y - y\n * @param {int32} m - m\n * @returns {int32} j\n */\nfunction f(y, m) { return Math.floor((y * 256) / m); }');
+  expectMatch(code, /Math\.Floor\(\(double\)\(y\) \* 256 \/ m\)/, 'Math.Floor((double)y * 256 / m)');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');
