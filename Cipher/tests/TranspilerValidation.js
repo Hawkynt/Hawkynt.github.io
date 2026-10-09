@@ -557,12 +557,36 @@ function rubyLibraryBinding(libSrc, libCode, exported, paramName, algorithmFile,
   const target = RubyTransformer.globalNameFor(path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_') + 'Generated', paramName);
   if (libraryExports(libSrc) === 'module.exports') {
     const module = RubyTransformer.globalNameFor(libClass, 'module');
-    return `${module} = JSObject.new({ "exports" => JSObject.new })\n${libCode}\n${target} = ${module}["exports"]\n\n`;
+    return `${RubyTransformer.runtimePrelude()}\n${module} = JSObject.new({ "exports" => JSObject.new })\n${libCode}\n${target} = ${module}["exports"]\n\n`;
   }
   const value = exported.single
     ? RubyTransformer.libraryBinding(libClass, exported.single, libCode)
     : `JSObject.new({ ${exported.names.map(n => `${JSON.stringify(n)} => ${RubyTransformer.libraryBinding(libClass, n, libCode)}`).join(', ')} })`;
   return `${libCode}\n${target} = ${value}\n\n`;
+}
+
+/**
+ * A loader parameter for Ruby (`function () { return require('../x/y'); }`):
+ * a lambda handing back the bundled dependency's exports.
+ * @param {Map} deps - resolved lower-case path -> { depName, depCode, depSource }
+ * @returns {string} Ruby code
+ */
+function rubyLoaderBinding(source, algorithmFile, deps) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)/);
+  if (!paramName || !loader) return '';
+  const target = path.resolve(path.dirname(algorithmFile), loader[1].endsWith('.js') ? loader[1] : loader[1] + '.js').toLowerCase();
+  const dep = deps.get(target);
+  if (!dep) return '';
+  const { RubyTransformer } = require(path.join(CODINGPLUGINS_DIR, 'RubyTransformer.js'));
+  const depClass = dep.depName + 'Generated';
+  const exported = libraryExportNames(dep.depSource);
+  const value = !exported ? 'nil' : exported.single
+    ? RubyTransformer.libraryBinding(depClass, exported.single, dep.depCode)
+    : `JSObject.new({ ${exported.names.map(n => `${JSON.stringify(n)} => ${RubyTransformer.libraryBinding(depClass, n, dep.depCode)}`).join(', ')} })`;
+  const variable = RubyTransformer.globalNameFor(path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_') + 'Generated', paramName);
+  return `${variable} = ->(*_) { ${value} }\n\n`;
 }
 
 /**
@@ -583,8 +607,10 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
   // The IL AST is shared by every target language, so by default it stubs out
   // require()-using methods (no equivalent in C#/Python/etc). When the target
-  // *is* JavaScript, require() is valid runnable code - keep it.
-  const parserOptions = language === 'javascript' ? { keepModuleLoaderFunctions: true } : undefined;
+  // *is* JavaScript, require() is valid runnable code - keep it. Ruby keeps
+  // them too: its runtime is a browser without require(), so a loader guarded
+  // by `typeof require` returns and the bundled dependencies serve instead.
+  const parserOptions = language === 'javascript' || language === 'ruby' ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
   let code;
@@ -616,6 +642,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
         prefix += `const ${variable} = (function () {\nconst module = { exports: {} };\n${depCode}\nreturn ${libraryExports(depSource) || 'undefined'};\n})();\n\n`;
       } else {
         prefix += depCode + '\n\n';
+        if (language === 'ruby') depExports.set(path.resolve(depPath).toLowerCase(), { depName, depCode, depSource });
       }
     } catch (e) {
       return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
@@ -668,6 +695,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
     if (bundled.error) return { success: false, error: bundled.error };
     prefix += bundled.code;
+    if (language === 'ruby') prefix += rubyLoaderBinding(source, algorithmFile, depExports);
   }
 
   if (prefix && language === 'javascript' && typeof plugin.GetStandalonePrelude === 'function') {
