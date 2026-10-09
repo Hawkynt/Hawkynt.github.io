@@ -356,6 +356,16 @@ check('numbers: a raw 32-bit product is a rounded double of signed operands; Mul
   expectOutput(runPerl(MULTIPLY_SNIPPET, 'print main::f(), "\\n";'), '3098622080,3397438725,3238976083');
 });
 
+const FIND_SNIPPET = '/** @returns {string} */ function f() {\n' +
+  '  const kat = [{ set: "a", pk: 1 }, { set: "b", pk: 2 }];\n' +
+  '  const v = new Uint8Array([1, 2, 3, 4, 5]); const tail = v.subarray(-2); const mid = v.subarray(1, -1); mid[0] = 9;\n' +
+  '  return [kat.find(e => e.set === "b").pk, tail.length, mid.length, v[1], v.subarray(4, 2).length].join(","); }';
+check('arrays: .find(fn).prop reads the found element; subarray takes negative and inverted bounds', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f() is "2,2,3,9,0"
+  expectOutput(runPerl(FIND_SNIPPET, 'print main::f(), "\\n";'), '2,2,3,9,0');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

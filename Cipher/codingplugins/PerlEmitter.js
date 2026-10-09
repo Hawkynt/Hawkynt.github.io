@@ -367,6 +367,20 @@ sub _Int32 {
 # A double's value: Perl computes integral operands exactly, JavaScript
 # rounds every result beyond 2^53 to the nearest double
 sub _F64 { my $v = $_[0]; return ($v > 9007199254740992 || $v < -9007199254740992) ? unpack('d', pack('d', $v)) : $v; }
+# typedArray.subarray(begin, end): a view (_JSSubarrayView) aliasing the
+# parent's elements, begin and end read as JavaScript does
+sub _JsSubarray {
+    my ($array, $begin, $end) = @_;
+    my $length = scalar(@$array);
+    $begin = int($begin // 0); $end = defined($end) ? int($end) : $length;
+    $begin += $length if $begin < 0; $end += $length if $end < 0;
+    $begin = 0 if $begin < 0; $begin = $length if $begin > $length;
+    $end = 0 if $end < 0; $end = $length if $end > $length;
+    $end = $begin if $end < $begin;
+    my @view;
+    tie @view, '_JSSubarrayView', $array, $begin, $end - $begin;
+    return \@view;
+}
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {

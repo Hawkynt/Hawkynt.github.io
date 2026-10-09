@@ -7944,11 +7944,11 @@
           // assignment RHS, ...) exactly like the old array-literal did.
           this.usesSubarrayView = true;
           const array = this.transformExpression(node.array);
+          // begin and end as JavaScript reads them: negative counts from the
+          // end, both clamped to the array (see _JsSubarray)
           const begin = node.begin ? this.transformExpression(node.begin) : PerlLiteral.Number(0);
-          const len = node.end
-            ? new PerlBinaryExpression(this.transformExpression(node.end), '-', begin)
-            : new PerlBinaryExpression(new PerlCall('scalar', [this.wrapArrayDeref(array)]), '-', begin);
-          const subarrayView = new PerlRawCode(`do { my @__sav; tie @__sav, '_JSSubarrayView', ${array}, ${begin}, ${len}; \\@__sav }`);
+          const end = node.end ? this.transformExpression(node.end) : PerlLiteral.Undef();
+          const subarrayView = new PerlCall(new PerlIdentifier('main::_JsSubarray', ''), [array, begin, end]);
           // Tells wrapArrayDeref (see its 'RawCode' case) this evaluates to
           // an arrayref *scalar*, not an already-flattened list - needed so
           // e.g. a subarray used as .set()'s source argument (TypedArraySet
