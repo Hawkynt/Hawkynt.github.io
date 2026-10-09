@@ -114,6 +114,7 @@ category of `TranspilerSuite.js`.
 | `jsdoc` | every OpCodes and AlgorithmFramework member is fully typed by JSDoc | `JSDocTierAudit.js` |
 | `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
 | `harness` | the validation itself: vector plans, reading a harness run back, judging languages, error classes, and each vector harness end to end against hand-written stand-ins | `TranspilerValidationTests.js` |
+| `python` | regressions of systematic Python transpilation faults; runs the Python runtime cases when a Python 3 interpreter is installed | `PythonTranspileRegressions.js` |
 | `validation` | transpiles every algorithm to every installed language, compiles it, and runs every vector where the language has a vector harness | `TranspilerValidation.js` |
 
 `validation` runs one worker process per algorithm file, `--jobs=N` at a time
