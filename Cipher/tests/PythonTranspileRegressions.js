@@ -500,6 +500,13 @@ check('typeof: "object" holds for arrays, objects and null, not for primitives o
     ['[True, True, True, False, False, False, False] False True']);
 });
 
+check('division: a whole float quotient stays usable as a size, x / 0 is an infinity', () => {
+  const js = '/** @param {int32} logn */\nfunction f(logn) { const n = Math.pow(2, logn);\n  /** @type {int32} */\n  const len = 8 + n / 32;\n  return [new Uint8Array(len).length, len, n / 3 > 85]; }\n' +
+    '/** @param {float64} a @returns {float64} */\nfunction g(a) { return a / 0; }';
+  // Given a quotient of a Math.pow result (a float in the IL) used as an array size, and both signs over 0
+  return expectOutput(runPython(js, 'print(f(8), g(1.0), g(-1.0))'), ['[16, 16, True] inf -inf']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

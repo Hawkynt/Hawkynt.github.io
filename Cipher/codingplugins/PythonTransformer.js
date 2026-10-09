@@ -2964,6 +2964,18 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    r = abs(a) % abs(b)\n' +
           '    return -r if a < 0 else r'
       });
+      // Number division: x / 0 is an infinity or NaN, a whole quotient an int
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_div(a, b):\n' +
+          '    if b == 0:\n' +
+          '        if a == 0 or a != a:\n' +
+          '            return float("nan")\n' +
+          '        import math\n' +
+          '        return float("inf") if (a > 0) == (math.copysign(1.0, b) > 0) else float("-inf")\n' +
+          '    q = a / b\n' +
+          '    return int(q) if q.is_integer() and -9007199254740992 <= q <= 9007199254740992 else q'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def _js_reverse(a):\n' +
@@ -8381,13 +8393,16 @@ class OpCodes(metaclass=_OpCodesMeta):
           if (rawPropName && this._knownIntThisProps.has(rawPropName)) return false;
           return true;
         };
+        // A JavaScript quotient is one Number whether or not it has a
+        // fraction; _js_div keeps a whole one an int, so `8 + n / 32` (n from
+        // Math.pow) still sizes and indexes arrays
         if (isFloatOperand(node.left) || isFloatOperand(node.right)) {
-          return new PythonBinaryExpression(left, '/', right);
+          return new PythonCall(new PythonIdentifier('_js_div'), [left, right]);
         }
         // A quotient stored into a float-typed variable or field keeps its
         // fraction (`/** @type {float64} */ const mean = sum / n`)
         if (['float32', 'float64', 'float', 'double'].includes(node.contextType)) {
-          return new PythonBinaryExpression(left, '/', right);
+          return new PythonCall(new PythonIdentifier('_js_div'), [left, right]);
         }
         // A BigInt literal divisor (`d = d / 2n`) is just as much an exact
         // integer division as a plain-number literal divisor - but
