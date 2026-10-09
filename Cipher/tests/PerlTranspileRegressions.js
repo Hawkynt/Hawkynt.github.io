@@ -399,6 +399,15 @@ check('libraries: a .call(this) IIFE runs, exports to a provided module, skips t
   expectOutput(out, '5,boom');
 });
 
+const STORE_SNIPPET = '/** @param {uint8[]} data @param {Object} entry @returns {string} */ function f(data, entry) {\n' +
+  '  const iv = new Uint8Array(4); let n = 0; for (let i = 0; i < data.length; i++) iv[n++] ^= data[i];\n' +
+  '  iv[3] = 300; console.log("note"); return [iv.join("/"), n, entry.digest.slice(0, 3)].join(","); }';
+check('arrays: a typed-array store wraps without evaluating a[i++] twice; slice of an untyped value; console.log ends its line', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f([1, 2], { digest: "abcdef" }) logs "note" and is "1/2/0/44,2,abc"
+  expectOutput(runPerl(STORE_SNIPPET, 'print main::f([1, 2], { digest => "abcdef" }), "\\n";'), 'note\n1/2/0/44,2,abc');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

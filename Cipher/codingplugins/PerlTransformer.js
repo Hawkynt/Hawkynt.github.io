@@ -7041,6 +7041,12 @@
           // array.slice(start?, end?) -> [@{$array}] or [@{$array}[start..end-1]]
           // NOTE: Slice returns list, so we wrap in [...] to get arrayref
           const sliceArr = this.transformExpression(node.array);
+          // A receiver of no known IL type may be a string or an array:
+          // decided when it runs (see _JsSlice)
+          if (!node.array?.resultType || /^(any|object|unknown)$/.test(node.array.resultType))
+            return new PerlCall(new PerlIdentifier('main::_JsSlice', ''), [sliceArr,
+              node.start ? this.transformExpression(node.start) : PerlLiteral.Number(0),
+              node.end ? this.transformExpression(node.end) : PerlLiteral.Undef()]);
           if (!node.start && !node.end) {
             // No args: copy entire array
             return new PerlArray([this.wrapArrayDeref(sliceArr)]);

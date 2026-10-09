@@ -438,6 +438,17 @@ sub _JsErrorMessage {
     $text =~ s/ at \S+ line \d+\.?\n?\z//;
     return $text;
 }
+# x.slice(start, end) on a value that may be a string or an array
+sub _JsSlice {
+    my ($value, $start, $end) = @_;
+    return _JsSubstring($value, $start, $end, 1) if ref($value) ne 'ARRAY';
+    my $length = scalar(@$value);
+    $start = int($start // 0); $end = defined($end) ? int($end) : $length;
+    $start += $length if $start < 0; $end += $length if $end < 0;
+    $start = 0 if $start < 0; $start = $length if $start > $length;
+    $end = 0 if $end < 0; $end = $length if $end > $length;
+    return [$end > $start ? @{$value}[$start .. $end - 1] : ()];
+}
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {
