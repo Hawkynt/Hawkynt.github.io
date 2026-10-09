@@ -548,8 +548,16 @@
         for (const a of c.accessors.values()) { if (a.get) visit(a.get.value, a.isStatic); if (a.set) visit(a.set.value, a.isStatic); }
         for (const [name, e] of found) {
           if (c.accessors.has(name) || c.methods.has(name)) continue;
-          if (this.findMemberAbove(c.base, name)) continue;
-          c.fields.set(name, { name, type: this.unifyTypes(e.declared.length ? e.declared : e.seen) });
+          const above = this.findMemberAbove(c.base, name);
+          const own = this.unifyTypes(e.declared.length ? e.declared : e.seen);
+          // a framework instance field the class types otherwise (int32[] for the uint8[]
+          // inputBuffer): the class keeps its own, and the framework reads it converted
+          if (above && above.kind === 'field' && above.fw && FW_VFIELD_CLASSES.has(above.owner) && own.k !== 'any' && !sameType(own, above.type)) {
+            c.fields.set(name, { name, type: own, shadows: above.type });
+            continue;
+          }
+          if (above) continue;
+          c.fields.set(name, { name, type: own });
         }
       }
       // fields assigned from outside the class (instance.x = ... where instance is typed C)
@@ -1020,6 +1028,12 @@
       M.push(new CppRaw(`${c.cppName}() {}`));
       M.push(new CppRaw(`explicit ${c.cppName}(js::Object* __from) { js::copyMembers(__from, this); }`));
       M.push(new CppRaw(`${self}* __ctor(${this.paramList(c.ctorSig.params, true)});`));
+      for (const f of c.fields.values()) {
+        if (!f.shadows) continue;
+        const n = cppIdent(f.name);
+        M.push(new CppRaw(`${this.cpp(f.shadows)} __get_${n}() override { return ${this.cv({ c: 'this->' + n, t: f.type }, f.shadows)}; }`));
+        M.push(new CppRaw(`void __set_${n}(${this.cpp(f.shadows)} v) override { this->${n} = ${this.cv({ c: 'v', t: f.shadows }, f.type)}; }`));
+      }
       for (const name of c.virtualAccessors) {
         const f = c.fields.get(name);
         M.push(new CppRaw(`virtual ${this.cpp(f.type)} __get_${cppIdent(name)}() { return ${cppIdent(name)}; }`));
