@@ -19208,6 +19208,11 @@
           return this.transformExpression(node);
         }
 
+        // !(a && b): the negated condition, each operand by its own truthiness
+        if (node.argument.type === 'LogicalExpression') {
+          return new CSharpUnaryExpression('!', new CSharpParenthesized(this.ensureBooleanCondition(node.argument)), true);
+        }
+
         // !x - if x is non-bool, use x == 0 or x == null
         const inferredArgType = this.inferFullExpressionType(node.argument);
         if (inferredArgType && !['bool', 'boolean'].includes(inferredArgType.name)) {
