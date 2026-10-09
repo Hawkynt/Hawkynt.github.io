@@ -974,6 +974,17 @@
           for (const v of (n.values && n.values.length ? n.values : [n.value])) if (v && v.type !== 'SpreadElement') list.push(v.resultType || null);
           map.set(n.array.name, list);
         }
+        // values assigned to a local (also through [a, b] = [x, y]), as '=name' entries
+        if (n.type === 'AssignmentExpression' && n.operator === '=' && n.left) {
+          const note = (target, value) => {
+            if (!target || target.type !== 'Identifier' || !value) return;
+            const key = '=' + target.name;
+            map.set(key, (map.get(key) || []).concat(value.type === 'Identifier' ? ['@' + value.name, value.resultType || null] : [value.resultType || null]));
+          };
+          if (n.left.type === 'Identifier') note(n.left, n.right);
+          else if (/^(ArrayExpression|ArrayLiteral|ArrayPattern)$/.test(n.left.type) && n.right && /^(ArrayExpression|ArrayLiteral)$/.test(n.right.type))
+            (n.left.elements || []).forEach((el, i) => note(el, (n.right.elements || [])[i]));
+        }
         for (const k in n) if (k !== 'loc' && k !== 'jsDoc' && k !== 'typeInfo') visit(n[k]);
       };
       visit(body.body || body);
@@ -986,6 +997,19 @@
      * the IL typed from too little)
      */
     localArrayType(name, t) {
+      // a 64-bit local the code assigns unbounded BigInt results is a BigInt (ModInverse's t)
+      if (t && isInt(t) && t.bits === 64 && this.fn && this.fn.pushTypes) {
+        const assigned = this.fn.pushTypes.get('=' + name) || [];
+        const big = new Set(), seen = new Set();
+        const isBig = n => {
+          if (seen.has(n)) return big.has(n);
+          seen.add(n);
+          const r = (this.fn.pushTypes.get('=' + n) || []).some(p => p === 'bigint' || p === 'BigInt' || (typeof p === 'string' && p[0] === '@' && isBig(p.slice(1))));
+          if (r) big.add(n);
+          return r;
+        };
+        if (isBig(name)) return T.big;
+      }
       if (!t || t.k !== 'arr' || !isNumOrBool(t.e) || !this.fn || !this.fn.pushTypes) return t;
       const pushed = this.fn.pushTypes.get(name) || [];
       const foreign = pushed.some(p => { const pt = this.type(p); return pt.k === 'any' || pt.k === 'arr' || pt.k === 'str' || pt.k === 'cls'; });
