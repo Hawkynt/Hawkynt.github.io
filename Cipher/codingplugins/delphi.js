@@ -145,8 +145,9 @@
         }
 
         // Stage 1: Transform JS AST to Delphi AST
+        // The unit is named by the caller: unitName, else the class name it asks for
         const transformer = new DelphiTransformer({
-          unitName: mergedOptions.unitName || 'GeneratedUnit',
+          unitName: options.unitName || options.className || mergedOptions.unitName || 'GeneratedUnit',
           dialect: mergedOptions.dialect || 'delphi',
           useGenerics: mergedOptions.useGenerics,
           typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge
@@ -180,6 +181,9 @@
         return this.CreateSuccessResult(code, dependencies, warnings);
 
       } catch (error) {
+        // A construct the target does not support is reported as such; anything else is a defect
+        if (DelphiTransformer.TranspileError && error instanceof DelphiTransformer.TranspileError)
+          return this.CreateErrorResult('Delphi: ' + error.message);
         return this.CreateErrorResult('Code generation failed: ' + error.message + '\n' + error.stack);
       }
     }
