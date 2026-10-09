@@ -8100,6 +8100,14 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformBinaryExpression(node) {
+      // 'ab' + 'cd' + ... of string literals is one string. Folded without
+      // recursion: a data table spelled as a thousand-line concatenation
+      // (brotli-dictionary.data.js) nests deeper than the call stack allows.
+      if (node.operator === '+') {
+        const folded = PythonTransformer._foldStringConcatenation(node);
+        if (folded !== null) return PythonLiteral.Str(folded);
+      }
+
       // `(a / b) * 100` / `100 * (a / b)` - a percentage computation (e.g.
       // classical/al-kindi-frequency.js's `(frequencies[letter] /
       // totalLetters) * 100`). The default `/`-transform further below
@@ -8504,6 +8512,25 @@ class OpCodes(metaclass=_OpCodesMeta):
       // vetted ToUint32/ToInt32-only trigger.
 
       return new PythonBinaryExpression(left, operator, right);
+    }
+
+    /**
+     * The value of a left-nested `+` chain of string literals, walked
+     * iteratively.
+     * @param {Object} node - IL BinaryExpression
+     * @returns {string|null} the concatenated string, null when any operand is not a string literal
+     */
+    static _foldStringConcatenation(node) {
+      const parts = [];
+      let n = node;
+      while (n && n.type === 'BinaryExpression' && n.operator === '+') {
+        if (!n.right || n.right.type !== 'Literal' || typeof n.right.value !== 'string') return null;
+        parts.push(n.right.value);
+        n = n.left;
+      }
+      if (!n || n.type !== 'Literal' || typeof n.value !== 'string') return null;
+      parts.push(n.value);
+      return parts.reverse().join('');
     }
 
     // Does `node` (an untransformed IL/JS AST node) contain a raw `*`

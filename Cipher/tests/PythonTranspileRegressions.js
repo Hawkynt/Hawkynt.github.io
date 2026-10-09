@@ -471,6 +471,14 @@ check('new: an x++ or ++x constructor argument passes the right value and increm
   return expectOutput(runPython(js, 'g = Grammar()\nprint(g.post(), g.pre(), g.next)'), ['5 7 7']);
 });
 
+check('strings: a concatenation of thousands of string literals folds to one literal', () => {
+  const pieces = Array.from({ length: 3000 }, (_, i) => `'${(i % 256).toString(16).padStart(2, '0')}'`);
+  const js = 'const HEX =\n  ' + pieces.join(' +\n  ') + ';\nfunction f() { return [HEX.length, HEX.slice(0, 6), "a" + 1]; }';
+  // Given a data table spelled as 3000 concatenated pieces (deeper than the call stack) and a mixed + beside it
+  // Then it transpiles, and the folded string and the string + number both keep their JavaScript value
+  return expectOutput(runPython(js, 'print(f())'), ["[6000, '000102', 'a1']"]);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
