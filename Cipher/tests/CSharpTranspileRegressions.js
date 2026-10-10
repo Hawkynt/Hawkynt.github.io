@@ -1146,6 +1146,13 @@ check('concat: an argument concatenated to a byte array literal converts to byte
   const code = transpile('/** @returns {uint8[]} r */\nfunction header() { return [0, 0, 0, 0, 255].concat(Array.from({length: 3}, (_, i) => i)); }');
   expectMatch(code, /new byte\[\] \{[^}]*\}\.Concat\(.*\.Select\(_v => (unchecked\()?\(byte\)\(?_v\)?\)?\)\.ToArray\(\)\)\.ToArray\(\)/, 'the int sequence converted to bytes');
 });
+check('nullable numbers: a nullable member is falsy when null or 0, and unwraps when returned', () => {
+  const code = transpile('class Gen {\n  constructor() {\n    /** @type {int32|null} */\n    this._skipCount = null;\n  }\n' +
+    '  /** @param {int32} n - skip */\n  skip(n) { this._skipCount = n; }\n' +
+    '  /** @returns {int32} r */\n  get skipCount() { return (this._skipCount ? this._skipCount : 0); }\n}');
+  expectMatch(code, /\(this\._skipCount \?\? 0\) != 0 \?/, '(this._skipCount ?? 0) != 0');
+  expectMatch(code, /return (unchecked\()?\(int\)/, 'the result cast to int');
+});
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
   const code = transpile(SAME_NAMED_CALLS);
   expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');

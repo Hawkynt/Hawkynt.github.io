@@ -18993,6 +18993,9 @@
           // Cast if return type is a narrower numeric type than expression type
           if (this.needsNarrowingCast(exprType, returnType)) {
             expr = new CSharpCast(returnType, expr);
+          } else if (exprType?.isNullable && !returnType.isNullable && !exprType.isArray && CSHARP_VALUE_TYPES.has(returnType.name)) {
+            // A nullable member (one starting undefined) returned as its plain type
+            expr = new CSharpCast(returnType, expr);
           }
         } else if (exprType?.isArray && (this.needsCast(exprType, returnType) || this.differentNumericArrays(exprType, returnType))) {
           // Array-vs-array element type mismatch - e.g. Streebog's compressBlock,
@@ -19990,6 +19993,10 @@
       if (type?.name === 'bool' || type?.name === 'boolean') {
         return expr;
       }
+
+      // A nullable number (lehmer.js's `_skipCount`, int32|null) is falsy when null or 0
+      if (type?.isNullable && !type.isArray && ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'double', 'float'].includes(type.name))
+        return new CSharpBinaryExpression(new CSharpParenthesized(new CSharpBinaryExpression(expr, '??', CSharpLiteral.Int(0))), '!=', CSharpLiteral.Int(0));
 
       // If the transformed expression is already a comparison, don't wrap it again
       // This prevents issues like (data != null) != null
