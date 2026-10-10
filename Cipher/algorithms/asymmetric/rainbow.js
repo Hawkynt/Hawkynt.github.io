@@ -65,6 +65,7 @@
 
   /** @type {Algorithm|null} */
   let aesAlgorithm = null;
+  /** @type {Map<int32, Algorithm>} */
   const SHA_CACHE = new Map();
 
   /**

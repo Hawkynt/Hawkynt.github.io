@@ -3246,6 +3246,7 @@
     }
   }
 
+  /** @type {Map<string, FaestConstraintSystem>} */
   const CONSTRAINT_SYSTEMS = new Map();
   /**
    * @param {FaestParams} p - p

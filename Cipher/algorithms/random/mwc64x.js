@@ -244,11 +244,15 @@
       // MWC64X state: 64 bits total
       // Lower 32 bits: x (state)
       // Upper 32 bits: c (carry)
+      /** @type {uint32} */
       this._x = 0;
+      /** @type {uint32} */
       this._c = 0;
+      /** @type {boolean} */
       this._ready = false;
 
       // MWC64X multiplier constant
+      /** @type {uint32} */
       this._A = 4294883355;
     }
 
@@ -332,6 +336,7 @@
 
       // Calculate output BEFORE updating state (x XOR c)
       // XOR is the core mixing function of MWC64X
+      /** @type {uint32} */
       const output = OpCodes.Xor32(this._x, this._c);
 
       // Perform 64-bit multiply-with-carry: temp = A * x + c
