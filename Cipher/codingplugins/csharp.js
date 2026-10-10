@@ -997,6 +997,8 @@ namespace ${namespace}
         public static int JsMul(int a, int b) => unchecked((int)JsProductBits((double)a * b));
         public static uint JsMul(uint a, uint b) => unchecked((uint)JsProductBits((double)a * b));
         public static long JsMul(long a, long b) => JsProductBits((double)a * b);
+        // (a fraction among the factors: the double product)
+        public static double JsMul(double a, double b) => a * b;
         private static long JsProductBits(double product)
         {
             const double two63 = 9223372036854775808.0, two64 = 18446744073709551616.0;

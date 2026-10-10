@@ -1413,6 +1413,7 @@ namespace RegressionTest {
       Eq("jsmul-exact", FrameworkFunctions.JsMul(65535u, 65537u), 4294967295u);
       Eq("jsmul-rounded", FrameworkFunctions.JsMul(1099087573u, 2865916745u), unchecked((uint)(ulong)(1099087573.0 * 2865916745.0)));
       Eq("jsmul-neg", FrameworkFunctions.JsMul(-3, 5), -15);
+      Eq("jsmul-fraction", FrameworkFunctions.JsMul(3, 2.5), 7.5);
       Eq("jsmul-long",FrameworkFunctions.JsMul(4294967295L, 4294967295L), unchecked((long)(ulong)(4294967295.0 * 4294967295.0)));
       // ConstantTimeCompare takes the length to compare, as OpCodes.js does
       Eq("ctc-equal", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2 }, 2), true);
