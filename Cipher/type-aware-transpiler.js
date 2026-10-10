@@ -5117,11 +5117,20 @@
         return access;
       }
 
-      // arr.length → ArrayLength
+      // arr.length → ArrayLength; but x.length of a local class or record
+      // that declares a `length` field of its own is a read of that field.
       if (propertyName === 'length' && !node.computed) {
+        const array = this._transformNode(object, context);
+        let ownerType = array?.resultType;
+        if (!ownerType && object?.type === 'Identifier' && object.name) ownerType = this.lookupVariableType(object.name);
+        const ownsLength = typeof ownerType === 'string' && /^[A-Za-z_$][\w$]*$/.test(ownerType) &&
+          (this.localClassNames.has(ownerType) || (this.recordTypes && this.recordTypes.has(ownerType)));
+        const fieldType = ownsLength ? this.lookupClassFieldType(ownerType, 'length') : null;
+        if (fieldType)
+          return { ...node, object: array, resultType: fieldType, ilNodeType: 'MemberExpression' };
         return {
           type: 'ArrayLength',
-          array: this._transformNode(object, context),
+          array,
           resultType: 'int32',
           ilNodeType: 'ArrayLength'
         };

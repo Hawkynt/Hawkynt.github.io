@@ -23,6 +23,8 @@ function equal(actual, expected, what = '') {
   if (a !== expected) throw new Error(`${what}expected ${JSON.stringify(expected)}, got ${JSON.stringify(a)}`);
 }
 function ok(cond, what) { if (!cond) throw new Error(what); }
+/** Equal as JSON (arrays and plain values). */
+function same(actual, expected, what = '') { equal(JSON.stringify(actual), JSON.stringify(expected), what); }
 
 /** Parse and return the IL AST. */
 function il(code) { return quiet(() => new TypeAwareJSASTParser(code).parse()); }
@@ -549,6 +551,21 @@ test('template: given an OpCodes helper declared {T[]} (ClearArray), when a uint
   equal(arg.contextType, undefined);
 });
 
+// ------------------------------------------------------------ length fields, undefined
+test('length: given a local class with its own length field, when x.length is read, then it is a member read of the field type', () => {
+  const ast = il('class M {\n  /** @param {int32[]} length */\n  constructor(length) { /** @type {int32[]} */ this.length = length; }\n}\n/** @param {M} m\n * @returns {int32[]} */\nfunction f(m) { return m.length; }');
+  const read = find(ast, n => n.type === 'ReturnStatement').argument;
+  same([read.type, read.resultType], ['MemberExpression', 'int32[]']);
+});
+test('length: given an array, when a.length is read, then it is still an int32 ArrayLength', () => {
+  const ast = il('/** @param {uint8[]} a\n * @returns {int32} */\nfunction f(a) { return a.length; }');
+  const read = find(ast, n => n.type === 'ReturnStatement').argument;
+  same([read.type, read.resultType], ['ArrayLength', 'int32']);
+});
+test('length: given a local class without a length field, when x.length is read, then it is an ArrayLength (boundary)', () => {
+  const ast = il('class M { constructor() { /** @type {int32} */ this.size = 0; } }\n/** @param {M} m\n * @returns {int32} */\nfunction f(m) { return m.length; }');
+  equal(find(ast, n => n.type === 'ReturnStatement').argument.type, 'ArrayLength');
+});
 // ------------------------------------------------------------ enum members
 test('enum: given the framework, when loaded, then each enum knows its members', () => {
   const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;
