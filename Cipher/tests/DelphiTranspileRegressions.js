@@ -264,6 +264,9 @@ sameAsJs('functions: an abstract method that only throws keeps its declared resu
   'class Base { /** @returns {int32[]} */ make() { throw new Error("abstract"); } /** @returns {int32} */ use() { return this.make().length; } }\n' +
   'class Sub extends Base { /** @returns {int32[]} */ make() { return [1, 2, 3]; } }\n' +
   '/** @returns {string} */ function probe() { return String(new Sub().use()); }');
+sameAsJs('functions: a Function-typed global starting as null is a dynamic null',
+  '/** @type {Function} */ let Handler = null;\n' +
+  '/** @returns {string} */ function probe() { return Handler ? "set" : "unset"; }', 'unset');
 sameAsJs('functions: a parameter default reads an earlier parameter',
   '/** @param {int32[]} w @param {int32} [n] @returns {int32} */ function sum(w, n = w.length) { let s = 0; for (let i = 0; i < n; i++) s += w[i]; return s; }\n' +
   '/** @returns {string} */ function probe() { return sum([1, 2, 3]) + " " + sum([1, 2, 3], 2); }');

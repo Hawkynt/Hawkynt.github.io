@@ -2326,7 +2326,7 @@
         case 'string': case 'enum': return A.lit("''");
         case 'bigint': return A.call(A.mem(A.id('TBigInt'), 'Zero'));
         case 'array': return A.call(A.mem(A.id(this.aliasOf(t)), 'Null'));
-        case 'any': return A.call('JsVUndef');
+        case 'any': case 'function': case 'void': return A.call('JsVUndef');
         case 'tuple': case 'record': return A.call('Default', [A.id(this.pasType(t))]);
         default: return A.lit('nil');
       }
@@ -2334,7 +2334,8 @@
 
     nullValue(t) {
       if (!t || isNullT(t)) return A.lit('nil');
-      if (t.k === 'any') return A.call('JsVNull');
+      // a function value is held as a dynamic value too
+      if (t.k === 'any' || t.k === 'function') return A.call('JsVNull');
       return this.defaultValue(t);
     }
 
@@ -2455,8 +2456,8 @@
         case 'array': return A.un('not', A.call(A.mem(e, 'IsNull')));
         case 'class': case 'error': case 'map': return A.bin('<>', e, A.lit('nil'));
         case 'null': case 'void': return A.lit('False');
-        case 'any': return A.call(A.mem(e, 'Truthy'));
-        case 'function': return A.lit('True');
+        // a function value is a dynamic value that may still be null
+        case 'any': case 'function': return A.call(A.mem(e, 'Truthy'));
         case 'tuple': case 'record': return A.lit('True');
       }
       return A.lit('True');
