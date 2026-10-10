@@ -26,6 +26,9 @@
  *     counted site is not counted twice);
  *   - a value of one kind where its context declares another: a number where a
  *     `boolean` parameter is declared, a BigInt literal for a `uint8`, ...;
+ *   - an array of one element type where its context declares an array of
+ *     another (`int32[]` or a `Uint32Array` where `uint8[]` is declared): a
+ *     typed language converts a scalar, never an array;
  *   - a boolean used as a number (`n += OpCodes.GetBit(x, i)`, `1 - flag`);
  *   - an accessor whose setter takes another type than its getter returns (a
  *     property no typed language declares with one type);
@@ -157,6 +160,33 @@ function kindsDiffer(a, b) {
   return true;
 }
 
+/** Element types an array of one cannot be passed for an array of another. */
+const VALUE_ELEMENTS = /^(u?int(8|16|32|64)|float(32|64)|bigint|boolean|string)$/;
+
+/**
+ * Do an array value and the array type its context declares hold different
+ * value types (an int32[] where uint8[] is declared, a Uint32Array where
+ * uint8[] is, uint8[] where uint8[][] is)? A typed language converts a
+ * scalar at a call, but never an array: its element type is part of its
+ * type. Arrays of class or record types (covariant in the targets),
+ * tuples and types without a width are not judged.
+ * @param {string} value - the value's type
+ * @param {string} declared - the context's type
+ * @returns {boolean} true when the element types differ
+ */
+function elementTypesDiffer(value, declared) {
+  const canonical = parserClass()._canonicalIL;
+  const split = t => {
+    let base = canonical(t), depth = 0;
+    while (base.endsWith('[]')) { base = base.slice(0, -2); ++depth; }
+    return { base, depth };
+  };
+  const v = split(value), d = split(declared);
+  if (v.depth === 0 || d.depth === 0) return false;
+  if (!VALUE_ELEMENTS.test(v.base) || !VALUE_ELEMENTS.test(d.base)) return false;
+  return v.base !== d.base || v.depth !== d.depth;
+}
+
 /** Operators that treat their operands as numbers. */
 const NUMERIC_OPERATORS = new Set(['+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', '>>>']);
 
@@ -254,6 +284,10 @@ function analyzeSource(code, filePath) {
     const kind = valueKind(t, node), expected = valueKind(context);
     if (kindsDiffer(kind, expected)) {
       record(node, where, `a ${kind === 'bigint' ? 'BigInt' : t} value where ${context} is declared; convert it explicitly`, 'local');
+      return;
+    }
+    if (context && elementTypesDiffer(t, context)) {
+      record(node, where, `a ${t} value where ${context} is declared; an array is not converted, so declare the type it holds or convert its elements`, 'local');
       return;
     }
     if (!isWeakType(t) || node.contextType) return;

@@ -246,7 +246,9 @@ function buildChecker(raw) {
   }
   if (type.endsWith('[]')) {
     const elementType = type.slice(0, -2);
-    const element = sub(elementType);
+    // A call converts a scalar argument, never the elements of an array: an
+    // array passed where T[] is declared holds T, range included.
+    const element = checkerFor(elementType);
     const elementName = ALIASES[elementType] || elementType;
     return v => {
       if (v === null || v === undefined) return null;
@@ -420,9 +422,20 @@ function collectSites(parser, ast) {
 
   const hasRange = n => n && Array.isArray(n.range) && n.range[1] > n.range[0];
   const isFunction = n => n && FUNCTION_TYPES.has(n.type);
+  // The type parameters of the file's generic functions (`@template T`): a
+  // `T` or `T[]` stands for whatever a call binds, so it states nothing to check.
+  const templates = new Set();
+  (function gather(n, seen) {
+    if (!n || typeof n !== 'object' || seen.has(n)) return;
+    seen.add(n);
+    if (Array.isArray(n)) { for (const x of n) gather(x, seen); return; }
+    if (n.typeInfo && Array.isArray(n.typeInfo.templates)) for (const t of n.typeInfo.templates) templates.add(t);
+    for (const key of Object.keys(n)) if (!SKIP_KEYS.has(key) || key === 'typeInfo') { if (key !== 'typeInfo') gather(n[key], seen); }
+  })(ast, new Set());
+  const isTemplate = name => templates.size > 0 && name.split(/[^A-Za-z0-9_$]+/).some(part => templates.has(part));
   const ilType = t => {
     const name = typeName(t);
-    return name && checkerFor(name) ? name : null;
+    return name && !isTemplate(name) && checkerFor(name) ? name : null;
   };
   // The type of an IL node's value: its resultType, 'T?' when the IL marks it nullable.
   const nodeType = n => {
@@ -610,8 +623,8 @@ function collectSites(parser, ast) {
         break;
       case 'ArrayAppend': {
         const arrayType = typeName(node.array && node.array.resultType);
-        const element = arrayType.endsWith('[]') ? arrayType.slice(0, -2) : null;
-        if (element && checkerFor(element))
+        const element = arrayType.endsWith('[]') ? ilType(arrayType.slice(0, -2)) : null;
+        if (element)
           for (const value of node.values || [])
             if (value && value.type !== 'SpreadElement')
               add(value, 'value', [{ type: element, role: 'element', origin: valueOrigin(node.array, here) }]);

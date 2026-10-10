@@ -264,6 +264,11 @@ test('checker: given a framework enum, when undefined flows, then it is an undef
   global.AlgorithmFramework = global.AlgorithmFramework || require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
   equal([TypeSoundness.checkerFor('SecurityStatus')(undefined), TypeSoundness.checkerFor('SecurityStatus')(null)], ['undefined-enum-member', null]);
 });
+test('collectSites: given a generic helper (@template T), when collected, then T and T[] sites are not checked', () => {
+  const parsed = TypeSoundness.parseSource('/**\n * @template T\n * @param {T[]} target\n * @param {T[]} source\n * @returns {T[]} target\n */\nfunction appendAll(target, source) { for (let i = 0; i < source.length; i++) target.push(source[i]); return target; }');
+  const types = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks.map(c => c.type));
+  equal(types.filter(t => /\bT\b/.test(t)).length, 0);
+});
 test('checkFile: given a file the transpiler cannot parse, when checked, then an unparsed error and no mismatches', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
   try {

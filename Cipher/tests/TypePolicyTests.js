@@ -575,6 +575,58 @@ test('undefined: given null, when transformed, then it is no undefined literal',
   same([lit.value, lit.isUndefined, lit.resultType], [null, undefined, 'null']);
 });
 
+// ------------------------------------------------------------ array element types
+const elementSites = code => reasons(code).filter(x => /an array is not converted/.test(x));
+test('elements: given an int32[] passed where uint8[] is declared, when counted, then it is a site', () => {
+  same(elementSites('/** @param {uint8[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {int32[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 1);
+});
+test('elements: given a Uint32Array passed where uint8[] is declared, when counted, then it is a site (a typed array is its element type)', () => {
+  same(elementSites('/** @param {uint8[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @returns {int32} */\nfunction f() { return g(new Uint32Array(4)); }').length, 1);
+});
+test('elements: given uint8[] where uint8[][] is declared (another depth), when counted, then it is a site', () => {
+  same(elementSites('/** @param {uint8[][]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {uint8[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 1);
+});
+test('elements: given the same element type in another spelling (byte[] for uint8[]), when counted, then nothing is reported', () => {
+  same(elementSites('/** @param {uint8[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {byte[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 0);
+});
+test('elements: given arrays of classes, when one is passed for another, then they are not judged (covariant in the targets)', () => {
+  same(elementSites('/** @param {LinkItem[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {Vulnerability[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 0);
+});
+test('elements: given an array literal of narrower integers, when uint32[] is declared, then the literal is uint32[] (each element widens)', () => {
+  const lit = declOf(il('/** @param {uint8} a\n * @param {uint16} b */\nfunction f(a, b) { /** @type {uint32[]} */ const w = [a, b, 7]; }'), 'w').init;
+  same(lit.resultType, 'uint32[]');
+});
+test('elements: given an array literal with an int32 element, when uint8[] is declared, then it stays int32[] and is a site (narrowing is explicit)', () => {
+  same(elementSites('/** @param {int32} n */\nfunction f(n) { /** @type {uint8[]} */ const w = [n]; }').length, 1);
+  same(elementSites('/** @param {int32} n */\nfunction f(n) { /** @type {uint8[]} */ const w = [OpCodes.ToByte(n)]; }').length, 0);
+});
+test('elements: given [c ? 1 : 0] where uint8[] is declared, when typed, then the choice of literals takes the element type', () => {
+  same(elementSites('/** @param {boolean} c */\nfunction f(c) { /** @type {uint8[]} */ const w = [c ? 1 : 0]; }').length, 0);
+});
+test('elements: given [...a, x] of uint8 where uint8[] is declared, when typed, then the spread keeps the type', () => {
+  same(elementSites('/** @param {uint8[]} a\n * @param {uint8} x */\nfunction f(a, x) { /** @type {uint8[]} */ const w = [...a, x]; }').length, 0);
+});
+test('elements: given OpCodes.CreateArray(n, 0) where int32[] or float64[] is declared, when typed, then the fresh array takes that type', () => {
+  same(elementSites('/** @param {int32} n */\nfunction f(n) { /** @type {int32[]} */ const a = OpCodes.CreateArray(n, 0); /** @type {float64[]} */ const b = OpCodes.CreateArray(n, 0); }').length, 0);
+  same(declOf(il('/** @param {int32} n */\nfunction f(n) { /** @type {int32[]} */ const a = OpCodes.CreateArray(n, 0); }'), 'a').init.resultType, 'int32[]');
+});
+test('elements: given OpCodes.CreateArray(n, x) with a variable int32 fill where uint8[] is declared, when counted, then it is a site', () => {
+  same(elementSites('/** @param {int32} n\n * @param {int32} x */\nfunction f(n, x) { /** @type {uint8[]} */ const a = OpCodes.CreateArray(n, x); }').length, 1);
+});
+test('elements: given Object.freeze([...BigInt literals]) where BigInt[] is declared, when typed, then the frozen literal takes it', () => {
+  same(elementSites('/** @type {BigInt[]} */\nconst K = Object.freeze([0x428a2f98d728ae22n, 5n]);').length, 0);
+});
+test('elements: given OpCodes.CopyArray of an int32[], when typed, then its argument is expected as int32[] (no byte context)', () => {
+  same(elementSites('/** @param {int32[]} p\n * @returns {int32[]} */\nfunction f(p) { /** @type {int32[]} */ const r = OpCodes.CopyArray(p); return r; }').length, 0);
+});
+test('elements: given a 64-bit helper result beside a BigInt literal, when an array is built, then it is no tuple', () => {
+  same(declOf(il('/** @param {uint64[]} k */\nfunction f(k) { const t = [OpCodes.ToQWord(k[0] + k[1]), 0n]; }'), 't').init.resultType, 'uint64[]');
+});
+test('widening: given integer types, when compared, then only lossless conversions widen', () => {
+  same([['uint8', 'int32'], ['uint16', 'uint32'], ['int32', 'uint32'], ['uint32', 'int32'], ['uint64', 'bigint'], ['int32', 'float64'], ['uint64', 'float64'], ['byte', 'uint8']]
+    .map(([a, b]) => TypeAwareJSASTParser._widensTo(a, b)), [true, true, false, false, true, true, false, true]);
+});
+
 // ------------------------------------------------------------ enum members
 test('enum: given the framework, when loaded, then each enum knows its members', () => {
   const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;
@@ -648,7 +700,12 @@ test('soundness: given a 64-bit parameter (kind only), when BigInts at and beyon
 });
 test('soundness: given an argument declared uint8[] (kind only), when a Uint32Array is passed, then the typed-array kind fails', () => {
   equal(TypeSoundness.kindCheckerFor('uint8[]')(new Uint32Array(2)), 'typed-array-kind');
-  equal(TypeSoundness.kindCheckerFor('uint8[]')([300]), null);
+});
+test('soundness: given an argument declared uint8[], when a plain array holds 255 or 300, then its elements are held to the range (a call converts no element)', () => {
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([0, 255]), null);
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([1, 300]), 'element-above-range');
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([-1]), 'element-negative');
+  equal(TypeSoundness.kindCheckerFor('int32')(0xFFFFFFFF), null, 'a scalar is still checked for its kind only ');
 });
 test('soundness: given a call argument with a declared parameter type, when sites are collected, then it is checked as an argument', () => {
   const parsed = TypeSoundness.parseSource('/**\n * @param {uint32} a\n * @returns {uint32}\n */\nfunction g(a) { return a; }\n/** @param {uint32} x */\nfunction f(x) { return g(x); }');

@@ -73,7 +73,11 @@ is. A type that states no width counts as none, its array forms too (`any`, `any
 `number[]`, `Array<*>`). Besides values it counts storage and kinds: every variable
 (`let a, b;` included), parameter and field whose type is missing or weak; a value of
 one kind where its context declares another (a number for a `boolean` parameter, a
-BigInt literal for a `uint8`); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
+BigInt literal for a `uint8`); an array whose element type differs from the array type
+its context declares (an `int32[]` or a `Uint32Array` passed where `uint8[]` is declared:
+a typed language converts a scalar, never an array; arrays of classes are not judged, an
+array literal takes the declared type when each element converts without loss, and
+`OpCodes.CreateArray(n, 0)` is the fresh array its target declares); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
 an accessor whose setter takes another type than its getter returns; and a read of a
 framework enum member the enum does not declare (`CountryCode.XY` reads undefined), in
 any position. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
@@ -100,7 +104,9 @@ type is declared. Every read of a framework enum member the enum does not declar
 mismatch too, whether or not a vector reaches it. A value
 passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
 checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not; a
-64-bit parameter takes a Number or a BigInt bit pattern, but no BigInt wider than 64 bits. For an assignment the type checked is the
+64-bit parameter takes a Number or a BigInt bit pattern, but no BigInt wider than 64 bits;
+an array argument's sampled elements must fit the declared element type, range included,
+since no call converts them. A `T` of a generic helper (`@template T`) is not checked. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares
 it. A site checks its first 256 values and 16 more per later vector, so a hot loop
 costs a compare once its budget is spent; `Math.random` is seeded, so counts repeat.
