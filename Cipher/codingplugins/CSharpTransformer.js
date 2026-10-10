@@ -26641,7 +26641,10 @@
       const wrapped = node.left?.type === 'Cast' ? node.left.arguments?.[0] : node.left?.type === 'BigIntCast' ? node.left.argument : null;
       const reference = wrapped && this.isReliableBigIntCastSkipSource(wrapped) ? wrapped : node.left;
       const plain64 = this.isReliableBigIntCastSkipSource(reference) && ['ulong', 'long'].includes(leftType?.name) && !leftType.isArray;
-      if (node.left?.type !== 'Literal' && (plain64 || !['ulong', 'long'].includes(leftType?.name) || node.operator !== '<<')) return result;
+      // (only a masking AND: a value cast to 64 bits, hpc.js's ToQWord(x) << 21, is
+      // masked again after the shift, where the ulong shift agrees)
+      const masked = node.left?.type === 'BinaryExpression' && node.left.operator === '&';
+      if (node.left?.type !== 'Literal' && (plain64 || !masked || !['ulong', 'long'].includes(leftType?.name) || node.operator !== '<<')) return result;
       return new CSharpBinaryExpression(new CSharpCast(new CSharpType('BigInteger'), result.left), result.operator, result.right);
     }
 

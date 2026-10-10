@@ -1164,6 +1164,11 @@ check('bigint shifts: a computed 64-bit value shifted left as a BigInt keeps its
     '  /** @returns {BigInt} r */\n  step() {\n    this._z0 = OpCodes.XorN(OpCodes.ShiftLn(OpCodes.AndN(this._z0, 0xFFFFFFFFFFFFFFFEn), 10), this._z0);\n    return this._z0;\n  }\n}');
   expectMatch(code, /\(BigInteger\)\(.*0xFFFFFFFFFFFFFFFEUL\)\)\) << /, '(BigInteger)(masked) << 10');
 });
+check('bigint shifts: a value cast to 64 bits and masked again after the shift stays a ulong shift (OverflowException)', () => {
+  const code = transpile('/**\n * @param {uint64[]} t - state\n * @returns {void}\n */\n' +
+    'function mix(t) { t[0] = OpCodes.ToQWord(t[0] + OpCodes.ShiftLn(OpCodes.ToQWord(t[1]), 21)); }');
+  expectNoMatch(code, /\(BigInteger\)\(unchecked\(\(ulong\)\(t\[1\]\)\)\)/, 'the cast value widened to BigInteger');
+});
 const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
   'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
   '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
