@@ -130,7 +130,7 @@
         this.complexity = ComplexityType.INTERMEDIATE;
         this.inventor = 'Unknown (Classical)';
         this.year = 1500;
-        this.country = CountryCode.INTERNATIONAL;
+        this.country = CountryCode.INTL;
 
         /** @type {ColumnarKeyRange} */
         this.keySize = new ColumnarKeyRange(1, 50, 1);
