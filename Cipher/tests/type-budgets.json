@@ -729,7 +729,7 @@
   "algorithms/padding/no-padding.js": 0,
   "algorithms/padding/oaep.js": 0,
   "algorithms/padding/oneandzeros.js": 0,
-  "algorithms/padding/pkcs.js": 1,
+  "algorithms/padding/pkcs.js": 0,
   "algorithms/padding/pss.js": 0,
   "algorithms/padding/random.js": 0,
   "algorithms/padding/zero.js": 0,

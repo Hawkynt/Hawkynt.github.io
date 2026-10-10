@@ -56,6 +56,7 @@
    * @returns {uint8[]} Padded data
    */
   function addByteCountPadding(data, blockSize) {
+    /** @type {uint8} */
     const paddingLength = blockSize - (data.length % blockSize);
     const padding = OpCodes.CreateArray(paddingLength, paddingLength);
     return [...data, ...padding];
