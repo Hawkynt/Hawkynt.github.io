@@ -52,7 +52,7 @@
     }
 
     /** @type {uint8[]} */
-    const result = [n]; // Byte count prefix
+    const result = [OpCodes.ToByte(n)]; // Byte count prefix
 
     // Encode value in big-endian
     for (let i = 1; i <= n; i++) {
