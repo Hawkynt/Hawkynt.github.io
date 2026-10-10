@@ -21656,6 +21656,13 @@
       }
 
       targetClass.nestedTypes.push(csClass);
+      // A class the file subclasses shares its private fields with the subclasses
+      // (ice.js's IceInstanceBase._rounds, set by Ice2Instance): protected, they are
+      // inherited instead of redeclared - a redeclaration hides them from the base
+      if ([...this.localClassBases.values()].includes(csClass.name)) {
+        for (const m of csClass.members)
+          if ((m instanceof CSharpField || m instanceof CSharpProperty) && m.accessModifier === 'private' && !m.isStatic) m.accessModifier = 'protected';
+      }
       this.localClassMembers.set(csClass.name, new Set(csClass.members
         .filter(m => (m instanceof CSharpField || m instanceof CSharpProperty) && m.accessModifier !== 'private').map(m => m.name)));
 

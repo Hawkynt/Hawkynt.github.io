@@ -1101,6 +1101,14 @@ check('dynamic arguments: a dynamic value for an int array parameter converts at
     '  /** @returns {int32} r */\n  head() { return first(this._key); }\n}');
   expectMatch(code, /First\(AsArrayOf<int>\(\(object\)\(?this\._key\)?\)\)/, 'First(AsArrayOf<int>((object)this._key))');
 });
+check('inheritance: a backing field a subclass sets is protected in the base and not redeclared', () => {
+  const code = transpile('class Base {\n  constructor() {\n    /** @type {int32} */\n    this._rounds = 16;\n  }\n' +
+    '  /** @returns {int32} r */\n  get rounds() { return this._rounds; }\n' +
+    '  /** @param {int32} value - rounds */\n  set rounds(value) { this._rounds = value; }\n}\n' +
+    'class Derived extends Base {\n  constructor() {\n    super();\n    this._rounds = 32;\n  }\n}');
+  expectMatch(code, /protected int _rounds;/, 'protected int _rounds');
+  expectNoMatch(code, /class Derived[^}]*_rounds \{ get; set; \}/, 'a redeclared _rounds in Derived');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
