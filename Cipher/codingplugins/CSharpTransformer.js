@@ -14564,6 +14564,9 @@
         return new CSharpMethodCall(mapExpr, 'ContainsKey', [keyExpr]);
       }
 
+      // A quotient of integers going into a double (see markDoubleDivisions)
+      if (op === '/' && node.__doubleDivision) return this.asDoubleOperand(node, null);
+
       // `x | 0` is ToInt32: the signed 32-bit value (spinal-code.js's `(value|0) *
       // 0x27d4eb2d`, whose double product differs for the unsigned value)
       if (op === '|') {
@@ -24720,7 +24723,50 @@
     }
 
     transformArrayAppend(node) {
+      this.markAppendedDoubleDivisions(node);
       return new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
+    }
+
+    /**
+     * Values pushed to a double array divide as doubles (al-kindi-frequency.js's
+     * `percentages.push(total > 0 ? (counts[k] / total) * 100 : 0)`).
+     * @param {Object} node - the IL ArrayAppend
+     */
+    markAppendedDoubleDivisions(node) {
+      const arrayType = this.inferFullExpressionType(node.array);
+      if (!arrayType?.isArray || !['double', 'float'].includes(arrayType.elementType?.name)) return;
+      for (const value of (Array.isArray(node.values) && node.values.length ? node.values : [node.value])) this.markDoubleDivisions(value);
+    }
+
+    /**
+     * Mark every quotient of two integers within an arithmetic value going into a
+     * double (through + - * / %, a conditional's branches and negation; not into
+     * calls or indexes): transformBinaryExpression divides them as doubles, as
+     * JavaScript does.
+     * @param {Object} node - the IL value
+     * @returns {boolean} whether any quotient was marked
+     */
+    markDoubleDivisions(node) {
+      if (!node || typeof node !== 'object') return false;
+      let marked = false;
+      if (node.type === 'BinaryExpression' && ['+', '-', '*', '/', '%'].includes(node.operator)) {
+        if (node.operator === '/') {
+          const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+          const leftType = this.inferFullExpressionType(node.left), rightType = this.inferFullExpressionType(node.right);
+          if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray) {
+            node.__doubleDivision = true;
+            marked = true;
+          }
+        }
+        marked = this.markDoubleDivisions(node.left) || marked;
+        marked = this.markDoubleDivisions(node.right) || marked;
+      } else if (node.type === 'ConditionalExpression') {
+        marked = this.markDoubleDivisions(node.consequent) || marked;
+        marked = this.markDoubleDivisions(node.alternate) || marked;
+      } else if ((node.type === 'UnaryExpression' && node.operator === '-') || node.type === 'ParenthesizedExpression') {
+        marked = this.markDoubleDivisions(node.argument || node.expression) || marked;
+      }
+      return marked;
     }
 
     /**
@@ -24743,6 +24789,7 @@
     transformArrayAppendToAssignment(node) {
       const pushCall = this.classPushCall(node);
       if (pushCall) return new CSharpExpressionStatement(pushCall);
+      this.markAppendedDoubleDivisions(node);
       const target = this.transformExpression(node.array);
       const toArrayExpr = new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
       return new CSharpExpressionStatement(new CSharpAssignment(target, '=', toArrayExpr));
@@ -26402,7 +26449,9 @@
      */
     asDoubleQuotient(node, expr, targetType) {
       if (!targetType || targetType.isArray || (targetType.name !== 'double' && targetType.name !== 'float')) return expr;
-      if (node?.type !== 'BinaryExpression' || node.operator !== '/') return expr;
+      // A quotient nested in the value ((a / b) * 100) is transformed again, marked
+      if (node?.type !== 'BinaryExpression' || node.operator !== '/')
+        return this.markDoubleDivisions(node) ? this.transformExpression(node) : expr;
       const quotient = this.asDoubleOperand(node, expr);
       return quotient.nodeType === 'BinaryExpression' ? quotient : expr;
     }

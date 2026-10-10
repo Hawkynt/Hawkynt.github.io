@@ -1121,6 +1121,14 @@ check('bitwise: x | 0 on an unsigned value is its signed 32-bit value', () => {
   expectMatch(code, /JsMul\((unchecked\()?\(int\)\(?value\)?\)?, 0x27D4EB2D\)/, 'JsMul((int)value, ...)');
   expectNoMatch(code, /value \| 0u/, 'value | 0u');
 });
+check('division: a quotient of integers nested in a value going into doubles divides as doubles', () => {
+  const code = transpile('/**\n * @param {int32[]} counts - counts\n * @param {int32} total - total\n * @returns {float64[]} r\n */\n' +
+    'function pct(counts, total) {\n  /** @type {float64[]} */\n  const percentages = [];\n' +
+    '  for (let k = 0; k < 26; k++) percentages.push(total > 0 ? (counts[k] / total) * 100 : 0);\n' +
+    '  /** @type {float64} */\n  const first = (counts[0] / total) * 100;\n  percentages.push(first);\n  return percentages;\n}');
+  expectMatch(code, /\(double\)\(?counts\[k\]\)? \/ total \* 100/, '(double)counts[k] / total * 100 in the push');
+  expectMatch(code, /double first = \(double\)\(?counts\[0\]\)? \/ total \* 100/, '(double)counts[0] / total * 100 in the declaration');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
