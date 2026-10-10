@@ -231,10 +231,10 @@
       /** @type {uint8[]} */
       const kwpIV = [
         0xA6, 0x59, 0x59, 0xA6,
-        OpCodes.And32(OpCodes.Shr32(originalLength, 24), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(originalLength, 16), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(originalLength, 8), 0xFF),
-        OpCodes.And32(originalLength, 0xFF)
+        OpCodes.GetByte(originalLength, 3),
+        OpCodes.GetByte(originalLength, 2),
+        OpCodes.GetByte(originalLength, 1),
+        OpCodes.ToByte(originalLength)
       ];
 
       /** @type {uint8[]} */
