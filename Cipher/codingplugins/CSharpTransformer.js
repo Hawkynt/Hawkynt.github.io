@@ -26633,10 +26633,15 @@
      */
     asBigIntShift(node, result) {
       if (!node.bigint || !['<<', '>>'].includes(node.operator) || result?.nodeType !== 'BinaryExpression' || result.operator !== node.operator) return result;
-      // Only a literal: a variable declared uint64 is meant to stay 64-bit
-      if (node.left?.type !== 'Literal') return result;
       const leftType = this.inferFullExpressionType(node.left);
       if (leftType?.name === 'BigInteger' && !leftType.isArray) return result;
+      // A literal, or a computed 64-bit value (lfsr258.js's ShiftLn(AndN(z, mask), 10),
+      // the AND typed uint64): a JavaScript BigInt shift keeps every bit. A plain
+      // reference declared 64-bit is meant to stay so (see transformBigIntCast)
+      const wrapped = node.left?.type === 'Cast' ? node.left.arguments?.[0] : node.left?.type === 'BigIntCast' ? node.left.argument : null;
+      const reference = wrapped && this.isReliableBigIntCastSkipSource(wrapped) ? wrapped : node.left;
+      const plain64 = this.isReliableBigIntCastSkipSource(reference) && ['ulong', 'long'].includes(leftType?.name) && !leftType.isArray;
+      if (node.left?.type !== 'Literal' && (plain64 || !['ulong', 'long'].includes(leftType?.name) || node.operator !== '<<')) return result;
       return new CSharpBinaryExpression(new CSharpCast(new CSharpType('BigInteger'), result.left), result.operator, result.right);
     }
 

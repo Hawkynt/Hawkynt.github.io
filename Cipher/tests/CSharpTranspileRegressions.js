@@ -1159,6 +1159,14 @@ check('typeof: a bigint test on an array folds to false, dropping the dead branc
     '    else this._state = BigInt(seedValue.length);\n  }\n  /** @returns {uint8[]} the seed */\n  get seed() { return this._seed; }\n}');
   expectNoMatch(code, /this\._state = value;/, 'the dead BigInt branch');
 });
+check('bigint shifts: a computed 64-bit value shifted left as a BigInt keeps its high bits', () => {
+  const code = transpile('class G {\n  constructor() {\n    /** @type {BigInt} */\n    this._z0 = 123456789123456789n;\n  }\n' +
+    '  /** @returns {BigInt} r */\n  step() {\n    this._z0 = OpCodes.XorN(OpCodes.ShiftLn(OpCodes.AndN(this._z0, 0xFFFFFFFFFFFFFFFEn), 10), this._z0);\n    return this._z0;\n  }\n}');
+  expectMatch(code, /\(BigInteger\)\(.*0xFFFFFFFFFFFFFFFEUL\)\)\) << /, '(BigInteger)(masked) << 10');
+});
+const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
+  'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
+  '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
   const code = transpile(SAME_NAMED_CALLS);
   expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');
