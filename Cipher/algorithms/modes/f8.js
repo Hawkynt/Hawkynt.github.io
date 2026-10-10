@@ -60,7 +60,7 @@
       this.subCategory = "Stream Cipher Mode";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.EU;
+      this.country = CountryCode.INTL;
 
       this.RequiresIV = true;
       this.SupportedIVSizes = [
