@@ -21,6 +21,9 @@
  *   harness run back, judging languages, error classes, and each vector
  *   harness end to end against hand-written stand-ins for transpiled code
  *   (TranspilerValidationTests.js); the C# cases need the .NET SDK
+ * - TSPHP: regressions of systematic TypeScript and PHP transpilation faults;
+ *   compiles and runs each case when tsc/php is installed
+ *   (TsPhpTranspileRegressions.js)
  * - VALIDATION: transpiles every algorithm to every installed language,
  *   compiles it and runs its vectors where the language is interpreted
  *   (TranspilerValidation.js). It takes over ten minutes unscoped and depends
@@ -62,6 +65,8 @@ const CATEGORIES = [
   { key: 'harness', label: 'HARNESS', title: 'The cross-language validation harness', module: './TranspilerValidationTests' },
   { key: 'python', label: 'PYTHON', title: 'Python transpilation regressions', module: './PythonTranspileRegressions' },
   { key: 'c', label: 'C', title: 'C and C++ transpilation regressions', module: './CTranspileRegressions' },
+  { key: 'tsphp', label: 'TSPHP', title: 'TypeScript and PHP transpilation regressions', module: './TsPhpTranspileRegressions' },
+  { key: 'perl', label: 'PERL', title: 'Perl transpilation regressions', module: './PerlTranspileRegressions' },
   { key: 'validation', label: 'VALIDATION', title: 'Cross-language transpile, compile and run', module: './TranspilerValidation' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);

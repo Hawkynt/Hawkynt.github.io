@@ -91,7 +91,7 @@ class TypeScriptPlugin extends LanguagePlugin {
 
       // Create transformer with options
       const transformer = new TypeScriptTransformer({
-        typeKnowledge: mergedOptions.parser?.typeKnowledge || mergedOptions.typeKnowledge
+        frameworkSurface: this._frameworkSurface()
       });
 
       // Transform JS AST to TypeScript AST
@@ -104,7 +104,18 @@ class TypeScriptPlugin extends LanguagePlugin {
       });
 
       // Emit TypeScript code from TypeScript AST
-      const code = emitter.emit(tsAst);
+      let code = emitter.emit(tsAst);
+
+      // A standalone runnable file (test harness generation) carries the
+      // runtime the classes depend on: the real OpCodes.js and
+      // AlgorithmFramework.js, made TypeScript (see _buildStandalonePrelude).
+      // The algorithm's own code gets a function scope of its own, the
+      // isolation its UMD factory gave it, so its top-level names cannot
+      // collide with the runtime's.
+      if (mergedOptions.generateTestHarness) {
+        const nl = mergedOptions.lineEnding || mergedOptions.newline || '\n';
+        code = this._buildStandalonePrelude() + nl + '(function () {' + nl + code + nl + '})();' + nl;
+      }
 
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
@@ -119,6 +130,213 @@ class TypeScriptPlugin extends LanguagePlugin {
     }
   }
 
+
+  /**
+   * The framework's classes as the type checker sees them: per class its
+   * base, its methods and accessors, and the properties an instance has.
+   * Read from the live AlgorithmFramework (Node: required; browser: the
+   * global), so it cannot drift from it.
+   * @private
+   * @returns {{classes: Object<string, {base: string|null, members: string[], fields: string[]}>}}
+   */
+  _frameworkSurface() {
+    if (this._surface) return this._surface;
+    let AF = null;
+    try {
+      AF = typeof require !== 'undefined' ? require('../AlgorithmFramework.js') : (typeof window !== 'undefined' ? window.AlgorithmFramework : null);
+    } catch (e) {
+      AF = null;
+    }
+    const classes = {};
+    if (AF) {
+      for (const name of Object.keys(AF)) {
+        const ctor = AF[name];
+        if (typeof ctor !== 'function' || !/^[A-Z]/.test(name) || !ctor.prototype) continue;
+        const parent = Object.getPrototypeOf(ctor);
+        const members = Object.getOwnPropertyNames(ctor.prototype).filter(m => m !== 'constructor');
+        let fields = [];
+        try { fields = Object.keys(new ctor(null)); } catch (e) { fields = []; }
+        classes[name] = { base: parent && parent.name && AF[parent.name] === parent ? parent.name : null, members, fields };
+      }
+    }
+    this._surface = { classes };
+    return this._surface;
+  }
+
+  /**
+   * The runtime a standalone TypeScript file carries ahead of its classes:
+   * the real OpCodes.js object and AlgorithmFramework.js classes, verbatim
+   * except for what TypeScript needs on top of JavaScript - the classes
+   * declare the properties their constructors assign (typed from their
+   * JSDoc), the few lines of OpCodes the checker cannot type are marked, and
+   * the Node globals the runtime touches are declared. Node-only (it reads
+   * the sources from disk).
+   * @private
+   * @returns {string} TypeScript source
+   */
+  _buildStandalonePrelude() {
+    if (this._standalonePrelude) return this._standalonePrelude;
+    const fs = require('fs');
+    const path = require('path');
+    const { tsTypeOf } = require('./TypeScriptTransformer.js');
+    const rootDir = path.join(__dirname, '..');
+    const opCodesSrc = fs.readFileSync(path.join(rootDir, 'OpCodes.js'), 'utf8');
+    const frameworkSrc = fs.readFileSync(path.join(rootDir, 'AlgorithmFramework.js'), 'utf8');
+    const known = { classes: new Set(Object.keys(this._frameworkSurface().classes)) };
+
+    // OpCodes: the object literal itself
+    const opStart = opCodesSrc.indexOf('const OpCodes = {');
+    const opEnd = opCodesSrc.indexOf('// Export to global scope');
+    if (opStart < 0 || opEnd < 0) throw new Error('OpCodes.js: the OpCodes object literal was not found');
+    // Lines whose JavaScript the checker rejects though it runs as intended
+    // (a BigInt/Number mix, a constructor called without its argument, a
+    // comparison inside a bitwise and)
+    const untypable = [/&\s*\d+\s*!==\s*0/,/new OpCodes\._BitStream\(\)/, /const nextS = oldS - q \* s/];
+    let opCodes = this._optionalParameters(opCodesSrc.slice(opStart, opEnd).split('\n').map(line =>
+      untypable.some(re => re.test(line)) ? line.replace(/^(\s*)/, '$1// @ts-ignore\n$1') : line).join('\n').trimEnd());
+    // Every OpCodes function returns what its JSDoc says, and takes the
+    // BigInts it says it takes (inferred from a body working on untyped
+    // parameters, a BigInt result would be a number); its other parameters
+    // take what JavaScript passes them (a truthy number for a boolean, a
+    // BigInt fill value), as they always have
+    opCodes = opCodes.replace(/(\/\*\*((?:(?!\*\/)[\s\S])*?)\*\/\s*\n\s*\w+\s*:\s*function\s*)\(([^()]*)\)(\s*\{)/g, (all, head, doc, params, brace) => {
+      const paramTypes = new Map();
+      for (const p of doc.matchAll(/@param\s*\{([^}]+)\}\s*\[?(\w+)/g)) paramTypes.set(p[2], p[1]);
+      const typed = params.split(',').map(p => {
+        const m = /^(\s*)(\.\.\.)?(\w+)(\??)(\s*)$/.exec(p);
+        if (!m || m[2] || !paramTypes.has(m[3])) return p;
+        const type = tsTypeOf(paramTypes.get(m[3]), known);
+        return type === 'bigint' || type === 'bigint[]' ? `${m[1]}${m[3]}${m[4]}: ${type}${m[5]}` : p;
+      }).join(',');
+      const returns = /@returns?\s*\{([^}]+)\}/.exec(doc);
+      return `${head}(${typed})${returns ? `: ${tsTypeOf(returns[1], known)}` : ''}${brace}`;
+    });
+
+    // AlgorithmFramework: the factory's body at top level, so its classes are
+    // types as well as values, and the object it returns
+    const bodyStart = frameworkSrc.indexOf("'use strict';", frameworkSrc.indexOf('function () {'));
+    const returnAt = frameworkSrc.lastIndexOf('return {');
+    const returnEnd = frameworkSrc.indexOf('};', returnAt);
+    if (bodyStart < 0 || returnAt < 0 || returnEnd < 0) throw new Error('AlgorithmFramework.js: the factory body was not found');
+    let framework = frameworkSrc.slice(bodyStart + "'use strict';".length, returnAt);
+    const exported = frameworkSrc.slice(returnAt + 'return '.length, returnEnd + 1);
+    framework = this._optionalParameters(this._declareFrameworkProperties(framework, known, tsTypeOf))
+      // A subclass may hand its base constructor more than it takes
+      .replace(/^(\s*constructor\([^()]*)\)(\s*\{)/gm, (all, head, brace) => `${head}${/\(\s*$/.test(head) ? '' : ', '}..._extra: any[])${brace}`);
+
+    this._standalonePrelude = [
+      '// ==== runtime environment (Node.js) ====',
+      'declare const console: { log(...data: any[]): void; error(...data: any[]): void; warn(...data: any[]): void; info(...data: any[]): void };',
+      'declare class TextEncoder { encode(input?: string): Uint8Array; }',
+      'declare class TextDecoder { constructor(label?: string, options?: any); decode(input?: any, options?: any): string; }',
+      'declare const require: any;',
+      'declare const module: any;',
+      'declare const global: any;',
+      'declare const process: any;',
+      'declare const define: any;',
+      'declare const exports: any;',
+      'declare const window: any;',
+      'declare const self: any;',
+      'declare const crypto: any;',
+      'declare const performance: any;',
+      'declare const Buffer: any;',
+      '/** An array of numbers: a JavaScript Array or a typed array; the IL does not tell them apart */',
+      'type NumericArray = any;',
+      '// ==== embedded runtime: OpCodes.js ====',
+      opCodes,
+      '// ==== embedded runtime: AlgorithmFramework.js ====',
+      framework.trim(),
+      `const AlgorithmFramework = ${exported};`,
+      ''
+    ].join('\n');
+    return this._standalonePrelude;
+  }
+
+  /**
+   * Mark every plain parameter of the runtime's functions, methods and
+   * constructors optional, as every JavaScript parameter is (a caller may
+   * leave any argument out). Setters keep theirs: TypeScript requires it.
+   * @private
+   */
+  _optionalParameters(source) {
+    const optional = params => params.split(',').map(p => {
+      const name = p.trim();
+      return /^[A-Za-z_$][\w$]*$/.test(name) ? p.replace(name, name + '?') : p;
+    }).join(',');
+    return source
+      .replace(/\bfunction(\s+\w+)?\s*\(([^()]*)\)/g, (all, name, params) => `function${name || ''}(${optional(params)})`)
+      .replace(/^(\s*)(?!if\b|for\b|while\b|switch\b|catch\b|return\b|get\b|set\b)(constructor|[A-Za-z_$][\w$]*)\s*\(([^()]*)\)(\s*(?::\s*any\s*)?\{)/gm,
+        (all, indent, name, params, brace) => `${indent}${name}(${optional(params)})${brace}`);
+  }
+
+  /**
+   * The standalone runtime prelude (see _buildStandalonePrelude), for the
+   * validation's bundling of dependencies between it and the class code.
+   * @returns {string}
+   */
+  GetStandalonePrelude() {
+    return this._buildStandalonePrelude();
+  }
+
+  /**
+   * Insert `declare name: T;` into every class of the framework source for
+   * each property its body assigns through `this`, typed from the JSDoc
+   * `@type` above the assignment.
+   * @private
+   */
+  _declareFrameworkProperties(source, known, tsTypeOf) {
+    // The Algorithm and IAlgorithmInstance families
+    const surface = this._frameworkSurface().classes;
+    const open_ = new Set(Object.keys(surface).filter(name => {
+      for (let c = name, guard = 0; c && guard < 32; c = surface[c] && surface[c].base, ++guard)
+        if (c === 'Algorithm' || c === 'IAlgorithmInstance') return true;
+      return false;
+    }));
+    let out = '';
+    let at = 0;
+    const classRe = /\bclass\s+(\w+)(?:\s+extends\s+[\w.]+)?\s*\{/g;
+    let m;
+    while ((m = classRe.exec(source)) !== null) {
+      const open = m.index + m[0].length;
+      // The class body, by brace matching
+      let depth = 1;
+      let i = open;
+      while (i < source.length && depth > 0) {
+        const c = source[i];
+        if (c === '{') ++depth;
+        else if (c === '}') --depth;
+        ++i;
+      }
+      const body = source.slice(open, i - 1);
+      const types = new Map();
+      const assignRe = /(?:\/\*\*\s*@type\s*\{([^}]+)\}[^*]*\*\/\s*)?this\.(\w+)\s*=(?!=)/g;
+      let a;
+      while ((a = assignRe.exec(body)) !== null)
+        if (!types.has(a[2]) || (!types.get(a[2]) && a[1])) types.set(a[2], a[1] || null);
+      // Accessors of the same name are the class's own
+      for (const accessor of body.matchAll(/^\s*(?:get|set)\s+(\w+)\s*\(/gm)) types.delete(accessor[1]);
+      out += source.slice(at, open);
+      // An algorithm or instance has whatever properties its subclass gives
+      // it (the vector harnesses set them by name), and a subclass may make
+      // one of the framework's an accessor: they are open, their properties
+      // declared by the index signature alone. A test vector carries whatever
+      // fields its algorithm takes, any of them missing.
+      if (open_.has(m[1])) {
+        if (m[1] === 'Algorithm' || m[1] === 'IAlgorithmInstance') out += '\n      [member: string]: any;';
+      } else {
+        for (const [name, jsDocType] of types) out += `\n      declare ${name}?: ${tsTypeOf(jsDocType, known)};`;
+        if (m[1] === 'TestCase') out += '\n      [field: string]: any;';
+      }
+      at = open;
+    }
+    out += source.slice(at);
+    // A placeholder method that only throws would return void, and the
+    // overrides that implement it could then return nothing else
+    out = out.replace(/^(\s*\w+\([^)]*\))(\s*\{\s*throw\s+'[^']*'\s*\})/gm, '$1: any$2');
+    // The enums: frozen objects whose members are looked up by name; one an
+    // algorithm names that does not exist is undefined, as in JavaScript
+    return out.replace(/const\s+(\w+)\s*=\s*Object\.freeze\(\{/g, 'const $1: { readonly [member: string]: any } = Object.freeze({');
+  }
 
   /**
    * Collect required dependencies

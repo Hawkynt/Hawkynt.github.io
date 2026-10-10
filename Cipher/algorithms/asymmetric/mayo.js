@@ -441,38 +441,30 @@
 
   // SHAKE256 and AES-128 come from the collection rather than from a stand-in,
   // because a signature built on an approximation of either agrees with nothing.
-  // They are loaded on first use rather than at load: requiring them here would
-  // register a hash and a block cipher while this file is being loaded, and
-  // every tool that attributes an algorithm to whichever file was loading when
-  // it registered would file them under asymmetric ciphers.
-  let primitivesLoaded = false;
+  // They are looked up on first use rather than at load: requiring them here
+  // would register a hash and a block cipher while this file is being loaded,
+  // and every tool that attributes an algorithm to whichever file was loading
+  // when it registered would file them under asymmetric ciphers.
 
   /**
-   * Load the primitives MAYO needs, once.
-   * @returns {void}
-   */
-  function loadPrimitives() {
-    if (primitivesLoaded) return;
-    primitivesLoaded = true;
-    if (typeof require === 'undefined') return;
-
-    for (const module of ['../hash/shake.js', '../block/rijndael.js']) {
-      try {
-        require(module);
-      } catch (error) {
-        // In the browser these arrive as script tags instead; Find() reports it.
-      }
-    }
-  }
-
-  /**
-   * Look up a registered algorithm, complaining usefully when it is absent.
-   * @param {string} name - Registered algorithm name
+   * Look up a registered algorithm (registry first, CommonJS fallback to the
+   * file that registers it), complaining usefully when it is absent.
+   * @param {string} name - Registered algorithm name: SHAKE256 or Rijndael (AES)
    * @returns {Algorithm} The algorithm
+   * @throws {Error} If the algorithm is not registered
    */
   function requireAlgorithm(name) {
-    loadPrimitives();
-    const algorithm = AlgorithmFramework.Find(name);
+    /** @type {Algorithm} */
+    let algorithm = AlgorithmFramework.Find(name);
+    if (!algorithm && typeof require !== 'undefined') {
+      try {
+        if (name === 'SHAKE256') require('../hash/shake.js');
+        if (name === 'Rijndael (AES)') require('../block/rijndael.js');
+      } catch (error) {
+        // In the browser these arrive as script tags instead; reported below.
+      }
+      algorithm = AlgorithmFramework.Find(name);
+    }
     if (!algorithm) {
       throw new Error('MAYO requires ' + name + ', which is not registered');
     }
