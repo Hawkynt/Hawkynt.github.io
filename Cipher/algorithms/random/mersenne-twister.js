@@ -291,6 +291,7 @@
      * Based on mt19937ar.c twist logic in genrand_int32()
      */
     _twist() {
+      /** @type {int32} */
       let i;
 
       // First loop: i from 0 to N-M-1

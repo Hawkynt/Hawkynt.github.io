@@ -304,6 +304,7 @@
      * Using circular buffer with counter c:
      * x[c] = (x[c-55] + x[c-119] + x[c-179] + x[c-256]) mod 2^32
      * With byte wrap: c-55 = c+201, c-119 = c+137, c-179 = c+77, c-256 = c+0
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

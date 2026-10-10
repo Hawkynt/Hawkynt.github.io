@@ -238,6 +238,7 @@
       for (let i = 0; i < 8; i++)
         w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
 
+      /** @type {uint32} */
       let a, b, c, d, e, t, m0, m1, m2, m3;
       a = w[0];  // 0040101B
       e = w[1];  // 0040101D
@@ -808,6 +809,7 @@
       for (let i = 0; i < 8; i++)
         w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
 
+      /** @type {uint32} */
       let a, b, c, d, e, t, m0, m1, m2, m3;
       a = w[0];  // 0040166B
       d = w[4];  // 0040166D

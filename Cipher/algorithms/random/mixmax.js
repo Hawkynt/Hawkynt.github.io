@@ -215,7 +215,7 @@
 
       // Generator state (256 x 64-bit words)
       /** @type {BigInt[]} */
-      this._state = OpCodes.CreateArray(this.MATRIX_SIZE, 0n);
+      this._state = new Array(this.MATRIX_SIZE).fill(0n);
 
       // Transformation matrix (256x256)
       /** @type {BigInt[][]} */
@@ -241,7 +241,7 @@
 
       for (let row = 0; row < this.MATRIX_SIZE; ++row) {
         /** @type {BigInt[]} */
-        const cells = OpCodes.CreateArray(this.MATRIX_SIZE, 0n);
+        const cells = new Array(this.MATRIX_SIZE).fill(0n);
         matrix.push(cells);
 
         // First column: all 1s
@@ -337,7 +337,7 @@
 
       // Step 2: Matrix-vector multiplication to compute new state
       /** @type {BigInt[]} */
-      const newState = OpCodes.CreateArray(this.MATRIX_SIZE, 0n);
+      const newState = new Array(this.MATRIX_SIZE).fill(0n);
       for (let i = 0; i < this.MATRIX_SIZE; ++i) {
         /** @type {BigInt[]} */
         const matrixRow = this._matrix[i];

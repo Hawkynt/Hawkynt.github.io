@@ -59,7 +59,7 @@
         this.securityNotes = "Historical educational cipher easily broken by frequency analysis. Used by secret societies for concealment rather than security against determined cryptanalysts.";
         this.inventor = "Freemasons/Rosicrucians";
         this.year = 1700;
-        this.country = "Multi-national";
+        this.country = CountryCode.INTL;
         this.complexity = ComplexityType.LOW;
 
         this.documentation = [
@@ -75,8 +75,8 @@
         ];
 
         this.knownVulnerabilities = [
-          "Geometric symbols are easily recognizable as pigpen cipher once pattern is known",
-          "Maintains letter frequency patterns making cryptanalysis straightforward"
+          new Vulnerability("Recognizable Symbols", "Geometric symbols are easily recognizable as pigpen cipher once pattern is known"),
+          new Vulnerability("Frequency Analysis", "Maintains letter frequency patterns making cryptanalysis straightforward")
         ];
 
         this.tests = [
@@ -260,13 +260,11 @@
       }
 
       /**
-       * @returns {uint8[]|string} The key bytes, or "standard" when none was set
+       * Get a copy of the key bytes last set
+       * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
        */
       get key() {
-        if (this._key) {
-          return this._key;
-        }
-        return "standard";
+        return this._key ? this._key.slice() : null;
       }
 
       /**

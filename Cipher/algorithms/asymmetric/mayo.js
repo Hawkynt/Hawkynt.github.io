@@ -692,7 +692,9 @@
   // thing, so the result is memoised. Nothing is cached that the key does not
   // already determine. Secret and public expansions are different shapes, so
   // each has a cache of its own.
+  /** @type {Map<string, MayoSecretKey>} */
   const SECRET_KEY_CACHE = new Map();
+  /** @type {Map<string, MayoPublicKey>} */
   const PUBLIC_KEY_CACHE = new Map();
 
   /**
@@ -1788,6 +1790,7 @@
     }
 
     // Property setter for key (for test suite compatibility)
+    /** @param {uint8[]} keyData - Key bytes */
     set key(keyData) {
       this.KeySetup(keyData);
     }

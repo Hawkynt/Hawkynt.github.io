@@ -25,8 +25,8 @@ Historical educational cipher. Vulnerable to frequency analysis with sufficient 
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Vulnerable to frequency analysis attacks when sufficient ciphertext is available | — | — |
-| With enough plaintext-ciphertext pairs, wheel alphabets can be recovered | — | — |
+| Frequency Analysis | Vulnerable to frequency analysis attacks when sufficient ciphertext is available | — |
+| Known Plaintext | With enough plaintext-ciphertext pairs, wheel alphabets can be recovered | — |
 
 ## Documentation
 

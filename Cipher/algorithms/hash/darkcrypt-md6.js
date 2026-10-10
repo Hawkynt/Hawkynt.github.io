@@ -385,6 +385,7 @@
     final() {
       if (this.finalized) return this.digest;
 
+      /** @type {int32} */
       let ell;
       if (this.top === 1) ell = 1;
       else {

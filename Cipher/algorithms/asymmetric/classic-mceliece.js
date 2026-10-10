@@ -2855,8 +2855,11 @@
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
       this._parameterSet = MCELIECE_348864;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._sharedSecret = null;
       this._keyData = null;
       this.keyGeneration = false;

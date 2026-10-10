@@ -362,7 +362,7 @@
         /** @type {uint32} */
         const bit = this._generateKeystreamBit();
         if (bit) {
-          byte = OpCodes.SetBit(byte, 7 - i, 1);
+          byte = OpCodes.SetBit(byte, 7 - i, true);
         }
       }
       return byte;
@@ -685,7 +685,7 @@
         /** @type {uint32} */
         const bit = this._generateKeystreamBit();
         if (bit) {
-          byte = OpCodes.SetBit(byte, 7 - i, 1);
+          byte = OpCodes.SetBit(byte, 7 - i, true);
         }
       }
       return byte;

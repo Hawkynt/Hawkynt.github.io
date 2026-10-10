@@ -340,7 +340,7 @@
 
       // Initialize state array (size = order + 1)
       const stateSize = this._order + 1;
-      this._state = OpCodes.CreateArray(stateSize, 0n);
+      this._state = new Array(stateSize).fill(0n);
 
       // Use SplitMix64 to initialize state
       for (let i = 0; i < stateSize; ++i) {

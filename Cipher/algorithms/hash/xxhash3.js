@@ -1468,9 +1468,9 @@
 
     /**
      * Current 64-bit seed
-     * @returns {BigInt} The seed
+     * @returns {string} The seed as 16 hex digits, as the setter takes it
      */
-    get seed() { return this._seed; }
+    get seed() { return this._seed.toString(16).toUpperCase().padStart(16, '0'); }
 
     /**
      * Set the seed from a hex string

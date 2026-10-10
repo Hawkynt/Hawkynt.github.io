@@ -69,7 +69,12 @@ applied to numbers, an unannotated parameter.
 `TypeCoverage.js` parses a file into the same typed IL AST the language emitters use
 and counts those sites (value positions only; declaration names, keys, callees,
 conditions and test vectors are not values), attributing each to the tier whose gap it
-is. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
+is. A type that states no width counts as none, its array forms too (`any`, `any[]`,
+`number[]`, `Array<*>`). Besides values it counts storage and kinds: every variable
+(`let a, b;` included), parameter and field whose type is missing or weak; a value of
+one kind where its context declares another (a number for a `boolean` parameter, a
+BigInt literal for a `uint8`); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
+and an accessor whose setter takes another type than its getter returns. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
 rises above it, a budget of 0 means the file is policy-clean, and
 `--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
 given as well to raise one or add a file). `--verbose` lists every site with file, line,
@@ -85,8 +90,12 @@ that is a `Uint32Array` passes it and still emits wrong code in a typed language
 itself (initialisers, assignments to variables, fields and array elements, `++`/`--`,
 returns, `push` arguments; line numbers are kept), loads that copy under the file's
 name, runs its algorithms' vectors and checks every value against the IL type of its
-site: integer range and integrality, Number or BigInt, boolean, string, and an array's
-typed-array kind and sampled elements. For an assignment the type checked is the
+site: integer range and integrality, Number or BigInt, boolean, string, an array's
+typed-array kind and sampled elements, an instance of a declared class (by its
+prototype chain; object literals stand for `TestCase`), a member of a declared
+framework enum, and no primitive where another reference type is declared. A value
+passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
+checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares
 it. A site checks its first 256 values and 16 more per later vector, so a hot loop
 costs a compare once its budget is spent; `Math.random` is seeded, so counts repeat.

@@ -65,6 +65,7 @@
 
   /** @type {Algorithm|null} */
   let aesAlgorithm = null;
+  /** @type {Map<int32, Algorithm>} */
   const SHA_CACHE = new Map();
 
   /**
@@ -2376,6 +2377,7 @@
         : GenerateSecretKeyClassic(this.field, p, seeds);
     }
 
+    /** @param {uint8[]} keyData - Key bytes */
     set key(keyData) {
       this.KeySetup(keyData);
     }
