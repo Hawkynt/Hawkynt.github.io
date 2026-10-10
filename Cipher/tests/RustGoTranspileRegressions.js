@@ -192,6 +192,15 @@ const CASES = [
     go: 'fmt.Println(PFXf())',
     rust: 'println!("{}", PFXf());',
     expect: { go: 'ok', rust: 'ok' }
+  },
+  {
+    name: 'untyped: a push in a loop onto an array the IL leaves untyped fails loudly instead of vanishing',
+    // Given an empty array literal without a JSDoc type, pushed to in a loop body
+    js: '/** @returns {string} */\nfunction f() { const a = []; try { for (let i = 0; i < 2; ++i) a.push(i); return "pushed"; } catch (e) { return "threw"; } }',
+    go: 'fmt.Println(PFXf())',
+    rust: 'println!("{}", PFXf());',
+    // Then the target reports the untyped value rather than producing an empty array
+    expect: { go: 'threw', rust: 'threw' }
   }
 ];
 

@@ -848,9 +848,10 @@
         case 'SequenceExpression': return [].concat(...e.expressions.map(x => this.expressionStatement(x)));
         case 'ParentConstructorCall': return this.parentConstructorCall(e);
         case 'ArrayAppend': {
-          // push as a statement: only the append
-          this.xArrayAppend(e);
-          return this.flushPre();
+          // push as a statement: only the append (a push on a value not typed as an array still runs, and throws)
+          const pushed = this.xArrayAppend(e);
+          const pre = this.flushPre();
+          return pushed.pushAny ? [...pre, G.ExprStmt(pushed.e)] : pre;
         }
         case 'LogicalExpression': {
           // a && f() as a statement
@@ -2792,7 +2793,9 @@
         } else items.push({ e: this.coerce(this.expr(v), el) });
       }
       if (!isArrayType(at)) {
-        return new Val(G.Call(G.Ident('jsPushAny'), [this.coerce(arr, 'any'), ...items.map(i => i.e)]), 'int32');
+        const pushAny = new Val(G.Call(G.Ident('jsPushAny'), [this.coerce(arr, 'any'), ...items.map(i => i.e)]), 'int32');
+        pushAny.pushAny = true;
+        return pushAny;
       }
       let target = arr.e;
       if (!this.isAssignable(target)) throw new Error('push onto a temporary array');
