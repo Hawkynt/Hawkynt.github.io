@@ -1129,6 +1129,19 @@ check('division: a quotient of integers nested in a value going into doubles div
   expectMatch(code, /\(double\)\(?counts\[k\]\)? \/ total \* 100/, '(double)counts[k] / total * 100 in the push');
   expectMatch(code, /double first = \(double\)\(?counts\[0\]\)? \/ total \* 100/, '(double)counts[0] / total * 100 in the declaration');
 });
+const SUBARRAY_VIEWS = '/**\n * @param {uint8[]} dest - written\n * @param {uint8[]} src - read\n * @param {int32} length - length\n */\n' +
+  'function xorBlock(dest, src, length) {\n  for (let i = 0; i < length; i++) dest[i] = OpCodes.Xor32(dest[i], src[i]);\n}\n' +
+  '/**\n * @param {uint8[]} V - state\n * @param {uint8[]} data - data\n * @param {int32} off - offset\n */\n' +
+  'function absorb(V, data, off) {\n  xorBlock(V.subarray(off), data, 4);\n  const half = V.subarray(16, 32);\n  xorBlock(half, data, 4);\n  xorBlock(data, V.subarray(0, 4), 4);\n}';
+check('subarray views: a view handed to a function writing it is copied back after the call', () => {
+  const code = transpile(SUBARRAY_VIEWS);
+  expectMatch(code, /var (__view\d+) = OpCodes\.SliceArray\(v, off, v\.Length\);\s*XorBlock\(\1, data, 4\);\s*Array\.Copy\(\1, 0, v, off, \1\.Length\);/, 'temporary view copied back at off');
+  expectMatch(code, /XorBlock\(half, data, 4\);\s*Array\.Copy\(half, 0, v, 16, half\.Length\);/, 'const view local copied back at 16');
+});
+check('subarray views: a view for a parameter only read is passed as is', () => {
+  const code = transpile(SUBARRAY_VIEWS);
+  expectMatch(code, /XorBlock\(data, OpCodes\.SliceArray\(v, 0, 4\), 4\);/, 'read-only view passed directly');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

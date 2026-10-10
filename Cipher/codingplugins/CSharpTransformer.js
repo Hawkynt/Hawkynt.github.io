@@ -7586,6 +7586,7 @@
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
         this.refArrayParams = this.preScanRefArrayParams(jsAst);
+        this.writtenArrayParams = this.preScanWrittenArrayParams(jsAst.body);
         // Module bindings something reassigns or grows (a push becomes an assignment
         // in C#) cannot be readonly fields
         this.reassignedModuleBindings = new Set();
@@ -11572,6 +11573,9 @@
       // detectPassthroughArrayParamType's use there for the full rationale).
       const prevFunctionBodyNode = this.currentFunctionBodyNode;
       this.currentFunctionBodyNode = bodyNode;
+      // const locals holding a subarray view, per function (see subarrayViewArguments)
+      const prevViewLocals = this.viewLocals;
+      this.viewLocals = new Map();
 
       // Clear method-scoped variable tracking for collision detection
       const prevMethodDeclaredVars = this.methodDeclaredVars;
@@ -11656,6 +11660,7 @@
       if (bodyNode.type === 'BlockStatement') this.syncHeldArrays(bodyNode, block);
 
       // Restore context
+      this.viewLocals = prevViewLocals;
       this.currentMethod = prevMethod;
       this.currentArrayElementType = null;
       this.methodDeclaredVars = prevMethodDeclaredVars;
@@ -12053,6 +12058,8 @@
           if (isSuperCall) {
             return null;
           }
+          const viewWrites = this.subarrayViewArguments(node.expression);
+          if (viewWrites) return viewWrites;
           const expr = this.transformExpression(node.expression);
           // Skip if expression transformed to null (e.g., handled elsewhere)
           return expr ? new CSharpExpressionStatement(expr) : null;
@@ -12160,6 +12167,82 @@
     }
 
     /**
+     * The parameters each function or method of the file writes elements of
+     * (`dest[i] = ...`, `dest.set(...)`, `dest.fill(...)`), "PascalName#index".
+     * @param {Object} programBody - the IL program body
+     * @returns {Set<string>}
+     */
+    preScanWrittenArrayParams(programBody) {
+      const written = new Set();
+      const consider = (name, fn) => {
+        (fn?.params || []).forEach((param, index) => {
+          const paramName = param?.name || param?.left?.name;
+          if (!paramName || !fn.body) return;
+          const isParam = n => n?.type === 'Identifier' && n.name === paramName;
+          let writes = false;
+          this._walkAstNodes(fn.body, n => {
+            if ((n.type === 'AssignmentExpression' || n.type === 'UpdateExpression') &&
+                (n.left || n.argument)?.type === 'MemberExpression' && (n.left || n.argument).computed && isParam((n.left || n.argument).object)) writes = true;
+            if (['TypedArraySet', 'ArrayFill'].includes(n.type) && isParam(n.array)) writes = true;
+          });
+          if (writes) written.add(`${this.toPascalCase(name)}#${index}`);
+        });
+      };
+      this._walkAstNodes(programBody, node => {
+        if (node.type === 'FunctionDeclaration' && node.id?.name) consider(node.id.name, node);
+        else if (node.type === 'MethodDefinition' && node.kind === 'method' && node.key?.name) consider(node.key.name, node.value);
+      });
+      return written;
+    }
+
+    /**
+     * A call statement handing `x.subarray(a, b)` - a view onto x in JavaScript -
+     * to a parameter the callee writes (sundae-gift.js's `xorBlock(V.subarray(n),
+     * data, len)`): the C# slice is a copy, so it is made in a temporary and copied
+     * back into x after the call.
+     * @param {Object} call - the IL call expression of the statement
+     * @returns {CSharpBlock|null} the block, or null when no argument is such a view
+     */
+    subarrayViewArguments(call) {
+      if (!this.writtenArrayParams?.size || !call) return null;
+      const name = call.type === 'CallExpression' && call.callee?.type === 'Identifier' ? call.callee.name
+        : call.type === 'ThisMethodCall' ? call.method
+        : call.type === 'CallExpression' && call.callee?.type === 'MemberExpression' && !call.callee.computed ? call.callee.property?.name : null;
+      if (!name || !Array.isArray(call.arguments)) return null;
+      const pascal = this.toPascalCase(name);
+      const written = index => this.writtenArrayParams.has(`${pascal}#${index}`);
+      const views = call.arguments.map((arg, index) => arg?.type === 'TypedArraySubarray' && written(index) ? index : -1).filter(i => i >= 0);
+      const viewLocals = call.arguments.map((arg, index) => arg?.type === 'Identifier' && this.viewLocals?.has(arg.name) && written(index) ? index : -1).filter(i => i >= 0);
+      if (views.length === 0 && viewLocals.length === 0) return null;
+      const block = new CSharpBlock();
+      const copies = [];
+      const args = call.arguments.slice();
+      const copyBack = (local, view) => {
+        const begin = view.begin || view.start;
+        const start = begin ? this.ensureIntIndex(this.transformExpression(begin), begin) : CSharpLiteral.Int(0);
+        return new CSharpExpressionStatement(new CSharpMethodCall(new CSharpIdentifier('Array'), 'Copy',
+          [local, CSharpLiteral.Int(0), this.transformExpression(view.array), start, new CSharpMemberAccess(local, 'Length')]));
+      };
+      for (const index of viewLocals)
+        copies.push(copyBack(this.transformExpression(args[index]), this.viewLocals.get(args[index].name)));
+      for (const index of views) {
+        const view = args[index];
+        this.viewCount = (this.viewCount || 0) + 1;
+        const temp = `__view${this.viewCount}`;
+        const viewType = this.inferFullExpressionType(view);
+        block.statements.push(new CSharpVariableDeclaration(temp, new CSharpType('var'), this.transformExpression(view)));
+        if (viewType?.isArray) this.registerVariableType(temp, viewType);
+        this.methodDeclaredVars?.add(temp);
+        args[index] = { type: 'Identifier', name: temp, resultType: view.resultType };
+        copies.push(copyBack(new CSharpIdentifier(temp), view));
+      }
+      const expr = this.transformExpression({ ...call, arguments: args });
+      if (!expr) return null;
+      block.statements.push(new CSharpExpressionStatement(expr), ...copies);
+      return block;
+    }
+
+    /**
      * A local function parameter whose C# name equals that of a differently cased
      * enclosing local (sqisign.js: `const F = prm.F;` around `function basisE0(E, f)`,
      * both `f` in C#) would hide it, and the body's reads of the outer `F` would read
@@ -12214,6 +12297,10 @@
       }
 
       for (const decl of node.declarations) {
+        // A const subarray view (orange.js's `const half = state.subarray(16, 32)`)
+        // is a copy in C#: writes through it are copied back (subarrayViewArguments)
+        if (node.kind === 'const' && decl.init?.type === 'TypedArraySubarray' && decl.id?.type === 'Identifier')
+          this.viewLocals?.set(decl.id.name, decl.init);
         // Handle the classic buffer-drain idiom: `const block = this.inputBuffer.splice(0,
         // this.BlockSize);`. JS's Array.prototype.splice both RETURNS the removed slice
         // AND MUTATES the original array in place, removing those elements - there's no
