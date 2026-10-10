@@ -53,6 +53,11 @@
   const RESERVED = new Set(['this', 'main', 'std', 'core', 'alloc', 'Some', 'None', 'Ok', 'Err', 'Option', 'Result', 'Vec', 'String',
     'Box', 'Rc', 'RefCell', 'Cell', 'Ref', 'RefMut', 'HashMap', 'Default', 'Clone', 'Any', 'drop', 'vec', 'format', 'panic', 'assert']);
 
+  // Methods a class handle has itself or through its traits: a JavaScript method of
+  // the same name (a clone() say) would shadow them
+  const HANDLE_METHODS = new Set(['clone', 'd', 'dm', 'is_null', 'to_obj', 'ptr_eq', 'new', 'default', 'as_any', 'to_js', 'from_js',
+    'eq', 'ne', 'fmt', 'hash', 'borrow', 'borrow_mut', 'into', 'from', 'clone_from']);
+
   /** A Rust string literal holding a JavaScript string (characters as \u{..} escapes when not printable ASCII). */
   function rustStringLiteral(s) {
     let out = '"';
@@ -182,7 +187,10 @@
     }
 
     className(name) { return this.prefix + this.ident(name); }
-    methodName(name) { return this.ident(name); }
+    methodName(name) {
+      const n = this.ident(name);
+      return HANDLE_METHODS.has(n) ? n + '_' : n;
+    }
     getterName(name) { return 'get_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
     setterName(name) { return 'set_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
     fieldGet(name) { return 'fld_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
