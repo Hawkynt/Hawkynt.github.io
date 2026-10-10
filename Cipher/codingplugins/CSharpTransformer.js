@@ -7194,6 +7194,14 @@
       if (actualType && !actualType.isArray && actualType.name === 'BigInteger' && !expectedType.isArray &&
           ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(expectedType.name))
         return this.narrowBigInteger(expr, expectedType);
+      // A dynamic value for a numeric array parameter (hqc.js's byte[] key for an int32[]
+      // parameter) converts at run time: an array cast would throw
+      if (actualType && !actualType.isArray && actualType.name === 'dynamic' && expectedType.isArray &&
+          ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(expectedType.elementType?.name) && !expectedType.elementType?.isArray) {
+        const call = new CSharpMethodCall(null, 'AsArrayOf', [new CSharpCast(CSharpType.Object(), expr)]);
+        call.typeArguments = [expectedType.elementType];
+        return call;
+      }
       return new CSharpCast(expectedType, expr);
     }
 

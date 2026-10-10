@@ -1022,8 +1022,19 @@ namespace ${namespace}
         };
         // A converted copy of an array, converted back to the element type of the array
         // it was made from (like), as a JavaScript array holding the same numbers
-        public static T[] ArrayAs<T, S>(S[] source, T[] like) =>
-            source?.Select(v => (T)System.Convert.ChangeType(System.Convert.ToInt64(v) & (typeof(T) == typeof(byte) ? 0xFF : typeof(T) == typeof(ushort) ? 0xFFFF : typeof(T) == typeof(uint) ? 0xFFFFFFFFL : -1L), typeof(T))).ToArray();
+        public static T[] ArrayAs<T, S>(S[] source, T[] like) => source?.Select(v => JsNumberAs<T>(v)).ToArray();
+        // A dynamic value as an array of T: itself when it is one, else its elements
+        // converted (a byte[] given where an int32[] is declared)
+        public static T[] AsArrayOf<T>(object value) => value switch
+        {
+            null => null,
+            T[] same => same,
+            System.Collections.IEnumerable items => items.Cast<object>().Select(JsNumberAs<T>).ToArray(),
+            _ => throw new System.InvalidCastException(value.GetType().Name + " is no array")
+        };
+        // A JavaScript number as T, keeping the low bits for a narrower unsigned T
+        static T JsNumberAs<T>(object v) =>
+            v is T same ? same : (T)System.Convert.ChangeType(System.Convert.ToInt64(v) & (typeof(T) == typeof(byte) ? 0xFF : typeof(T) == typeof(ushort) ? 0xFFFF : typeof(T) == typeof(uint) ? 0xFFFFFFFFL : -1L), typeof(T));
         // obj[name] on an object: its property or field of that name (as declared,
         // or PascalCased as C# declares it); undefined (null) when it has none
         public static dynamic JsMember(object obj, string name)

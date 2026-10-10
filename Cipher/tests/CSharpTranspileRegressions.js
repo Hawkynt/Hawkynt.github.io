@@ -1094,6 +1094,13 @@ check('concat: dynamic arrays concatenated are cast to byte arrays first (Runtim
     '  /** @returns {uint8[]} r */\n  both() { return this._a.concat(this._b); }\n}');
   expectMatch(code, /\((unchecked\()?\(byte\[\]\)\(?this\._a\)?\)?\)\.Concat\((unchecked\()?\(byte\[\]\)\(?this\._b\)?\)?\)/, '((byte[])this._a).Concat((byte[])this._b)');
 });
+check('dynamic arguments: a dynamic value for an int array parameter converts at run time (RuntimeBinderException)', () => {
+  const code = transpile('/**\n * @param {int32[]} key - key\n * @returns {int32} r\n */\nfunction first(key) { return key[0]; }\n' +
+    'class Holder {\n  constructor() {\n    this._key = null;\n  }\n' +
+    '  /** @param {uint8[]} k - key */\n  set(k) { this._key = k ? k : AlgorithmFramework.Find("x"); }\n' +
+    '  /** @returns {int32} r */\n  head() { return first(this._key); }\n}');
+  expectMatch(code, /First\(AsArrayOf<int>\(\(object\)\(?this\._key\)?\)\)/, 'First(AsArrayOf<int>((object)this._key))');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
@@ -1335,6 +1342,10 @@ namespace RegressionTest {
       var bag = new TestCase { Text = "t" };
       Eq("member-camel", (string)FrameworkFunctions.JsMember(bag, "text"), "t");
       Eq("member-missing", (object)FrameworkFunctions.JsMember(bag, "nothing") == null, true);
+      // AsArrayOf takes a dynamic value as an array of the declared element type
+      Eq("as-array-same", FrameworkFunctions.AsArrayOf<int>(new int[] { 3 })[0], 3);
+      Eq("as-array-bytes", string.Join(",", FrameworkFunctions.AsArrayOf<int>(new byte[] { 1, 255 })), "1,255");
+      Eq("as-array-null", FrameworkFunctions.AsArrayOf<int>(null) == null, true);
       // JsTypeOf names the JavaScript kind of a value
       Eq("typeof-number", FrameworkFunctions.JsTypeOf(5), "number");
       Eq("typeof-bigint", FrameworkFunctions.JsTypeOf(new BigInteger(5)), "bigint");
