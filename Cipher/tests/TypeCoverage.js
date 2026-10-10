@@ -28,7 +28,9 @@
  *     `boolean` parameter is declared, a BigInt literal for a `uint8`, ...;
  *   - a boolean used as a number (`n += OpCodes.GetBit(x, i)`, `1 - flag`);
  *   - an accessor whose setter takes another type than its getter returns (a
- *     property no typed language declares with one type).
+ *     property no typed language declares with one type);
+ *   - a read of a framework enum member that does not exist (`CountryCode.XY`
+ *     reads undefined), in any position.
  *
  * `number` versus float: the IL names a genuine floating-point value
  * 'float64'/'float32' (fractional literals, `/`, Math.sqrt, ...). A bare
@@ -294,6 +296,12 @@ function analyzeSource(code, filePath) {
     if ((node.type === 'ClassDeclaration' || node.type === 'ClassExpression') && node.id && node.id.name)
       here.className = node.id.name;
 
+    // CountryCode.XY that the framework enum does not declare reads undefined,
+    // wherever it is read (a condition included).
+    if (node.missingEnumMember && !seen.has(node)) {
+      seen.add(node);
+      record(node, here, `framework enum member ${node.missingEnumMember} does not exist; it reads undefined`, 'local');
+    }
     if (isValue && node.type && !NOT_VALUES.has(node.type) && !(node.type === 'Literal' && node.regex))
       judge(node, here);
 

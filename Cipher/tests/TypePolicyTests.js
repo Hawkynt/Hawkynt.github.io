@@ -549,6 +549,30 @@ test('template: given an OpCodes helper declared {T[]} (ClearArray), when a uint
   equal(arg.contextType, undefined);
 });
 
+// ------------------------------------------------------------ enum members
+test('enum: given the framework, when loaded, then each enum knows its members', () => {
+  const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;
+  ok(members.get('CountryCode').has('US') && members.get('CountryCode').has('INTL'), 'CountryCode members');
+  ok(members.get('SecurityStatus').has('BROKEN') && !members.get('SecurityStatus').has('INSECURE'), 'SecurityStatus members');
+  equal(members.get('ComplexityType').size, 5);
+});
+test('enum: given a member the enum does not declare, when counted, then the read is a site', () => {
+  ok(reasons('function f() { return SecurityStatus.INSECURE; }')
+    .some(x => /framework enum member SecurityStatus\.INSECURE does not exist/.test(x)), 'reported');
+});
+test('enum: given such a member in a condition, when counted, then the read is a site too', () => {
+  ok(reasons('/** @param {CountryCode} c\n * @returns {boolean} */\nfunction f(c) { if (c === CountryCode.XX) return true; return false; }')
+    .some(x => /CountryCode\.XX does not exist/.test(x)), 'reported');
+});
+test('enum: given AlgorithmFramework.ComplexityType.LOW, when counted, then the qualified read is a site', () => {
+  ok(reasons('function f() { return AlgorithmFramework.ComplexityType.LOW; }')
+    .some(x => /ComplexityType\.LOW does not exist/.test(x)), 'reported');
+});
+test('enum: given declared members and a member of a member value, when counted, then nothing is reported', () => {
+  ok(!reasons('/** @returns {string} */\nfunction f() { return CategoryType.BLOCK.name + CountryCode.US.name + ComplexityType.RESEARCH.name; }')
+    .some(x => /enum member/.test(x)), 'not reported');
+});
+
 // ------------------------------------------------------------ soundness: classes, enums, arguments
 test('soundness: given a framework enum, when checked, then only its members pass', () => {
   global.AlgorithmFramework = global.AlgorithmFramework || quiet(() => require(path.join(__dirname, '..', 'AlgorithmFramework.js')));
@@ -556,6 +580,7 @@ test('soundness: given a framework enum, when checked, then only its members pas
   const check = TypeSoundness.checkerFor('CountryCode');
   equal(check(AF.CountryCode.US), null);
   equal(check(null), null);
+  equal(check(undefined), 'undefined-enum-member');
   equal(check('Multi-national'), 'string');
   equal(check({ name: 'United States' }), 'not-enum-member');
 });

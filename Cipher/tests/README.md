@@ -74,7 +74,9 @@ is. A type that states no width counts as none, its array forms too (`any`, `any
 (`let a, b;` included), parameter and field whose type is missing or weak; a value of
 one kind where its context declares another (a number for a `boolean` parameter, a
 BigInt literal for a `uint8`); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
-and an accessor whose setter takes another type than its getter returns. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
+an accessor whose setter takes another type than its getter returns; and a read of a
+framework enum member the enum does not declare (`CountryCode.XY` reads undefined), in
+any position. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
 rises above it, a budget of 0 means the file is policy-clean, and
 `--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
 given as well to raise one or add a file). `--verbose` lists every site with file, line,
@@ -93,7 +95,9 @@ name, runs its algorithms' vectors and checks every value against the IL type of
 site: integer range and integrality, Number or BigInt, boolean, string, an array's
 typed-array kind and sampled elements, an instance of a declared class (by its
 prototype chain; object literals stand for `TestCase`), a member of a declared
-framework enum, and no primitive where another reference type is declared. A value
+framework enum (or null, never undefined), and no primitive where another reference
+type is declared. Every read of a framework enum member the enum does not declare is a
+mismatch too, whether or not a vector reaches it. A value
 passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
 checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares

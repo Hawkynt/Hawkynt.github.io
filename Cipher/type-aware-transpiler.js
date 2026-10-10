@@ -417,6 +417,7 @@
       // These are populated by loadTypesFromSource() when available
       this.frameworkTypes = {};
       this.frameworkEnums = new Set();      // CategoryType, SecurityStatus, ...
+      this.frameworkEnumMembers = new Map(); // enum name -> Set of its member names (US, BROKEN, ...)
       this.frameworkFunctions = {};         // exported free functions: name -> { params, returns }
 
       // Enhanced cryptographic patterns with precise types
@@ -618,7 +619,24 @@
       // Exported enums (`const CategoryType = Object.freeze({...})`) and free
       // functions (`function Find(name)`) are framework members too.
       const enumPattern = /const\s+([A-Za-z_$][\w$]*)\s*=\s*Object\.freeze\(\s*\{/g;
-      while ((match = enumPattern.exec(source)) !== null) this.frameworkEnums.add(match[1]);
+      while ((match = enumPattern.exec(source)) !== null) {
+        this.frameworkEnums.add(match[1]);
+        // Its members are the keys at the top level of the frozen object.
+        const members = new Set();
+        let depth = 1, at = enumPattern.lastIndex, keyStart = at;
+        for (; at < source.length && depth > 0; ++at) {
+          const c = source[at];
+          if (c === '{' || c === '(' || c === '[') ++depth;
+          else if (c === '}' || c === ')' || c === ']') --depth;
+          else if (c === ',' && depth === 1) keyStart = at + 1;
+          else if (c === ':' && depth === 1) {
+            const key = source.slice(keyStart, at).replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '').trim().replace(/^['"]|['"]$/g, '');
+            if (/^[A-Za-z_$][\w$]*$/.test(key)) members.add(key);
+            keyStart = source.length;     // the value follows; the next key starts after ','
+          }
+        }
+        this.frameworkEnumMembers.set(match[1], members);
+      }
       const functionPattern = /^[ \t]*function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
       while ((match = functionPattern.exec(source)) !== null) {
         const doc = precedingJSDoc(match.index);
@@ -5217,6 +5235,16 @@
         resultType,
         ilNodeType: 'MemberExpression'
       };
+      // CountryCode.XY (or AlgorithmFramework.CountryCode.XY) that the enum
+      // does not declare reads undefined: recorded for TYPES and SOUNDNESS.
+      // (A member of an enum value, CategoryType.BLOCK.name, is no enum read.)
+      const enumName = object?.type === 'Identifier' && object.name === objectType &&
+          this.typeKnowledge.frameworkEnums && this.typeKnowledge.frameworkEnums.has(objectType) ? objectType
+        : object?.type === 'MemberExpression' && !object.computed && object.object?.type === 'Identifier' &&
+          object.object.name === 'AlgorithmFramework' && object.property?.name ? object.property.name : null;
+      const enumMembers = enumName && this.typeKnowledge.frameworkEnumMembers ? this.typeKnowledge.frameworkEnumMembers.get(enumName) : null;
+      if (enumMembers && enumMembers.size > 0 && propertyName && !node.computed && !enumMembers.has(propertyName))
+        member.missingEnumMember = `${enumName}.${propertyName}`;
       if (resultType && typeof objectType === 'string' && propertyName && !node.computed &&
           this.recordTypes && this.recordTypes.has(objectType) && this.lookupDeclaredFieldNullable(objectType, propertyName))
         member.nullable = true;

@@ -43,11 +43,16 @@
  *   a class                      an instance of it (its prototype chain names
  *                                the class): no primitive, array, plain
  *                                object or instance of another class
- *   a framework enum             one of the enum's members (CountryCode.US)
+ *   a framework enum             one of the enum's members (CountryCode.US) or
+ *                                null, never undefined (what a member the enum
+ *                                does not declare reads)
  *   any other reference type     no primitive (a typedef, Map, Object, ...)
  *
+ * Every read of a framework enum member the enum does not declare
+ * (`CountryCode.XY`) is a mismatch as well, whether or not a vector reaches it.
+ *
  * null and undefined are
- * accepted for arrays, strings and references and rejected for numbers and
+ * accepted for arrays, strings and other references and rejected for numbers and
  * booleans - unless the IL marks the value type nullable (`nullable: true`,
  * from `{int32|null}`, `{?uint32}`, ...), checked here as 'T?'. A store
  * into a typed array converts the value (JS truncates silently), so for
@@ -319,7 +324,10 @@ function referenceChecker(type) {
     case 'enum': {
       const members = new Set(Object.values(global.AlgorithmFramework[type]));
       return v => {
-        if (v === null || v === undefined) return null;
+        // null states no member; undefined is what a member the enum does not
+        // declare reads (CountryCode.XY)
+        if (v === undefined) return 'undefined-enum-member';
+        if (v === null) return null;
         const bad = notAReference(v);
         return bad || (members.has(v) ? null : 'not-enum-member');
       };
@@ -617,6 +625,27 @@ function collectSites(parser, ast) {
 
   walk(ast, { className: null, fn: null, pendingMethod: null, scope: { parent: null, declared: new Map(), types: new Map() } });
   return mergeSites(sites);
+}
+
+/**
+ * The reads of framework enum members the enum does not declare (the IL marks
+ * them `missingEnumMember`), test vectors included.
+ * @param {Object} ast - IL AST
+ * @returns {Object[]} IL nodes
+ */
+function missingEnumMembers(ast) {
+  const found = [];
+  const seen = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (typeof node.missingEnumMember === 'string') found.push(node);
+    for (const key of Object.keys(node))
+      if (!SKIP_KEYS.has(key)) walk(node[key]);
+  };
+  walk(ast);
+  return found;
 }
 
 /**
@@ -937,11 +966,23 @@ async function checkFile(filePath, options = {}) {
   const absolute = path.resolve(filePath);
   const source = typeof options.source === 'string' ? options.source : fs.readFileSync(absolute, 'utf8');
   const parsed = options.parsed && options.parsed.parser ? options.parsed : parseSource(source, absolute);
-  const done = (result) => ({ ...result, timeMs: Number(process.hrtime.bigint() - start) / 1e6 });
+  const absent = [];
+  const done = (result) => ({ ...result, mismatches: absent.concat(result.mismatches), timeMs: Number(process.hrtime.bigint() - start) / 1e6 });
   if (!parsed.parser) return done({ sites: 0, hitSites: 0, mismatches: [], error: `unparsed: ${parsed.error}` });
 
   const sites = collectSites(parsed.parser, parsed.ast);
   const text = parsed.parser.normalizedCode;
+  // A framework enum member the file reads but the enum does not declare is
+  // undefined wherever it flows, whether or not a vector reaches it.
+  for (const node of missingEnumMembers(parsed.ast)) {
+    const [enumName] = node.missingEnumMember.split('.');
+    absent.push({
+      line: (node.loc && node.loc.line) || 0,
+      expression: node.range ? text.slice(node.range[0], node.range[1]).replace(/\s+/g, ' ').trim() : node.missingEnumMember,
+      role: 'value', type: enumName, origin: 'framework', kind: 'missing-enum-member',
+      kinds: { 'missing-enum-member': 1 }, observed: ['undefined'], count: 1, hits: 0
+    });
+  }
   const hit = `__typeSoundness${++fileCounter}`;
   const code = instrument(text, sites, hit);
   try {

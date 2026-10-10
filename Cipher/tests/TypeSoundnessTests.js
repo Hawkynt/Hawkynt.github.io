@@ -237,6 +237,33 @@ test('checkFile: given a probe that keeps its sum in a uint32, when checked, the
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+test('checkFile: given a framework enum member the enum does not declare, on a path no vector reaches, when checked, then it is reported', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
+  try {
+    const file = writeProbe(dir, 'TypeSoundnessProbeE', '      if (this.data.length > 99) this.algorithm.complexity = AlgorithmFramework.ComplexityType.LOW;\n      return [OpCodes.And32(this.data.length, 0xFF)];');
+    const r = await TypeSoundness.checkFile(file);
+    const m = r.mismatches.find(x => x.kind === 'missing-enum-member');
+    if (!m) throw new Error(JSON.stringify(r.mismatches));
+    equal([r.error, m.line, m.expression, m.type, m.observed[0]], [null, 23, 'AlgorithmFramework.ComplexityType.LOW', 'ComplexityType', 'undefined']);
+    equal(TypeSoundness.siteCount(r.mismatches), 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('checkFile: given only declared enum members, when checked, then nothing is reported', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
+  try {
+    const file = writeProbe(dir, 'TypeSoundnessProbeF', '      if (this.data.length > 99) this.algorithm.complexity = AlgorithmFramework.ComplexityType.BEGINNER;\n      return [OpCodes.And32(this.data.length, 0xFF)];');
+    const r = await TypeSoundness.checkFile(file);
+    equal([r.error, r.mismatches.length], [null, 0]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('checker: given a framework enum, when undefined flows, then it is an undefined member; null is no member and fits', () => {
+  global.AlgorithmFramework = global.AlgorithmFramework || require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
+  equal([TypeSoundness.checkerFor('SecurityStatus')(undefined), TypeSoundness.checkerFor('SecurityStatus')(null)], ['undefined-enum-member', null]);
+});
 test('checkFile: given a file the transpiler cannot parse, when checked, then an unparsed error and no mismatches', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
   try {
