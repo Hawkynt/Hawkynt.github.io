@@ -659,7 +659,7 @@ CI runs both with no arguments.
 | Runner | Question it answers | Categories |
 |---|---|---|
 | `tests/TestSuite.js` | Is each algorithm correct? | `compilation`, `interface`, `metadata`, `issues`, `functionality`, `optimization`, `types`, `soundness`, `roundtrip`, `chunked`, `browser`, `library` |
-| `tests/TranspilerSuite.js` | Does the transpiler work? | `codegen`, `inference`, `policy`, `soundness`, `jsdoc`, `csharp`, `harness`, `python`, `tsphp`, `validation` (only when named) |
+| `tests/TranspilerSuite.js` | Does the transpiler work? | `codegen`, `inference`, `policy`, `soundness`, `jsdoc`, `csharp`, `harness`, `python`, `tsphp`, `jvm`, `validation` (only when named) |
 
 **Usage:**
 ```bash

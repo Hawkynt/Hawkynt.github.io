@@ -106,6 +106,47 @@ function shellQuote(arg) {
   return /^[\w.:\\/=+-]+$/.test(text) ? text : `"${text.replace(/"/g, '""')}"`;
 }
 
+const shortPaths = new Map();
+/** The 8.3 short name of a directory (cmd's %~s), or null when the volume keeps none. */
+function shortPath(dir) {
+  if (!shortPaths.has(dir)) {
+    let short = null;
+    if (fs.existsSync(dir)) {
+      const r = spawnSync('cmd.exe', ['/d', '/c', `for %I in ("${dir}") do @echo %~sI`], { encoding: 'utf-8', windowsHide: true, windowsVerbatimArguments: true, timeout: 10000 });
+      const out = r.status === 0 ? r.stdout.trim() : '';
+      if (out && !/[()]/.test(out)) short = out;
+    }
+    shortPaths.set(dir, short);
+  }
+  return shortPaths.get(dir);
+}
+
+/**
+ * The environment a .cmd/.bat shim runs in: its PATH without parentheses.
+ * kotlinc.bat expands %PATH% inside a parenthesised if-block, where the ")" of
+ * "C:\Program Files (x86)\..." ends the block and the script dies with exit
+ * 255. Each such entry becomes its 8.3 short name, or is left out when the
+ * volume keeps none; JAVA_HOME's bin directory stays reachable either way.
+ * @param {object} env - the environment to start from
+ * @returns {object} a copy with the PATH rewritten
+ */
+function shimEnvironment(env) {
+  const out = Object.assign({}, env);
+  const key = Object.keys(out).find(k => k.toUpperCase() === 'PATH');
+  if (!key || !/[()]/.test(out[key])) return out;
+  const entries = [];
+  for (const entry of out[key].split(';')) {
+    if (!entry) continue;
+    if (!/[()]/.test(entry)) { entries.push(entry); continue; }
+    const short = shortPath(entry);
+    if (short) entries.push(short);
+  }
+  const javaHome = out.JAVA_HOME && path.join(out.JAVA_HOME, 'bin');
+  if (javaHome && !/[()]/.test(javaHome) && !entries.includes(javaHome)) entries.push(javaHome);
+  out[key] = entries.join(';');
+  return out;
+}
+
 /**
  * spawnSync for a named tool: resolves it on PATH (shims included). A tool
  * that is not installed yields status null and an error, never a throw.
@@ -117,7 +158,7 @@ function spawnTool(name, argv, options = {}) {
   const opts = Object.assign({ encoding: 'utf-8', windowsHide: true }, options);
   if (!tool.shell) return spawnSync(tool.command, argv, opts);
   const line = [tool.command, ...argv].map(shellQuote).join(' ');
-  return spawnSync(line, [], Object.assign(opts, { shell: true, windowsVerbatimArguments: true }));
+  return spawnSync(line, [], Object.assign(opts, { shell: true, windowsVerbatimArguments: true, env: shimEnvironment(opts.env || process.env) }));
 }
 
 // Output that means a tool is present but cannot run
@@ -414,7 +455,7 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin']);
 // TypeScript is JavaScript with types: it bundles the way JavaScript does
 const JS_BUNDLING = new Set(['javascript', 'typescript']);
 // Languages whose dependencies are transpiled without the runtime prelude and
@@ -546,6 +587,32 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
 }
 
 /**
+ * The .data libraries an algorithm takes through its third factory parameter,
+ * for the JVM languages: the plugin merges each library's declarations into
+ * the generated class and binds the parameter to what the library exports.
+ * A parameter that loads another algorithm module instead
+ * (function () { return require('./des'); }) names that module.
+ * @returns {{param: string, ast?: object, exports?: object, loader?: string}[]}
+ */
+function jvmLibraries(source, algorithmFile) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!param) return [];
+  const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)\s*;?\s*\}/);
+  if (loader) return [{ param, loader: path.basename(loader[1], '.js') }];
+  const libraries = [];
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (!libPath) continue;
+    const libSrc = fs.readFileSync(libPath, 'utf-8');
+    const Parser = loadTranspiler();
+    libraries.push({ param, ast: new Parser(libSrc).parse(), exports: libraryExportNames(libSrc) });
+  }
+  return libraries;
+}
+
+/**
  * The PHP expression of what a file transpiled as `name` (php.js gives it the
  * namespace CipherValidation\<name>Generated) exports: the names its source
  * returns from its factory or assigns to module.exports, each reached in that
@@ -595,7 +662,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
   let code;
   try {
-    code = transpileOne(source, plugin, algoName, undefined, parserOptions);
+    code = transpileOne(source, plugin, algoName, language === 'java' || language === 'kotlin' ? { libraries: jvmLibraries(source, algorithmFile) } : undefined, parserOptions);
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -606,7 +673,8 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // (a second copy would replace the registry) and wrapped in its own function
   // scope so its top-level declarations cannot collide with the main file's.
   // Python and Perl preludes keep their registry across repeated copies.
-  const noPreludeOptions = PRELUDE_SPLICING.has(language) ? { generateTestHarness: false } : undefined;
+  const noPreludeOptions = PRELUDE_SPLICING.has(language) ? { generateTestHarness: false }
+    : language === 'java' || language === 'kotlin' ? { includeRuntime: false } : undefined;
   // A JavaScript dependency also keeps what its factory returned, for a file
   // that loads it through a loader parameter (see below).
   const depExports = new Map();
@@ -708,6 +776,11 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     // prelude's RegisterAlgorithm/etc) and before the main class code.
     const preludeText = plugin.GetStandalonePrelude();
     code = code.startsWith(preludeText) ? preludeText + prefix + code.slice(preludeText.length) : prefix + code;
+  } else if (prefix && language === 'kotlin') {
+    // a Kotlin file begins with its file annotations and the runtime: dependencies go
+    // between them and the main unit, whose initialiser may look them up
+    const at = code.indexOf('// @generated-unit ');
+    code = at < 0 ? code + '\n' + prefix : code.slice(0, at) + prefix + code.slice(at);
   } else if (prefix) {
     code = prefix + code;
   }
@@ -720,7 +793,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -774,7 +847,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'perl':
       return generatePerlTestHarness(algorithmCode, spec, algorithmName);
     case 'java':
-      return generateJavaTestHarness(algorithmCode, vector, algorithmName);
+      return generateJavaTestHarness(algorithmCode, spec, algorithmName);
     case 'go':
       return generateGoTestHarness(algorithmCode, vector, algorithmName);
     case 'ruby':
@@ -790,7 +863,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'delphi':
       return generateDelphiTestHarness(algorithmCode, vector, algorithmName);
     case 'kotlin':
-      return generateKotlinTestHarness(algorithmCode, vector, algorithmName);
+      return generateKotlinTestHarness(algorithmCode, spec, algorithmName);
     default:
       return { success: false, error: `No test harness generator for ${language}` };
   }
@@ -1012,32 +1085,18 @@ function phpRunArguments() {
   return argv;
 }
 
-// Java Test Harness
-function generateJavaTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'java');
-  const expected = bytesToArrayLiteral(vector.expected, 'java');
-
-  return {
-    success: true,
-    code: `${algorithmCode}
-
-class TestHarness {
-    public static void main(String[] args) {
-        System.out.println("Testing ${algorithmName}...");
-        try {
-            byte[] input = ${input};
-            byte[] expected = ${expected};
-
-            System.out.println("Input length: " + input.length);
-            System.out.println("Expected length: " + expected.length);
-            System.out.println("COMPILE_OK");
-        } catch (Exception e) {
-            System.out.println("ERROR: " + e.getMessage());
-            System.exit(1);
-        }
-    }
-}`
-  };
+// Java vector harness (tests/validation-harness/Harness.java). The generated
+// code marks the classes whose initialisers register its algorithms
+// (// @generated-unit Name, see JavaEmitter.js); the harness loads them, then
+// looks the algorithms up in the runtime's registry by name.
+function generateJavaTestHarness(algorithmCode, spec, algorithmName) {
+  const units = [...algorithmCode.matchAll(/^\/\/ @generated-unit (\w+)$/gm)].map(m => m[1]);
+  const pkg = algorithmCode.match(/^package ([\w.]+);/m);
+  const qualified = units.map(u => JSON.stringify(pkg ? pkg[1] + '.' + u : u)).join(', ');
+  const harness = readHarness('Harness.java')
+    .replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)))
+    .replace('__GENERATED_UNITS__', () => qualified);
+  return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
 // Go Test Harness
@@ -1197,31 +1256,18 @@ end.
   };
 }
 
-// Kotlin Test Harness
-function generateKotlinTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'kotlin');
-  const expected = bytesToArrayLiteral(vector.expected, 'kotlin');
-
-  return {
-    success: true,
-    code: `${algorithmCode}
-
-fun main() {
-    println("Testing ${algorithmName}...")
-    try {
-        val input: ByteArray = ${input}
-        val expected: ByteArray = ${expected}
-
-        println("Input length: \${input.size}")
-        println("Expected length: \${expected.size}")
-        println("COMPILE_OK")
-    } catch (e: Exception) {
-        println("ERROR: \${e.message}")
-        kotlin.system.exitProcess(1)
-    }
-}
-`
-  };
+// Kotlin vector harness (tests/validation-harness/Harness.kt), the twin of the
+// Java one: the generated code marks its units (// @generated-unit Name, see
+// KotlinEmitter.js), the harness loads them and looks the algorithms up in the
+// runtime's registry by name. A Kotlin string literal also escapes $.
+function generateKotlinTestHarness(algorithmCode, spec, algorithmName) {
+  const units = [...algorithmCode.matchAll(/^\/\/ @generated-unit (\w+)$/gm)].map(m => m[1]);
+  const pkg = algorithmCode.match(/^package ([\w.]+)$/m);
+  const qualified = units.map(u => JSON.stringify(pkg ? pkg[1] + '.' + u : u)).join(', ');
+  const harness = readHarness('Harness.kt')
+    .replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)).replace(/\$/g, '\\$'))
+    .replace('__GENERATED_UNITS__', () => qualified);
+  return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
 // ============================================================================
@@ -1324,7 +1370,10 @@ function testJavaCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'TestHarness.java');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('javac', ['-J-Duser.language=en', srcFile], {
+  // Classes go to a directory of their own, where the vector run finds them
+  const classes = path.join(outputDir, 'classes');
+  if (fs.existsSync(classes)) fs.rmSync(classes, { recursive: true, force: true });
+  const result = spawnTool('javac', ['-J-Duser.language=en', '-encoding', 'UTF-8', '-nowarn', '-d', classes, srcFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
@@ -1518,7 +1567,7 @@ function testKotlinCompilation(code, outputDir) {
 
   // Kotlin: compile to jar for syntax validation
   const jarFile = path.join(outputDir, 'test.jar');
-  const result = spawnTool('kotlinc', [srcFile, '-include-runtime', '-d', jarFile], {
+  const result = spawnTool('kotlinc', [srcFile, '-nowarn', '-include-runtime', '-d', jarFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 2000, // Kotlin compilation is slow
     cwd: outputDir
@@ -1577,8 +1626,24 @@ function executeCode(language, outputDir) {
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
     case 'typescript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
     case 'php': return runProcess('php', phpRunArguments().concat([path.join(outputDir, 'test.php')]), { cwd: outputDir });
+    case 'java': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'classes'), javaMainClass(outputDir)], { cwd: outputDir });
+    case 'kotlin': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'test.jar'), kotlinMainClass(outputDir)], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
+}
+
+/** The Kotlin harness object to run: TestHarness, in the package the generated code declares. */
+function kotlinMainClass(outputDir) {
+  const source = fs.readFileSync(path.join(outputDir, 'test.kt'), 'utf-8');
+  const pkg = source.match(/^package ([\w.]+)$/m);
+  return pkg ? pkg[1] + '.TestHarness' : 'TestHarness';
+}
+
+/** The harness class to run: TestHarness, in the package the generated code declares. */
+function javaMainClass(outputDir) {
+  const source = fs.readFileSync(path.join(outputDir, 'TestHarness.java'), 'utf-8');
+  const pkg = source.match(/^package ([\w.]+);/m);
+  return pkg ? pkg[1] + '.TestHarness' : 'TestHarness';
 }
 
 // Lines of tool output that are warnings or noise, never the error
@@ -2106,5 +2171,5 @@ if (require.main === module) {
 module.exports = {
   run, validateFile, vectorPlan, harnessSpec, generateTestHarness, parseHarnessOutput,
   errorClass, summarize, firstError, transpileAlgorithm, frameworkSurface, testCompilation, executeCode,
-  detectCompilers, probeTool, LANGUAGE_COMPILERS
+  detectCompilers, probeTool, shimEnvironment, LANGUAGE_COMPILERS
 };
