@@ -1713,7 +1713,7 @@
       this.subCategory = "Post-Quantum Signature";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       this.SupportedKeySizes = [
         new KeySize(64, 64, 1),    // n=16 parameter sets: 4n-byte private key
