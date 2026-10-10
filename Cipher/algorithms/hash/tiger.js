@@ -425,7 +425,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [TIGER_DIGESTSIZE];
+      this.SupportedOutputSizes = [new KeySize(TIGER_DIGESTSIZE, TIGER_DIGESTSIZE, 1)];
       this.SupportedHashSizes = [new KeySize(TIGER_DIGESTSIZE, TIGER_DIGESTSIZE, 1)];
       this.BlockSize = TIGER_BLOCKSIZE;
       this.blockSize = TIGER_BLOCKSIZE;

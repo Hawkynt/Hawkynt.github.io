@@ -264,6 +264,10 @@
     return roundWords;
   }
 
+  /**
+   * @param {uint32} t - Round input
+   * @returns {uint32} Round output
+   */
   function darkCryptFcryptF(t) {
     const b0 = OpCodes.And32(t, 0xFF);
     const b1 = OpCodes.And32(OpCodes.Shr32(t, 8), 0xFF);

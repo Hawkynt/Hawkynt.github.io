@@ -332,6 +332,7 @@
      * b = c + (c left-shift 3)
      * c = ROL(c, 21) + tmp
      * return tmp
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

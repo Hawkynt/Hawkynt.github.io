@@ -199,6 +199,29 @@ test('SecureRandomBytes: given -1, 1.5 or a string, when drawn, then a RangeErro
   throws(() => OpCodes.SecureRandomBytes('4'), RangeError);
 });
 
+// ---------------------------------------------------------------- hex length checks
+const sameArray = (actual, expected) => equal(JSON.stringify(actual), JSON.stringify(expected));
+test('Hex8ToBytes: given an even length (0 and 2), when decoded, then each pair is a byte', () => {
+  sameArray(OpCodes.Hex8ToBytes(''), []);
+  sameArray(OpCodes.Hex8ToBytes('f1'), [0xf1]);
+});
+test('Hex8ToBytes: given an odd length, when decoded, then an error is thrown', () => {
+  throws(() => OpCodes.Hex8ToBytes('f12'));
+});
+test('Hex16ToWords: given a multiple of 4, when decoded, then each quad is a word', () => {
+  sameArray(OpCodes.Hex16ToWords('f123abcd'), [0xf123, 0xabcd]);
+});
+test('Hex16ToWords: given an even length that is no multiple of 4 (boundary), when decoded, then an error is thrown', () => {
+  // `length & 3 !== 0` parsed as `length & true`: only odd lengths were refused
+  throws(() => OpCodes.Hex16ToWords('f123ab'));
+});
+test('Hex32ToDWords: given a multiple of 8, when decoded, then each octet is a 32-bit word', () => {
+  sameArray(OpCodes.Hex32ToDWords('f123abcd98765432'), [0xf123abcd, 0x98765432]);
+});
+test('Hex32ToDWords: given 12 digits (even, no multiple of 8), when decoded, then an error is thrown', () => {
+  throws(() => OpCodes.Hex32ToDWords('f123abcd9876'));
+});
+
 /**
  * Run every OpCodes helper case.
  * @param {object} options - { verbose }

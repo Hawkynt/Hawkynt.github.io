@@ -20,6 +20,9 @@
  *   return             return E; (x) => E    E against the function's declared
  *                                            return type and E's own
  *   push               a.push(E)             E against a's element type
+ *   argument           f(E), OpCodes.X(E)    E against the declared parameter
+ *                                            type, by kind only (see
+ *                                            kindCheckerFor)
  *
  * The instrumented copy is loaded as a fresh module under the file's own name,
  * its algorithms run their committed test vectors (TestEngine.TestAlgorithm,
@@ -37,8 +40,14 @@
  *   [A,B,...]                    a tuple: a plain array whose element at each
  *                                position is of that position's type
  *
- * Class, interface and enum types are not checked; null and undefined are
- * accepted for arrays and strings (references) and rejected for numbers and
+ *   a class                      an instance of it (its prototype chain names
+ *                                the class): no primitive, array, plain
+ *                                object or instance of another class
+ *   a framework enum             one of the enum's members (CountryCode.US)
+ *   any other reference type     no primitive (a typedef, Map, Object, ...)
+ *
+ * null and undefined are
+ * accepted for arrays, strings and references and rejected for numbers and
  * booleans - unless the IL marks the value type nullable (`nullable: true`,
  * from `{int32|null}`, `{?uint32}`, ...), checked here as 'T?'. A store
  * into a typed array converts the value (JS truncates silently), so for
@@ -146,14 +155,35 @@ function checkerFor(type) {
   return checker;
 }
 
+/**
+ * The kind-only predicate of a type ('~T'): an integer type takes any whole
+ * number (no range), a 64-bit one a BigInt too; everything else is checked as
+ * by checkerFor, element by element. A declared parameter type of a helper
+ * states the kind of value it works on: a 32-bit helper takes a uint32 or an
+ * int32 bit pattern alike, but never a BigInt, a boolean or a string.
+ * @param {string} type - IL type name
+ * @returns {Function|null} (value) => null | kind
+ */
+function kindCheckerFor(type) {
+  return typeof type === 'string' && type !== '' ? checkerFor('~' + type) : null;
+}
+
 function buildChecker(raw) {
   if (typeof raw !== 'string' || raw === '') return null;
+  const kindOnly = raw[0] === '~';
+  if (kindOnly) raw = raw.slice(1);
+  const sub = t => checkerFor((kindOnly ? '~' : '') + t);
   // 'T?': a nullable value type (the IL marks it `nullable: true`) also holds null.
   if (raw.endsWith('?')) {
-    const base = checkerFor(raw.slice(0, -1));
+    const base = sub(raw.slice(0, -1));
     return base ? v => (v === null || v === undefined ? null : base(v)) : null;
   }
   const type = ALIASES[raw] || raw;
+  const whole = v => !Number.isFinite(v) ? (Number.isNaN(v) ? 'nan' : 'infinite') : v !== Math.floor(v) ? 'fraction' : null;
+  if (INT_RANGES[type] && kindOnly)
+    return v => typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
+  if (WIDE_RANGES[type] && kindOnly)
+    return v => typeof v === 'bigint' ? null : typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
   if (INT_RANGES[type]) {
     const [lo, hi] = INT_RANGES[type];
     return v => {
@@ -187,7 +217,7 @@ function buildChecker(raw) {
   // '[string,int32,string]': a plain array holding each position's type
   const positions = parserClass()._tupleElements(type);
   if (positions) {
-    const checks = positions.map(checkerFor);
+    const checks = positions.map(sub);
     return v => {
       if (v === null || v === undefined) return null;
       if (!Array.isArray(v)) return ArrayBuffer.isView(v) ? 'typed-array-kind' : wrongPrimitive(v);
@@ -208,7 +238,7 @@ function buildChecker(raw) {
   }
   if (type.endsWith('[]')) {
     const elementType = type.slice(0, -2);
-    const element = checkerFor(elementType);
+    const element = sub(elementType);
     const elementName = ALIASES[elementType] || elementType;
     return v => {
       if (v === null || v === undefined) return null;
@@ -232,7 +262,89 @@ function buildChecker(raw) {
       return null;
     };
   }
-  return null;            // class, interface, enum, object, function, void, ...
+  return referenceChecker(type);
+}
+
+/**
+ * The kind of each reference type name the current file knows: 'class' (a
+ * local or framework class), 'enum' (a framework enum). Set per file by
+ * collectSites; framework names are found on the framework itself.
+ */
+let referenceKinds = new Map();
+
+/** Classes an object literal of the same shape stands for. */
+const STRUCTURAL_CLASSES = new Set(['TestCase']);
+
+/** Reference types of the language, checked only for being no primitive. */
+const BUILTIN_REFERENCE_TYPES = new Set(['Object', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Error', 'Date', 'RegExp',
+  'ArrayBuffer', 'DataView', 'Iterator', 'Generator', 'Symbol']);
+
+/**
+ * The kind of a reference type name: 'class', 'enum', 'object' (a builtin or
+ * a name no class declares - a typedef), or null for a name that is no
+ * reference type.
+ * @param {string} name - type name
+ * @returns {string|null} kind
+ */
+function referenceKind(name) {
+  if (referenceKinds.has(name)) return referenceKinds.get(name);
+  const AF = global.AlgorithmFramework;
+  const framework = AF && Object.prototype.hasOwnProperty.call(AF, name) ? AF[name] : undefined;
+  if (typeof framework === 'function') return 'class';
+  if (framework && typeof framework === 'object' && Object.isFrozen(framework)) return 'enum';
+  if (name === 'function' || name === 'Function') return 'function';
+  if (BUILTIN_REFERENCE_TYPES.has(name) || /^[A-Z][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$/.test(name)) return 'object';
+  return null;
+}
+
+/**
+ * A predicate for a class, enum or other reference type: a class-typed value
+ * is an instance of that class (by its prototype chain), an enum-typed value
+ * one of the enum's members, any other reference no primitive. null and
+ * undefined are accepted (references).
+ * @param {string} type - type name
+ * @returns {Function|null} (value) => null | kind
+ */
+function referenceChecker(type) {
+  const kind = referenceKind(type);
+  if (!kind) return null;            // void, null, regex, a generic parameter, ...
+  const notAReference = v => {
+    if (v === null || v === undefined) return 'nullish';
+    const t = typeof v;
+    return t === 'object' || t === 'function' ? null : wrongPrimitive(v);
+  };
+  switch (kind) {
+    case 'function':
+      return v => v === null || v === undefined || typeof v === 'function' ? null : wrongPrimitive(v);
+    case 'enum': {
+      const members = new Set(Object.values(global.AlgorithmFramework[type]));
+      return v => {
+        if (v === null || v === undefined) return null;
+        const bad = notAReference(v);
+        return bad || (members.has(v) ? null : 'not-enum-member');
+      };
+    }
+    case 'class':
+      return v => {
+        if (v === null || v === undefined) return null;
+        const bad = notAReference(v);
+        if (bad) return bad;
+        if (Array.isArray(v) || ArrayBuffer.isView(v)) return 'array';
+        for (let p = Object.getPrototypeOf(v); p; p = Object.getPrototypeOf(p))
+          if (p.constructor && p.constructor.name === type) return null;
+        // the class itself (a constructor) where its instance is declared
+        if (typeof v === 'function') return 'class-object';
+        const proto = Object.getPrototypeOf(v);
+        const plain = proto === Object.prototype || proto === null;
+        // Test vectors may be written as object literals: the framework turns
+        // them into TestCase objects (CONTRIBUTING.md), and they are stripped
+        // before emission.
+        if (plain && STRUCTURAL_CLASSES.has(type)) return null;
+        return plain ? 'plain-object' : 'other-class';
+      };
+    default:
+      return v => (v === null || v === undefined ? null : notAReference(v));
+  }
 }
 
 /**
@@ -263,7 +375,7 @@ function describe(v, type) {
 // ---------------------------------------------------------------------------
 
 const FUNCTION_TYPES = new Set(['FunctionExpression', 'ArrowFunctionExpression', 'FunctionDeclaration', 'ClassExpression']);
-const SKIP_KEYS = new Set(['loc', 'range', 'leadingComments', 'trailingComments', 'comments', 'parent', 'typeInfo', 'jsDoc']);
+const SKIP_KEYS = new Set(['loc', 'range', 'leadingComments', 'trailingComments', 'comments', 'parent', 'typeInfo', 'jsDoc', 'recordTypes']);
 /** IL nodes standing for an OpCodes call, typed by OpCodes JSDoc (tier 1). */
 const OPCODES_NODES = new Set(['InlinedOpCode', 'PackBytes', 'UnpackBytes', 'RotateLeft', 'RotateRight', 'Cast', 'HexDecode',
   'HexEncode', 'StringToBytes', 'BytesToString', 'ArrayXor', 'ArrayClear', 'OpCodesCall']);
@@ -289,6 +401,10 @@ function isTestVectorAssignment(node) {
  */
 function collectSites(parser, ast) {
   const text = parser.normalizedCode;
+  // The file's own classes are checked by their prototype chain.
+  referenceKinds = new Map();
+  for (const name of parser.localClassNames || []) referenceKinds.set(name, 'class');
+  checkerCache.clear();
   const sites = [];
 
   const hasRange = n => n && Array.isArray(n.range) && n.range[1] > n.range[0];
@@ -426,6 +542,15 @@ function collectSites(parser, ast) {
           { type: nodeType(node.body), role: 'value', origin: valueOrigin(node.body, here) }
         ]);
       }
+    }
+
+    // A value passed where a declared parameter type applies (an argument of
+    // an OpCodes helper or of a function, method or constructor with JSDoc):
+    // the IL records that type as the value's context.
+    if (typeof node.contextType === 'string' && hasRange(node) && !isFunction(node) &&
+        node.type !== 'Literal' && node.ilNodeType !== 'ArrayLiteral' && node.type !== 'ObjectLiteral' && node.type !== 'ObjectExpression') {
+      const declared = ilType(node.contextType);
+      if (declared) add(node, 'value', [{ type: declared, role: 'argument', origin: 'declared', kindOnly: true }]);
     }
 
     switch (node.type) {
@@ -660,7 +785,7 @@ function createRecorder(sites) {
   const hits = new Float64Array(n);              // values checked per site
   const budget = new Int32Array(n).fill(SAMPLE_FIRST);
   const objects = new Array(n);
-  const checkers = sites.map(s => s.checks.map(c => checkerFor(c.type)));
+  const checkers = sites.map(s => s.checks.map(c => c.kindOnly ? kindCheckerFor(c.type) : checkerFor(c.type)));
   const failures = new Map();                    // `${id}:${checkIndex}` -> { count, kinds, samples }
 
   const check = (id, v) => {
@@ -895,4 +1020,4 @@ function siteCount(mismatches) {
   return new Set(mismatches.map(m => `${m.line}|${m.expression}|${m.role}|${m.type}`)).size;
 }
 
-module.exports = { checkFile, collectSites, instrument, createRecorder, checkerFor, parseSource, siteCount, describe };
+module.exports = { checkFile, collectSites, instrument, createRecorder, checkerFor, kindCheckerFor, parseSource, siteCount, describe };

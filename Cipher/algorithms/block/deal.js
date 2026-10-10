@@ -132,7 +132,7 @@
     compressed.fill(0);
     for (let i = 0; i < sboxed.length && i < 24; i++) {
       const targetByte = i % 8;
-      const shift = OpCodes.Or32(i / 8, 0);
+      const shift = Math.floor(i / 8);
       compressed[targetByte] = OpCodes.Xor32(compressed[targetByte], OpCodes.RotL8(sboxed[i], shift));
     }
 

@@ -128,6 +128,11 @@
   ];
 
   // f(x,k) = RotL32( T0[byte3(x+k)]<<24 | T1[byte2(x+k)]<<16 | T2[byte1(x+k)]<<8 | T3[byte0(x+k)], 11 )
+  /**
+   * @param {uint32} word - Half block
+   * @param {uint32} keyWord - Round key word
+   * @returns {uint32} Round output
+   */
   function darkCryptGostRound(word, keyWord) {
     const sum = OpCodes.Add32(word, keyWord);
     const b3 = OpCodes.And32(OpCodes.Shr32(sum, 24), 0xFF);

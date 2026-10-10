@@ -53,6 +53,7 @@
 
   // Helper function to get ARIA algorithm (registry-first, plain require fallback)
   /**
+   * @returns {Algorithm} The registered algorithm
    */
   function getARIAAlgorithm() {
     let aria = AlgorithmFramework.Find('ARIA');

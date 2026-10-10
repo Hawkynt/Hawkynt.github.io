@@ -187,6 +187,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "SECRET"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._key = "SECRET"; // Default key
         return;
@@ -203,12 +204,11 @@
     }
 
     /**
-   * Get the keyword
-   * @returns {string} Keyword
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._key ? this._key : "SECRET";
+      return this._keyBytes || null;
     }
 
     // Feed data to the cipher

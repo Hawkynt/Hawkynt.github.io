@@ -201,6 +201,7 @@
      * @param {uint8[]|null} keyData - Key text bytes
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         throw new Error("Hill cipher requires a key");
       }
@@ -227,12 +228,11 @@
     }
 
     /**
-   * Get the key matrix
-   * @returns {int32[][]} Key matrix
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this.matrix;
+      return this._keyBytes || null;
     }
 
     /**

@@ -191,6 +191,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for 3 rails
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._rails = 3; // Default
       } else {
@@ -210,12 +211,11 @@
     }
 
     /**
-   * Get the rail count
-   * @returns {int32} Number of rails
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._rails ? this._rails : 3;
+      return this._keyBytes || null;
     }
 
     // Feed data to the cipher

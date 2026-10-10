@@ -1788,6 +1788,7 @@
     }
 
     // Property setter for key (for test suite compatibility)
+    /** @param {uint8[]} keyData - Key bytes */
     set key(keyData) {
       this.KeySetup(keyData);
     }

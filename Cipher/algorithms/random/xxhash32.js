@@ -288,6 +288,7 @@
      * - PRIME1 = 0x9E3779B1 (2654435761 decimal)
      * - PRIME2 = 0x85EBCA77 (2246822519 decimal)
      * - PRIME3 = 0xC2B2AE3D (3266489917 decimal)
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

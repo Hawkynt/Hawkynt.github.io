@@ -191,6 +191,7 @@
       this._ready = false;
 
       // Optional count for skipping ahead to nth value
+      /** @type {int32|null} */
       this._skipCount = null;
     }
 

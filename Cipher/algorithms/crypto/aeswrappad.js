@@ -53,6 +53,7 @@
 
   /**
    * Get the Rijndael algorithm (registry-first, plain require fallback)
+   * @returns {Algorithm} The registered algorithm
    */
   function getRijndaelAlgorithm() {
     let rijndael = AlgorithmFramework.Find('Rijndael (AES)');

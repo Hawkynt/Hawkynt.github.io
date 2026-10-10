@@ -712,6 +712,7 @@
 
     for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
       let k = OpCodes.ToQWord(KX[toNum(OpCodes.AndN(s0, 0xFFn))] + spice[ri]);
+      /** @type {BigInt} */
       let t;
 
       s0 = OpCodes.ToQWord(s0 + ((OpCodes.ShiftLn(k, 8n))));
@@ -772,7 +773,9 @@
     let s0 = state[0];
 
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
-      let k, t = spice[OpCodes.Xor32(ri, 2)];
+      /** @type {BigInt} */
+      let k;
+      let t = spice[OpCodes.Xor32(ri, 2)];
 
       s0 = OpCodes.ToQWord(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBH)))));
       s0 = OpCodes.ToQWord(s0 - t);
@@ -826,6 +829,7 @@
 
     for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
       let k = KX[toNum(OpCodes.AndN(s0, 0xFFn))];
+      /** @type {BigInt} */
       let t, kk;
 
       s1 = OpCodes.ToQWord(s1 + k);
@@ -887,6 +891,7 @@
     let s0 = state[0], s1 = state[1];
 
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
+      /** @type {BigInt} */
       let k, t, kk;
 
       s0 = OpCodes.ToQWord(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(ri + 33)))));
@@ -1057,6 +1062,7 @@
     let s4 = state[4], s5 = state[5], s6 = state[6], s7 = state[lastWord];
 
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
+      /** @type {BigInt} */
       let t, k, kk;
 
       s0 = OpCodes.ToQWord(OpCodes.XorN(s0, KX[toNum(OpCodes.AndN(s1, 0xFFn))]));
@@ -1157,6 +1163,7 @@
     let t = OpCodes.AndN(st[0], 0xFFn);
     let k = KX[toNum(t)];
     let kk = KX[toNum(OpCodes.AndN((t + BigInt(OpCodes.Shl32(ri, 2)) + 1n), 0xFFn))];
+    /** @type {BigInt} */
     let tt;
 
     st[3] = OpCodes.ToQWord(st[3] + st[7]);
@@ -1224,6 +1231,7 @@
    * @param {uint64} mask - Mask for word 7
    */
   function extendedStirInverse(st, spice, KX, ri, mask) {
+    /** @type {BigInt} */
     let t, tt, k, kk;
 
     t = OpCodes.ShiftLn(st[4], 9n);
