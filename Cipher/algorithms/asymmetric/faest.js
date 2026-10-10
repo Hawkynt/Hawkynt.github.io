@@ -1812,7 +1812,9 @@
     if (nh - 2 * p.tau + 1 > p.tOpen) return null;
 
     const out = new Uint8Array(size);
-    let pos = 0, comBase = 0;
+    let pos = 0;
+    /** @type {int32} */
+    let comBase = 0;
     for (let i = 0; i < p.tau; ++i) {
       out.set(vc.com.subarray((comBase + iDelta[i]) * p.comSize, (comBase + iDelta[i] + 1) * p.comSize), pos);
       comBase += Math.pow(2, MaxDepth(p, i));
@@ -1964,6 +1966,7 @@
     const c = new Uint8Array((p.tau - 1) * len);
     /** @type {Uint8Array|null} */
     let u = null;
+    /** @type {int32} */
     let sdOff = 0;
     for (let i = 0; i < p.tau; ++i) {
       const cv = ConvertToVole(p, iv, bavc.sd, sdOff, false, i, len);
@@ -1988,6 +1991,7 @@
     let bit = 0;
     for (let i = 0; i < p.tau; ++i) {
       const depth = MaxDepth(p, i);
+      /** @type {int32} */
       let value = 0;
       for (let j = 0; j < depth; ++j) value += GetBit(chall, bit + j) * Math.pow(2, j);
       out[i] = value;
@@ -2016,6 +2020,7 @@
     }
     /** @type {Uint8Array[]} */
     const Q = [];
+    /** @type {int32} */
     let sdOff = 0;
     for (let i = 0; i < p.tau; ++i) {
       const n = Math.pow(2, MaxDepth(p, i));

@@ -797,7 +797,9 @@
   function getBits(bytes, offset, index, bits) {
     let position = index * bits;
     let remaining = bits;
+    /** @type {int32} */
     let value = 0;
+    /** @type {int32} */
     let scale = 1;
 
     while (remaining > 0) {
