@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | powturbo |
 | Year | 2013 |
-| Origin | Not specified |
+| Origin | 🇵🇹 Portugal |
 | Source | [`algorithms/compression/lzturbo.js`](../../../algorithms/compression/lzturbo.js) |
 
 ## Security

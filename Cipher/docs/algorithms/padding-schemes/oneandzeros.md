@@ -12,7 +12,7 @@
 | Complexity | Beginner |
 | Inventor | ISO/IEC |
 | Year | 1999 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/padding/oneandzeros.js`](../../../algorithms/padding/oneandzeros.js) |
 
 ## Capabilities

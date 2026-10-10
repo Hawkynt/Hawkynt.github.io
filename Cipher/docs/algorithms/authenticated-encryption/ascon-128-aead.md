@@ -13,7 +13,7 @@
 | Complexity | Intermediate |
 | Inventor | Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer |
 | Year | 2023 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/aead/ascon.js`](../../../algorithms/aead/ascon.js) |
 
 ## Parameters

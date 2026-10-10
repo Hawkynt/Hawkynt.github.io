@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Claus Schnorr (algorithm), Pieter Wuille et al. (BIP-340) |
 | Year | 2020 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/asymmetric/schnorr.js`](../../../algorithms/asymmetric/schnorr.js) |
 
 ## Parameters

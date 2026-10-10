@@ -11,7 +11,7 @@
 | Complexity | Intermediate |
 | Inventor | Unknown (Classical) |
 | Year | 1500 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Restricted input domain | Yes |
 | Source | [`algorithms/classical/columnar.js`](../../../algorithms/classical/columnar.js) |
 

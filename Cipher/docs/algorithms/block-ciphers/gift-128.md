@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Subhadeep Banik, Sumit Kumar Pandey, Thomas Peyrin, et al. |
 | Year | 2017 |
-| Origin | Not specified |
+| Origin | 🇸🇬 Singapore |
 | Source | [`algorithms/block/gift128.js`](../../../algorithms/block/gift128.js) |
 
 ## Parameters

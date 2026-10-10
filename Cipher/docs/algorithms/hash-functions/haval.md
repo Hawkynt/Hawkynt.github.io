@@ -8,8 +8,8 @@
 | --- | --- |
 | Category | Hash Functions |
 | Sub-category | Variable Hash |
-| Security status | Not classified |
-| Complexity | Not specified |
+| Security status | ❌ Broken |
+| Complexity | Advanced |
 | Inventor | Yuliang Zheng, Josef Pieprzyk, Jennifer Seberry |
 | Year | 1992 |
 | Origin | 🇦🇺 Australia |
@@ -17,7 +17,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 No vulnerabilities are recorded for this implementation.
 

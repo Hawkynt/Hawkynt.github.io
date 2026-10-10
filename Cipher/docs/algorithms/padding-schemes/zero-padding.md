@@ -9,10 +9,10 @@
 | Category | Padding Schemes |
 | Sub-category | Simple Padding |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | N/A |
 | Year | 1970 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Restricted input domain | data whose last byte is not zero |
 | Source | [`algorithms/padding/zero.js`](../../../algorithms/padding/zero.js) |
 

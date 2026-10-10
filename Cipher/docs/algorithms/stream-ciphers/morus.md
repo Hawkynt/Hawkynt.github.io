@@ -12,7 +12,7 @@
 | Complexity | Expert |
 | Inventor | Hongjun Wu, Tao Huang |
 | Year | 2014 |
-| Origin | Not specified |
+| Origin | 🇸🇬 Singapore |
 | Source | [`algorithms/stream/morus.js`](../../../algorithms/stream/morus.js) |
 
 ## Parameters

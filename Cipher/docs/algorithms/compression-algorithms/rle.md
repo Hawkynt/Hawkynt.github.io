@@ -9,7 +9,7 @@
 | Category | Compression Algorithms |
 | Sub-category | Transform |
 | Security status | Not classified |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Unknown (fundamental technique) |
 | Year | 1967 |
 | Origin | 🇺🇸 United States |

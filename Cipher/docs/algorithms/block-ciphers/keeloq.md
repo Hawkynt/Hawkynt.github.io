@@ -12,7 +12,7 @@
 | Complexity | Beginner |
 | Inventor | Nanoteq (Willem Smit) |
 | Year | 1985 |
-| Origin | Not specified |
+| Origin | 🇿🇦 South Africa |
 | Source | [`algorithms/block/keeloq.js`](../../../algorithms/block/keeloq.js) |
 
 ## Parameters

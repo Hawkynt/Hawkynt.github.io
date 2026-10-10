@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Joergen Ibsen |
 | Year | 2002 |
-| Origin | Not specified |
+| Origin | 🇩🇰 Denmark |
 | Source | [`algorithms/compression/brieflz.js`](../../../algorithms/compression/brieflz.js) |
 
 ## Security

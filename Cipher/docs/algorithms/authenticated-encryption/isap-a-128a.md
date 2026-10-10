@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Christoph Dobraunig, Maria Eichlseder, Stefan Mangard, Florian Mendel, Robert Primas |
 | Year | 2017 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/aead/isap.js`](../../../algorithms/aead/isap.js) |
 
 ## Parameters

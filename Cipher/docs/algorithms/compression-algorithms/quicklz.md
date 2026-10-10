@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Lasse Mikkel Reinhold |
 | Year | 2009 |
-| Origin | Not specified |
+| Origin | 🇩🇰 Denmark |
 | Source | [`algorithms/compression/quicklz.js`](../../../algorithms/compression/quicklz.js) |
 
 ## Security

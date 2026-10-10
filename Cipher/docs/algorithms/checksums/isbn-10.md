@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | International Organization for Standardization (ISO) |
 | Year | 1970 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/checksum/isbn.js`](../../../algorithms/checksum/isbn.js) |
 
 ## Security

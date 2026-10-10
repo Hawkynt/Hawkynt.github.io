@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Stefan Kölbl, Martin M. Lauridsen, Florian Mendel, Christian Rechberger |
 | Year | 2016 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/hash/haraka.js`](../../../algorithms/hash/haraka.js) |
 
 ## Security

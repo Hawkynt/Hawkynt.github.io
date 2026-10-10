@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Sébastien Riou, Michaël Raulet, Stéphane Castelain |
 | Year | 2020 |
-| Origin | Not specified |
+| Origin | 🇫🇷 France |
 | Source | [`algorithms/hash/drygascon-hash.js`](../../../algorithms/hash/drygascon-hash.js) |
 
 ## Parameters

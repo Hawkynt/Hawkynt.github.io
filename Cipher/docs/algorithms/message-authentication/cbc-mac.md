@@ -12,7 +12,7 @@
 | Complexity | Beginner |
 | Inventor | Various (standard construction) |
 | Year | 1976 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/mac/cbcmac.js`](../../../algorithms/mac/cbcmac.js) |
 
 ## Parameters

@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Vincent Rijmen, Paulo S. L. M. Barreto |
 | Year | 2000 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/hash/whirlpool.js`](../../../algorithms/hash/whirlpool.js) |
 
 ## Parameters

@@ -12,7 +12,7 @@
 | Complexity | Expert |
 | Inventor | David MacKay, Graeme Mitchison, Paul McFadden |
 | Year | 2004 |
-| Origin | Not specified |
+| Origin | 🇬🇧 United Kingdom |
 | Source | [`algorithms/ecc/bicycle-code.js`](../../../algorithms/ecc/bicycle-code.js) |
 
 ## Parameters

@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn, Christian Winnerlein |
 | Year | 2012 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/mac/blake2bmac.js`](../../../algorithms/mac/blake2bmac.js) |
 
 ## Parameters

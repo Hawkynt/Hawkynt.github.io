@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | ISO/IEC JTC 1/SC 27 |
 | Year | 1999 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/mac/iso9797alg3.js`](../../../algorithms/mac/iso9797alg3.js) |
 
 ## Parameters

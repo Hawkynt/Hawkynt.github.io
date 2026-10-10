@@ -9,7 +9,7 @@
 | Category | Classical Ciphers |
 | Sub-category | Classical Cipher |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Intermediate |
 | Inventor | Thomas Jefferson |
 | Year | 1795 |
 | Origin | 🇺🇸 United States |

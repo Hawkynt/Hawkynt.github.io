@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Markus F.X.J. Oberhumer |
 | Year | 1999 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/compression/nrv2e.js`](../../../algorithms/compression/nrv2e.js) |
 
 ## Security

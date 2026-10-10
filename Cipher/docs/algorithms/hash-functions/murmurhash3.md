@@ -9,7 +9,7 @@
 | Category | Hash Functions |
 | Sub-category | Fast Hash |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Austin Appleby |
 | Year | 2008 |
 | Origin | 🇺🇸 United States |

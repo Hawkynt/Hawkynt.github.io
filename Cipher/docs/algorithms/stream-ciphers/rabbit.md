@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Martin Boesgaard, Mette Vesterager, Thomas Pedersen, Jesper Christiansen, Ove Scavenius |
 | Year | 2003 |
-| Origin | Not specified |
+| Origin | 🇩🇰 Denmark |
 | Source | [`algorithms/stream/rabbit.js`](../../../algorithms/stream/rabbit.js) |
 
 ## Parameters

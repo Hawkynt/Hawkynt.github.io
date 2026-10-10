@@ -207,7 +207,7 @@ _Block-based symmetric encryption_
 | [FNAm2-512 (DarkCrypt)](block-ciphers/fnam2-512-darkcrypt.md) | 🎓 Educational Only | FNAm2 (Feistel Net Algorithm mark 2) as shipped with the DarkCrypt Total Commander plugin. A 128-bit-block / 512-bit-key ARX-with-multiply… |
 | [ForkSkinny-128-256](block-ciphers/forkskinny-128-256.md) | 🧪 Experimental | ForkSkinny is a tweakable block cipher with forking construction, producing two outputs from one input. Designed for authenticated encrypti… |
 | [ForkSkinny-128-384](block-ciphers/forkskinny-128-384.md) | 🧪 Experimental | ForkSkinny-128-384 is a tweakable block cipher with 384-bit tweakey and forking construction. Used in ForkAE authenticated encryption suite. |
-| [FROG](block-ciphers/frog.md) | — | AES candidate from TecApro built on a key-as-program design: the user key derives a large internal key of per-round substitution and permut… |
+| [FROG](block-ciphers/frog.md) | ❌ Broken | AES candidate from TecApro built on a key-as-program design: the user key derives a large internal key of per-round substitution and permut… |
 | [FROG-256 (DarkCrypt)](block-ciphers/frog-256-darkcrypt.md) | 🎓 Educational Only | FROG AES candidate: fully key-dependent substitution/permutation network, where the user key derives a large "internal key" of per-round S-… |
 | [GIFT-128](block-ciphers/gift-128.md) | 🧪 Experimental | Lightweight block cipher designed for efficient hardware and software implementation. Uses 128-bit blocks with 128-bit keys and 40 rounds.… |
 | [GOST 28147-89](block-ciphers/gost-28147-89.md) | 🎓 Educational Only | Educational implementation of the Soviet/Russian GOST 28147-89 block cipher (Magma). 64-bit Feistel network with 256-bit keys using the Tes… |
@@ -261,8 +261,8 @@ _Block-based symmetric encryption_
 | [Lucifer (DarkCrypt)](block-ciphers/lucifer-darkcrypt.md) | 🎓 Educational Only | Lucifer variant from the DarkCrypt Total Commander plugin: 128-bit block, 128-bit key, 16-round Feistel network with a data/key-dependent i… |
 | [MacGuffin](block-ciphers/macguffin.md) | ❌ Broken | Experimental block cipher using Generalized Unbalanced Feistel Network (GUFN) where each round modifies 16 bits based on 48 bits. Broken by… |
 | [MacGuffin (DarkCrypt)](block-ciphers/macguffin-darkcrypt.md) | 🎓 Educational Only | MacGuffin GUFN block cipher (Blaze and Schneier, 1994) as implemented in the DarkCrypt Total Commander plugin: identical S-boxes, bit selec… |
-| [MAGENTA](block-ciphers/magenta.md) | — | Deutsche Telekom AES candidate with modified Feistel structure and GF(2^8) operations. Educational implementation of a cipher with known vu… |
-| [MAGENTA (DarkCrypt)](block-ciphers/magenta-darkcrypt.md) | — | MAGENTA block cipher as implemented in the DarkCrypt Total Commander plugin: 8-round unbalanced Feistel network with palindromic subkey sch… |
+| [MAGENTA](block-ciphers/magenta.md) | ❌ Broken | Deutsche Telekom AES candidate with modified Feistel structure and GF(2^8) operations. Educational implementation of a cipher with known vu… |
+| [MAGENTA (DarkCrypt)](block-ciphers/magenta-darkcrypt.md) | ❌ Broken | MAGENTA block cipher as implemented in the DarkCrypt Total Commander plugin: 8-round unbalanced Feistel network with palindromic subkey sch… |
 | [Magma](block-ciphers/magma.md) | 🧪 Experimental | Russian Federal block cipher standard GOST R 34.12-2015 with 64-bit blocks and 256-bit keys. Updated version of GOST 28147-89 using a 32-ro… |
 | [MANTIS](block-ciphers/mantis.md) | 🧪 Experimental | Low-latency tweakable block cipher designed for memory encryption. 64-bit block size with 128-bit keys and 64-bit tweaks using reflection-b… |
 | [MARS](block-ciphers/mars.md) | 🎓 Educational Only | IBM AES finalist (1998) featuring heterogeneous structure with Type-3 Feistel network, combining S-boxes, multiplication, and data-dependen… |
@@ -354,7 +354,7 @@ _Block-based symmetric encryption_
 | [Sobbikashi (DarkCrypt)](block-ciphers/sobbikashi-darkcrypt.md) | 🎓 Educational Only | 128-bit block, 512-bit key cipher from the DarkCrypt Total Commander plugin. A CAST-256-shaped generalized Feistel network (standard Type1/… |
 | [Sonjitege (DarkCrypt)](block-ciphers/sonjitege-darkcrypt.md) | 🎓 Educational Only | 128-bit block, 512-bit key cipher from the DarkCrypt Total Commander plugin. A 32-round 4-word ARX/boolean network with an RC4-style key-sc… |
 | [Speck](block-ciphers/speck.md) | 🎓 Educational Only | NSA's lightweight ARX (Addition-Rotation-XOR) cipher designed for software efficiency. Speck64/128 variant uses 64-bit blocks with 128-bit… |
-| [SPEED](block-ciphers/speed.md) | — | Unbalanced Feistel network by Yuliang Zheng over a queue of eight words. Each round builds one new word from a nonlinear Boolean combinatio… |
+| [SPEED](block-ciphers/speed.md) | ❌ Broken | Unbalanced Feistel network by Yuliang Zheng over a queue of eight words. Each round builds one new word from a nonlinear Boolean combinatio… |
 | [SPEED (DarkCrypt)](block-ciphers/speed-darkcrypt.md) | 🎓 Educational Only | SPEED cipher as implemented by the DarkCrypt Total Commander plugin: an 8x16-bit-word unbalanced shift-register cipher with 64 rounds split… |
 | [Square](block-ciphers/square.md) | 🎓 Educational Only | Predecessor to Rijndael/AES designed by Joan Daemen and Vincent Rijmen in 1997. Uses 128-bit blocks and keys with 8 rounds. |
 | [TC18 (DarkCrypt)](block-ciphers/tc18-darkcrypt.md) | 🎓 Educational Only | Obscure block cipher from the DarkCrypt Total Commander plugin with no known public specification. An unbalanced 16-round Feistel network o… |
@@ -455,8 +455,8 @@ _Checksum and integrity verification algorithms_
 | [SYSV-Checksum](checksums/sysv-checksum.md) | 🎓 Educational Only | Unix System V checksum algorithm used by the 'sum' command. Simple sum of all bytes with modulo 32-bit arithmetic. Historical Unix utility… |
 | [Twos-Complement-16](checksums/twos-complement-16.md) | 🎓 Educational Only | 16-bit two's complement checksum. Sums all bytes modulo 65536, then returns two's complement. Better error detection than 8-bit version for… |
 | [Twos-Complement-8](checksums/twos-complement-8.md) | 🎓 Educational Only | 8-bit two's complement checksum. Sums all bytes modulo 256, then returns two's complement (negate). Verification: sum of all data bytes plu… |
-| [Unix-Sum-BSD](checksums/unix-sum-bsd.md) | — | BSD checksum with circular right rotation providing order-dependent error detection Classic Unix sum(1) algorithm for basic file integrity… |
-| [Unix-Sum-SYSV](checksums/unix-sum-sysv.md) | — | SYSV checksum using simple summation with order-independent calculation Classic Unix sum(1) algorithm for basic file integrity verification. |
+| [Unix-Sum-BSD](checksums/unix-sum-bsd.md) | ❌ Broken | BSD checksum with circular right rotation providing order-dependent error detection Classic Unix sum(1) algorithm for basic file integrity… |
+| [Unix-Sum-SYSV](checksums/unix-sum-sysv.md) | ❌ Broken | SYSV checksum using simple summation with order-independent calculation Classic Unix sum(1) algorithm for basic file integrity verification. |
 | [UPC-A](checksums/upc-a.md) | 🎓 Educational Only | UPC-A (Universal Product Code) check digit for North American retail products. 12-digit identifier (11 data + 1 check) using alternating we… |
 | [UPC-EAN](checksums/upc-ean.md) | 🎓 Educational Only | UPC/EAN checksum algorithm for product barcodes. Uses alternating weights (3,1,3,1...) from right to left. Used in UPC-A (12 digits), EAN-1… |
 | [Verhoeff](checksums/verhoeff.md) | 🎓 Educational Only | Verhoeff algorithm using dihedral group D5 for superior error detection. Detects ALL single-digit errors and ALL adjacent transposition err… |
@@ -827,7 +827,7 @@ _Cryptographic hash algorithms_
 | [Hamsi-512](hash-functions/hamsi-512.md) | 📰 Obsolete | SHA-3 candidate hash function with 512-bit output. Uses a Serpent-inspired non-linear permutation with a linear-code based message expansio… |
 | [Haraka-256](hash-functions/haraka-256.md) | 🧪 Experimental | High-performance hash function optimized for short inputs using AES round function. Designed for post-quantum cryptographic applications wi… |
 | [Haraka-512](hash-functions/haraka-512.md) | 🧪 Experimental | High-performance hash function for 512-bit inputs producing 256-bit output using AES round function. Optimized for post-quantum signature s… |
-| [HAVAL](hash-functions/haval.md) | — | HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable pa… |
+| [HAVAL](hash-functions/haval.md) | ❌ Broken | HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable pa… |
 | [HighwayHash](hash-functions/highwayhash.md) | 🎓 Educational Only | Google's keyed hash function designed as a faster, stronger successor to SipHash. Absorbs 32-byte packets into a 256-bit state of multiply/… |
 | [ISAP Hash](hash-functions/isap-hash.md) | 🛡️ Secure | Ascon-based hash function used in the ISAP authenticated encryption scheme. Uses Ascon-p permutation in sponge mode to produce 256-bit hash… |
 | [JH-224](hash-functions/jh-224.md) | — | JH is a SHA-3 finalist designed by Hongjun Wu. A 1024-bit state is regrouped into 256 four-bit elements and driven through 42 rounds of S-b… |
@@ -853,8 +853,8 @@ _Cryptographic hash algorithms_
 | [Luffa-256](hash-functions/luffa-256.md) | 📰 Obsolete | SHA-3 candidate hash function producing 256-bit outputs using 3 parallel state chains with a sponge-like construction. Eliminated in round… |
 | [Luffa-384](hash-functions/luffa-384.md) | 📰 Obsolete | SHA-3 candidate hash function producing 384-bit outputs using 4 parallel state chains with a sponge-like construction. Eliminated in round… |
 | [Luffa-512](hash-functions/luffa-512.md) | 📰 Obsolete | SHA-3 candidate hash function producing 512-bit outputs using 5 parallel state chains with a sponge-like construction. Eliminated in round… |
-| [MD2](hash-functions/md2.md) | — | MD2 is a 128-bit cryptographic hash function and predecessor to MD4 and MD5. It is extremely slow and cryptographically broken with known c… |
-| [MD4](hash-functions/md4.md) | — | MD4 is a 128-bit cryptographic hash function and predecessor to MD5. It is cryptographically broken with practical collision attacks and sh… |
+| [MD2](hash-functions/md2.md) | ❌ Broken | MD2 is a 128-bit cryptographic hash function and predecessor to MD4 and MD5. It is extremely slow and cryptographically broken with known c… |
+| [MD4](hash-functions/md4.md) | ❌ Broken | MD4 is a 128-bit cryptographic hash function and predecessor to MD5. It is cryptographically broken with practical collision attacks and sh… |
 | [MD5](hash-functions/md5.md) | ❌ Broken | 128-bit cryptographic hash function designed by Ronald Rivest. Fast but cryptographically broken with practical collision attacks. |
 | [MD6 (DarkCrypt)](hash-functions/md6-darkcrypt.md) | 🎓 Educational Only | MD6-512 as used by the DarkCrypt Total Commander plugin: the MIT reference MD6 as submitted to SHA-3 round 1 (d=512, r=168, L=64, no key),… |
 | [MDC-2](hash-functions/mdc-2.md) | ⚠️ Deprecated | Modification Detection Code 2, an ISO/IEC 10118-2 standard hash function based on DES encryption. Produces 128-bit hashes using Davies-Meye… |
@@ -1165,10 +1165,10 @@ _Stream-based symmetric encryption_
 | [E0](stream-ciphers/e0.md) | ❌ Broken | Stream cipher used in Bluetooth protocol for encryption. Combines four LFSRs with nonlinear combining function using majority logic. Has kn… |
 | [E2 (NTT AES candidate)](stream-ciphers/e2-ntt-aes-candidate.md) | 🎓 Educational Only | Educational implementation of E2 block cipher adapted as a stream cipher using keystream generation. Originally an AES candidate by NTT wit… |
 | [Edon80](stream-ciphers/edon80.md) | 🎓 Educational Only | Edon80 quasigroup-based stream cipher, an eSTREAM hardware-profile candidate built from an 80-stage pipeline of e-transformers, each bound… |
-| [F-FCSR](stream-ciphers/f-fcsr.md) | — | Feedback with Carry Shift Register stream cipher based on eSTREAM specification. Uses FCSR automaton with binary expansion of 2-adic number… |
-| [F-FCSR (DarkCrypt)](stream-ciphers/f-fcsr-darkcrypt.md) | — | Feedback-with-Carry Shift Register (Galois FCSR) filter generator from the DarkCrypt Total Commander plugin. Non-standard 256-bit register… |
+| [F-FCSR](stream-ciphers/f-fcsr.md) | ❌ Broken | Feedback with Carry Shift Register stream cipher based on eSTREAM specification. Uses FCSR automaton with binary expansion of 2-adic number… |
+| [F-FCSR (DarkCrypt)](stream-ciphers/f-fcsr-darkcrypt.md) | ❌ Broken | Feedback-with-Carry Shift Register (Galois FCSR) filter generator from the DarkCrypt Total Commander plugin. Non-standard 256-bit register… |
 | [Fubuki (DarkCrypt)](stream-ciphers/fubuki-darkcrypt.md) | 🎓 Educational Only | Fubuki stream/block cipher built on an untempered Mersenne Twister (MT19937) generator: the key and initial value seed MT19937, whose raw o… |
-| [Geffe Generator](stream-ciphers/geffe-generator.md) | — | Classical stream cipher using three Linear Feedback Shift Registers (LFSRs) and a Boolean combining function. Uses correlation between outp… |
+| [Geffe Generator](stream-ciphers/geffe-generator.md) | ❌ Broken | Classical stream cipher using three Linear Feedback Shift Registers (LFSRs) and a Boolean combining function. Uses correlation between outp… |
 | [Grain v1](stream-ciphers/grain-v1.md) | 🛡️ Secure | Lightweight stream cipher using LFSR and NFSR designed for restricted hardware environments. Selected for eSTREAM Portfolio Profile 2. Uses… |
 | [Grain-128](stream-ciphers/grain-128.md) | 🛡️ Secure | Hardware-oriented stream cipher using LFSR and NFSR designed for restricted hardware environments. Selected for eSTREAM Portfolio Profile 2… |
 | [HC-128](stream-ciphers/hc-128.md) | — | eSTREAM Profile 1 finalist with table-based design. Uses two 512-word tables with complex update functions for high-speed software encrypti… |
@@ -1198,9 +1198,9 @@ _Stream-based symmetric encryption_
 | [Pomaranch](stream-ciphers/pomaranch.md) | 🎓 Educational Only | Educational implementation inspired by Pomaranch eSTREAM Phase 3 finalist. Uses nine linear feedback shift registers with nonlinear combini… |
 | [Pomaranch (DarkCrypt)](stream-ciphers/pomaranch-darkcrypt.md) | 🎓 Educational Only | Cascade Jump Controlled Sequence Generator (CJCSG), the 128-bit-key stream cipher behind Pomaranch: nine cascaded jump registers whose cell… |
 | [ProVEST-32](stream-ciphers/provest-32.md) | ❌ Broken | ProVEST-32, the Phase 1 VEST-32 root cipher in its eSTREAM API version: the VEST-32 structure with earlier counters, permutations and outpu… |
-| [Py (DarkCrypt)](stream-ciphers/py-darkcrypt.md) | — | Py ("Roo") eSTREAM Phase 2 candidate by Biham and Seberry, using two rolling arrays (a 260-word Y array and a 256-byte permutation P) index… |
-| [Py6 (DarkCrypt)](stream-ciphers/py6-darkcrypt.md) | — | Reduced-state variant of Py by Biham and Seberry: a 64-entry (6-bit) rolling permutation P and a 68-entry rolling word array Y, same round… |
-| [Pypy (DarkCrypt)](stream-ciphers/pypy-darkcrypt.md) | — | Strengthened variant of Py by Biham and Seberry: same rolling-array key/IV setup as Py, but the round output stage is simplified to a singl… |
+| [Py (DarkCrypt)](stream-ciphers/py-darkcrypt.md) | ❌ Broken | Py ("Roo") eSTREAM Phase 2 candidate by Biham and Seberry, using two rolling arrays (a 260-word Y array and a 256-byte permutation P) index… |
+| [Py6 (DarkCrypt)](stream-ciphers/py6-darkcrypt.md) | ❌ Broken | Reduced-state variant of Py by Biham and Seberry: a 64-entry (6-bit) rolling permutation P and a 68-entry rolling word array Y, same round… |
+| [Pypy (DarkCrypt)](stream-ciphers/pypy-darkcrypt.md) | ❌ Broken | Strengthened variant of Py by Biham and Seberry: same rolling-array key/IV setup as Py, but the round output stage is simplified to a singl… |
 | [QCypher (DarkCrypt)](stream-ciphers/qcypher-darkcrypt.md) | 🎓 Educational Only | Autokey byte-feedback stream cipher from the DarkCrypt Total Commander plugin. A 256-entry table plus three running indices are updated on… |
 | [Rabbit](stream-ciphers/rabbit.md) | — | High-speed stream cipher with 513-bit internal state using 8 state variables, 8 counter variables, and 1 carry bit. Designed for software i… |
 | [Rabbit (DarkCrypt)](stream-ciphers/rabbit-darkcrypt.md) | — | DarkCrypt port of the Rabbit stream cipher. Identical state machine to RFC 4503, but the keystream words are serialized in little-endian or… |
@@ -1223,9 +1223,9 @@ _Stream-based symmetric encryption_
 | [Sosemanuk (DarkCrypt)](stream-ciphers/sosemanuk-darkcrypt.md) | 🎓 Educational Only | Sosemanuk stream cipher (eSTREAM Profile 1 software portfolio finalist) as implemented in the DarkCrypt Total Commander plugin. Combines a… |
 | [Spritz](stream-ciphers/spritz.md) | 🧪 Experimental | Sponge-like stream cipher designed as RC4 successor by Rivest and Schuldt. Uses 256-byte state with absorb/squeeze operations similar to Ke… |
 | [SSS (DarkCrypt)](stream-ciphers/sss-darkcrypt.md) | 🎓 Educational Only | SSS ("Self-Synchronizing SOBER") stream cipher as implemented in the DarkCrypt Total Commander plugin. A 17-word, 16-bit register is fed wi… |
-| [TPy (DarkCrypt)](stream-ciphers/tpy-darkcrypt.md) | — | Tweaked-IV-setup variant of Py by Biham and Seberry (2007), fixing the equivalent-IV weakness of the original Py while keeping its key setu… |
-| [TPy6 (DarkCrypt)](stream-ciphers/tpy6-darkcrypt.md) | — | Tweaked-IV-setup variant of Py6 by Biham and Seberry (2007): same reduced-state key setup and round function as Py6, but the IV mixing deri… |
-| [TPypy (DarkCrypt)](stream-ciphers/tpypy-darkcrypt.md) | — | Tweaked-IV-setup variant of Pypy by Biham and Seberry (2007), the strongest published member of the Py family: Pypy's single-word-per-round… |
+| [TPy (DarkCrypt)](stream-ciphers/tpy-darkcrypt.md) | ❌ Broken | Tweaked-IV-setup variant of Py by Biham and Seberry (2007), fixing the equivalent-IV weakness of the original Py while keeping its key setu… |
+| [TPy6 (DarkCrypt)](stream-ciphers/tpy6-darkcrypt.md) | ❌ Broken | Tweaked-IV-setup variant of Py6 by Biham and Seberry (2007): same reduced-state key setup and round function as Py6, but the IV mixing deri… |
+| [TPypy (DarkCrypt)](stream-ciphers/tpypy-darkcrypt.md) | ❌ Broken | Tweaked-IV-setup variant of Pypy by Biham and Seberry (2007), the strongest published member of the Py family: Pypy's single-word-per-round… |
 | [Trivium](stream-ciphers/trivium.md) | 🛡️ Secure | Hardware-oriented NLFSR-based stream cipher using three interconnected shift registers. eSTREAM hardware portfolio finalist and ISO/IEC 291… |
 | [Trivium (DarkCrypt)](stream-ciphers/trivium-darkcrypt.md) | 🎓 Educational Only | Standard eSTREAM Trivium NLFSR (93+84+111 bit state, 80-bit key, 80-bit IV, 1152-round warm-up) as implemented in the DarkCrypt Total Comma… |
 | [TSC-4](stream-ciphers/tsc-4.md) | 🎓 Educational Only | Stream cipher with extremely complex nonlinear operations using multiple S-boxes and parallel LFSRs. Submitted to eSTREAM but eliminated ea… |

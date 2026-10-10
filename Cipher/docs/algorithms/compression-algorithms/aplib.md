@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Joergen Ibsen |
 | Year | 1998 |
-| Origin | Not specified |
+| Origin | 🇩🇰 Denmark |
 | Source | [`algorithms/compression/aplib.js`](../../../algorithms/compression/aplib.js) |
 
 ## Security

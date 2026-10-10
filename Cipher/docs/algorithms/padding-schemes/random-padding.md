@@ -9,10 +9,10 @@
 | Category | Padding Schemes |
 | Sub-category | Random Padding |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | N/A |
 | Year | 1970 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/padding/random.js`](../../../algorithms/padding/random.js) |
 
 ## Capabilities

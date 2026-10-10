@@ -8,11 +8,11 @@
 | --- | --- |
 | Category | Block Ciphers |
 | Sub-category | Block Cipher |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Advanced |
 | Inventor | Dianelos Georgoudis, Damian Leroux, Billy Simon Chaves |
 | Year | 1998 |
-| Origin | Not specified |
+| Origin | 🇨🇷 Costa Rica |
 | Source | [`algorithms/block/frog.js`](../../../algorithms/block/frog.js) |
 
 ## Parameters
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

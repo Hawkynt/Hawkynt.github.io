@@ -8,7 +8,7 @@
 | --- | --- |
 | Category | Stream Ciphers |
 | Sub-category | FCSR Stream Cipher |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Intermediate |
 | Inventor | François Arnault, Thierry Berger, Cédric Lauradoux (base F-FCSR); DarkCrypt variant by Alexander Myasnikov |
 | Year | 2005 |
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 
