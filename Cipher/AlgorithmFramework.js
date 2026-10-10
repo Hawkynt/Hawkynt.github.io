@@ -207,9 +207,9 @@
        */
       constructor(text, uri) {
         /** @type {string} */
-        this.text = text
+        this.text = text;
         /** @type {string} */
-        this.uri = uri
+        this.uri = uri;
       }
     }
 
@@ -224,11 +224,11 @@
        * @param {string} uri - Reference URI
        */
       constructor(input, expected, description = '', uri = '') {
-        super(description, uri)
+        super(description, uri);
         /** @type {byte[]} */
-        this.input = input
+        this.input = input;
         /** @type {byte[]} */
-        this.expected = expected
+        this.expected = expected;
       }
     }
 
@@ -243,11 +243,11 @@
        * @param {string} uri - Reference URI
        */
       constructor(type, description = '', mitigation = '', uri = '') {
-        super(type, uri)
+        super(type, uri);
         /** @type {string} */
-        this.description = description
+        this.description = description;
         /** @type {string} */
-        this.mitigation = mitigation
+        this.mitigation = mitigation;
       }
     }
 
@@ -262,11 +262,11 @@
        */
       constructor(success, output = null, failureReason = null) {
         /** @type {bool} */
-        this.Success = success
+        this.Success = success;
         /** @type {byte[]} */
-        this.Output = output
+        this.Output = output;
         /** @type {string} */
-        this.FailureReason = failureReason
+        this.FailureReason = failureReason;
       }
     }
 
@@ -281,11 +281,11 @@
        */
       constructor(minSize, maxSize, stepSize = 1) {
         /** @type {int} */
-        this.minSize = minSize
+        this.minSize = minSize;
         /** @type {int} */
-        this.maxSize = maxSize
+        this.maxSize = maxSize;
         /** @type {int} */
-        this.stepSize = stepSize
+        this.stepSize = stepSize;
       }
     }
     //#endregion
@@ -317,8 +317,8 @@
      * @returns {int} 0..255
      */
     function _byte(value) {
-      const reduced = Math.trunc(value) % 256
-      return reduced < 0 ? reduced + 256 : reduced
+      const reduced = Math.trunc(value) % 256;
+      return reduced < 0 ? reduced + 256 : reduced;
     }
 
     /**
@@ -338,16 +338,16 @@
      * @returns {int} 0..255 with every bit set in either input
      */
     function _mergeBits(a, b) {
-      const left = _byte(a)
-      const right = _byte(b)
-      let merged = 0
-      let weight = 1
+      const left = _byte(a);
+      const right = _byte(b);
+      let merged = 0;
+      let weight = 1;
       for (let bit = 0; bit < 8; bit++) {
         if (Math.floor(left / weight) % 2 === 1 || Math.floor(right / weight) % 2 === 1)
-          merged += weight
-        weight *= 2
+          merged += weight;
+        weight *= 2;
       }
-      return merged
+      return merged;
     }
 
     /**
@@ -358,13 +358,13 @@
      * @returns {byte[]}
      */
     function _encodeLength(value, byteCount, littleEndian) {
-      const encoded = new Array(byteCount).fill(0)
-      let remaining = Math.max(0, Math.trunc(value))
+      const encoded = new Array(byteCount).fill(0);
+      let remaining = Math.max(0, Math.trunc(value));
       for (let i = 0; i < byteCount; i++) {
-        encoded[littleEndian ? i : byteCount - 1 - i] = remaining % 256
-        remaining = Math.floor(remaining / 256)
+        encoded[littleEndian ? i : byteCount - 1 - i] = remaining % 256;
+        remaining = Math.floor(remaining / 256);
       }
-      return encoded
+      return encoded;
     }
 
     /**
@@ -396,30 +396,30 @@
        *        that is known not to be the last
        */
       constructor(blockSize, processBlock) {
-        if (!(blockSize > 0)) throw new Error('BlockAbsorber: blockSize must be positive')
+        if (!(blockSize > 0)) throw new Error('BlockAbsorber: blockSize must be positive');
         if (typeof processBlock !== 'function')
-          throw new Error('BlockAbsorber: processBlock must be a function')
+          throw new Error('BlockAbsorber: processBlock must be a function');
 
         /** @type {int} */
-        this._blockSize = blockSize
+        this._blockSize = blockSize;
         /** @type {function(byte[]):void} */
-        this._processBlock = processBlock
+        this._processBlock = processBlock;
         /** @type {byte[]} */
-        this._held = new Array(blockSize).fill(0)
+        this._held = new Array(blockSize).fill(0);
         /** @type {int} - bytes valid in _held */
-        this._pending = 0
+        this._pending = 0;
         /** @type {uint64} - bytes absorbed since construction */
-        this._length = 0
+        this._length = 0;
       }
 
       /** @returns {int} bytes per block */
-      get BlockSize() { return this._blockSize }
+      get BlockSize() { return this._blockSize; }
 
       /** @returns {int} bytes held back, 0..BlockSize */
-      get Pending() { return this._pending }
+      get Pending() { return this._pending; }
 
       /** @returns {uint64} total bytes absorbed */
-      get Length() { return this._length }
+      get Length() { return this._length; }
 
       /**
        * Absorb data. Complete blocks are processed except the last one held.
@@ -427,26 +427,26 @@
        * @returns {void}
        */
       Absorb(data) {
-        if (!data || data.length === 0) return
-        const blockSize = this._blockSize
-        const total = data.length
-        let offset = 0
+        if (!data || data.length === 0) return;
+        const blockSize = this._blockSize;
+        const total = data.length;
+        let offset = 0;
 
         while (offset < total) {
           // Reaching here means at least one more byte follows, so the block
           // sitting in the buffer is provably not the last one.
           if (this._pending === blockSize) {
-            this._processBlock(this._held)
-            this._pending = 0
+            this._processBlock(this._held);
+            this._pending = 0;
           }
 
-          const take = Math.min(blockSize - this._pending, total - offset)
+          const take = Math.min(blockSize - this._pending, total - offset);
           for (let i = 0; i < take; i++)
-            this._held[this._pending + i] = _byte(data[offset + i])
+            this._held[this._pending + i] = _byte(data[offset + i]);
 
-          this._pending += take
-          offset += take
-          this._length += take
+          this._pending += take;
+          offset += take;
+          this._length += take;
         }
       }
 
@@ -463,8 +463,8 @@
        */
       Finish(finalize) {
         if (typeof finalize !== 'function')
-          throw new Error('BlockAbsorber: finalize must be a function')
-        return finalize(this._held.slice(0, this._pending), this._pending, this._length)
+          throw new Error('BlockAbsorber: finalize must be a function');
+        return finalize(this._held.slice(0, this._pending), this._pending, this._length);
       }
 
       /**
@@ -472,9 +472,9 @@
        * @returns {void}
        */
       Reset() {
-        this._held.fill(0)
-        this._pending = 0
-        this._length = 0
+        this._held.fill(0);
+        this._pending = 0;
+        this._length = 0;
       }
     }
 
@@ -501,28 +501,28 @@
      * @returns {byte[][]} one or two blocks of exactly rate bytes
      */
     function SpongePadBlocks(held, pending, rate, separator) {
-      if (!(rate > 0)) throw new Error('SpongePadBlocks: rate must be positive')
+      if (!(rate > 0)) throw new Error('SpongePadBlocks: rate must be positive');
       if (pending < 0 || pending > rate)
-        throw new Error(`SpongePadBlocks: pending ${pending} outside 0..${rate}`)
+        throw new Error(`SpongePadBlocks: pending ${pending} outside 0..${rate}`);
 
-      const blocks = []
-      let block = new Array(rate).fill(0)
-      for (let i = 0; i < pending; i++) block[i] = _byte(held[i])
+      const blocks = [];
+      let block = new Array(rate).fill(0);
+      for (let i = 0; i < pending; i++) block[i] = _byte(held[i]);
 
-      let used = pending
+      let used = pending;
       if (used === rate) {
-        blocks.push(block)
-        block = new Array(rate).fill(0)
-        used = 0
+        blocks.push(block);
+        block = new Array(rate).fill(0);
+        used = 0;
       }
 
-      block[used] = _byte(separator)
+      block[used] = _byte(separator);
       // Unconditional, and last. When used === rate - 1 this merges the
       // separator with the terminating bit rather than replacing it.
-      block[rate - 1] = _mergeBits(block[rate - 1], 0x80)
+      block[rate - 1] = _mergeBits(block[rate - 1], 0x80);
 
-      blocks.push(block)
-      return blocks
+      blocks.push(block);
+      return blocks;
     }
 
     /**
@@ -550,50 +550,50 @@
      * @returns {byte[][]} the blocks still to be compressed, in order
      */
     function MerkleDamgardBlocks(held, pending, totalLength, options) {
-      const settings = options || {}
-      const blockSize = settings.blockSize
-      if (!(blockSize > 0)) throw new Error('MerkleDamgardBlocks: blockSize must be positive')
+      const settings = options || {};
+      const blockSize = settings.blockSize;
+      if (!(blockSize > 0)) throw new Error('MerkleDamgardBlocks: blockSize must be positive');
       if (pending < 0 || pending > blockSize)
-        throw new Error(`MerkleDamgardBlocks: pending ${pending} outside 0..${blockSize}`)
+        throw new Error(`MerkleDamgardBlocks: pending ${pending} outside 0..${blockSize}`);
 
-      const padByte = settings.padByte === undefined ? 0x80 : settings.padByte
-      const lengthBytes = settings.lengthBytes === undefined ? 8 : settings.lengthBytes
-      const littleEndian = settings.lengthLittleEndian === true
-      const inBits = settings.lengthInBits !== false
+      const padByte = settings.padByte === undefined ? 0x80 : settings.padByte;
+      const lengthBytes = settings.lengthBytes === undefined ? 8 : settings.lengthBytes;
+      const littleEndian = settings.lengthLittleEndian === true;
+      const inBits = settings.lengthInBits !== false;
 
       if (lengthBytes < 0 || lengthBytes >= blockSize)
-        throw new Error(`MerkleDamgardBlocks: lengthBytes ${lengthBytes} does not fit a ${blockSize}-byte block`)
+        throw new Error(`MerkleDamgardBlocks: lengthBytes ${lengthBytes} does not fit a ${blockSize}-byte block`);
 
-      const blocks = []
-      let block = new Array(blockSize).fill(0)
-      for (let i = 0; i < pending; i++) block[i] = _byte(held[i])
+      const blocks = [];
+      let block = new Array(blockSize).fill(0);
+      for (let i = 0; i < pending; i++) block[i] = _byte(held[i]);
 
-      let used = pending
+      let used = pending;
       // A held block that is already full leaves nowhere for the pad byte, so
       // it goes out as it stands and the padding starts a fresh block. Getting
       // this wrong writes the pad byte past the end of the block, where the
       // compression function never reads it.
       if (used === blockSize) {
-        blocks.push(block)
-        block = new Array(blockSize).fill(0)
-        used = 0
+        blocks.push(block);
+        block = new Array(blockSize).fill(0);
+        used = 0;
       }
 
-      block[used] = _byte(padByte)
-      used++
+      block[used] = _byte(padByte);
+      used++;
 
       if (used > blockSize - lengthBytes) {
-        blocks.push(block)
-        block = new Array(blockSize).fill(0)
+        blocks.push(block);
+        block = new Array(blockSize).fill(0);
       }
 
       if (lengthBytes > 0) {
-        const encoded = _encodeLength(inBits ? totalLength * 8 : totalLength, lengthBytes, littleEndian)
-        for (let i = 0; i < lengthBytes; i++) block[blockSize - lengthBytes + i] = encoded[i]
+        const encoded = _encodeLength(inBits ? totalLength * 8 : totalLength, lengthBytes, littleEndian);
+        for (let i = 0; i < lengthBytes; i++) block[blockSize - lengthBytes + i] = encoded[i];
       }
 
-      blocks.push(block)
-      return blocks
+      blocks.push(block);
+      return blocks;
     }
 
     //#endregion
@@ -610,11 +610,11 @@
        */
       constructor(algorithm) {
         /** @type {Algorithm} */
-        this.algorithm = algorithm
+        this.algorithm = algorithm;
         /** @type {bool} */
-        this.isInverse = false
+        this.isInverse = false;
         /** @type {byte[]} */
-        this.inputBuffer = []
+        this.inputBuffer = [];
       }
 
       /**
@@ -638,19 +638,19 @@
        * @returns {void}
        */
       Feed(data) {
-        if (!data || data.length === 0) return
-        if (!this.inputBuffer) this.inputBuffer = []
+        if (!data || data.length === 0) return;
+        if (!this.inputBuffer) this.inputBuffer = [];
         // Appended one at a time rather than spread: a spread of a data-sized
         // array is an argument list, and a long enough message overflows the
         // call stack instead of hashing.
-        for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i])
+        for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
       }
 
       /**
        * Get the processed result
        * @returns {byte[]} Output data bytes
        */
-      Result() { throw 'Result() not implemented' }
+      Result() { throw 'Result() not implemented'; }
 
       /**
        * Dispose of sensitive data
@@ -658,7 +658,7 @@
        */
       Dispose() {
         if (this.inputBuffer) {
-          this.inputBuffer.length = 0
+          this.inputBuffer.length = 0;
         }
       }
     }
@@ -669,31 +669,31 @@
     class Algorithm {
       constructor() {
         /** @type {string} */
-        this.name = null
+        this.name = null;
         /** @type {string} */
-        this.description = null
+        this.description = null;
         /** @type {string} */
-        this.inventor = null
+        this.inventor = null;
         /** @type {int} */
-        this.year = null
+        this.year = null;
         /** @type {CategoryType} */
-        this.category = null
+        this.category = null;
         /** @type {string} */
-        this.subCategory = null
+        this.subCategory = null;
         /** @type {SecurityStatus} */
-        this.securityStatus = null
+        this.securityStatus = null;
         /** @type {ComplexityType} */
-        this.complexity = null
+        this.complexity = null;
         /** @type {CountryCode} */
-        this.country = null
+        this.country = null;
         /** @type {LinkItem[]} */
-        this.documentation = []
+        this.documentation = [];
         /** @type {LinkItem[]} */
-        this.references = []
+        this.references = [];
         /** @type {Vulnerability[]} */
-        this.knownVulnerabilities = []
+        this.knownVulnerabilities = [];
         /** @type {TestCase[]} */
-        this.tests = []
+        this.tests = [];
       }
 
       /**
@@ -701,7 +701,7 @@
        * @param {bool} isInverse - True for decryption/decompression, false for encryption/compression
        * @returns {IAlgorithmInstance} Algorithm instance
        */
-      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented'; }
     }
     //#endregion
 
@@ -722,11 +722,11 @@
      */
     class BlockCipherAlgorithm extends SymmetricCipherAlgorithm {
       constructor() {
-        super()
+        super();
         /** @type {KeySize[]} */
-        this.SupportedKeySizes = []
+        this.SupportedKeySizes = [];
         /** @type {KeySize[]} */
-        this.SupportedBlockSizes = []
+        this.SupportedBlockSizes = [];
       }
 
       /**
@@ -734,7 +734,7 @@
        * @param {bool} isInverse - True for decryption, false for encryption
        * @returns {IBlockCipherInstance} Block cipher instance
        */
-      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented'; }
     }
 
     /**
@@ -747,7 +747,7 @@
        * @param {bool} isInverse - True for decryption, false for encryption
        * @returns {IAlgorithmInstance} Stream cipher instance
        */
-      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented'; }
     }
 
     /**
@@ -760,7 +760,7 @@
        * @param {bool} isInverse - True for decoding, false for encoding
        * @returns {IAlgorithmInstance} Encoding instance
        */
-      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented'; }
     }
 
     /**
@@ -773,7 +773,7 @@
        * @param {bool} isInverse - True for decompression, false for compression
        * @returns {IAlgorithmInstance} Compression instance
        */
-      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented'; }
     }
 
     /** @extends Algorithm */
@@ -785,9 +785,9 @@
      */
     class HashFunctionAlgorithm extends Algorithm {
       constructor() {
-        super()
+        super();
         /** @type {KeySize[]} */
-        this.SupportedOutputSizes = []
+        this.SupportedOutputSizes = [];
       }
 
       /**
@@ -795,7 +795,7 @@
        * @param {bool} isInverse - Ignored for hash functions (always false)
        * @returns {IHashFunctionInstance} Hash function instance
        */
-      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented'; }
     }
 
     /**
@@ -804,11 +804,11 @@
      */
     class MacAlgorithm extends Algorithm {
       constructor() {
-        super()
+        super();
         /** @type {KeySize[]} */
-        this.SupportedMacSizes = []
+        this.SupportedMacSizes = [];
         /** @type {bool} */
-        this.NeedsKey = true
+        this.NeedsKey = true;
       }
     }
 
@@ -818,55 +818,55 @@
      */
     class KdfAlgorithm extends Algorithm {
       constructor() {
-        super()
+        super();
         /** @type {KeySize[]} */
-        this.SupportedOutputSizes = []
+        this.SupportedOutputSizes = [];
         /** @type {bool} */
-        this.SaltRequired = true
+        this.SaltRequired = true;
       }
     }
 
     /** @extends Algorithm */
     class PaddingAlgorithm extends Algorithm {
       constructor() {
-        super()
+        super();
         /** @type {bool} */
-        this.IsLengthIncluded = false
+        this.IsLengthIncluded = false;
       }
     }
 
     /** @extends Algorithm */
     class CipherModeAlgorithm extends Algorithm {
       constructor() {
-        super()
+        super();
         /** @type {bool} */
-        this.RequiresIV = true
+        this.RequiresIV = true;
         /** @type {KeySize[]} */
-        this.SupportedIVSizes = []
+        this.SupportedIVSizes = [];
       }
     }
 
     /** @extends CryptoAlgorithm */
     class AeadAlgorithm extends CryptoAlgorithm {
       constructor() {
-        super()
+        super();
         /** @type {KeySize[]} */
-        this.SupportedTagSizes = []
+        this.SupportedTagSizes = [];
         /** @type {bool} */
-        this.SupportsDetached = false
+        this.SupportsDetached = false;
       }
     }
 
     /** @extends Algorithm */
     class RandomGenerationAlgorithm extends Algorithm {
       constructor() {
-        super()
+        super();
         /** @type {bool} */
-        this.IsDeterministic = false
+        this.IsDeterministic = false;
         /** @type {bool} */
-        this.IsCryptographicallySecure = true
+        this.IsCryptographicallySecure = true;
         /** @type {KeySize[]} */
-        this.SupportedSeedSizes = []
+        this.SupportedSeedSizes = [];
       }
     }
     //#endregion
@@ -882,40 +882,40 @@
        * @param {BlockCipherAlgorithm} algorithm - Parent algorithm
        */
       constructor(algorithm) {
-        super(algorithm)
+        super(algorithm);
         /** @type {int} - Block size in bytes */
-        this.BlockSize = 0
+        this.BlockSize = 0;
         /** @type {int} - Key size in bytes */
-        this.KeySize = 0
+        this.KeySize = 0;
         /** @type {byte[]} - Encryption/decryption key */
-        this._key = null
+        this._key = null;
       }
 
       /**
        * Set the encryption/decryption key
        * @param {byte[]} keyBytes - Key bytes
        */
-      set key(keyBytes) { this._key = keyBytes }
+      set key(keyBytes) { this._key = keyBytes; }
 
       /**
        * Get the current key
        * @returns {byte[]} Key bytes
        */
-      get key() { return this._key }
+      get key() { return this._key; }
 
       /**
        * Encrypt a single block
        * @param {byte[]} block - Input block
        * @returns {byte[]} Encrypted block
        */
-      EncryptBlock(block) { throw 'EncryptBlock() not implemented' }
+      EncryptBlock(block) { throw 'EncryptBlock() not implemented'; }
 
       /**
        * Decrypt a single block
        * @param {byte[]} block - Encrypted block
        * @returns {byte[]} Decrypted block
        */
-      DecryptBlock(block) { throw 'DecryptBlock() not implemented' }
+      DecryptBlock(block) { throw 'DecryptBlock() not implemented'; }
 
       /**
        * Refuse a buffered input that is not a whole number of blocks.
@@ -930,12 +930,12 @@
        * @throws {Error} if the buffered length is not a multiple of blockSize
        */
       RequireBlockMultiple(blockSize) {
-        const size = blockSize || this.BlockSize
-        if (!(size > 0)) throw new Error('BlockSize not set')
-        const length = this.inputBuffer ? this.inputBuffer.length : 0
+        const size = blockSize || this.BlockSize;
+        if (!(size > 0)) throw new Error('BlockSize not set');
+        const length = this.inputBuffer ? this.inputBuffer.length : 0;
         if (length % size !== 0)
-          throw new Error(`Input length must be multiple of ${size} bytes`)
-        return length / size
+          throw new Error(`Input length must be multiple of ${size} bytes`);
+        return length / size;
       }
 
       /**
@@ -951,22 +951,22 @@
        *         a whole number of blocks
        */
       Result() {
-        if (!this.key) throw new Error('Key not set')
+        if (!this.key) throw new Error('Key not set');
         if (!this.inputBuffer || this.inputBuffer.length === 0)
-          throw new Error('No data fed')
+          throw new Error('No data fed');
 
-        const blockSize = this.BlockSize
-        this.RequireBlockMultiple(blockSize)
+        const blockSize = this.BlockSize;
+        this.RequireBlockMultiple(blockSize);
 
-        const output = []
+        const output = [];
         for (let offset = 0; offset < this.inputBuffer.length; offset += blockSize) {
-          const block = this.inputBuffer.slice(offset, offset + blockSize)
-          const processed = this.isInverse ? this.DecryptBlock(block) : this.EncryptBlock(block)
-          for (let i = 0; i < processed.length; i++) output.push(processed[i])
+          const block = this.inputBuffer.slice(offset, offset + blockSize);
+          const processed = this.isInverse ? this.DecryptBlock(block) : this.EncryptBlock(block);
+          for (let i = 0; i < processed.length; i++) output.push(processed[i]);
         }
 
-        this.inputBuffer = []
-        return output
+        this.inputBuffer = [];
+        return output;
       }
     }
 
@@ -979,9 +979,9 @@
        * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
        */
       constructor(algorithm) {
-        super(algorithm)
+        super(algorithm);
         /** @type {int} - Output hash size in bytes */
-        this.OutputSize = 0
+        this.OutputSize = 0;
       }
     }
 
@@ -995,7 +995,7 @@
        * @param {byte[]} data - Input data
        * @returns {byte[]} MAC bytes
        */
-      ComputeMac(data) { throw 'ComputeMac() not implemented' }
+      ComputeMac(data) { throw 'ComputeMac() not implemented'; }
     }
 
     /**
@@ -1007,11 +1007,11 @@
        * @param {KdfAlgorithm} algorithm - Parent algorithm
        */
       constructor(algorithm) {
-        super(algorithm)
+        super(algorithm);
         /** @type {int} - Output key size in bytes */
-        this.OutputSize = 0
+        this.OutputSize = 0;
         /** @type {int} - Number of iterations */
-        this.Iterations = 0
+        this.Iterations = 0;
       }
     }
 
@@ -1024,11 +1024,11 @@
        * @param {AeadAlgorithm} algorithm - Parent algorithm
        */
       constructor(algorithm) {
-        super(algorithm)
+        super(algorithm);
         /** @type {byte[]} - Additional authenticated data */
-        this.aad = []
+        this.aad = [];
         /** @type {int} - Authentication tag size in bytes */
-        this.tagSize = 0
+        this.tagSize = 0;
       }
     }
 
@@ -1042,7 +1042,7 @@
        * @param {byte[]} data - Input data
        * @returns {bool} True if errors detected
        */
-      DetectError(data) { throw 'DetectError() not implemented' }
+      DetectError(data) { throw 'DetectError() not implemented'; }
     }
 
     /**
@@ -1055,7 +1055,7 @@
        * @param {int} count - Number of bytes to generate
        * @returns {byte[]} Random bytes
        */
-      NextBytes(count) { throw 'NextBytes() not implemented' }
+      NextBytes(count) { throw 'NextBytes() not implemented'; }
     }
     //#endregion
 
@@ -1141,8 +1141,8 @@
      * @param {string} name - Algorithm name
      * @returns {Algorithm} The algorithm, or null when none is registered under that name
      */
-    function Find(name) { return Algorithms.find(a => a.name === name) || null }
-    function Clear() { Algorithms.length = 0 }
+    function Find(name) { return Algorithms.find(a => a.name === name) || null; }
+    function Clear() { Algorithms.length = 0; }
     // #endregion
 
     // === expose everything needed by consumers ===
