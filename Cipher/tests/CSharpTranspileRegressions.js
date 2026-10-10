@@ -1169,6 +1169,12 @@ check('bigint shifts: a value cast to 64 bits and masked again after the shift s
     'function mix(t) { t[0] = OpCodes.ToQWord(t[0] + OpCodes.ShiftLn(OpCodes.ToQWord(t[1]), 21)); }');
   expectNoMatch(code, /\(BigInteger\)\(unchecked\(\(ulong\)\(t\[1\]\)\)\)/, 'the cast value widened to BigInteger');
 });
+check('maps: a module Map declared Map<K, V> is created with exactly those types (CS0029)', () => {
+  const code = transpile('class Pair {\n  /** @param {int32} a - a */\n  constructor(a) {\n    /** @type {int32} */\n    this.a = a;\n  }\n}\n' +
+    '/** @type {Map<int32, Pair>} */\nconst CACHE = new Map();\n/**\n * @param {int32} key - key\n * @returns {Pair} r\n */\n' +
+    'function lookup(key) {\n  const cached = CACHE.get(key);\n  if (cached) return cached;\n  const pair = new Pair(1);\n  CACHE.set(key >>> 0, pair);\n  return pair;\n}');
+  expectMatch(code, /Dictionary<int, Pair> CACHE = new Dictionary<int, Pair>\(\)/, 'Dictionary<int, Pair> on both sides');
+});
 const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
   'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
   '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';

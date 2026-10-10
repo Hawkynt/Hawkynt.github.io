@@ -8568,6 +8568,13 @@
         // LWEKeyPair values) takes its key/value types from the .set/.get calls across
         // the file, as a local Map does from its function body (CS0029 otherwise)
         if (decl.init.type === 'MapCreation' && decl.id.type === 'Identifier' && this.programBody) {
+          // A declared Map<K, V> (mayo.js's `@type {Map<string, MayoPublicKey>}`) decides
+          // first, so the initializer agrees with the declared field
+          const declaredMap = typeof decl.declaredType === 'string' ? /^Map<\s*([^,<>]+?)\s*,\s*(.+?)\s*>$/.exec(decl.declaredType) : null;
+          if (declaredMap) {
+            const keyType = this.mapILType(declaredMap[1]), valueType = this.mapILType(declaredMap[2]);
+            if (keyType && valueType) this._mergeMapCreationTypeTag(decl.init, { keyType, valueType });
+          }
           const usage = this.preScanLocalMapUsageTypes(this.programBody).get(decl.id.name);
           if (usage) this._mergeMapCreationTypeTag(decl.init, usage);
         }
