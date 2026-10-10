@@ -1142,9 +1142,10 @@ check('module init: a fill or a module function call at module scope runs at loa
   expectMatch(code, /static bool ModuleInit\d+\(\)\s*\{\s*Array\.Fill\(LENGTHS, 5\)|static bool ModuleInit\d+\(\)\s*\{[^}]*LENGTHS/, 'a ModuleInit filling LENGTHS');
   expectMatch(code, /static bool ModuleInit\d+\(\)\s*\{\s*InitTable\(\);/, 'a ModuleInit calling InitTable()');
 });
-const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
-  'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
-  '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
+check('concat: an argument concatenated to a byte array literal converts to bytes (CS1929)', () => {
+  const code = transpile('/** @returns {uint8[]} r */\nfunction header() { return [0, 0, 0, 0, 255].concat(Array.from({length: 3}, (_, i) => i)); }');
+  expectMatch(code, /new byte\[\] \{[^}]*\}\.Concat\(.*\.Select\(_v => (unchecked\()?\(byte\)\(?_v\)?\)?\)\.ToArray\(\)\)\.ToArray\(\)/, 'the int sequence converted to bytes');
+});
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
   const code = transpile(SAME_NAMED_CALLS);
   expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');
@@ -1391,7 +1392,7 @@ namespace RegressionTest {
       Eq("jsmul-exact", FrameworkFunctions.JsMul(65535u, 65537u), 4294967295u);
       Eq("jsmul-rounded", FrameworkFunctions.JsMul(1099087573u, 2865916745u), unchecked((uint)(ulong)(1099087573.0 * 2865916745.0)));
       Eq("jsmul-neg", FrameworkFunctions.JsMul(-3, 5), -15);
-      Eq("jsmul-long", FrameworkFunctions.JsMul(4294967295L, 4294967295L), unchecked((long)(ulong)(4294967295.0 * 4294967295.0)));
+      Eq("jsmul-long",FrameworkFunctions.JsMul(4294967295L, 4294967295L), unchecked((long)(ulong)(4294967295.0 * 4294967295.0)));
       // ConstantTimeCompare takes the length to compare, as OpCodes.js does
       Eq("ctc-equal", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2 }, 2), true);
       Eq("ctc-differ", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 3 }), false);

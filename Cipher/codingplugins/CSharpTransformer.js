@@ -25671,8 +25671,15 @@
         }
       }
       let result = array;
+      // An array literal receiver is emitted with the element type of its context
+      // (bwt.js's test vector `[0, 0, 0, 0, 255].concat(Array.from(...))` as byte[]):
+      // an argument of another numeric element type converts to it
+      const emittedElement = array?.nodeType === 'ArrayCreation' && array.elementType && !array.elementType.isArray ? array.elementType : null;
       for (const arr of (node.arrays || [])) {
-        const other = this.castConcatArgument(elementType, arr, this.transformExpression(arr), node.array);
+        let other = this.castConcatArgument(elementType, arr, this.transformExpression(arr), node.array);
+        const argType = emittedElement ? this.inferFullExpressionType(arr) : null;
+        if (emittedElement && this.differentNumericArrays(argType, CSharpType.Array(emittedElement)))
+          other = this.buildParameterConversion(argType, CSharpType.Array(emittedElement), this.transformExpression(arr));
         result = new CSharpMethodCall(result, 'Concat', [other]);
       }
       return new CSharpMethodCall(result, 'ToArray', []);
