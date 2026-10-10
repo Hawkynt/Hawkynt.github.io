@@ -240,7 +240,7 @@
       this.subCategory = "Authenticated Encryption";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.AUSTRIA;
+      this.country = CountryCode.AT;
 
       this.SupportedKeySizes = [new KeySize(16, 16, 1)];
       this.SupportedTagSizes = [new KeySize(16, 16, 1)];
