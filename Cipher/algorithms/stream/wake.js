@@ -250,6 +250,10 @@
      * IMPORTANT: The original C++ implementation uses signed 32-bit integers
      * with arithmetic right shift. JavaScript requires explicit conversion
      * to signed integers using|0 to match this behavior.
+     * @param {uint32} k0 - Key word 0
+     * @param {uint32} k1 - Key word 1
+     * @param {uint32} k2 - Key word 2
+     * @param {uint32} k3 - Key word 3
      */
     _genKey(k0, k1, k2, k3) {
       // Initialize first 4 entries (using ToUint32 for unsigned)
@@ -305,6 +309,9 @@
     /**
      * M() mixing function from Crypto++ wake.cpp lines 27-31
      * M(x, y) = ((x + y) right shift 8) XOR t[(x + y)&0xFF]
+     * @param {uint32} x - First word
+     * @param {uint32} y - Second word
+     * @returns {uint32} Mixed word
      */
     _M(x, y) {
       var w = OpCodes.Add32(x, y);
@@ -314,6 +321,7 @@
     /**
      * Generate one 32-bit word of keystream (OFB mode)
      * From Crypto++ wake.cpp lines 74-91
+     * @returns {uint32} Keystream word
      */
     _generateWord() {
       // Output r6, then update cascade
@@ -343,6 +351,7 @@
       }
     }
 
+    /** @returns {uint8} Next keystream byte */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._generateBlock();

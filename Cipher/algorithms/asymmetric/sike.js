@@ -1919,8 +1919,11 @@
       this.isInverse = isInverse;
       this.inputBuffer = [];
       this._parameterSet = SIKE_P434;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._sharedSecret = null;
       this._keyData = null;
       this.keyGeneration = false;

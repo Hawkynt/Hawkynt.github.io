@@ -297,6 +297,7 @@
      *
      * Parameters (13, 17, 5) are Marsaglia's recommended triplet for 32-bit xorshift
      * These values ensure maximal period of 2 to the power of 32 minus 1
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

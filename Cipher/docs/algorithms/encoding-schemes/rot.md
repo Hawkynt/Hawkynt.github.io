@@ -23,10 +23,10 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Provides no cryptographic security | — | — |
-| Trivially broken by frequency analysis | — | — |
-| Preserves word boundaries and punctuation | — | — |
-| Educational use only - not for actual data protection | — | — |
+| No Security | Provides no cryptographic security | — |
+| Frequency Analysis | Trivially broken by frequency analysis | — |
+| Structure Leak | Preserves word boundaries and punctuation | — |
+| Educational Only | Educational use only - not for actual data protection | — |
 
 ## Documentation
 

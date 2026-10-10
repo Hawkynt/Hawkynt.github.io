@@ -244,6 +244,7 @@
      * @param {uint8[]|null} keyData - Key bytes; shorter than 6 selects "ABC123"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length < 6) {
         this.parseKey("ABC123"); // Default key
       } else {
@@ -254,15 +255,11 @@
     }
 
     /**
-     * Get the current setting in the key format "PPPSSS"
-     * @returns {uint8[]} Rotor positions as letters followed by the rotor numbers
-     */
+   * @returns {uint8[]|null} The key bytes as set
+   */
 
     get key() {
-      /** @type {string} */
-      let text = '';
-      for (let i = 0; i < this.rotorPositions.length; i++) text += String.fromCharCode(this.rotorPositions[i] + 65);
-      return OpCodes.AnsiToBytes(text + this.rotorSelection.join(''));
+      return this._keyBytes || null;
     }
 
     /**

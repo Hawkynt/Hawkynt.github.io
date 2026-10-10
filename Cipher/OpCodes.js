@@ -2385,7 +2385,7 @@
         throw new Error('Hex8ToBytes: Invalid hex characters found');
       
       // Validate length
-      if (hexString.length & 1 !== 0)
+      if (OpCodes.And32(hexString.length, 1) !== 0)
         throw new Error('Hex8ToBytes: Length must be even');
       
       const bytes = [];
@@ -2410,7 +2410,7 @@
         throw new Error('Hex16ToWords: Invalid hex characters found');
       
       // Validate length
-      if (hexString.length & 3 !== 0)
+      if (OpCodes.And32(hexString.length, 3) !== 0)
         throw new Error('Hex16ToWords: Length must be divisible by 4');
 
       const words = [];
@@ -2422,7 +2422,7 @@
 
     /**
      * Convert hex string to 32-bit words (hex to 32-bit words conversion)
-     * "f123abcd9876" → [0xf123abcd, 0x9876] (each 8 hex digits becomes a 32-bit word)
+     * "f123abcd98765432" → [0xf123abcd, 0x98765432] (each 8 hex digits becomes a 32-bit word)
      * @param {string} hexString - Hex string with octets
      * @returns {uint32[]} Array of 32-bit word values
      */
@@ -2435,7 +2435,7 @@
         throw new Error('Hex32ToDWords: Invalid hex characters found');
       
       // Validate length
-      if (hexString.length & 7 !== 0)
+      if (OpCodes.And32(hexString.length, 7) !== 0)
         throw new Error('Hex32ToDWords: Length must be divisible by 8');
       
       const words = [];
@@ -2482,8 +2482,9 @@
     },
     
     /**
-     * Clear array (fill with zeros)
-     * @param {uint8[]} arr - Array to clear (modified in place)
+     * Clear array (fill with zeros): bytes, words or any other numbers
+     * @template T
+     * @param {T[]} arr - Array to clear (modified in place)
      */
     ClearArray: function(arr) {
       for (let i = 0; i < arr.length; ++i)
@@ -2951,9 +2952,9 @@
     },
 
     /**
-     * Create array filled with specific value
+     * Create a byte array filled with one byte value
      * @param {uint32} length - Array length
-     * @param {uint8} value - Fill value (defaults to 0)
+     * @param {uint8} value - Fill byte (defaults to 0)
      * @returns {uint8[]} New array filled with value
      */
     CreateArray: function(length, value) {

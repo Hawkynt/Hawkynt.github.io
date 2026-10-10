@@ -2377,6 +2377,7 @@
         : GenerateSecretKeyClassic(this.field, p, seeds);
     }
 
+    /** @param {uint8[]} keyData - Key bytes */
     set key(keyData) {
       this.KeySetup(keyData);
     }

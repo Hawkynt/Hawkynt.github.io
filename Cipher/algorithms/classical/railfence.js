@@ -167,8 +167,6 @@
       /** @type {int32} */
       this._rails = 3;
       this.rails = 3; // Default number of rails
-      /** @type {uint8[]|null} */
-      this._keyBytes = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
     }
@@ -193,7 +191,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for 3 rails
      */
     set key(keyData) {
-      this._keyBytes = keyData ? keyData.slice() : null;
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._rails = 3; // Default
       } else {
@@ -213,12 +211,11 @@
     }
 
     /**
-   * Get a copy of the key bytes last set; the rail count is read through rails
-   * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._keyBytes ? this._keyBytes.slice() : null;
+      return this._keyBytes || null;
     }
 
     // Feed data to the cipher

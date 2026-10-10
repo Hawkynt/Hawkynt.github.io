@@ -327,7 +327,16 @@
       for (let r = 0; r < 8; r++) this._round();
 
       // IV mixing: XOR IV-derived S-box values into the low byte of each state dword.
+      /**
+       * @param {int32} idx - IV byte index
+       * @returns {uint8} Key-dependent S-box value of that IV byte
+       */
       const s = (idx) => this._ivSbox(iv, idx);
+      /**
+       * @param {int32} wi - State word index
+       * @param {int32} half - 0 for the low half, 1 for the high half
+       * @param {uint32} val - Value whose low byte is mixed in
+       */
       const xb = (wi, half, val) => { this._xorLowByte(wi, half, val); };
       xb(2, 1, OpCodes.Xor32(OpCodes.Xor32(s(0), s(1)), s(2)));
       xb(3, 1, OpCodes.Xor32(OpCodes.Xor32(s(0), s(3)), s(4)));

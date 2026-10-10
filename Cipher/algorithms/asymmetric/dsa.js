@@ -814,7 +814,7 @@
       // Signature for verification
       /** @type {DSASignatureValue|null} */
       this._signature = null;
-      /** @type {uint8[]|null} */
+      /** @type {uint8[]|null} - the signature bytes as set */
       this._signatureBytes = null;
 
       // Digest the signature is taken over. SHA-256 rather than the SHA-1 of
@@ -958,9 +958,9 @@
     }
 
     /**
-     * @returns {uint8[]|null} Signature to verify, r || s as set, or null when none was set
+     * @returns {uint8[]|null} Signature to verify, r || s as set
      */
-    get signature() { return this._signatureBytes ? this._signatureBytes.slice() : null; }
+    get signature() { return this._signatureBytes; }
 
     /**
      * @param {uint8[]} value - Expected result of a test vector

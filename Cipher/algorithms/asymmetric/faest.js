@@ -1756,6 +1756,7 @@
     const nodes = GenerateTree(p, rootKey, iv);
     const com = new Uint8Array(p.L * p.comSize);
     const sd = new Uint8Array(p.L * lb);
+    /** @type {Shake|null} */
     let uhashCtx = null;
     if (!p.em) {
       uhashCtx = NewHash(p.lambda);
@@ -1868,6 +1869,7 @@
     for (let i = 0; i < p.L - 1; ++i)
       if (!marked[i]) Prg(keys, i * lb, iv, i, 2 * lb, p.lambda, keys, (2 * i + 1) * lb);
 
+    /** @type {Shake|null} */
     let uhashCtx = null;
     if (!p.em) {
       uhashCtx = NewHash(p.lambda);
@@ -1960,6 +1962,7 @@
     /** @type {Uint8Array[]} */
     const V = [];
     const c = new Uint8Array((p.tau - 1) * len);
+    /** @type {Uint8Array|null} */
     let u = null;
     let sdOff = 0;
     for (let i = 0; i < p.tau; ++i) {
@@ -6602,6 +6605,7 @@
       this._keyData = copy;
     }
 
+    /** @param {uint8[]} keyData - Key bytes */
     set key(keyData) {
       this.KeySetup(keyData);
     }

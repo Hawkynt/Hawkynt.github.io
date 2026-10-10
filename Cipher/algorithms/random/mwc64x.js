@@ -327,7 +327,7 @@
      *
      * We use BigInt for 64-bit arithmetic to avoid precision loss.
      * BigInt bit operations are expressed via OpCodes.AndN/OpCodes.ShiftRn.
-     * @returns {uint32} Next output word
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

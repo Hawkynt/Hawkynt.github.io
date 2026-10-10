@@ -203,6 +203,7 @@
       for (let i = 0; i < 10; i++) {
         const odd = OpCodes.And32(i, 1) !== 0;
         for (let j = 0; j < 80; j++) {
+          /** @type {uint32} */
           let C;
           if (i === 4 || i === 9)
             C = OpCodes.Xor32(OpCodes.Xor32(A, B), P);                       // linear combiner

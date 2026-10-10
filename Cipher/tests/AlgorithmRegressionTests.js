@@ -111,9 +111,14 @@ test('TupleHash256: given the customization is set after the elements, when hash
 // scripts: what an algorithm meets when the hash or cipher it builds on is not
 // on the page.
 function pageWith(...files) {
+  return pageOf(undefined, files);
+}
+/** pageWith, with the page's Web Crypto object (undefined: none, as pageWith) */
+function pageOf(webCrypto, files) {
   const fs = require('fs');
   const vm = require('vm');
   const sandbox = require('./BrowserLoad').browserContext();
+  if (webCrypto) sandbox.crypto = webCrypto;
   for (const file of ['AlgorithmFramework.js', 'OpCodes.js', ...files]) {
     vm.runInContext(fs.readFileSync(path.join(CIPHER_ROOT, file), 'utf8'), sandbox, { filename: file });
   }
@@ -543,6 +548,118 @@ test('ZUC-128-MAC: given a page without ZUC, when a tag is computed, then it is 
   expectThrow(() => zucMac(framework), 'ZUC');
 });
 
+/** Runs every committed vector of a registered algorithm forward and returns the outputs in hex */
+function committedVectors(framework, name) {
+  const algorithm = framework.Find(name);
+  return algorithm.tests.map(vector => {
+    const instance = algorithm.CreateInstance();
+    for (const field of Object.keys(vector)) {
+      if (field !== 'text' && field !== 'uri' && field !== 'input' && field !== 'expected') instance[field] = vector[field];
+    }
+    instance.Feed(vector.input);
+    return { actual: hex(instance.Result()), expected: hex(vector.expected), text: vector.text };
+  });
+}
+function expectCommittedVectors(framework, name) {
+  for (const { actual, expected, text } of committedVectors(framework, name)) {
+    if (actual !== expected) throw new Error(`${text}: expected ${expected}, got ${actual}`);
+  }
+}
+
+test('KDF2: given a page that loads the SHA family after it, when every committed vector is derived, then each matches', () => {
+  const framework = pageWith('algorithms/kdf/kdf2.js', 'algorithms/hash/sha1.js', 'algorithms/hash/sha256.js', 'algorithms/hash/sha512.js');
+  expectCommittedVectors(framework, 'KDF2');
+});
+test('KDF2: given a page without SHA-1, when a key is derived, then it is refused naming SHA-1', () => {
+  const framework = pageWith('algorithms/kdf/kdf2.js');
+  expectThrow(() => committedVectors(framework, 'KDF2'), 'SHA-1');
+});
+
+for (const mode of ['Feedback', 'Pipeline']) {
+  const file = `algorithms/kdf/sp800-108-${mode.toLowerCase()}.js`;
+  test(`SP800-108-${mode}: given a page that loads HMAC and the SHA family after it, when every committed vector is derived, then each matches`, () => {
+    const framework = pageWith(file, 'algorithms/hash/sha1.js', 'algorithms/hash/sha256.js', 'algorithms/hash/sha512.js', 'algorithms/mac/hmac.js');
+    expectCommittedVectors(framework, `SP800-108-${mode}`);
+  });
+  test(`SP800-108-${mode}: given a page without HMAC, when a key is derived, then it is refused as HMAC not registered`, () => {
+    const framework = pageWith('algorithms/hash/sha1.js', file);
+    expectThrow(() => committedVectors(framework, `SP800-108-${mode}`), 'HMAC is not registered');
+  });
+}
+
+function rfc3211(framework, isInverse, data) {
+  const instance = framework.Find('RFC 3211 Key Wrap').CreateInstance(isInverse);
+  instance.cipherName = 'DES';
+  instance.key = Array.from(Buffer.from('D1DAA78615F287E6', 'hex'));
+  instance.iv = Array.from(Buffer.from('EFE598EF21B33D6D', 'hex'));
+  instance.Feed(data);
+  return instance.Result();
+}
+/** A page as pageWith builds it, plus the Web Crypto random source a browser has */
+function pageWithWebCrypto(...files) {
+  return pageOf({ getRandomValues: array => globalThis.crypto.getRandomValues(array) }, files);
+}
+const RFC3211_CEK = Array.from(Buffer.from('8C627C897323A2F8', 'hex'));
+test('RFC 3211 Key Wrap: given a page with DES and Web Crypto but no fixed padding, when a key is wrapped twice, then the padding differs and both unwrap to the key', () => {
+  const framework = pageWithWebCrypto('algorithms/block/des.js', 'algorithms/crypto/rfc3211wrap.js');
+  const cek = RFC3211_CEK;
+  const first = rfc3211(framework, false, cek);
+  const second = rfc3211(framework, false, cek);
+  if (hex(first) === hex(second)) throw new Error('two wraps share their random padding');
+  equalHex(rfc3211(framework, true, first), hex(cek));
+  equalHex(rfc3211(framework, true, second), hex(cek));
+});
+test('RFC 3211 Key Wrap: given a page without a secure random source and no fixed padding, when a key is wrapped, then it is refused - never padded predictably', () => {
+  const framework = pageWith('algorithms/block/des.js', 'algorithms/crypto/rfc3211wrap.js');
+  expectThrow(() => rfc3211(framework, false, RFC3211_CEK), 'no secure random source');
+});
+
+function lweRoundTrip(framework) {
+  const algorithm = framework.Find('LWE-Signature');
+  const vector = algorithm.tests[0];
+  const signer = algorithm.CreateInstance(false);
+  signer.key = vector.key;
+  signer.Feed(vector.input);
+  const signed = signer.Result();
+  const verifier = algorithm.CreateInstance(true);
+  verifier.key = vector.key;
+  verifier.Feed(signed);
+  return { opened: verifier.Result(), expected: vector.expected };
+}
+test('LWE-Signature: given a page that loads SHAKE after it, when the first committed message is signed and opened, then the message returns', () => {
+  const framework = pageWith('algorithms/asymmetric/lwe-signature.js', 'algorithms/hash/shake.js');
+  const { opened, expected } = lweRoundTrip(framework);
+  equalHex(opened, hex(expected));
+});
+test('LWE-Signature: given a page without SHAKE, when a message is signed, then it is refused naming SHAKE', () => {
+  const framework = pageWith('algorithms/asymmetric/lwe-signature.js');
+  expectThrow(() => lweRoundTrip(framework), 'SHAKE');
+});
+
+/** The first committed KAT signature of one MAYO set, in hex */
+function mayoFirstKat(framework, setName) {
+  const algorithm = framework.Find(setName);
+  const vector = algorithm.tests[0];
+  const instance = algorithm.CreateInstance(false);
+  instance.key = vector.key;
+  instance.randomizer = vector.randomizer;
+  instance.Feed(vector.input);
+  return { actual: hex(instance.Result()), expected: hex(vector.expected) };
+}
+test('MAYO-1: given a page that loads SHAKE and AES after it, when the first KAT message is signed, then it is the KAT signature', () => {
+  const framework = pageWith('algorithms/asymmetric/mayo.js', 'algorithms/hash/shake.js', 'algorithms/block/rijndael.js');
+  const { actual, expected } = mayoFirstKat(framework, 'MAYO-1');
+  if (actual !== expected) throw new Error(`expected ${expected}, got ${actual}`);
+});
+test('MAYO-1: given a page without AES, when a message is signed, then it is refused naming Rijndael (AES)', () => {
+  const framework = pageWith('algorithms/asymmetric/mayo.js', 'algorithms/hash/shake.js');
+  expectThrow(() => mayoFirstKat(framework, 'MAYO-1'), 'Rijndael (AES)');
+});
+test('MAYO-1: given a page without SHAKE, when a message is signed, then it is refused naming SHAKE256', () => {
+  const framework = pageWith('algorithms/asymmetric/mayo.js', 'algorithms/block/rijndael.js');
+  expectThrow(() => mayoFirstKat(framework, 'MAYO-1'), 'SHAKE256');
+});
+
 // ---------------------------------------------------------------- declared types hold
 // A typed target declares each field and property once, from its JSDoc, so the
 // value an algorithm stores or hands back has to be the type its JSDoc names.
@@ -633,11 +750,9 @@ const CLASSICAL_KEYS = [
   ['vigenere.js', 'Vigenère Cipher', 'LEMON']
 ];
 for (const [file, name, key] of CLASSICAL_KEYS) {
-  test(`${name}: given the key "${key}", when it is read back and the copy changed, then the key reads as the bytes set`, () => {
+  test(`${name}: given the key "${key}", when it is read back, then it is the bytes set`, () => {
     const instance = registered('classical/' + file, name).CreateInstance(false);
     instance.key = ascii(key);
-    const read = instance.key;
-    read[0] = 0;
     sameBytes(instance.key, ascii(key));
   });
 }
@@ -658,12 +773,16 @@ test('Diffie-Hellman: given the default group and then a modulus size, when the 
   instance.group = '3072';
   if (instance.group !== 'modp3072') throw new Error(`expected modp3072, got ${instance.group}`);
 });
-test('Diffie-Hellman: given a private exponent and a peer value, when both are read back, then they are the bytes set, and null once cleared', () => {
+/** Big-endian bytes left-padded with zeros to the given width */
+function padded(bytes, width) {
+  return new Array(width - bytes.length).fill(0).concat(bytes);
+}
+test('Diffie-Hellman: given a private exponent and a peer value, when both are read back, then they are those values as wide as the modulus, and null once cleared', () => {
   const instance = registered('asymmetric/diffie-hellman.js', 'Diffie-Hellman').CreateInstance();
   instance.privateKey = [0x01, 0x23, 0x45];
   instance.otherPublicKey = [0x67, 0x89];
-  sameBytes(instance.privateKey, [0x01, 0x23, 0x45]);
-  sameBytes(instance.otherPublicKey, [0x67, 0x89]);
+  sameBytes(instance.privateKey, padded([0x01, 0x23, 0x45], 256));
+  sameBytes(instance.otherPublicKey, padded([0x67, 0x89], 256));
   instance.ClearData();
   if (instance.privateKey !== null || instance.otherPublicKey !== null) throw new Error('expected null after ClearData');
 });

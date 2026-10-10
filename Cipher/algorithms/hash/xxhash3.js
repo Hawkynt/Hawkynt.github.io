@@ -1467,21 +1467,10 @@
     }
 
     /**
-     * Current 64-bit seed, in the hex form the setter takes
-     * @returns {string} The seed as 16 upper-case hex digits, most significant first
+     * Current 64-bit seed
+     * @returns {string} The seed as 16 hex digits, as the setter takes it
      */
-    get seed() {
-      /** @type {string} */
-      const digits = '0123456789ABCDEF';
-      /** @type {uint8[]} */
-      const bytes = OpCodes.Unpack64BE(this._seed);
-      /** @type {string} */
-      let text = '';
-      for (let i = 0; i < bytes.length; ++i) {
-        text += digits.charAt(Math.floor(bytes[i] / 16)) + digits.charAt(bytes[i] % 16);
-      }
-      return text;
-    }
+    get seed() { return this._seed.toString(16).toUpperCase().padStart(16, '0'); }
 
     /**
      * Set the seed from a hex string

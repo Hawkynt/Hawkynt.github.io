@@ -69,7 +69,12 @@ applied to numbers, an unannotated parameter.
 `TypeCoverage.js` parses a file into the same typed IL AST the language emitters use
 and counts those sites (value positions only; declaration names, keys, callees,
 conditions and test vectors are not values), attributing each to the tier whose gap it
-is. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
+is. A type that states no width counts as none, its array forms too (`any`, `any[]`,
+`number[]`, `Array<*>`). Besides values it counts storage and kinds: every variable
+(`let a, b;` included), parameter and field whose type is missing or weak; a value of
+one kind where its context declares another (a number for a `boolean` parameter, a
+BigInt literal for a `uint8`); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
+and an accessor whose setter takes another type than its getter returns. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
 rises above it, a budget of 0 means the file is policy-clean, and
 `--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
 given as well to raise one or add a file). `--verbose` lists every site with file, line,
@@ -85,8 +90,12 @@ that is a `Uint32Array` passes it and still emits wrong code in a typed language
 itself (initialisers, assignments to variables, fields and array elements, `++`/`--`,
 returns, `push` arguments; line numbers are kept), loads that copy under the file's
 name, runs its algorithms' vectors and checks every value against the IL type of its
-site: integer range and integrality, Number or BigInt, boolean, string, and an array's
-typed-array kind and sampled elements. For an assignment the type checked is the
+site: integer range and integrality, Number or BigInt, boolean, string, an array's
+typed-array kind and sampled elements, an instance of a declared class (by its
+prototype chain; object literals stand for `TestCase`), a member of a declared
+framework enum, and no primitive where another reference type is declared. A value
+passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
+checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares
 it. A site checks its first 256 values and 16 more per later vector, so a hot loop
 costs a compare once its budget is spent; `Math.random` is seeded, so counts repeat.
@@ -115,6 +124,7 @@ category of `TranspilerSuite.js`.
 | `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
 | `harness` | the validation itself: vector plans, reading a harness run back, judging languages, error classes, and each vector harness end to end against hand-written stand-ins | `TranspilerValidationTests.js` |
 | `python` | regressions of systematic Python transpilation faults; runs the Python runtime cases when a Python 3 interpreter is installed | `PythonTranspileRegressions.js` |
+| `tsphp` | regressions of systematic TypeScript and PHP transpilation faults; compiles and runs each case when `tsc` or `php` is installed | `TsPhpTranspileRegressions.js` |
 | `validation` | transpiles every algorithm to every installed language, compiles it, and runs every vector where the language has a vector harness | `TranspilerValidation.js` |
 
 `validation` runs one worker process per algorithm file, `--jobs=N` at a time
@@ -122,13 +132,15 @@ category of `TranspilerSuite.js`.
 `TestEngine` first - the reference: an algorithm whose reference fails is listed
 and held against no language, and the algorithm files it loads while running
 are its dependencies, bundled into its transpiled code where the language
-supports that (JavaScript, Python, Perl). It then transpiles the file to every
+supports that (JavaScript, TypeScript, Python, Perl, PHP). It then transpiles the file to every
 installed language, appends the language's vector harness from
 `validation-harness/`, compiles it and runs it. The harness applies every
 vector field with the semantics of `TestEngine.ConfigureInstance` - a field that
 reaches no setter or property, or whose setter throws, fails the vector - and
 checks the expected output and, where the reference made one, the round trip.
-JavaScript, Python, Perl and C# have vector harnesses; the other languages are
+JavaScript, TypeScript (compiled by `tsc`, run by `node`), Python, Perl, C# and
+PHP (linted by `php -l`, run with the installation's `gmp` extension for BigInt)
+have vector harnesses; the other languages are
 only compiled. A toolchain counts as installed when it is on `PATH` (Windows
 `.cmd` shims included), exits 0 and prints its version on stdout or stderr; a
 broken one (a `java` that cannot create its virtual machine) is reported and
@@ -138,7 +150,7 @@ The limit of one compile or run is `--timeout` (default 120 s), raised to 100
 times the time the file's JavaScript reference took (at most 30 minutes). A run
 cut off by it is counted as `timeout`, on its own, and fails no language.
 `.data` libraries an algorithm takes through its UMD factory are bundled for
-JavaScript, Python and Perl.
+JavaScript, TypeScript, Python, Perl and PHP.
 
 A language passes when every algorithm it transpiled also compiled and passed
 every vector. Transpile, compile and execute counts are kept apart, per language
