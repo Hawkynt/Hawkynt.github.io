@@ -5983,6 +5983,12 @@
         // has the real return type.
         if (this.currentClass) {
           const pascalName = this.toPascalCase(funcName);
+          // A bare call names a module function (on the main class), never a method of
+          // the current class - classic-mceliece.js's Decapsulate() method calls the
+          // module's Decapsulate(), which returns bytes
+          const moduleSig = this.mainClassName && this.currentClass.name !== this.mainClassName
+            ? this.getMethodSignature(this.mainClassName, pascalName) : null;
+          if (moduleSig?.returnType) return moduleSig.returnType;
           const sig = this.getMethodSignature(this.currentClass.name, pascalName);
           if (sig?.returnType) {
             return sig.returnType;
@@ -17955,6 +17961,19 @@
     }
 
     /**
+     * Whether two flat arrays have different numeric element types - no C# array
+     * converts implicitly to another, even where the elements would (byte[] -> int[]).
+     * @param {CSharpType} a - one array type
+     * @param {CSharpType} b - the other
+     * @returns {boolean}
+     */
+    differentNumericArrays(a, b) {
+      const numeric = ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'float', 'double'];
+      return !!(a?.isArray && b?.isArray && a.elementType && b.elementType && !a.elementType.isArray && !b.elementType.isArray &&
+        a.elementType.name !== b.elementType.name && numeric.includes(a.elementType.name) && numeric.includes(b.elementType.name));
+    }
+
+    /**
      * An array value as an element of a jagged array literal: as is when the element
      * types agree, converted element by element (buildParameterConversion) when two
      * flat arrays differ in element type, and as is otherwise.
@@ -18941,7 +18960,7 @@
           if (this.needsNarrowingCast(exprType, returnType)) {
             expr = new CSharpCast(returnType, expr);
           }
-        } else if (exprType?.isArray && this.needsCast(exprType, returnType)) {
+        } else if (exprType?.isArray && (this.needsCast(exprType, returnType) || this.differentNumericArrays(exprType, returnType))) {
           // Array-vs-array element type mismatch - e.g. Streebog's compressBlock,
           // whose declared return type settled on uint[] (from its `h`/`m` parameters'
           // own 32-bit-XOR evidence, backward-propagated from the caller's `state =

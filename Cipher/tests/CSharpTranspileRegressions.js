@@ -1129,6 +1129,17 @@ check('division: a quotient of integers nested in a value going into doubles div
   expectMatch(code, /\(double\)\(?counts\[k\]\)? \/ total \* 100/, '(double)counts[k] / total * 100 in the push');
   expectMatch(code, /double first = \(double\)\(?counts\[0\]\)? \/ total \* 100/, '(double)counts[0] / total * 100 in the declaration');
 });
+const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
+  'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
+  '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
+check('calls: a bare call is typed by the module function, not a same-named method', () => {
+  const code = transpile(SAME_NAMED_CALLS);
+  expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');
+});
+check('return: an array of another numeric element type converts element-wise (CS0029)', () => {
+  const code = transpile('/**\n * @param {uint8[]} b - bytes\n * @returns {int32[]} r\n */\nfunction widen(b) { /** @type {uint8[]} */ const c = b.slice(0); return c; }');
+  expectMatch(code, /return c\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'return c.Select(...).ToArray()');
+});
 const SUBARRAY_VIEWS = '/**\n * @param {uint8[]} dest - written\n * @param {uint8[]} src - read\n * @param {int32} length - length\n */\n' +
   'function xorBlock(dest, src, length) {\n  for (let i = 0; i < length; i++) dest[i] = OpCodes.Xor32(dest[i], src[i]);\n}\n' +
   '/**\n * @param {uint8[]} V - state\n * @param {uint8[]} data - data\n * @param {int32} off - offset\n */\n' +
