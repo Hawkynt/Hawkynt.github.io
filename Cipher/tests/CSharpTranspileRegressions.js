@@ -1153,6 +1153,12 @@ check('nullable numbers: a nullable member is falsy when null or 0, and unwraps 
   expectMatch(code, /\(this\._skipCount \?\? 0\) != 0 \?/, '(this._skipCount ?? 0) != 0');
   expectMatch(code, /return (unchecked\()?\(int\)/, 'the result cast to int');
 });
+check('typeof: a bigint test on an array folds to false, dropping the dead branch', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    /** @type {BigInt} */\n    this._state = 0n;\n    /** @type {uint8[]} */\n    this._seed = [];\n  }\n' +
+    '  /** @param {uint8[]} seedValue - seed */\n  set seed(seedValue) {\n    if (typeof seedValue === "bigint") this._state = seedValue;\n' +
+    '    else this._state = BigInt(seedValue.length);\n  }\n  /** @returns {uint8[]} the seed */\n  get seed() { return this._seed; }\n}');
+  expectNoMatch(code, /this\._state = value;/, 'the dead BigInt branch');
+});
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
   const code = transpile(SAME_NAMED_CALLS);
   expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');

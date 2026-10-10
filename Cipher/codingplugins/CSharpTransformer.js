@@ -14727,6 +14727,15 @@
           return CSharpLiteral.Bool(op === '!=');
         }
 
+        // `typeof x === 'bigint'` on an array or string is never true, on a BigInteger
+        // always (self-shrinking-generator.js's byte[] seed setter): folded, so the
+        // dead branch is dropped instead of failing to compile
+        if (typeStr === 'bigint') {
+          const varType = this.inferFullExpressionType(node.left.argument);
+          if (varType && (varType.isArray || varType.name === 'string')) return CSharpLiteral.Bool(op === '!=');
+          if (varType && !varType.isArray && varType.name === 'BigInteger') return CSharpLiteral.Bool(op === '==');
+        }
+
         const variable = this.transformExpression(node.left.argument);
 
         // Map JavaScript type strings to C# type checks
