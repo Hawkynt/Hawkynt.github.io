@@ -427,11 +427,11 @@
   function DerVectorLength(length) {
     if (length < 0x80) {
       /** @type {uint8[]} */
-      const short = [length];
+      const short = [OpCodes.ToByte(length)];
       return short;
     }
     /** @type {uint8[]} */
-    const long = [0x81, length];
+    const long = [0x81, OpCodes.ToByte(length)];
     return long;
   }
 
@@ -1435,7 +1435,7 @@
     _encodeLength(length) {
       if (length < 0x80) {
         /** @type {uint8[]} */
-        const short = [length];
+        const short = [OpCodes.ToByte(length)];
         return short;
       }
 
@@ -1447,7 +1447,7 @@
         remaining = OpCodes.Shr32(remaining, 8);
       }
       /** @type {uint8[]} */
-      const head = [0x80 + lengthBytes.length];
+      const head = [OpCodes.ToByte(0x80 + lengthBytes.length)];
       return head.concat(lengthBytes);
     }
 

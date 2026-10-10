@@ -1185,8 +1185,8 @@
     const x7 = x[off + 7];
     /** @type {uint8[]} */
     const out = [
-      OpCodes.Xor32(OpCodes.Xor32(x0, x4), x6), OpCodes.Xor32(OpCodes.Xor32(x4, x6), x7), OpCodes.Xor32(x1, x5), OpCodes.Xor32(OpCodes.Xor32(x4, x5), OpCodes.Xor32(x6, x7)),
-      OpCodes.Xor32(OpCodes.Xor32(x2, x4), x7), OpCodes.Xor32(x5, x6), OpCodes.Xor32(x3, x5), OpCodes.Xor32(x6, x7)
+      OpCodes.Xor8(OpCodes.Xor8(x0, x4), x6), OpCodes.Xor8(OpCodes.Xor8(x4, x6), x7), OpCodes.Xor8(x1, x5), OpCodes.Xor8(OpCodes.Xor8(x4, x5), OpCodes.Xor8(x6, x7)),
+      OpCodes.Xor8(OpCodes.Xor8(x2, x4), x7), OpCodes.Xor8(x5, x6), OpCodes.Xor8(x3, x5), OpCodes.Xor8(x6, x7)
     ];
     return out;
   }

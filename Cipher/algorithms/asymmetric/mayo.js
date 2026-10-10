@@ -1037,7 +1037,7 @@
       // Vinegar values and the solver's randomness.
       const needed = P.k * S.vBytes + Math.ceil(ko / 2);
       /** @type {uint8[]} */
-      const counterOctet = [counter];
+      const counterOctet = [OpCodes.ToByte(counter)];
       const V = shake256(messageDigest.concat(salt).concat(seedsk).concat(counterOctet), needed);
       /** @type {Uint8Array[]} */
       const vinegar = new Array(P.k);

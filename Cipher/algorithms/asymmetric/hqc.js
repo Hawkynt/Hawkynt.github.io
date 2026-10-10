@@ -330,10 +330,15 @@
   const GF_ORDER = 255;
 
   // Domain separation bytes, one per use of SHAKE in the scheme.
+  /** @type {uint8} */
   const DOMAIN_PRNG = 1;
+  /** @type {uint8} */
   const DOMAIN_SEEDEXPANDER = 2;
+  /** @type {uint8} */
   const DOMAIN_G = 3;
+  /** @type {uint8} */
   const DOMAIN_H = 4;
+  /** @type {uint8} */
   const DOMAIN_K = 5;
 
   class HqcParams {
@@ -853,10 +858,10 @@
    * the Hadamard transform, and read off the largest coefficient.
    * @param {HqcParams} set - the parameter set
    * @param {uint32[]} words - the received word
-   * @returns {int32[]} one octet per Reed-Solomon symbol
+   * @returns {uint8[]} one octet per Reed-Solomon symbol
    */
   function ReedMullerDecode(set, words) {
-    /** @type {int32[]} */
+    /** @type {uint8[]} */
     const messageBytes = new Array(set.n1);
     const expanded = new Int32Array(128);
 
@@ -901,7 +906,7 @@
   /**
    * Systematic encoding by the shift register of the generator polynomial.
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} messageBytes - k message octets
+   * @param {uint8[]} messageBytes - k message octets
    * @returns {int32[]} n1 codeword octets
    */
   function ReedSolomonEncode(set, messageBytes) {
@@ -928,7 +933,7 @@
   /**
    * The 2 delta syndromes, the received word evaluated at alpha^1 .. alpha^2delta.
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} codeword - n1 received symbols
+   * @param {uint8[]} codeword - n1 received symbols
    * @returns {int32[]} the syndromes
    */
   function ComputeSyndromes(set, codeword) {
@@ -1082,8 +1087,8 @@
 
   /**
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} codewordBytes - n1 received symbols
-   * @returns {int32[]} the k corrected message octets
+   * @param {uint8[]} codewordBytes - n1 received symbols
+   * @returns {uint8[]} the k corrected message octets
    */
   function ReedSolomonDecode(set, codewordBytes) {
     const codeword = codewordBytes.slice(0, set.n1);
@@ -1099,7 +1104,7 @@
 
   /**
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} messageBytes - k octets
+   * @param {uint8[]} messageBytes - k octets
    * @returns {uint32[]} the concatenated codeword
    */
   function CodeEncode(set, messageBytes) {
@@ -1109,7 +1114,7 @@
   /**
    * @param {HqcParams} set - the parameter set
    * @param {uint32[]} words - the received word
-   * @returns {int32[]} the k decoded octets
+   * @returns {uint8[]} the k decoded octets
    */
   function CodeDecode(set, words) {
     return ReedSolomonDecode(set, ReedMullerDecode(set, words));
@@ -1258,9 +1263,9 @@
    * Encrypt: u = r1 + h r2 and v = mG + s r2 + e, for low weight r1, r2 and e
    * drawn from theta.
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} messageBytes - k octets
-   * @param {int32[]} theta - the randomness seed
-   * @param {int32[]} pk - the public key
+   * @param {uint8[]} messageBytes - k octets
+   * @param {uint8[]} theta - the randomness seed
+   * @param {uint8[]} pk - the public key
    * @returns {HqcPkeCiphertext} the two ciphertext vectors
    */
   function PkeEncrypt(set, messageBytes, theta, pk) {
@@ -1289,8 +1294,8 @@
    * @param {HqcParams} set - the parameter set
    * @param {uint32[]} u - first ciphertext vector
    * @param {uint32[]} v - second ciphertext vector
-   * @param {int32[]} sk - the secret key
-   * @returns {int32[]} the k recovered octets
+   * @param {uint8[]} sk - the secret key
+   * @returns {uint8[]} the k recovered octets
    */
   function PkeDecrypt(set, u, v, sk) {
     const expander = SeedExpander(sk.slice(0, SEED_BYTES));
@@ -1311,8 +1316,8 @@
    * from them with the public key's seed, which is the Hofheinz-Hovelmanns-Kiltz
    * transform that makes the scheme chosen-ciphertext secure.
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} pk - the public key
-   * @param {int32[]} randomness - k + 16 octets, the message then the salt
+   * @param {uint8[]} pk - the public key
+   * @param {uint8[]} randomness - k + 16 octets, the message then the salt
    * @returns {HqcEncapsulation} the ciphertext and the shared secret
    */
   function Encapsulate(set, pk, randomness) {
@@ -1342,9 +1347,9 @@
    * with what arrived; a ciphertext this key did not produce yields a secret of
    * zeroes rather than the one the sender derived.
    * @param {HqcParams} set - the parameter set
-   * @param {int32[]} ciphertext - the ciphertext
-   * @param {int32[]} sk - the secret key
-   * @returns {int32[]} the shared secret
+   * @param {uint8[]} ciphertext - the ciphertext
+   * @param {uint8[]} sk - the secret key
+   * @returns {uint8[]} the shared secret
    */
   function Decapsulate(set, ciphertext, sk) {
     const uBytes = ciphertext.slice(0, set.nBytes);
@@ -1379,7 +1384,7 @@
 
     if (!agree) {
       /** @type {uint8[]} */
-      const zeros = ZeroArray(set.sharedSecretSize);
+      const zeros = OpCodes.CreateArray(set.sharedSecretSize, 0);
       return zeros;
     }
     return sharedSecret;
@@ -2227,7 +2232,7 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding the whole.
-     * @param {int32[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
@@ -2248,7 +2253,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {int32[]} the result bytes
+     * @returns {uint8[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;

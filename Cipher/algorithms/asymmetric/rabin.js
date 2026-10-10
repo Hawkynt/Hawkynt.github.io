@@ -881,7 +881,7 @@
         supplied = [];
       }
       /** @type {uint8[]} */
-      const sizeBytes = [this.keySize % 256, Math.floor(this.keySize / 256) % 256];
+      const sizeBytes = [OpCodes.GetByte(this.keySize, 0), OpCodes.GetByte(this.keySize, 1)];
       const seedMaterial = supplied.concat(sizeBytes);
       const cacheKey = seedMaterial.join(',');
       /** @type {RabinKeyPair} */

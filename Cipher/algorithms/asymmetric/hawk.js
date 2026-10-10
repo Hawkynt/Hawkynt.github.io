@@ -1925,7 +1925,7 @@
     const step = 4 * perChunk;
     for (let j = 0; j < 4; ++j) {
       /** @type {uint8[]} */
-      const index = [j];
+      const index = [OpCodes.ToByte(j)];
       /** @type {Shake256} */
       const sc = new Shake256().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += step) {
@@ -2313,7 +2313,7 @@
 
     for (let j = 0; j < 4; ++j) {
       /** @type {uint8[]} */
-      const index = [j];
+      const index = [OpCodes.ToByte(j)];
       /** @type {Shake256} */
       const sc = base.Clone().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += 16) {
