@@ -226,7 +226,7 @@
       this.year = 1997;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = SecurityStatus.INSECURE;
+      this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AU;
 
