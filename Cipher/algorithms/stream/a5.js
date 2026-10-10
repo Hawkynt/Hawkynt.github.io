@@ -76,7 +76,7 @@
       this.subCategory = "Stream Cipher";
       this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       this.SupportedKeySizes = [new KeySize(8, 8, 1)];
       this.SupportedBlockSizes = [new KeySize(1, 65536, 1)];
@@ -389,7 +389,7 @@
       this.subCategory = "Stream Cipher";
       this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       this.SupportedKeySizes = [new KeySize(8, 8, 1)];
       this.SupportedBlockSizes = [new KeySize(1, 65536, 1)];
@@ -761,7 +761,7 @@
       this.subCategory = "Stream Cipher";
       this.securityStatus = null;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       this.SupportedKeySizes = [new KeySize(16, 16, 1)];
       this.SupportedBlockSizes = [new KeySize(1, 2500, 1)];

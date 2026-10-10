@@ -87,7 +87,7 @@
       this.year = 2006;
       this.category = CategoryType.STREAM;
       this.subCategory = "Rolling-Array Stream Cipher";
-      this.securityStatus = SecurityStatus.INSECURE;
+      this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.IL;
 
