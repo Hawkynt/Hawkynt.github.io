@@ -15804,6 +15804,16 @@
         // convert the compound assignment to a simple assignment with explicit cast
         if (resultType && targetType && resultType.name !== targetType.name) {
           const needsCast = this.typeNeedsCast(resultType.name, targetType.name);
+          // An element whose index has a side effect (f9.js's `this.IV[this.buflen++] ^=
+          // data[i]`) is read and written once: C# compound assignment narrows by
+          // itself once the operand has the element's type
+          let indexEffect = false;
+          if (node.left?.type === 'MemberExpression' && node.left.computed)
+            this._walkAstNodes(node.left.property, n => {
+              if (['UpdateExpression', 'AssignmentExpression', 'CallExpression', 'ThisMethodCall'].includes(n.type)) indexEffect = true;
+            });
+          if (needsCast && indexEffect && ['^', '|', '&', '+', '-', '*'].includes(binaryOp) && !targetType.isArray)
+            return new CSharpAssignment(target, node.operator, new CSharpCast(targetType, value));
           if (needsCast) {
             // Convert compound assignment to: target = (targetType)(target op value)
             const leftExpr = this.transformExpression(node.left);

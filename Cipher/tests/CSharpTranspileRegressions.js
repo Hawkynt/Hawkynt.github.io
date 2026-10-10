@@ -1109,6 +1109,12 @@ check('inheritance: a backing field a subclass sets is protected in the base and
   expectMatch(code, /protected int _rounds;/, 'protected int _rounds');
   expectNoMatch(code, /class Derived[^}]*_rounds \{ get; set; \}/, 'a redeclared _rounds in Derived');
 });
+check('compound assignment: an element with a side-effecting index is read and written once', () => {
+  const code = transpile('/**\n * @param {uint8[]} buf - buffer\n * @param {uint8[]} data - data\n * @returns {int32} r\n */\n' +
+    'function absorb(buf, data) {\n  let n = 0;\n  for (let i = 0; i < data.length; ++i) buf[n++] ^= data[i];\n  return n;\n}');
+  expectMatch(code, /buf\[n\+\+\] \^= (unchecked\()?\(byte\)\(?data\[i\]\)?\)?;/, 'buf[n++] ^= (byte)data[i]');
+  expectNoMatch(code, /buf\[n\+\+\] = /, 'buf[n++] = ...buf[n++]...');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
