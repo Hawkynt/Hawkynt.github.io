@@ -238,13 +238,11 @@
       }
 
       /**
-       * @returns {uint8[]|string} The key bytes, or "10|0" when none was set
+       * Get a copy of the key bytes last set
+       * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
        */
       get key() {
-        if (this._key) {
-          return this._key;
-        }
-        return "10|0";
+        return this._key ? this._key.slice() : null;
       }
 
       /**

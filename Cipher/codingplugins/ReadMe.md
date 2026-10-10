@@ -756,9 +756,9 @@ codingplugins/
     │   └── GoEmitter.js
     │
     ├── [Java]
-    │   ├── java.js
-    │   ├── JavaAST.js
-    │   ├── JavaTransformer.js
+    │   ├── java.js              (plugin and the Java runtime it emits)
+    │   ├── JavaAST.js           (the typed JVM IR, shared with Kotlin)
+    │   ├── JavaTransformer.js   (IL to JVM IR, shared with Kotlin)
     │   └── JavaEmitter.js
     │
     ├── [JavaScript]
@@ -768,10 +768,10 @@ codingplugins/
     │   └── JavaScriptEmitter.js
     │
     ├── [Kotlin]
-    │   ├── kotlin.js
-    │   ├── KotlinAST.js
-    │   ├── KotlinTransformer.js
-    │   └── KotlinEmitter.js
+    │   ├── kotlin.js            (plugin and the Kotlin runtime it emits)
+    │   ├── KotlinAST.js         (the JVM IR of JavaAST.js)
+    │   ├── KotlinTransformer.js (the JavaTransformer)
+    │   └── KotlinEmitter.js     (JVM IR to Kotlin, conversions spelled out)
     │
     ├── [Perl]
     │   ├── perl.js

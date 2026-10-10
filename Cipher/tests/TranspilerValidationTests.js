@@ -15,6 +15,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const Validation = require('./TranspilerValidation.js');
 const { createCases } = require('./UnitCases.js');
 
@@ -221,6 +222,42 @@ test('probeTool: given a tool that exits non-zero after printing a version, when
 test('probeTool: given a tool whose output has no version, when probed, then it is unavailable', () => {
   withFakeTools({ fakeruby4: { stdout: 'hello' } }, () => {
     contains(Validation.probeTool('fakeruby4', ['--version'], /ruby (\d+\.\d+\.\d+)/).reason, 'printed no version');
+  });
+});
+// kotlinc.bat expands %PATH% inside an if-block: the ")" of a directory like
+// "C:\Program Files (x86)\FreeBASIC" ends the block and the script exits 255.
+const PAREN_SHIM = ['@echo off', 'if not "%OS%"=="" (', '  set FAKE_SAVED_PATH=%PATH%', ')', 'echo fakekotlinc-jvm 9.8.7', 'exit /b 0'].join('\r\n') + '\r\n';
+function withParenPath(body) {
+  const tools = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-tools-'));
+  const paren = fs.mkdtempSync(path.join(os.tmpdir(), 'fake (x86) dir-'));
+  const savedPath = process.env.PATH;
+  try {
+    fs.writeFileSync(path.join(tools, 'fakekotlinc6.bat'), PAREN_SHIM);
+    process.env.PATH = [tools, paren, savedPath].join(path.delimiter);
+    body(tools, paren);
+  } finally {
+    process.env.PATH = savedPath;
+    fs.rmSync(tools, { recursive: true, force: true });
+    fs.rmSync(paren, { recursive: true, force: true });
+  }
+}
+test('shimEnvironment: given a PATH with a parenthesised directory, when rewritten, then no entry has a parenthesis and the others keep their order', () => {
+  if (process.platform !== 'win32') return 'skip';
+  withParenPath((tools, paren) => {
+    const env = Validation.shimEnvironment(process.env);
+    const entries = env[Object.keys(env).find(k => k.toUpperCase() === 'PATH')].split(';');
+    equal(entries.filter(e => /[()]/.test(e)), []);
+    equal(entries[0], tools);
+    contains(entries.join(';'), 'Windows', 'the system directories stay: ');
+  });
+});
+test('probeTool: given a .bat shim expanding PATH inside an if-block and a PATH holding "(x86)", when probed, then it runs (as kotlinc.bat must)', () => {
+  if (process.platform !== 'win32') return 'skip';
+  withParenPath(() => {
+    // the shim itself fails with the PATH as it is
+    const raw = spawnSync('fakekotlinc6.bat', [], { encoding: 'utf-8', shell: true, windowsHide: true });
+    equal(raw.status === 0 && /9\.8\.7/.test(raw.stdout), false, 'the shim fails on the raw PATH: ');
+    equal(Validation.probeTool('fakekotlinc6', ['-version'], /fakekotlinc-jvm (\d+\.\d+\.\d+)/), { available: true, version: '9.8.7' });
   });
 });
 test('probeTool: given a tool not on PATH, when probed, then it is unavailable and nothing throws', () => {
@@ -554,6 +591,84 @@ test('C# harness: given a vector field only a framework stub declares, when run,
   const r = csharpProbe()[PROBES.length];
   contains(r.error, "Vector field 'nonce' is not applied");
   contains(r.error, 'only the framework stub IAlgorithmInstance.Nonce declares one');
+});
+
+// The Java and Kotlin stand-ins run on the runtime their plugins emit: the
+// probe unit registers its algorithms from its initialiser (the harness loads
+// the units the generated code marks), and the instance has key and iv
+// accessors as get_/set_ methods, the shape the code generators give them.
+const jvmBytes = list => `U8Array.of(${list.join(', ')})`;
+const jvmVector = v => `JsObject.of("text", "${v.text}", "input", ${jvmBytes(v.input)}, "key", ${jvmBytes(v.key)}, "iv", ${jvmBytes(v.iv)}, "expected", ${jvmBytes(v.expected)})`;
+const JAVA_PROBE = () => `${require('../codingplugins/java.js').GetRuntime()}
+// @generated-unit ProbeUnit
+final class ProbeUnit {
+    static { for (String name : new String[] { ${PROBES.map(n => `"${n}"`).join(', ')} }) AlgorithmFramework.RegisterAlgorithm(new ProbeAlgorithm(name)); }
+}
+class ProbeAlgorithm extends Algorithm {
+    ProbeAlgorithm(String n) {
+        name = n;
+        for (JsObject o : new JsObject[] { ${PROBE_VECTORS.map(v => jvmVector(v)).join(', ')} }) {
+            if (n.equals("Lacking")) o.put("counter", 7);
+            tests.push(TestCase.fromObject(o));
+        }
+    }
+    @Override public IAlgorithmInstance CreateInstance(boolean inverse) { return new ProbeInstance(this); }
+}
+class ProbeInstance extends IAlgorithmInstance {
+    U8Array _key, _iv;
+    ProbeInstance(Algorithm a) { super(a); }
+    public void set_key(U8Array k) { _key = k; }
+    public U8Array get_key() { return _key; }
+    public void set_iv(U8Array v) { if (algorithm.name.equals("Throwing")) throw new JsError("iv rejected"); _iv = v; }
+    public U8Array get_iv() { return _iv; }
+    @Override public U8Array Result() {
+        U8Array out = new U8Array();
+        for (int i = 0; i < inputBuffer.length(); ++i) out.push(inputBuffer.get(i) ^ _key.get(i % _key.length()) ^ _iv.get(0));
+        if (algorithm.name.equals("Wrong") && out.length() == 2) out.set(0, out.get(0) ^ 1);
+        return out;
+    }
+}
+`;
+const KOTLIN_PROBE = () => `@file:Suppress("UNCHECKED_CAST", "NAME_SHADOWING")
+${require('../codingplugins/kotlin.js').GetRuntime()}
+// @generated-unit ProbeUnit
+object ProbeUnit {
+    init { for (name in arrayOf(${PROBES.map(n => `"${n}"`).join(', ')})) AlgorithmFramework.RegisterAlgorithm(ProbeAlgorithm(name)) }
+}
+class ProbeAlgorithm(n: String) : Algorithm() {
+    init {
+        name = n
+        for (o in arrayOf(${PROBE_VECTORS.map(v => jvmVector(v)).join(', ')})) {
+            if (n == "Lacking") o.put("counter", 7)
+            tests!!.push(TestCase.fromObject(o))
+        }
+    }
+    override fun CreateInstance(isInverse: Boolean): IAlgorithmInstance? = ProbeInstance(this)
+}
+class ProbeInstance(a: Algorithm?) : IAlgorithmInstance(a) {
+    @JvmField var _key: U8Array? = null
+    @JvmField var _iv: U8Array? = null
+    fun set_key(k: U8Array?) { _key = k }
+    fun get_key(): U8Array? = _key
+    fun set_iv(v: U8Array?) { if (algorithm!!.name == "Throwing") throw JsError("iv rejected"); _iv = v }
+    fun get_iv(): U8Array? = _iv
+    override fun Result(): U8Array? {
+        val out = U8Array()
+        for (i in 0 until inputBuffer!!.length()) out.push(inputBuffer!!.get(i) xor _key!!.get(i % _key!!.length()) xor _iv!!.get(0))
+        if (algorithm!!.name == "Wrong" && out.length() == 2) out.set(0, out.get(0) xor 1)
+        return out
+    }
+}
+`;
+
+test('Java harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('java')) return 'skip';
+  checkProbe(runProbe('java', JAVA_PROBE()));
+});
+
+test('Kotlin harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('kotlin')) return 'skip';
+  checkProbe(runProbe('kotlin', KOTLIN_PROBE()));
 });
 
 /**

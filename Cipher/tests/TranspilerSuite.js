@@ -66,6 +66,7 @@ const CATEGORIES = [
   { key: 'python', label: 'PYTHON', title: 'Python transpilation regressions', module: './PythonTranspileRegressions' },
   { key: 'tsphp', label: 'TSPHP', title: 'TypeScript and PHP transpilation regressions', module: './TsPhpTranspileRegressions' },
   { key: 'perl', label: 'PERL', title: 'Perl transpilation regressions', module: './PerlTranspileRegressions' },
+  { key: 'jvm', label: 'JVM', title: 'Java and Kotlin transpilation regressions', module: './JvmTranspileRegressions' },
   { key: 'validation', label: 'VALIDATION', title: 'Cross-language transpile, compile and run', module: './TranspilerValidation' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);

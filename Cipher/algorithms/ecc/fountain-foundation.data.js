@@ -703,7 +703,9 @@
    */
   class PerformanceProfiler {
     constructor() {
+      /** @type {Map<string, float64>} */
       this.timers = new Map();
+      /** @type {Map<string, int32>} */
       this.counters = new Map();
     }
 

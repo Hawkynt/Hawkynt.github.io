@@ -330,6 +330,7 @@
   // configured with the same seed derives the same thing, so the expansion is
   // memoised on the seed. Nothing secret is cached that the seed does not
   // already determine.
+  /** @type {Map<string, LWEKeyPair>} */
   const KEY_CACHE = new Map();
 
   /**
