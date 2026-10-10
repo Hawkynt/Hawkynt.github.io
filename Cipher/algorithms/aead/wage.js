@@ -171,7 +171,10 @@
    */
   function wagePermute(s) {
     var rcIndex = 0;
-    var round, fb0, fb1, fb2, temp;
+    /** @type {int32} */
+    var round;
+    /** @type {uint32} */
+    var fb0, fb1, fb2, temp;
 
     // Process all rounds 3 at a time to reduce state rotation overhead
     for (round = 0; round < Math.floor(NUM_ROUNDS / 3); ++round, rcIndex += 6) {
@@ -242,6 +245,7 @@
   function wage128bitToComponents(input) {
     /** @type {uint8[]} */
     var out = new Array(19);
+    /** @type {uint32} */
     var temp;
 
     temp = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
@@ -308,6 +312,7 @@
   function wageGetRate(s) {
     /** @type {uint8[]} */
     var data = new Array(8);
+    /** @type {uint32} */
     var temp;
 
     temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(s[8], 25), OpCodes.Shl32(s[9], 18)), OpCodes.Shl32(s[15], 11)), OpCodes.Shl32(s[16], 4)), OpCodes.Shr32(s[18], 3));
@@ -460,6 +465,7 @@
     var components = new Array(19);
     /** @type {uint8[]} */
     var tag = new Array(16);
+    /** @type {uint32} */
     var temp;
 
     // Extract components for tag

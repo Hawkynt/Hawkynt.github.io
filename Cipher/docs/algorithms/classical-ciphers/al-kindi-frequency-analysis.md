@@ -25,8 +25,8 @@ Educational cryptanalysis tool demonstrating frequency analysis principles. Show
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Only effective against simple substitution ciphers | — | — |
-| Requires knowledge of plaintext language frequency patterns | — | — |
+| Limited Scope | Only effective against simple substitution ciphers | — |
+| Language Knowledge | Requires knowledge of plaintext language frequency patterns | — |
 
 ## Documentation
 

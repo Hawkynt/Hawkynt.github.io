@@ -796,7 +796,38 @@
 
   // ========================[ EXPORTS ]========================
 
+  /**
+   * Classes the emitted framework runtime defines (PerlEmitter's
+   * FRAMEWORK_RUNTIME): AlgorithmFramework.js's algorithm and instance base
+   * classes. A super(...) call into one of them chains into its BUILD.
+   */
+  const FRAMEWORK_RUNTIME_CLASSES = new Set([
+    'Algorithm', 'CryptoAlgorithm', 'SymmetricCipherAlgorithm', 'AsymmetricCipherAlgorithm',
+    'AsymmetricAlgorithm', 'BlockCipherAlgorithm', 'StreamCipherAlgorithm', 'EncodingAlgorithm',
+    'CompressionAlgorithm', 'ErrorCorrectionAlgorithm', 'ChecksumAlgorithm', 'ClassicalCipherAlgorithm',
+    'EccAlgorithm', 'SpecialAlgorithm', 'HashFunctionAlgorithm', 'MacAlgorithm', 'KdfAlgorithm',
+    'PaddingAlgorithm', 'CipherModeAlgorithm', 'AeadAlgorithm', 'RandomGenerationAlgorithm',
+    'IAlgorithmInstance', 'IBlockCipherInstance', 'IHashFunctionInstance', 'IMacInstance',
+    'IKdfInstance', 'IAeadInstance', 'IErrorCorrectionInstance', 'IRandomGeneratorInstance',
+    'IStreamCipherInstance', 'ICompressionInstance', 'IEncodingInstance', 'IPaddingInstance',
+    'ICipherModeInstance', 'IAsymmetricCipherInstance', 'BlockAbsorber'
+  ]);
+
+  /**
+   * Free functions the framework runtime defines in package main.
+   */
+  const FRAMEWORK_RUNTIME_FUNCTIONS = new Set(['SpongePadBlocks', 'MerkleDamgardBlocks']);
+
+  /**
+   * Accessor properties of the framework runtime's classes, by class.
+   */
+  const FRAMEWORK_RUNTIME_ACCESSORS = Object.freeze({ IBlockCipherInstance: ['key'] });
+
   const PerlAST = {
+    FRAMEWORK_RUNTIME_CLASSES,
+    FRAMEWORK_RUNTIME_ACCESSORS,
+    FRAMEWORK_RUNTIME_FUNCTIONS,
+
     // Base
     PerlNode,
 

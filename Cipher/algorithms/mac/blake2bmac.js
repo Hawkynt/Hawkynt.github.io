@@ -479,7 +479,7 @@
     /**
      * Gets a copy of the current key.
      *
-     * @returns {Array<uint8>|null} Copy of key bytes, or null if not set
+     * @returns {uint8[]|null} Copy of key bytes, or null if not set
      */
     get key() {
       return this._key ? [...this._key] : null;

@@ -454,6 +454,7 @@
     }
 
     // NLSv2 nonlinear filter: no S-box, three modular-sum terms XORed together.
+    /** @returns {uint32} Filter output word */
     _nltap() {
       const a = OpCodes.ToUint32(this.R[0] + this.R[16]);
       const b = OpCodes.ToUint32(this.R[1] + this.R[13]);

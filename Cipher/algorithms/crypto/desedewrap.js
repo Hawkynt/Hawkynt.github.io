@@ -452,6 +452,7 @@
 
     /**
      * Load Triple-DES algorithm with fallback strategies
+     * @returns {Algorithm} The registered algorithm
      */
     _getTripleDESAlgorithm() {
       if (this._tripleDesAlgorithm) {
@@ -487,6 +488,7 @@
 
     /**
      * Load SHA-1 algorithm with fallback strategies
+     * @returns {Algorithm} The registered algorithm
      */
     _getSHA1Algorithm() {
       if (this._sha1Algorithm) {

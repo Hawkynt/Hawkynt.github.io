@@ -826,10 +826,10 @@
     }
 
     /**
-     * @returns {DHGroup} Current group
+     * @returns {string} Key of the current group, as the setter takes it
      */
     get group() {
-      return this._group;
+      return DH_GROUP_NAMES[DH_GROUP_LIST.indexOf(this._group)];
     }
 
     // RFC 3526 is normally cited by modulus size, so that spelling works too.
@@ -862,10 +862,10 @@
     }
 
     /**
-     * @returns {BigInt} Private exponent, NO_VALUE (-1n) when not set
+     * @returns {uint8[]|null} Private exponent, big-endian bytes as wide as the modulus; null when not set
      */
     get privateKey() {
-      return this._privateKey;
+      return this._privateKey === NO_VALUE ? null : this._bigIntToBytes(this._privateKey, this._modulusBytes());
     }
 
     // The framework and the UI both drive a 'key' property, which for a key
@@ -897,10 +897,10 @@
     }
 
     /**
-     * @returns {BigInt} Peer public value, NO_VALUE (-1n) when not set
+     * @returns {uint8[]|null} Peer public value, big-endian bytes as wide as the modulus; null when not set
      */
     get otherPublicKey() {
-      return this._otherPublicKey;
+      return this._otherPublicKey === NO_VALUE ? null : this._bigIntToBytes(this._otherPublicKey, this._modulusBytes());
     }
 
     /**

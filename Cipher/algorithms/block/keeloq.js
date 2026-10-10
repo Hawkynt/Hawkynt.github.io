@@ -165,6 +165,10 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint32} input - 5-bit index into the NLF table
+     * @returns {uint32} NLF output bit
+     */
     _nlf(input) {
       // 5-bit input to 1-bit output nonlinear function
       return OpCodes.And32(OpCodes.Shr32(this.NLF, input), 0x1);

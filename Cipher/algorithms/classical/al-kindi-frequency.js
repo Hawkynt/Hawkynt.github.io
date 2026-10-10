@@ -75,8 +75,8 @@
         ];
 
         this.knownVulnerabilities = [
-          "Only effective against simple substitution ciphers",
-          "Requires knowledge of plaintext language frequency patterns"
+          new Vulnerability("Limited Scope", "Only effective against simple substitution ciphers"),
+          new Vulnerability("Language Knowledge", "Requires knowledge of plaintext language frequency patterns")
         ];
 
         this.tests = [
@@ -256,6 +256,7 @@
        * @param {uint8[]|null} keyData - Language name bytes
        */
       set key(keyData) {
+        this._keyBytes = keyData ? Array.from(keyData) : null;
         this._keyData = keyData;
         /** @type {string} */
         const keyString = keyData ? String.fromCharCode(...keyData) : "english";
@@ -263,10 +264,10 @@
       }
 
       /**
-       * @returns {string} Language name
+       * @returns {uint8[]|null} The key bytes as set
        */
       get key() {
-        return this.language ? this.language : "english";
+        return this._keyBytes || null;
       }
 
       /**

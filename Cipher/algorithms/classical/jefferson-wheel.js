@@ -75,8 +75,8 @@
         ];
 
         this.knownVulnerabilities = [
-          "Vulnerable to frequency analysis attacks when sufficient ciphertext is available",
-          "With enough plaintext-ciphertext pairs, wheel alphabets can be recovered"
+          new Vulnerability("Frequency Analysis", "Vulnerable to frequency analysis attacks when sufficient ciphertext is available"),
+          new Vulnerability("Known Plaintext", "With enough plaintext-ciphertext pairs, wheel alphabets can be recovered")
         ];
 
         // Key format is "wheelCount|offset": how many of the wheels are on the

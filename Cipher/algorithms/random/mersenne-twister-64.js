@@ -241,7 +241,7 @@
 
       // MT19937-64 state (using BigInt for 64-bit operations)
       /** @type {BigInt[]} */
-      this._state = OpCodes.CreateArray(NN, 0n);  // State array of 64-bit integers
+      this._state = new Array(NN).fill(0n);  // State array of 64-bit integers
       /** @type {int32} */
       this._index = NN + 1;         // Index into state array (NN+1 means uninitialized)
       /** @type {BigInt[]} */

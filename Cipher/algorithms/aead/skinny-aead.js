@@ -72,6 +72,7 @@
    */
   function skinny128_sbox(x) {
     x = OpCodes.ToUint32(x);
+    /** @type {uint32} */
     let y;
     x = OpCodes.Not32(x);
     x = OpCodes.Xor32(x, OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x11111111));
