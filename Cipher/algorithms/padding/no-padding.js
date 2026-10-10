@@ -60,8 +60,8 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "No Padding";
       this.securityStatus = null; // No security implications
-      this.complexity = ComplexityType.TRIVIAL;
-      this.country = CountryCode.INTERNATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       this.documentation = [
         new LinkItem("Block Cipher Modes", "https://csrc.nist.gov/publications/detail/sp/800-38a/final"),

@@ -364,7 +364,7 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Password-Based Padding";
       this.securityStatus = SecurityStatus.SECURE; // Standard padding for 8-byte blocks
-      this.complexity = ComplexityType.SIMPLE;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       this.documentation = [
@@ -497,7 +497,7 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Block Padding";
       this.securityStatus = SecurityStatus.SECURE; // Standard and widely adopted
-      this.complexity = ComplexityType.SIMPLE;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       this.documentation = [

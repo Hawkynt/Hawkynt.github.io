@@ -60,8 +60,8 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Smart Card Padding";
       this.securityStatus = SecurityStatus.SECURE; // Unambiguous padding
-      this.complexity = ComplexityType.SIMPLE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       this.documentation = [
         new LinkItem("ISO/IEC 7816-4 Standard", "https://www.iso.org/standard/77180.html"),

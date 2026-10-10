@@ -60,8 +60,8 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Random Padding";
       this.securityStatus = SecurityStatus.EDUCATIONAL; // Not recommended for production
-      this.complexity = ComplexityType.SIMPLE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       this.documentation = [
         new LinkItem("Early Encryption Systems", "https://en.wikipedia.org/wiki/History_of_cryptography"),
