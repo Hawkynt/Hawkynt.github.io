@@ -2154,6 +2154,8 @@
           const res = new Val(R.MethodCall(this.coerce(a(1), 'bigint'), key === 'asUintN' ? 'as_uint_n' : 'as_int_n', [this.coerce(a(0), 'idx')]), 'bigint');
           return rt && !isBigType(rt) && rt !== 'any' ? new Val(this.coerce(res, rt), rt) : res;
         }
+        case 'performance.now': return new Val(R.Call(R.Ident('js_performance_now'), []), 'float64');
+        case 'Date.now': return new Val(R.Call(R.Ident('js_date_now'), []), 'float64');
         case 'console.log': case 'console.warn': case 'console.error': case 'console.info': case 'console.debug':
           return new Val(R.Call(R.Ident('js_log'), [R.Macro('vec', args.map((x, i) => this.coerce(a(i), 'any')))]), 'void');
       }
@@ -3895,6 +3897,16 @@ pub fn js_length(v: &JsAny) -> i32 {
     if let Some(items) = v.list() { return items.len() as i32; }
     if v.type_of() == "string" { return v.text().chars().count() as i32; }
     i32::from_js(&v.obj().get("length"))
+}
+
+thread_local! { static JS_START_TIME: std::time::Instant = std::time::Instant::now(); }
+
+/// performance.now(): milliseconds since the program started
+pub fn js_performance_now() -> f64 { JS_START_TIME.with(|t| t.elapsed().as_secs_f64() * 1000.0) }
+
+/// Date.now(): whole milliseconds since the Unix epoch
+pub fn js_date_now() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
 }
 
 pub fn js_log(args: Vec<JsAny>) {

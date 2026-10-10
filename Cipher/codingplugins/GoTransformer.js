@@ -82,9 +82,9 @@
     'float64', 'int', 'int8', 'int16', 'int32', 'int64', 'rune', 'string', 'uint', 'uint8', 'uint16', 'uint32', 'uint64', 'uintptr',
     'any', 'true', 'false', 'iota', 'nil', 'this', 'init', 'main',
     // the packages the generated code imports
-    'math', 'big', 'fmt', 'strings', 'strconv', 'sort', 'reflect', 'regexp', 'os', 'bits', 'json', 'errors']);
+    'math', 'big', 'fmt', 'strings', 'strconv', 'sort', 'reflect', 'regexp', 'os', 'bits', 'json', 'errors', 'time']);
 
-  const IMPORTS = ['fmt', 'math', 'math/big', 'math/bits', 'os', 'reflect', 'regexp', 'sort', 'strconv', 'strings'];
+  const IMPORTS = ['fmt', 'math', 'math/big', 'math/bits', 'os', 'reflect', 'regexp', 'sort', 'strconv', 'strings', 'time'];
 
   /** Bit width / signedness to the runtime's conversion helper suffix. */
   const NUM_SUFFIX = { uint8: 'U8', uint16: 'U16', uint32: 'U32', uint64: 'U64', int8: 'I8', int16: 'I16', int32: 'I32', int64: 'I64', float64: 'F64' };
@@ -2273,6 +2273,8 @@
         case 'BigInt.asUintN': return this.bigAsN(a(0), a(1), false, rt);
         case 'BigInt.asIntN': return this.bigAsN(a(0), a(1), true, rt);
         case 'JSON.stringify': return new Val(G.Call(G.Ident('jsJSON'), [this.coerce(a(0), 'any')]), 'string');
+        case 'performance.now': return new Val(G.Call(G.Ident('jsPerformanceNow'), []), 'float64');
+        case 'Date.now': return new Val(G.Call(G.Ident('jsDateNow'), []), 'float64');
         case 'console.log': case 'console.warn': case 'console.error': case 'console.info': case 'console.debug':
           return new Val(G.Call(G.Ident('jsLog'), args.map((x, i) => this.coerce(a(i), 'any'))), 'void');
       }
@@ -4351,6 +4353,14 @@ func jsLength(v any) int32 {
 	}
 	return 0
 }
+
+var jsStartTime = time.Now()
+
+// jsPerformanceNow is performance.now(): milliseconds since the program started
+func jsPerformanceNow() float64 { return float64(time.Since(jsStartTime).Nanoseconds()) / 1e6 }
+
+// jsDateNow is Date.now(): whole milliseconds since the Unix epoch
+func jsDateNow() float64 { return float64(time.Now().UnixMilli()) }
 
 func jsLog(args ...any) {
 	parts := make([]string, len(args))

@@ -184,6 +184,14 @@ const CASES = [
     rust: 'println!("{}", PFXf());',
     // Then the original and the copy are distinct objects
     expect: { go: '34', rust: '34' }
+  },
+  {
+    name: 'globals: performance.now and Date.now are non-negative milliseconds',
+    // Given a function reading both clocks
+    js: '/** @returns {string} */\nfunction f() { const t = performance.now(); const d = Date.now(); return (t >= 0 && d > 1e12) ? "ok" : "bad"; }',
+    go: 'fmt.Println(PFXf())',
+    rust: 'println!("{}", PFXf());',
+    expect: { go: 'ok', rust: 'ok' }
   }
 ];
 
