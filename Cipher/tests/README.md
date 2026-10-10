@@ -62,9 +62,11 @@ OpCodes argument and result), **2.** the AlgorithmFramework interfaces (`Feed`,
 (`@type` on constants, tables and `this.field` assignments, `@param`/`@returns` on
 helpers and methods); a sibling data module the file requires (`./x.data.js`) is typed
 by its own JSDoc the same way, so its classes, functions and `@type` tables keep their
-types where the file destructures them. Anything else is a guess: a table typed by its literal
-magnitudes, `data || []`, raw `a + b` on fixed-width values, `OpCodes.XorN` (BigInt)
-applied to numbers, an unannotated parameter.
+types where the file destructures them; TYPES and SOUNDNESS therefore check the data
+modules as well (SOUNDNESS the values their own loading computes). Anything else is a
+guess: a table typed by its literal magnitudes, `data || []`, raw `a + b` on fixed-width
+values, `OpCodes.XorN` (BigInt) applied to numbers, an unannotated parameter, a variable
+typed only by its integer literal (`let tau = 0`) that is later given a fraction.
 
 `TypeCoverage.js` parses a file into the same typed IL AST the language emitters use
 and counts those sites (value positions only; declaration names, keys, callees,

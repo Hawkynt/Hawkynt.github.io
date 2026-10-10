@@ -30,6 +30,8 @@
  *     another (`int32[]` or a `Uint32Array` where `uint8[]` is declared): a
  *     typed language converts a scalar, never an array;
  *   - a boolean used as a number (`n += OpCodes.GetBit(x, i)`, `1 - flag`);
+ *   - a variable typed only by its integer literal (`let tau = 0`, no JSDoc)
+ *     that a later assignment gives a float64 (`tau += R / k`);
  *   - an accessor whose setter takes another type than its getter returns (a
  *     property no typed language declares with one type);
  *   - a read of a framework enum member that does not exist (`CountryCode.XY`
@@ -325,10 +327,14 @@ function analyzeSource(code, filePath) {
       line: (node.loc && node.loc.line) || where.line,
       range: node.range || where.range,
       className: where.className,
-      inCondition: where.inCondition
+      inCondition: where.inCondition,
+      scope: where.scope
     };
     if ((node.type === 'ClassDeclaration' || node.type === 'ClassExpression') && node.id && node.id.name)
       here.className = node.id.name;
+    // Each function has its own variables (for the literal-initialised check below).
+    if (FUNCTION_DECLARATIONS.has(node.type) || node.type === 'MethodDefinition')
+      here.scope = { parent: where.scope, vars: new Map() };
 
     // CountryCode.XY that the framework enum does not declare reads undefined,
     // wherever it is read (a condition included).
@@ -398,7 +404,27 @@ function analyzeSource(code, filePath) {
         record(o, { ...where, line: (o.loc && o.loc.line) || where.line, range: o.range || where.range },
           'a boolean used as a number; convert it with `? 1 : 0`', 'local');
   };
+  // `let tau = 0` declares no type: the IL types it by its integer literal.
+  // A later fraction stored into it (`tau += R / k`) does not fit that type,
+  // and no typed target stores a double in an integer silently.
+  const literalTyped = (node, where) => {
+    if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' && where.scope) {
+      const init = node.init;
+      const integerLiteral = init && init.type === 'Literal' && typeof init.value === 'number' && Number.isInteger(init.value);
+      where.scope.vars.set(node.id.name, { literalTyped: integerLiteral && !node.declaredType, node: node.id, reported: false });
+      return;
+    }
+    if (node.type !== 'AssignmentExpression' || !node.left || node.left.type !== 'Identifier' || !node.right) return;
+    let entry = null;
+    for (let s = where.scope; s && !entry; s = s.parent) entry = s.vars.get(node.left.name) || null;
+    if (!entry || !entry.literalTyped || entry.reported) return;
+    if (!/^float(32|64)$/.test(typeName(node.right.resultType))) return;
+    entry.reported = true;
+    record(entry.node, { ...where, line: (entry.node.loc && entry.node.loc.line) || where.line, range: entry.node.range || where.range },
+      `variable '${node.left.name}' is typed by its integer literal but line ${(node.loc && node.loc.line) || where.line} stores a ${typeName(node.right.resultType)} into it; declare its type`, 'local');
+  };
   const storage = (node, where) => {
+    literalTyped(node, where);
     booleanArithmetic(node, where);
     // set p(v: S) beside get p(): G with S != G - a property of no one type
     if (node.type === 'MethodDefinition' && node.kind === 'set' && where.className && node.key && parser.accessorTypeConflict) {
@@ -440,7 +466,7 @@ function analyzeSource(code, filePath) {
     }
   };
 
-  walk(ast, false, { line: 0, range: null, className: null, inCondition: false });
+  walk(ast, false, { line: 0, range: null, className: null, inCondition: false, scope: { parent: null, vars: new Map() } });
   sites.sort((a, b) => a.line - b.line);
   // The parse is handed on (TypeSoundness.js checks the same IL AST).
   return { sites, parseError: null, parsed: { parser, ast } };

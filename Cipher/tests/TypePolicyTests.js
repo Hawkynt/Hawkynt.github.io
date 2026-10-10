@@ -647,6 +647,24 @@ test('framework: given AlgorithmFramework.js, when the transpiler parses it, the
   ok(il(src), 'parsed');
 });
 
+// ------------------------------------------------------------ literal-typed variables
+test('literal: given `let tau = 0` that later accumulates fractions, when counted, then the variable is a site', () => {
+  ok(reasons('/** @param {int32} k\n * @returns {float64} */\nfunction f(k) { let tau = 0; for (let i = 1; i <= k; i++) tau += 1 / i; return tau; }')
+    .some(x => /variable 'tau' is typed by its integer literal but line \d+ stores a float64/.test(x)), 'reported');
+});
+test('literal: given the same accumulator declared float64, when counted, then nothing is reported', () => {
+  ok(!reasons('/** @param {int32} k\n * @returns {float64} */\nfunction f(k) { /** @type {float64} */ let tau = 0; for (let i = 1; i <= k; i++) tau += 1 / i; return tau; }')
+    .some(x => /typed by its integer literal/.test(x)), 'not reported');
+});
+test('literal: given `let n = 0` that only ever holds integers, when counted, then nothing is reported (boundary)', () => {
+  ok(!reasons('/** @param {int32[]} a\n * @returns {int32} */\nfunction f(a) { let n = 0; for (let i = 0; i < a.length; i++) n += a[i]; return n; }')
+    .some(x => /typed by its integer literal/.test(x)), 'not reported');
+});
+test('literal: given a same-named variable in another function, when counted, then each function has its own (scopes)', () => {
+  ok(!reasons('/** @returns {float64} */\nfunction g() { /** @type {float64} */ let t = 0; t += 0.5; return t; }\n/** @returns {int32} */\nfunction f() { let t = 0; t += 1; return t; }')
+    .some(x => /typed by its integer literal/.test(x)), 'not reported');
+});
+
 // ------------------------------------------------------------ enum members
 test('enum: given the framework, when loaded, then each enum knows its members', () => {
   const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;

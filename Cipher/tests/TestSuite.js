@@ -323,17 +323,61 @@ class TestSuite {
   // Test all algorithms in a category
   async testCategory(category) {
     const filter = this.options.algorithmFilter;
-    const files = fs.readdirSync(path.join(ALGORITHMS_DIR, category)).filter(file =>
+    const entries = fs.readdirSync(path.join(ALGORITHMS_DIR, category));
+    const files = entries.filter(file =>
       file.endsWith('.js') && !file.endsWith('.data.js') &&
       (!filter || path.basename(file, '.js') === filter)
     );
-    if (files.length === 0) return;
+    // Sibling data modules are a typing tier of the files that require them.
+    const dataFiles = this.selected.has('types') || this.selected.has('soundness')
+      ? entries.filter(file => file.endsWith('.data.js') && (!filter || path.basename(file, '.data.js') === filter)) : [];
+    if (files.length === 0 && dataFiles.length === 0) return;
 
     console.log(`Testing ${category} algorithms (${files.length} files):`);
     this.algorithmsPerCategory[category] = 0;
     for (const file of files)
       await this.testFile(category, file);
+    for (const file of dataFiles)
+      await this.testDataFile(category, file);
     console.log('');
+  }
+
+  /**
+   * TYPES and SOUNDNESS of a sibling data module (`x.data.js`). The algorithm
+   * files that require it are typed by its JSDoc, so it is held to the same
+   * checks and budgets; it registers no algorithm, so SOUNDNESS checks the
+   * values its own loading computes (its tables) and its static findings.
+   * @param {string} category - category directory
+   * @param {string} filename - data module in it
+   */
+  async testDataFile(category, filename) {
+    const filePath = path.join(ALGORITHMS_DIR, category, filename);
+    const source = this.readSource(filePath);
+    const result = {};
+    let parsed = null;
+    if (this.selected.has('types')) {
+      result.types = this.testTypes(filePath, source);
+      parsed = result.types.parsed;
+      delete result.types.parsed;
+    }
+    if (this.selected.has('soundness')) result.soundness = await this.testSoundness(filePath, source, parsed);
+    this.updateResults(result);
+
+    const parts = [];
+    if (result.types) parts.push(`Types:${result.types.summary}`);
+    if (result.soundness) parts.push(`Soundness:${result.soundness.summary}`);
+    const status = [result.types, result.soundness].every(r => !r || r.passed) ? '✓' : '✗';
+    console.log(`    ${status} ${filename} - ${parts.join(' ')} [data module]`);
+    if (this.verbose && result.types && result.types.sites.length > 0) {
+      console.log(`    Untyped value sites in ${result.types.file}:`);
+      for (const site of result.types.sites)
+        console.log(`      ${result.types.file}:${site.line} [${site.tier}] ${site.expression} - ${site.reason}`);
+    }
+    if (this.verbose && result.soundness && result.soundness.mismatches.length > 0) {
+      console.log(`    Type mismatches in ${result.soundness.file}:`);
+      for (const m of result.soundness.mismatches)
+        console.log(`      ${result.soundness.file}:${m.line} [${m.origin}] ${m.expression} - ${m.role} typed ${m.type}, ${m.kind}: ${m.observed.join(', ')}`);
+    }
   }
 
   /**

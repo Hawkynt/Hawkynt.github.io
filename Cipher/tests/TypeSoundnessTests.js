@@ -264,6 +264,18 @@ test('checker: given a framework enum, when undefined flows, then it is an undef
   global.AlgorithmFramework = global.AlgorithmFramework || require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
   equal([TypeSoundness.checkerFor('SecurityStatus')(undefined), TypeSoundness.checkerFor('SecurityStatus')(null)], ['undefined-enum-member', null]);
 });
+test('checkFile: given a data module (registers nothing) whose loading builds a uint8[] holding 300, when checked, then the table site is reported', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
+  try {
+    const file = path.join(dir, 'probe.data.js');
+    fs.writeFileSync(file, '(function () {\n  \'use strict\';\n  /** @type {uint8[]} */\n  const T = new Array(2).fill(0);\n  for (let i = 0; i < 2; i++) T[i] = 200 + 100 * i;\n  module.exports = { T };\n})();\n');
+    const r = await TypeSoundness.checkFile(file);
+    equal(r.error, null, 'error ');
+    if (!r.mismatches.some(m => m.line === 5 && m.kind === 'above-range')) throw new Error(JSON.stringify(r.mismatches));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 test('collectSites: given a generic helper (@template T), when collected, then T and T[] sites are not checked', () => {
   const parsed = TypeSoundness.parseSource('/**\n * @template T\n * @param {T[]} target\n * @param {T[]} source\n * @returns {T[]} target\n */\nfunction appendAll(target, source) { for (let i = 0; i < source.length; i++) target.push(source[i]); return target; }');
   const types = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks.map(c => c.type));
