@@ -219,9 +219,9 @@
     _int23ToBytes(value) {
       /** @type {uint8[]} */
       const bytes = [
-        OpCodes.And32(OpCodes.Shr32(value, 16), 0x7F),
-        OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF),
-        OpCodes.And32(value, 0xFF)
+        OpCodes.And8(OpCodes.Shr32(value, 16), 0x7F),
+        OpCodes.GetByte(value, 1),
+        OpCodes.ToByte(value)
       ];
       return bytes;
     }
@@ -248,8 +248,8 @@
     _int12ToBytes(value) {
       /** @type {uint8[]} */
       const bytes = [
-        OpCodes.And32(OpCodes.Shr32(value, 8), 0x0F),
-        OpCodes.And32(value, 0xFF)
+        OpCodes.And8(OpCodes.Shr32(value, 8), 0x0F),
+        OpCodes.ToByte(value)
       ];
       return bytes;
     }

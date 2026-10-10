@@ -224,7 +224,7 @@
 
       for (let m = 0; m < 4; ++m) {
         /** @type {uint8[]} */
-        const message = [OpCodes.And32(OpCodes.Shr32(m, 1), 1), OpCodes.And32(m, 1)];
+        const message = [OpCodes.And8(OpCodes.Shr32(m, 1), 1), OpCodes.And8(m, 1)];
         const testCodeword = this.encode(message);
 
         // Calculate Hamming distance
