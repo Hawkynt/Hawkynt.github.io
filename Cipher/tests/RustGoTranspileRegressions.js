@@ -173,6 +173,17 @@ const CASES = [
     rust: 'println!("{}", PFXf());',
     // Then the call throws before the rest of the method runs
     expect: { go: '(intermediate value).clear is not a function 0', rust: '(intermediate value).clear is not a function 0' }
+  },
+  {
+    name: 'classes: a method named clone keeps its own meaning next to the handle copies the target makes',
+    // Given a class with a clone() method copying its field
+    js: 'class K { constructor() { /** @type {int32} */ this.v = 3; }\n' +
+      '  /** @returns {K} */ clone() { const k = new K(); k.v = this.v + 1; return k; } }\n' +
+      '/** @returns {int32} */\nfunction f() { const a = new K(); const b = a.clone(); return a.v * 10 + b.v; }',
+    go: 'fmt.Println(PFXf())',
+    rust: 'println!("{}", PFXf());',
+    // Then the original and the copy are distinct objects
+    expect: { go: '34', rust: '34' }
   }
 ];
 
