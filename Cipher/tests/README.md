@@ -136,7 +136,9 @@ Java and Kotlin have vector harnesses; the other languages are
 only compiled. A toolchain counts as installed when it is on `PATH` (Windows
 `.cmd` shims included), exits 0 and prints its version on stdout or stderr; a
 broken one (a `java` that cannot create its virtual machine) is reported and
-left out rather than failing the run.
+left out rather than failing the run. A `.cmd`/`.bat` shim runs with the
+parenthesised `PATH` entries (`C:\Program Files (x86)\...`) replaced by their
+short names or left out: `kotlinc.bat` cannot start with them.
 
 The limit of one compile or run is `--timeout` (default 120 s), raised to 100
 times the time the file's JavaScript reference took (at most 30 minutes). A run

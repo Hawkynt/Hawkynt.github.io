@@ -106,6 +106,47 @@ function shellQuote(arg) {
   return /^[\w.:\\/=+-]+$/.test(text) ? text : `"${text.replace(/"/g, '""')}"`;
 }
 
+const shortPaths = new Map();
+/** The 8.3 short name of a directory (cmd's %~s), or null when the volume keeps none. */
+function shortPath(dir) {
+  if (!shortPaths.has(dir)) {
+    let short = null;
+    if (fs.existsSync(dir)) {
+      const r = spawnSync('cmd.exe', ['/d', '/c', `for %I in ("${dir}") do @echo %~sI`], { encoding: 'utf-8', windowsHide: true, windowsVerbatimArguments: true, timeout: 10000 });
+      const out = r.status === 0 ? r.stdout.trim() : '';
+      if (out && !/[()]/.test(out)) short = out;
+    }
+    shortPaths.set(dir, short);
+  }
+  return shortPaths.get(dir);
+}
+
+/**
+ * The environment a .cmd/.bat shim runs in: its PATH without parentheses.
+ * kotlinc.bat expands %PATH% inside a parenthesised if-block, where the ")" of
+ * "C:\Program Files (x86)\..." ends the block and the script dies with exit
+ * 255. Each such entry becomes its 8.3 short name, or is left out when the
+ * volume keeps none; JAVA_HOME's bin directory stays reachable either way.
+ * @param {object} env - the environment to start from
+ * @returns {object} a copy with the PATH rewritten
+ */
+function shimEnvironment(env) {
+  const out = Object.assign({}, env);
+  const key = Object.keys(out).find(k => k.toUpperCase() === 'PATH');
+  if (!key || !/[()]/.test(out[key])) return out;
+  const entries = [];
+  for (const entry of out[key].split(';')) {
+    if (!entry) continue;
+    if (!/[()]/.test(entry)) { entries.push(entry); continue; }
+    const short = shortPath(entry);
+    if (short) entries.push(short);
+  }
+  const javaHome = out.JAVA_HOME && path.join(out.JAVA_HOME, 'bin');
+  if (javaHome && !/[()]/.test(javaHome) && !entries.includes(javaHome)) entries.push(javaHome);
+  out[key] = entries.join(';');
+  return out;
+}
+
 /**
  * spawnSync for a named tool: resolves it on PATH (shims included). A tool
  * that is not installed yields status null and an error, never a throw.
@@ -117,7 +158,7 @@ function spawnTool(name, argv, options = {}) {
   const opts = Object.assign({ encoding: 'utf-8', windowsHide: true }, options);
   if (!tool.shell) return spawnSync(tool.command, argv, opts);
   const line = [tool.command, ...argv].map(shellQuote).join(' ');
-  return spawnSync(line, [], Object.assign(opts, { shell: true, windowsVerbatimArguments: true }));
+  return spawnSync(line, [], Object.assign(opts, { shell: true, windowsVerbatimArguments: true, env: shimEnvironment(opts.env || process.env) }));
 }
 
 // Output that means a tool is present but cannot run
@@ -2130,5 +2171,5 @@ if (require.main === module) {
 module.exports = {
   run, validateFile, vectorPlan, harnessSpec, generateTestHarness, parseHarnessOutput,
   errorClass, summarize, firstError, transpileAlgorithm, frameworkSurface, testCompilation, executeCode,
-  detectCompilers, probeTool, LANGUAGE_COMPILERS
+  detectCompilers, probeTool, shimEnvironment, LANGUAGE_COMPILERS
 };

@@ -15,6 +15,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const Validation = require('./TranspilerValidation.js');
 const { createCases } = require('./UnitCases.js');
 
@@ -221,6 +222,42 @@ test('probeTool: given a tool that exits non-zero after printing a version, when
 test('probeTool: given a tool whose output has no version, when probed, then it is unavailable', () => {
   withFakeTools({ fakeruby4: { stdout: 'hello' } }, () => {
     contains(Validation.probeTool('fakeruby4', ['--version'], /ruby (\d+\.\d+\.\d+)/).reason, 'printed no version');
+  });
+});
+// kotlinc.bat expands %PATH% inside an if-block: the ")" of a directory like
+// "C:\Program Files (x86)\FreeBASIC" ends the block and the script exits 255.
+const PAREN_SHIM = ['@echo off', 'if not "%OS%"=="" (', '  set FAKE_SAVED_PATH=%PATH%', ')', 'echo fakekotlinc-jvm 9.8.7', 'exit /b 0'].join('\r\n') + '\r\n';
+function withParenPath(body) {
+  const tools = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-tools-'));
+  const paren = fs.mkdtempSync(path.join(os.tmpdir(), 'fake (x86) dir-'));
+  const savedPath = process.env.PATH;
+  try {
+    fs.writeFileSync(path.join(tools, 'fakekotlinc6.bat'), PAREN_SHIM);
+    process.env.PATH = [tools, paren, savedPath].join(path.delimiter);
+    body(tools, paren);
+  } finally {
+    process.env.PATH = savedPath;
+    fs.rmSync(tools, { recursive: true, force: true });
+    fs.rmSync(paren, { recursive: true, force: true });
+  }
+}
+test('shimEnvironment: given a PATH with a parenthesised directory, when rewritten, then no entry has a parenthesis and the others keep their order', () => {
+  if (process.platform !== 'win32') return 'skip';
+  withParenPath((tools, paren) => {
+    const env = Validation.shimEnvironment(process.env);
+    const entries = env[Object.keys(env).find(k => k.toUpperCase() === 'PATH')].split(';');
+    equal(entries.filter(e => /[()]/.test(e)), []);
+    equal(entries[0], tools);
+    contains(entries.join(';'), 'Windows', 'the system directories stay: ');
+  });
+});
+test('probeTool: given a .bat shim expanding PATH inside an if-block and a PATH holding "(x86)", when probed, then it runs (as kotlinc.bat must)', () => {
+  if (process.platform !== 'win32') return 'skip';
+  withParenPath(() => {
+    // the shim itself fails with the PATH as it is
+    const raw = spawnSync('fakekotlinc6.bat', [], { encoding: 'utf-8', shell: true, windowsHide: true });
+    equal(raw.status === 0 && /9\.8\.7/.test(raw.stdout), false, 'the shim fails on the raw PATH: ');
+    equal(Validation.probeTool('fakekotlinc6', ['-version'], /fakekotlinc-jvm (\d+\.\d+\.\d+)/), { available: true, version: '9.8.7' });
   });
 });
 test('probeTool: given a tool not on PATH, when probed, then it is unavailable and nothing throws', () => {

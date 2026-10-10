@@ -72,9 +72,11 @@ function javascriptProbe(js) {
 // ---------------------------------------------------------------------------
 const runCases = [];
 const batches = new Map();
+// The compilers start with the validation's shim environment (kotlinc.bat cannot run with "(x86)" on PATH)
+const SHIM_ENV = require('./TranspilerValidation.js').shimEnvironment(process.env);
 
 function hasTool(tool, args) {
-  const probe = spawnSync(tool, args, { encoding: 'utf-8', shell: process.platform === 'win32' });
+  const probe = spawnSync(tool, args, { encoding: 'utf-8', shell: process.platform === 'win32', env: SHIM_ENV });
   return probe.status === 0;
 }
 
@@ -105,7 +107,7 @@ const LANGUAGES = {
       const src = path.join(dir, 'Main.java');
       fs.writeFileSync(src, source);
       const classes = path.join(dir, 'classes');
-      const c = spawnSync('javac', ['-J-Duser.language=en', '-encoding', 'UTF-8', '-nowarn', '-d', classes, src], { encoding: 'utf-8', shell: process.platform === 'win32' });
+      const c = spawnSync('javac', ['-J-Duser.language=en', '-encoding', 'UTF-8', '-nowarn', '-d', classes, src], { encoding: 'utf-8', shell: process.platform === 'win32', env: SHIM_ENV });
       if (c.status !== 0) return { error: 'javac failed:\n' + compileErrors(c, 'Main.java') };
       return { run: ['-Xss64m', '-cp', classes, 'RegressionMain'] };
     }
@@ -120,7 +122,7 @@ const LANGUAGES = {
       const src = path.join(dir, 'Main.kt');
       fs.writeFileSync(src, '@file:Suppress("UNCHECKED_CAST", "NAME_SHADOWING")\n' + source);
       const jar = path.join(dir, 'main.jar');
-      const c = spawnSync('kotlinc', [src, '-nowarn', '-include-runtime', '-d', jar], { encoding: 'utf-8', shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024 });
+      const c = spawnSync('kotlinc', [src, '-nowarn', '-include-runtime', '-d', jar], { encoding: 'utf-8', shell: process.platform === 'win32', env: SHIM_ENV, maxBuffer: 64 * 1024 * 1024 });
       if (c.status !== 0) return { error: 'kotlinc failed:\n' + compileErrors(c, 'Main.kt') };
       return { run: ['-Xss64m', '-cp', jar, 'RegressionMain'] };
     }
@@ -148,7 +150,7 @@ function runBatch(lang) {
     const calls = runCases.map((c, i) => [i, L.call(c, `Case${i}`)]).filter(([i]) => !errors.has(i));
     const built = L.build(dir, [L.plugin().GetRuntime(), ...units, L.main(calls)].join('\n'));
     if (built.error) return done({ skipped: false, outputs: new Map(), error: built.error });
-    const r = spawnSync('java', built.run, { encoding: 'utf-8', timeout: 120000, shell: process.platform === 'win32' });
+    const r = spawnSync('java', built.run, { encoding: 'utf-8', timeout: 120000, shell: process.platform === 'win32', env: SHIM_ENV });
     return done({ skipped: false, outputs: probeOutputs(r.stdout, errors), error: null });
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* temp dir cleanup is best effort */ }
