@@ -2999,6 +2999,10 @@
       if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
         ilNode.resultType = type;
         delete ilNode.typeGuess;
+      } else if (ilNode.type === 'Literal' && typeof ilNode.value === 'bigint' && /^(bigint|BigInt)$/.test(type)) {
+        // `let t = 1n` where a BigInt is declared: a BigInt of any width and
+        // sign, not the uint64 its magnitude alone suggests.
+        ilNode.resultType = 'bigint';
       } else if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]')) {
         const elementType = type.slice(0, -2);
         const numericElements = isNumericType(elementType);
@@ -3011,7 +3015,10 @@
         // A fresh array is built element by element, so an element of a type
         // that converts without loss (uint8 into int32, uint64 into BigInt)
         // is stored as the element type, as every typed target does implicitly.
-        const fits = e => !e || e.ilNodeType === 'ArrayLiteral' ||
+        // a nested literal, frozen or not, takes the element type in turn
+        const nested = e => e && (e.ilNodeType === 'ArrayLiteral' ||
+          (e.type === 'ObjectFreeze' && e.object && e.object.ilNodeType === 'ArrayLiteral'));
+        const fits = e => !e || nested(e) ||
           (e.type === 'Literal' && (typeof e.value !== 'bigint' || /^(u?int64|bigint|BigInt)$/.test(elementType))) ||
           (numericElements && numberChoice(e)) || TypeAwareJSASTParser._widensTo(e.resultType, elementType) ||
           // `...a` copies a's elements one by one
@@ -3020,7 +3027,7 @@
         if (!(ilNode.elements || []).every(fits)) return;
         for (const element of ilNode.elements || []) {
           if (!element) continue;
-          if (element.ilNodeType === 'ArrayLiteral') this._applyContextualType(element, elementType);
+          if (nested(element)) this._applyContextualType(element, elementType);
           else if (element.type === 'ConditionalExpression') { if (numericElements) this._applyContextualType(element, elementType); }
           else if (element.type === 'SpreadElement') continue;
           else if (element.type !== 'Literal') element.contextType = elementType;
@@ -3046,6 +3053,10 @@
         ilNode.resultType = type;
         if (fill && fill.type === 'ConditionalExpression') this._applyContextualType(fill, elementType);
         else if (fill) { fill.resultType = elementType; fill.contextType = elementType; }
+      } else if (ilNode.type === 'ArrayCreation' && type.endsWith('[]') && !ilNode.resultType) {
+        // `new Array(n)` (holes, filled later) is the array its target declares.
+        ilNode.elementType = type.slice(0, -2);
+        ilNode.resultType = type;
       } else if (ilNode.type === 'ArrayFill' && type.endsWith('[]') && ilNode.array &&
                  ilNode.array.type === 'ArrayCreation' && !ilNode.array.resultType) {
         // `new Array(n).fill(v)` is a fresh array: its element type was only a

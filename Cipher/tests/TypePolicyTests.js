@@ -627,6 +627,26 @@ test('widening: given integer types, when compared, then only lossless conversio
     .map(([a, b]) => TypeAwareJSASTParser._widensTo(a, b)), [true, true, false, false, true, true, false, true]);
 });
 
+// ------------------------------------------------------------ IL: declared types of fresh values
+test('fresh: given new Array(n) where uint32[][] is declared, when typed, then the creation is that array', () => {
+  const init = declOf(il('/** @param {int32} n */\nfunction f(n) { /** @type {uint32[][]} */ const t = new Array(n); }'), 't').init;
+  same([init.type, init.resultType], ['ArrayCreation', 'uint32[][]']);
+});
+test('fresh: given `let t = 0n, u = 1n` declared BigInt, when typed, then both literals are BigInts (not uint64)', () => {
+  const decl = find(il('function f() { /** @type {BigInt} */\n let t = 0n, u = 1n; return t - u; }'), n => n.type === 'VariableDeclaration');
+  same(decl.declarations.map(d => d.init.resultType), ['bigint', 'bigint']);
+});
+test('fresh: given a BigInt literal where uint64 is declared, when typed, then it stays uint64 (boundary)', () => {
+  same(declOf(il('/** @type {uint64} */\nconst m = 0xFFn;'), 'm').init.resultType, 'uint64');
+});
+test('fresh: given frozen nested literal tables where uint32[][][] is declared, when counted, then nothing is guessed', () => {
+  same(sites('/** @type {uint32[][][]} */\nconst T = Object.freeze([Object.freeze([[0x060d838f, 0x16f3a365], [1, 2]])]);').length, 0);
+});
+test('framework: given AlgorithmFramework.js, when the transpiler parses it, then it parses (no statement relies on ASI)', () => {
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'AlgorithmFramework.js'), 'utf8');
+  ok(il(src), 'parsed');
+});
+
 // ------------------------------------------------------------ enum members
 test('enum: given the framework, when loaded, then each enum knows its members', () => {
   const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;
