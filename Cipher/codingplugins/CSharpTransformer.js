@@ -20271,8 +20271,12 @@
         return;
       }
 
-      // A table filled at load time (`TABLE.push(v)`)
-      if ((node.expression.type === 'ArrayAppend' || node.expression.type === 'ArrayConcat' || this.isPushCallExpression(node.expression)) &&
+      // A table filled at load time (`TABLE.push(v)`, zopfli.js's
+      // `FIXED_DISTANCE_LENGTHS.fill(5)`), or a module function run then (`initTables()`)
+      const callsModuleFunction = node.expression.type === 'CallExpression' && node.expression.callee?.type === 'Identifier' &&
+        (this.programBody || []).some(s => s.type === 'FunctionDeclaration' && s.id?.name === node.expression.callee.name);
+      if ((node.expression.type === 'ArrayAppend' || node.expression.type === 'ArrayConcat' || this.isPushCallExpression(node.expression) ||
+           ['ArrayFill', 'TypedArraySet', 'ArrayReverse', 'ArraySort'].includes(node.expression.type) || callsModuleFunction) &&
           !this.touchesModuleLoader(node))
         this.transformModuleInitStatement(node, targetClass);
     }

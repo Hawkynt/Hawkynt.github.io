@@ -1136,6 +1136,15 @@ check('defaults: a default computed from another argument is applied in the body
   expectMatch(code, /BuildCodeLengths\(double\[\] weights = default, int\? symbolCountArg = null\)/, 'int? symbolCountArg = null');
   expectMatch(code, /int symbolCount = symbolCountArg \?\? weights\.Length;/, 'int symbolCount = symbolCountArg ?? weights.Length');
 });
+check('module init: a fill or a module function call at module scope runs at load time', () => {
+  const code = transpile('/** @type {int32[]} */\nconst LENGTHS = new Array(30);\nLENGTHS.fill(5);\n' +
+    '/** @type {uint32[]} */\nconst TABLE = new Array(4);\n/** @returns {void} */\nfunction initTable() { for (let i = 0; i < 4; ++i) TABLE[i] = i * 3; }\ninitTable();');
+  expectMatch(code, /static bool ModuleInit\d+\(\)\s*\{\s*Array\.Fill\(LENGTHS, 5\)|static bool ModuleInit\d+\(\)\s*\{[^}]*LENGTHS/, 'a ModuleInit filling LENGTHS');
+  expectMatch(code, /static bool ModuleInit\d+\(\)\s*\{\s*InitTable\(\);/, 'a ModuleInit calling InitTable()');
+});
+const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
+  'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
+  '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
   const code = transpile(SAME_NAMED_CALLS);
   expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');
