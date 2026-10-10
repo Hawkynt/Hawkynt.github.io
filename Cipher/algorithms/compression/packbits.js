@@ -69,7 +69,7 @@
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Run-Length Encoding";
         this.securityStatus = null;
-        this.complexity = ComplexityType.BASIC;
+        this.complexity = ComplexityType.BEGINNER;
         this.country = CountryCode.US; // United States
 
         // Documentation and references

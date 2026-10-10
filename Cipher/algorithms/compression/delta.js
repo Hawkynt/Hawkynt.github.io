@@ -70,7 +70,7 @@
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Transform";
         this.securityStatus = null;
-        this.complexity = ComplexityType.SIMPLE;
+        this.complexity = ComplexityType.BEGINNER;
         this.country = CountryCode.UNKNOWN;
 
         // Documentation and references
