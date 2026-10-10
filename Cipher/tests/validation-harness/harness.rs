@@ -88,6 +88,34 @@ fn vh_hex(v: &JsAny) -> String {
     }
 }
 
+/// The algorithm of the identity cipher: creates fresh instances like DummyBlockCipher.CreateInstance
+#[derive(Clone, Default)]
+struct VhDummyAlgorithm;
+
+impl JsObject for VhDummyAlgorithm {
+    fn as_any(&self) -> &dyn Any { self }
+    fn js_get(&self, name: &str) -> JsAny {
+        match name {
+            "name" => "DummyBlockCipher".to_string().to_js(),
+            "BlockSize" => 16i32.to_js(),
+            _ => JsAny::undefined(),
+        }
+    }
+    fn js_set(&self, _name: &str, _value: JsAny) {}
+    fn js_call(&self, name: &str, args: Vec<JsAny>) -> JsAny {
+        match name {
+            "CreateInstance" => {
+                let instance = VhDummyCipher::default();
+                instance.0.borrow_mut().2.insert("isInverse".to_string(), js_arg(&args, 0).truthy().to_js());
+                JsObj::new(instance).to_js()
+            }
+            _ => js_throw_error("TypeError", &format!("algorithm.{} is not a function", name)),
+        }
+    }
+    fn js_has(&self, name: &str) -> bool { matches!(name, "name" | "BlockSize" | "CreateInstance") }
+    fn js_has_method(&self, name: &str) -> bool { name == "CreateInstance" }
+}
+
 /// The identity cipher of tests/DummyBlockCipher.js, for mode vectors naming no cipher
 #[derive(Clone, Default)]
 struct VhDummyCipher(Rc<RefCell<(Option<Vec<u8>>, Vec<u8>, HashMap<String, JsAny>)>>);
@@ -96,9 +124,9 @@ impl JsObject for VhDummyCipher {
     fn as_any(&self) -> &dyn Any { self }
     fn js_get(&self, name: &str) -> JsAny {
         match name {
-            "algorithm" => js_obj_of(vec![("name", "DummyBlockCipher".to_string().to_js()), ("BlockSize", 16i32.to_js())]).to_js(),
+            "algorithm" => JsObj::new(VhDummyAlgorithm).to_js(),
             "BlockSize" => 16i32.to_js(),
-            "isInverse" => false.to_js(),
+            "isInverse" => self.0.borrow().2.get(name).cloned().unwrap_or_else(|| false.to_js()),
             "key" => match &self.0.borrow().0 { Some(k) => js_arr(k.clone()).to_js(), None => JsAny::undefined() },
             _ => self.0.borrow().2.get(name).cloned().unwrap_or_default(),
         }
