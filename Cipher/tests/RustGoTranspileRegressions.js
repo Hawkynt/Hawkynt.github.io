@@ -162,6 +162,17 @@ const CASES = [
     go: 'fmt.Println(PFXf())',
     rust: 'println!("{}", PFXf());',
     expect: { go: '41', rust: '41' }
+  },
+  {
+    name: 'classes: super.m() of a base without m throws the TypeError JavaScript throws',
+    // Given a derived class calling a base method no base class has
+    js: 'class B { constructor() { /** @type {int32} */ this.n = 0; } }\n' +
+      'class D extends B { clear() { super.clear(); this.n = 1; } }\n' +
+      '/** @returns {string} */\nfunction f() { const d = new D(); try { d.clear(); return "no throw"; } catch (e) { return e.message + " " + d.n; } }',
+    go: 'fmt.Println(PFXf())',
+    rust: 'println!("{}", PFXf());',
+    // Then the call throws before the rest of the method runs
+    expect: { go: '(intermediate value).clear is not a function 0', rust: '(intermediate value).clear is not a function 0' }
   }
 ];
 

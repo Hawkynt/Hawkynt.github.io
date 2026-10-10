@@ -2506,6 +2506,11 @@
       let base = methodOwner && methodOwner.base;
       let m = null;
       for (let c = base; c && !m; c = c.base) m = c.methods.get(node.method) || null;
+      // JavaScript throws a TypeError when it calls a base method that does not exist
+      if (!m && !(node.arguments || []).length) {
+        const t = canonicalType(node.resultType) || 'void';
+        return new Val(G.Call(this.generic('jsTypeError', this.goType(t === 'void' ? 'any' : t)), [G.Lit(this.goString(`(intermediate value).${node.method} is not a function`))]), t);
+      }
       if (!m) throw new Error(`super.${node.method} has no base method`);
       const key = `jsSuper_${m.owner.name}_${node.method}`;
       if (!this.superCopies.has(key)) this.superCopies.set(key, { cls: info, fn: m.fn, jsDoc: m.jsDoc });
@@ -3322,6 +3327,11 @@ func jsRequire(args ...any) any { return nil }
 // jsFail is jsUnsupported of the type its use needs.
 func jsFail[T any](what string) T {
 	panic(jsNewError("Error", "not transpiled: "+what))
+}
+
+// jsTypeError throws the TypeError of calling what is not a function
+func jsTypeError[T any](message string) T {
+	panic(jsNewError("TypeError", message))
 }
 
 // ----- plain objects and Maps

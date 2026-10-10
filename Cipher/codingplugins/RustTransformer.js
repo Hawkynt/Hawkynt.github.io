@@ -2347,6 +2347,9 @@
       const info = this.fn.cls;
       let m = null;
       for (let c = info && info.base; c && !m; c = c.base) m = c.methods.get(node.method) || null;
+      // JavaScript throws a TypeError when it calls a base method that does not exist
+      if (!m && !(node.arguments || []).length)
+        return new Val(R.Call(R.Ident('js_throw_error'), [R.Lit('"TypeError"'), R.Lit(rustStringLiteral(`(intermediate value).${node.method} is not a function`))]), canonicalType(node.resultType) || 'void');
       if (!m) throw new Error(`super.${node.method} has no base method`);
       const key = `js_super_${m.owner.name}_${node.method}`;
       if (!this.superCopies.has(key)) this.superCopies.set(key, { cls: info, fn: m.fn, jsDoc: m.jsDoc });
