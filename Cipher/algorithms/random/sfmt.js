@@ -61,9 +61,13 @@
   const MSK2 = 0xddfecb7f;
   const MSK3 = 0xbffaffff;
   const MSK4 = 0xbffffff6;
+  /** @type {uint32} */
   const PARITY1 = 0x00000001;
+  /** @type {uint32} */
   const PARITY2 = 0x00000000;
+  /** @type {uint32} */
   const PARITY3 = 0x00000000;
+  /** @type {uint32} */
   const PARITY4 = 0x13c9e684;
 
   const DEFAULT_SEED = 1234;             // Default seed value

@@ -228,7 +228,9 @@
       this._skip = 0;
 
       // XorShift* uses 1x 64-bit state variable
+      /** @type {uint32} */
       this._s_low = 0;
+      /** @type {uint32} */
       this._s_high = 0;
       this._ready = false;
 

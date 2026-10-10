@@ -616,10 +616,10 @@
         /** @type {uint32} */
         const b = this._tycheState[1];
         return [
-          OpCodes.And32(b, 0xFF),
-          OpCodes.And32(OpCodes.Shr32(b, 8), 0xFF),
-          OpCodes.And32(OpCodes.Shr32(b, 16), 0xFF),
-          OpCodes.And32(OpCodes.Shr32(b, 24), 0xFF)
+          OpCodes.ToByte(b),
+          OpCodes.GetByte(b, 1),
+          OpCodes.GetByte(b, 2),
+          OpCodes.GetByte(b, 3)
         ];
       }
 

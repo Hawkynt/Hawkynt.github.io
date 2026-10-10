@@ -212,7 +212,9 @@
 
       // XorShift+ uses 2x 64-bit state variables (x, y)
       // JavaScript doesn't have native 64-bit integers, so we use pairs of 32-bit values
+      /** @type {uint32} */
       this._x_low = 0;
+      /** @type {uint32} */
       this._x_high = 0;
       this._y_low = 0;
       this._y_high = 0;
