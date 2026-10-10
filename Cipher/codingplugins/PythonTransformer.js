@@ -459,6 +459,97 @@
     }
 
     /**
+     * The Python hint for an IL type: value types, arrays, positional tuples
+     * ('[string,int32]', held as a list, so List[Union[str, int]]) and
+     * @template parameters (a TypeVar). `nullable` (the IL flag on value
+     * types) makes it Optional. Other names - classes, which a hint
+     * evaluated at def time could not yet see - give null.
+     * @param {string} ilType - IL type
+     * @param {boolean} [nullable] - the IL node's nullable flag
+     * @returns {PythonType|null}
+     */
+    _pythonTypeOfIL(ilType, nullable = false) {
+      // a JSDoc union as written: `int32|null`
+      if (typeof ilType === 'string' && ilType.includes('|') && !/[\[<(]/.test(ilType)) {
+        const members = ilType.split('|').map(m => m.trim());
+        const rest = members.filter(m => m !== 'null' && m !== 'undefined');
+        if (rest.length !== 1) return null;
+        return this._pythonTypeOfIL(rest[0], nullable || rest.length < members.length);
+      }
+      const inner = this._pythonTypeOfILCore(ilType);
+      if (!inner) return null;
+      if (!nullable || inner.name === 'None' || inner.name === 'Any') return inner;
+      this.imports.add('Optional');
+      return PythonType.Optional(inner);
+    }
+
+    _pythonTypeOfILCore(ilType) {
+      if (typeof ilType !== 'string' || !ilType) return null;
+      const t = ilType.trim();
+      if (t.endsWith('[]')) {
+        const element = this._pythonTypeOfILCore(t.slice(0, -2));
+        if (!element) return null;
+        this.imports.add('List');
+        return PythonType.List(element);
+      }
+      if (t.startsWith('[') && t.endsWith(']')) {
+        const parts = PythonTransformer._splitTupleType(t.slice(1, -1)).map(e => this._pythonTypeOfILCore(e));
+        if (parts.length === 0 || parts.some(e => !e)) return null;
+        const distinct = [...new Map(parts.map(e => [e.toString(), e])).values()];
+        this.imports.add('List');
+        if (distinct.length === 1) return PythonType.List(distinct[0]);
+        this.imports.add('Union');
+        return PythonType.List(new PythonType(`Union[${distinct.map(e => e.toString()).join(', ')}]`));
+      }
+      if (/^(bigint|BigInt)$/.test(t)) return PythonType.Int();
+      const mapped = TYPE_MAP[t];
+      if (mapped === 'List') { this.imports.add('List'); this.imports.add('Any'); return PythonType.List(PythonType.Any()); }
+      if (mapped === 'Any') { this.imports.add('Any'); return PythonType.Any(); }
+      if (mapped) return this.createPythonType(mapped);
+      if (this._templateNames && this._templateNames.has(t)) {
+        (this._typeVars || (this._typeVars = new Set())).add(t);
+        return new PythonType(t);
+      }
+      return null;
+    }
+
+    /**
+     * The element types of a tuple type body, split at top-level commas.
+     * @param {string} body - e.g. 'string,int32[],[int32,int32]'
+     * @returns {string[]}
+     */
+    static _splitTupleType(body) {
+      const out = [];
+      let depth = 0, start = 0;
+      for (let i = 0; i < body.length; ++i) {
+        const c = body[i];
+        if (c === '[' || c === '<' || c === '(') ++depth;
+        else if (c === ']' || c === '>' || c === ')') --depth;
+        else if (c === ',' && depth === 0) { out.push(body.slice(start, i).trim()); start = i + 1; }
+      }
+      if (body.trim()) out.push(body.slice(start).trim());
+      return out;
+    }
+
+    /**
+     * The @template names a function's JSDoc declares.
+     * @param {Object} fn - IL function, method value or declaration
+     * @returns {string[]}
+     */
+    static _templateNamesOf(fn) {
+      const names = [];
+      const info = fn && fn.typeInfo;
+      if (info && Array.isArray(info.templates)) names.push(...info.templates.map(t => typeof t === 'string' ? t : t && t.name).filter(Boolean));
+      const doc = fn && (typeof fn.jsDoc === 'string' ? fn.jsDoc : fn.jsDoc && fn.jsDoc.raw);
+      if (typeof doc === 'string') {
+        const re = /@template\s+(?:\{[^}]*\}\s+)?([A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*)/g;
+        let m;
+        while ((m = re.exec(doc)) !== null) names.push(...m[1].split(',').map(n => n.trim()));
+      }
+      return names;
+    }
+
+    /**
      * Infer type from expression
      */
     inferFullExpressionType(node) {
@@ -575,11 +666,15 @@
       // Every declared function name, by its snake_case spelling
       // (see _collectLocalNameCollisions)
       this._declaredRawNamesByFolded = new Map();
+      this._userClassNames = new Set();
       const collectDeclared = n => {
         if (!n || typeof n !== 'object') return;
         if (Array.isArray(n)) { n.forEach(collectDeclared); return; }
         if (n.type === 'FunctionDeclaration' && n.id && n.id.name)
           this._declaredRawNamesByFolded.set(toSnakeCase(n.id.name), n.id.name);
+        // classes the program declares (see transformArrayAppend)
+        if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id && n.id.name)
+          this._userClassNames.add(n.id.name);
         for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'parent' && key !== 'resultType') collectDeclared(n[key]);
       };
       collectDeclared(ast);
@@ -596,6 +691,9 @@
 
       // Generate framework stub classes at the beginning of module
       const stubs = this.generateFrameworkStubs();
+      // @template parameters used in hints: `T = TypeVar("T")`
+      if (this._typeVars && this._typeVars.size > 0)
+        stubs.unshift({ nodeType: 'RawCode', code: [...this._typeVars].sort().map(n => `${n} = TypeVar("${n}")`).join('\n') });
       if (stubs.length > 0) {
         module.statements = [...stubs, ...module.statements];
       }
@@ -661,12 +759,15 @@
         '            del self.input_buffer[:]';
       // IBlockCipherInstance.Result: encrypt or decrypt every buffered block,
       // refusing a partial block (AlgorithmFramework.js, same messages).
+      // BlockSize/KeySize start as plain fields: a subclass accessor such as
+      // SPEED's `set blockSize` shares the snake_case name but is not the
+      // field JavaScript initialises here, so its setter must not run.
       FRAMEWORK_STUBS['IBlockCipherInstance'] =
         'class IBlockCipherInstance(IAlgorithmInstance):\n' +
         '    def __init__(self, algorithm=None, *args, **kwargs):\n' +
         `        ${INSTANCE_BASE_BODY}\n` +
-        '        self.block_size = 0\n' +
-        '        self.key_size = 0\n' +
+        '        self.__dict__["block_size"] = 0\n' +
+        '        self.__dict__["key_size"] = 0\n' +
         '        self._key = None\n' +
         '    @property\n' +
         '    def key(self): return self._key\n' +
@@ -1085,10 +1186,8 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def Shr32Signed(value, positions):
-        value &= 0xFFFFFFFF
-        if value >= 0x80000000:
-            value -= 0x100000000
-        return (value >> positions) & 0xFFFFFFFF
+        # (value | 0) >> positions: signed in, signed out
+        return OpCodes.ToInt(value) >> (OpCodes.ToInt(positions) & 31)
 
     # ==================[ BITWISE LOGICAL (8/16-bit) ]==================
     @staticmethod
@@ -1179,6 +1278,8 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def ToInt(value):
+        if isinstance(value, float):
+            value = int(value) if value == value and value not in (float("inf"), float("-inf")) else 0
         value &= 0xFFFFFFFF
         return value - 0x100000000 if value >= 0x80000000 else value
 
@@ -1534,7 +1635,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def CreateArray(length, value=0):
-        return JSArray([value] * length)
+        return JSArray([value] * int(length))
 
     @staticmethod
     def ArraySlice(arr, start, end=None):
@@ -1594,21 +1695,23 @@ class OpCodes(metaclass=_OpCodesMeta):
         return JSArray([(b ^ value) & 0xFF for b in array])
 
     # ==================[ MATH / GF ARITHMETIC ]==================
+    # JavaScript % keeps the sign of the dividend, and a Number product
+    # rounds past 2^53
     @staticmethod
     def AddMod(a, b, m):
-        return ((a % m) + (b % m)) % m
+        return _js_imod(_js_imod(a, m) + _js_imod(b, m), m)
 
     @staticmethod
     def SubMod(a, b, m):
-        return ((a % m) - (b % m) + m) % m
+        return _js_imod(_js_imod(a, m) - _js_imod(b, m) + m, m)
 
     @staticmethod
     def MulMod(a, b, m):
-        return ((a % m) * (b % m)) % m
+        return _js_imod(_js_f64(_js_imod(a, m) * _js_imod(b, m)), m)
 
     @staticmethod
     def ModSafe(value, modulus):
-        result = value % modulus
+        result = _js_imod(value, modulus)
         return result + modulus if result < 0 else result
 
     @staticmethod
@@ -2646,10 +2749,12 @@ class OpCodes(metaclass=_OpCodesMeta):
         // TypedArray-from-array-like constructor behavior (distinct from the
         // TypedArray-from-ArrayBuffer reinterpret case) - preserved exactly
         // as before for every source that isn't a real ArrayBuffer.
-        '_typed_array_view': 'def _typed_array_view(buffer, width, fmt=None):\n' +
+        // `alias`: the source was X.buffer, so a word array is shared; a typed
+        // array passed directly is copied, as its constructor does in JS
+        '_typed_array_view': 'def _typed_array_view(buffer, width, fmt=None, alias=False):\n' +
           '    if isinstance(buffer, JSArrayBuffer):\n' +
           '        return JSTypedBufferView(buffer, width, fmt)\n' +
-          '    if fmt is None and width == 4 and isinstance(buffer, JSUint32Array):\n' +
+          '    if alias and fmt is None and width == 4 and isinstance(buffer, JSUint32Array):\n' +
           '        return buffer\n' +
           '    if fmt:\n' +
           '        return [float(v) for v in buffer]\n' +
@@ -2915,7 +3020,14 @@ class OpCodes(metaclass=_OpCodesMeta):
       // container so it also works as an expression, not just a statement.
       stubs.push({
         nodeType: 'RawCode', code:
+          // an object of a class with its own set(key, value) method (a
+          // hash table class) is called, not subscripted
           'def _map_set(obj, key, value):\n' +
+          '    if not isinstance(obj, (dict, list, bytearray, JSObject)):\n' +
+          '        method = getattr(obj, "set", None)\n' +
+          '        if callable(method):\n' +
+          '            method(key, value)\n' +
+          '            return obj\n' +
           '    obj[key] = value\n' +
           '    return obj'
       });
@@ -2932,6 +3044,99 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    if isinstance(obj, dict):\n' +
           '        return obj.pop(key, None) is not None\n' +
           '    return obj.delete(key)'
+      });
+      // A JS engine allows about ten thousand nested calls; Python's default
+      // of 1000 stops a recursive BigInt gcd on a 2048-bit modulus
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'import sys as _js_sys\n' +
+          'if _js_sys.getrecursionlimit() < 10000:\n' +
+          '    _js_sys.setrecursionlimit(10000)'
+      });
+      // BigInt `/` truncates toward zero and `%` keeps the dividend's sign;
+      // Python's // and % floor instead, which differs for a negative operand
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_idiv(a, b):\n' +
+          '    q = abs(a) // abs(b)\n' +
+          '    return q if (a < 0) == (b < 0) else -q'
+      });
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_imod(a, b):\n' +
+          '    r = abs(a) % abs(b)\n' +
+          '    return -r if a < 0 else r'
+      });
+      // A whole float result (Math.log2(8), Math.sqrt(16)) is the same Number
+      // as the int in JavaScript; as an int it can size and index arrays
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_num(x):\n' +
+          '    return int(x) if isinstance(x, float) and x.is_integer() and -9007199254740992 <= x <= 9007199254740992 else x'
+      });
+      // Number division: x / 0 is an infinity or NaN, a whole quotient an int
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_div(a, b):\n' +
+          '    if b == 0:\n' +
+          '        if a == 0 or a != a:\n' +
+          '            return float("nan")\n' +
+          '        import math\n' +
+          '        return float("inf") if (a > 0) == (math.copysign(1.0, b) > 0) else float("-inf")\n' +
+          '    q = a / b\n' +
+          '    return int(q) if q.is_integer() and -9007199254740992 <= q <= 9007199254740992 else q'
+      });
+      // Math.round rounds a half up (2.5 -> 3, -2.5 -> -2); Python's round()
+      // rounds a half to even
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_round(x):\n' +
+          '    if isinstance(x, int) or x != x or x in (float("inf"), float("-inf")):\n' +
+          '        return x\n' +
+          '    import math\n' +
+          '    r = math.floor(x)\n' +
+          '    return r + 1 if x - r >= 0.5 else r'
+      });
+      // obj[name] on an instance of a class: its attribute, under the name
+      // the transpiler gives a member (camelCase to snake_case)
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_getprop(obj, key):\n' +
+          '    if not isinstance(key, str) or hasattr(type(obj), "__getitem__"):\n' +
+          '        return obj[key]\n' +
+          '    if key.upper() == key:\n' +
+          '        name = key\n' +
+          '    else:\n' +
+          '        name = "".join(("_" + c.lower()) if c.isupper() and i > 0 and (key[i - 1].islower() or key[i - 1].isdigit()) else c.lower() for i, c in enumerate(key))\n' +
+          '    if hasattr(obj, name):\n' +
+          '        return getattr(obj, name)\n' +
+          '    return getattr(obj, key, None)'
+      });
+      // a camelCase property whose snake_case name a framework PascalCase field
+      // also has: an accessor the object's class defines, else its own slot
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_set_twin(obj, name, raw, value):\n' +
+          '    if isinstance(getattr(type(obj), name, None), property):\n' +
+          '        setattr(obj, name, value)\n' +
+          '    else:\n' +
+          '        obj.__dict__[raw] = value\n' +
+          '    return value'
+      });
+      // TypedArray.prototype.set(source, offset), the source evaluated once
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_set_into(target, source, offset=0):\n' +
+          '    target[offset:offset + len(source)] = source'
+      });
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_reverse(a):\n' +
+          '    if hasattr(a, "reverse"):\n' +
+          '        a.reverse()\n' +
+          '    else:\n' +
+          '        a[:] = a[::-1]\n' +
+          '    return a'
       });
       stubs.push({
         nodeType: 'RawCode', code:
@@ -3099,13 +3304,16 @@ class OpCodes(metaclass=_OpCodesMeta):
       const imports = [];
 
       // Always add typing imports for type annotations
+      const hasTypeVars = this._typeVars && this._typeVars.size > 0;
       if (this.imports.has('List') || this.imports.has('Dict') ||
-          this.imports.has('Optional') || this.imports.has('Any')) {
+          this.imports.has('Optional') || this.imports.has('Any') || this.imports.has('Union') || hasTypeVars) {
         const typingItems = [];
         if (this.imports.has('List')) typingItems.push({ name: 'List', alias: null });
         if (this.imports.has('Dict')) typingItems.push({ name: 'Dict', alias: null });
         if (this.imports.has('Optional')) typingItems.push({ name: 'Optional', alias: null });
         if (this.imports.has('Any')) typingItems.push({ name: 'Any', alias: null });
+        if (this.imports.has('Union')) typingItems.push({ name: 'Union', alias: null });
+        if (hasTypeVars) typingItems.push({ name: 'TypeVar', alias: null });
         imports.push(new PythonImport('typing', typingItems));
       }
 
@@ -3346,7 +3554,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         // 'require' has no meaning in Python and these blocks only lazy-load sibling
         // algorithm files that are irrelevant when transpiling a single algorithm.
         if (stmt.type === 'IfStatement') {
-          if (this.isNodeMainCheck(stmt.test) || this.isRequireGuard(stmt.test)) {
+          if (this.isNodeMainCheck(stmt.test) ||
+              (this.isRequireGuard(stmt.test) && !PythonTransformer._moduleExportsAssignment(stmt.consequent))) {
             continue;
           }
         }
@@ -3410,6 +3619,25 @@ class OpCodes(metaclass=_OpCodesMeta):
      * chaining AES+Serpent). 'require' doesn't exist in Python and the guarded code
      * has no Python equivalent, so the whole if-statement is dropped.
      */
+    /**
+     * The `module.exports = ...` assignment a module-system guard's body
+     * consists of, if that is all it does.
+     * @param {Object} body - IL statement or block
+     * @returns {Object|null} the assignment expression
+     */
+    static _moduleExportsAssignment(body) {
+      const statements = body && body.type === 'BlockStatement' ? body.body : [body];
+      if (!statements || statements.length !== 1) return null;
+      const stmt = statements[0];
+      const expr = stmt && stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+      if (!expr || expr.type !== 'AssignmentExpression' || expr.operator !== '=') return null;
+      const left = expr.left;
+      const isModuleExports = left && left.type === 'MemberExpression' && !left.computed &&
+        left.object && left.object.type === 'Identifier' && left.object.name === 'module' &&
+        left.property && (left.property.name || left.property.value) === 'exports';
+      return isModuleExports && expr.right && (expr.right.type === 'ObjectExpression' || expr.right.type === 'ObjectLiteral') ? expr : null;
+    }
+
     isRequireGuard(testNode) {
       if (!testNode) return false;
 
@@ -3567,7 +3795,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         // own top-level loop already applies, and transform anything else
         // normally instead of discarding it.
         if (stmt.type === 'IfStatement') {
-          if (this.isNodeMainCheck(stmt.test) || this.isRequireGuard(stmt.test)) continue;
+          if (this.isNodeMainCheck(stmt.test) ||
+              (this.isRequireGuard(stmt.test) && !PythonTransformer._moduleExportsAssignment(stmt.consequent))) continue;
           const transformed = this.transformStatement(stmt);
           if (transformed) {
             if (Array.isArray(transformed)) declarations.push(...transformed);
@@ -3659,6 +3888,9 @@ class OpCodes(metaclass=_OpCodesMeta):
           // Inside a switch lowered to a one-pass loop (transformSwitchStatement)
           const flag = this._switchContinueTargets && this._switchContinueTargets.get(node);
           if (flag) return [new PythonAssignment(new PythonIdentifier(flag), PythonLiteral.Bool(true)), new PythonBreak()];
+          // `continue` in a for loop lowered to while still runs its update
+          const advance = this._continueAdvance && this._continueAdvance.get(node);
+          if (advance) return [...advance, new PythonContinue()];
           return new PythonContinue();
         }
         case 'ThrowStatement':
@@ -4051,6 +4283,54 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformMethodDefinition(node) {
+      return this._withTemplates([node, node.value], () => this._annotateFunction(this._transformMethodDefinitionCore(node), node.value && node.value.params, node.value || node));
+    }
+
+    /**
+     * Run a function transform with the @template names of its JSDoc known,
+     * so hints inside it can name them.
+     * @param {Object[]} nodes - IL nodes that may carry the JSDoc
+     * @param {Function} fn - the transform
+     * @returns {*} its result
+     */
+    _withTemplates(nodes, fn) {
+      const saved = this._templateNames;
+      const names = nodes.flatMap(n => PythonTransformer._templateNamesOf(n));
+      if (names.length > 0) this._templateNames = new Set([...(saved || []), ...names]);
+      try { return fn(); } finally { this._templateNames = saved; }
+    }
+
+    /**
+     * Parameter and return hints from the IL types of a function (value
+     * types, arrays, tuples, template parameters; Optional when nullable).
+     * Hints only: what the transform tracks for inference is unchanged.
+     * @param {Object} pyFunc - Python function (or anything else, passed through)
+     * @param {Object[]} params - IL parameters
+     * @param {Object} fnNode - IL function carrying typeInfo
+     * @returns {Object} pyFunc
+     */
+    _annotateFunction(pyFunc, params, fnNode) {
+      if (!this.addTypeHints || !pyFunc || pyFunc.nodeType !== 'Function') return pyFunc;
+      const own = (pyFunc.parameters || []).filter(p => p.name !== 'self' && !p.isRest);
+      (params || []).forEach((param, i) => {
+        const pyParam = own[i];
+        if (!pyParam || pyParam.type || !param || typeof param !== 'object') return;
+        const ilParam = param.type === 'AssignmentPattern' || param.type === 'AssignmentExpression' ? param.left : param;
+        if (!ilParam) return;
+        // every parameter defaults to None (an omitted argument), so a
+        // default-less one is Optional only when the IL says so
+        const hint = this._pythonTypeOfIL(ilParam.resultType, !!(ilParam.nullable || param.nullable));
+        if (hint) pyParam.type = hint;
+      });
+      const returns = fnNode && fnNode.typeInfo && fnNode.typeInfo.returns;
+      if (!pyFunc.returnType && returns && typeof returns.name === 'string' && !pyFunc.isProperty) {
+        const hint = returns.name === 'void' ? PythonType.None() : this._pythonTypeOfIL(returns.name, !!returns.isNullable);
+        if (hint) pyFunc.returnType = hint;
+      }
+      return pyFunc;
+    }
+
+    _transformMethodDefinitionCore(node) {
       let methodName = toSnakeCaseProperty(node.key.name);
       // Disambiguate methods that only collide after case-folding (see the
       // currentMethodNameOverrides comment in transformClassDeclaration).
@@ -4395,6 +4675,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformFunctionDeclaration(node) {
+      return this._withTemplates([node], () => this._annotateFunction(this._transformFunctionDeclarationCore(node), node.params, node));
+    }
+
+    _transformFunctionDeclarationCore(node) {
       const funcName = this.moduleConstRenames.get(node.id.name) || toSnakeCase(node.id.name);
       const pyFunc = new PythonFunction(funcName, [], null);
 
@@ -4453,7 +4737,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       return pyFunc;
     }
 
-    transformParameter(node) {
+    transformParameter(node, allowLateDefault = true) {
       // Handle different parameter node structures:
       // - Identifier: { name: 'param' }
       // - AssignmentPattern: { left: { name: 'param' }, right: defaultValue }
@@ -4513,9 +4797,17 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       const isRest = node.type === 'RestElement' || node.type === 'RestParameter';
 
-      // Default value
+      // Default value. JavaScript evaluates a default at each call that
+      // omits the argument, in the scope of the earlier parameters; Python
+      // evaluates it once, when the def runs. Anything but a constant is
+      // applied in the body instead (`f(w, n = w.length)`, `f(a = [])`).
+      let lateDefault = null;
       if (defaultValueNode) {
         defaultValue = this.transformExpression(defaultValueNode);
+        if (allowLateDefault && !PythonTransformer._isConstantDefault(defaultValueNode)) {
+          lateDefault = defaultValue;
+          defaultValue = PythonLiteral.None();
+        }
       } else if (!isRest) {
         // JS never enforces call-site arity: `function f(x) {}` can be
         // called as `f()`, silently binding `x` to `undefined` - a common
@@ -4531,6 +4823,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       const pyParam = new PythonParameter(paramName, type, defaultValue);
+      if (lateDefault) pyParam.lateDefault = lateDefault;
       // A JS `...rest` parameter collects every remaining positional
       // argument into a real array (rest.length, rest[i], etc. all need to
       // work) - a Python `*name` catch-all is the direct equivalent (bound
@@ -4545,6 +4838,27 @@ class OpCodes(metaclass=_OpCodesMeta):
         pyParam.defaultValue = null;
       }
       return pyParam;
+    }
+
+    /**
+     * Whether a parameter default is a constant Python may evaluate once.
+     * @param {Object} node - IL default value
+     * @returns {boolean}
+     */
+    static _hasLateDefault(params) {
+      return (params || []).some(p => {
+        const d = p && typeof p === 'object' && (p.type === 'AssignmentPattern' || p.type === 'AssignmentExpression' ? p.right : p.defaultValue);
+        return d && !PythonTransformer._isConstantDefault(d);
+      });
+    }
+
+    static _isConstantDefault(node) {
+      if (!node) return true;
+      if (node.type === 'Literal') return !node.regex;
+      if (node.type === 'Identifier') return node.name === 'undefined';
+      if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+'))
+        return node.argument && node.argument.type === 'Literal' && typeof node.argument.value === 'number';
+      return false;
     }
 
     /**
@@ -5047,13 +5361,20 @@ class OpCodes(metaclass=_OpCodesMeta):
           }
         }
 
+        // Track variable type: the inferred one, which later inference
+        // relies on; the hint shown is the IL type where that maps
+        const trackedType = assignment.type;
+        if (this.addTypeHints && !declarator.id.typeAnnotation) {
+          const ilHint = this._pythonTypeOfIL(declarator.declaredType || declarator.id.resultType, !!(declarator.id.nullable || declarator.nullable));
+          if (ilHint) assignment.type = ilHint;
+        }
+
         assignments.push(assignment);
         if (declaratorPostStatements.length > 0)
           assignments.push(...declaratorPostStatements);
 
-        // Track variable type
-        if (assignment.type) {
-          this.registerVariableType(declarator.id.name, assignment.type);
+        if (trackedType) {
+          this.registerVariableType(declarator.id.name, trackedType);
         }
       }
 
@@ -5332,6 +5653,20 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     /**
+     * True if `node` is a variable or property read whose IL type is an
+     * array: JS tests an array for truthiness as "not null/undefined" - an
+     * empty one is truthy - where Python's empty list is falsy.
+     */
+    _isArrayTypedLeaf(node) {
+      if (!node) return false;
+      const plainRead = node.type === 'Identifier' ||
+        ((node.type === 'MemberExpression' || node.type === 'ThisPropertyAccess') && !node.computed);
+      if (!plainRead) return false;
+      const t = node.resultType;
+      return typeof t === 'string' && (/\[\]$/.test(t) || /^(Uint8|Int8|Uint8Clamped|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array$/.test(t));
+    }
+
+    /**
      * True if `node` is a bare Identifier naming an `_isArrayLikeParam`
      * parameter, a `!`-negation of one, or a '&&'/'||' combination
      * involving one - exactly the shapes `_buildArrayAwareCondition` below
@@ -5342,6 +5677,7 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     _containsArrayLikeCondition(node) {
       if (!node) return false;
+      if (this._isArrayTypedLeaf(node)) return true;
       if (node.type === 'Identifier') return this._isArrayLikeParam(node.name);
       if (node.type === 'UnaryExpression' && node.operator === '!') return this._containsArrayLikeCondition(node.argument);
       if (node.type === 'LogicalExpression' && (node.operator === '&&' || node.operator === '||'))
@@ -5365,6 +5701,10 @@ class OpCodes(metaclass=_OpCodesMeta):
      * normal path.
      */
     _buildArrayAwareCondition(node) {
+      if (this._isArrayTypedLeaf(node))
+        return new PythonBinaryExpression(this._safeLogicalMemberOperand(node, this.transformExpression(node)), 'is not', PythonLiteral.None());
+      if (node.type === 'UnaryExpression' && node.operator === '!' && this._isArrayTypedLeaf(node.argument))
+        return new PythonBinaryExpression(this._safeLogicalMemberOperand(node.argument, this.transformExpression(node.argument)), 'is', PythonLiteral.None());
       if (node.type === 'Identifier' && this._isArrayLikeParam(node.name))
         return new PythonBinaryExpression(this.transformExpression(node), 'is not', PythonLiteral.None());
       if (node.type === 'UnaryExpression' && node.operator === '!' &&
@@ -5379,9 +5719,21 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformIfStatement(node) {
-      // Drop CommonJS dependency-loading guards wherever they appear (not just at
-      // module top level) - 'require' has no meaning in transpiled Python.
-      if (this.isRequireGuard(node.test)) return null;
+      // A data library inside an IIFE exports its tables through
+      // `if (typeof module !== 'undefined' && module.exports) module.exports
+      // = {...}`; that assignment is how a bundling host reaches them, so it
+      // stays, run when the host provides a `module`
+      if (this.isRequireGuard(node.test)) {
+        const exportsAssignment = PythonTransformer._moduleExportsAssignment(node.consequent);
+        if (!exportsAssignment) return null;
+        const block = new PythonBlock();
+        const assignment = this.transformExpression(exportsAssignment);
+        block.statements.push(...(Array.isArray(assignment) ? assignment : [assignment]));
+        const hasModule = new PythonBinaryExpression(
+          new PythonCall(new PythonMemberAccess(new PythonCall(new PythonIdentifier('globals'), []), 'get'), [PythonLiteral.Str('module')]),
+          'is not', PythonLiteral.None());
+        return new PythonIf(hasModule, block, [], null);
+      }
 
       // Check if the condition contains UpdateExpression (++/--) that needs extraction
       const preStatements = [];
@@ -5611,7 +5963,95 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (!update.argument || update.argument.type !== 'Identifier') return false;
       if (update.argument.name !== decl.id.name) return false;
 
+      // range() fixes the sequence up front: JavaScript re-reads the bound and
+      // the counter every iteration, so a body that moves the counter
+      // (`i += skip`) or changes the bound (`push` onto the array whose length
+      // it is) needs the while form
+      const written = PythonTransformer._writtenPlaces(node.body);
+      if (written.has(decl.id.name)) return false;
+      for (const place of PythonTransformer._readPlaces(test.right))
+        if (written.has(place)) return false;
+
       return true;
+    }
+
+    /**
+     * Name of a plain variable or `this` field, the places a loop can write.
+     * @param {Object} n - IL node
+     * @returns {string|null} 'name' or 'this.name'
+     */
+    static _placeKey(n) {
+      if (!n) return null;
+      if (n.type === 'Identifier') return n.name;
+      if (n.type === 'ThisPropertyAccess' && !n.computed && typeof n.property === 'string') return 'this.' + n.property;
+      if (n.type === 'MemberExpression' && !n.computed && n.object && n.object.type === 'ThisExpression' && n.property)
+        return 'this.' + (n.property.name || n.property.value);
+      return null;
+    }
+
+    /**
+     * Variables and fields an IL subtree assigns, updates or resizes.
+     * @param {Object} root - IL subtree
+     * @returns {Set<string>} place keys
+     */
+    static _writtenPlaces(root) {
+      const out = new Set();
+      const seen = new Set();
+      const RESIZING = new Set(['ArrayAppend', 'ArrayPop', 'ArrayShift', 'ArrayUnshift', 'ArraySplice', 'ArrayClear']);
+      const visit = (n) => {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        if (n.type === 'AssignmentExpression' && n.left) {
+          const key = PythonTransformer._placeKey(n.left);
+          if (key) out.add(key);
+          // `a.length = 0`
+          if (n.left.type === 'ArrayLength' || (n.left.type === 'MemberExpression' && !n.left.computed &&
+              n.left.property && n.left.property.name === 'length')) {
+            const arrayKey = PythonTransformer._placeKey(n.left.array || n.left.object);
+            if (arrayKey) out.add(arrayKey);
+          }
+        }
+        if ((n.type === 'UpdateExpression' || (n.type === 'UnaryExpression' && (n.operator === '++' || n.operator === '--'))) && n.argument) {
+          const key = PythonTransformer._placeKey(n.argument);
+          if (key) out.add(key);
+        }
+        if (RESIZING.has(n.type)) {
+          const key = PythonTransformer._placeKey(n.array);
+          if (key) out.add(key);
+        }
+        for (const k in n) {
+          if (k === 'parent') continue;
+          const v = n[k];
+          if (Array.isArray(v)) v.forEach(visit);
+          else if (v && typeof v === 'object') visit(v);
+        }
+      };
+      visit(root);
+      return out;
+    }
+
+    /**
+     * Variables and fields an IL expression reads.
+     * @param {Object} root - IL expression
+     * @returns {Set<string>} place keys
+     */
+    static _readPlaces(root) {
+      const out = new Set();
+      const seen = new Set();
+      const visit = (n) => {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        const key = PythonTransformer._placeKey(n);
+        if (key) out.add(key);
+        for (const k in n) {
+          if (k === 'parent') continue;
+          const v = n[k];
+          if (Array.isArray(v)) v.forEach(visit);
+          else if (v && typeof v === 'object') visit(v);
+        }
+      };
+      visit(root);
+      return out;
     }
 
     transformRangeFor(node) {
@@ -5691,7 +6131,6 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       // Create while loop
       const condition = cleanedTest ? this.transformExpression(cleanedTest) : PythonLiteral.Bool(true);
-      const whileBody = this.transformBlockOrStatement(node.body);
 
       // Collect the per-iteration "advance" statements: any pre-statements
       // extracted from the test condition, then the for-loop's own update
@@ -5724,7 +6163,16 @@ class OpCodes(metaclass=_OpCodesMeta):
       // trips a `finally`, which would otherwise run one extra, spurious
       // advance step JS itself would have skipped, corrupting the loop
       // variable's value for any code reading it after the loop.
-      if (advanceStatements.length > 0 && this._hasOwnLevelContinueNoBreak(node.body)) {
+      const continueNoBreak = advanceStatements.length > 0 && this._hasOwnLevelContinueNoBreak(node.body);
+      // With a break beside it, each own-level `continue` runs the advance
+      // statements itself (a finally would also run them on the break)
+      if (advanceStatements.length > 0 && !continueNoBreak) {
+        if (!this._continueAdvance) this._continueAdvance = new WeakMap();
+        for (const c of PythonTransformer._ownLevelContinues(node.body)) this._continueAdvance.set(c, advanceStatements);
+      }
+      const whileBody = this.transformBlockOrStatement(node.body);
+
+      if (continueNoBreak) {
         const tryExcept = new PythonTryExcept();
         tryExcept.tryBlock = whileBody;
         if (!tryExcept.tryBlock.statements || tryExcept.tryBlock.statements.length === 0) {
@@ -5776,6 +6224,30 @@ class OpCodes(metaclass=_OpCodesMeta):
      * as opaque just means this optimization is missed for that shape, never
      * applied incorrectly).
      */
+    /**
+     * The unlabeled continue statements of a loop body that continue this
+     * loop (not a nested loop or function).
+     * @param {Object} body - IL loop body
+     * @returns {Object[]} ContinueStatement nodes
+     */
+    static _ownLevelContinues(body) {
+      const found = [];
+      const visit = (n) => {
+        if (!n || typeof n !== 'object') return;
+        switch (n.type) {
+          case 'ContinueStatement': if (!n.label) found.push(n); return;
+          case 'SwitchStatement': for (const c of n.cases || []) for (const st of c.consequent || []) visit(st); return;
+          case 'BlockStatement': n.body.forEach(visit); return;
+          case 'IfStatement': visit(n.consequent); visit(n.alternate); return;
+          case 'TryStatement': visit(n.block); if (n.handler) visit(n.handler.body); visit(n.finalizer); return;
+          case 'LabeledStatement': visit(n.body); return;
+          default: return;
+        }
+      };
+      visit(body);
+      return found;
+    }
+
     _hasOwnLevelContinueNoBreak(node) {
       let hasContinue = false;
       let hasBreak = false;
@@ -5826,7 +6298,9 @@ class OpCodes(metaclass=_OpCodesMeta):
       const preStatements = [];
       const testNode = this.extractUpdateExpressionsFromCondition(node.test, preStatements);
 
-      const condition = this.transformExpression(testNode);
+      const condition = this._containsArrayLikeCondition(testNode)
+        ? this._buildArrayAwareCondition(testNode)
+        : this.transformExpression(testNode);
       const body = this.transformBlockOrStatement(node.body);
       const whileStmt = new PythonWhile(condition, body);
 
@@ -6033,7 +6507,11 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformDoWhileStatement(node) {
       // Python doesn't have do-while, convert to while True with break
       const body = this.transformBlockOrStatement(node.body);
-      const condition = this.transformExpression(node.test);
+      // `while (--count > 0)`: the update runs before every test
+      const preStatements = [];
+      const testNode = this.extractUpdateExpressionsFromCondition(node.test, preStatements);
+      const condition = this.transformExpression(testNode);
+      body.statements.push(...preStatements);
 
       // Add condition check at end with break
       const notCondition = new PythonUnaryExpression('not', condition);
@@ -6155,6 +6633,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       let currentIf = null;
       let lastIf = null;
+      let defaultBody = null;
 
       for (const group of groups) {
         const caseBody = this.transformSwitchCaseBody(group.consequent);
@@ -6163,13 +6642,10 @@ class OpCodes(metaclass=_OpCodesMeta):
         // A default folded together with real tests (e.g. `default: case
         // 'x':` sharing one body) or a lone default acts as the final
         // unconditional else - it matches "everything else" so no
-        // condition can express it.
+        // condition can express it. Wherever it stands among the cases, the
+        // cases after it are still tested first (no group falls through).
         if (group.hasDefault) {
-          if (currentIf) {
-            lastIf.elseBranch = caseBody;
-          } else {
-            return caseBody;
-          }
+          defaultBody = caseBody;
           continue;
         }
 
@@ -6190,6 +6666,10 @@ class OpCodes(metaclass=_OpCodesMeta):
         }
       }
 
+      if (defaultBody) {
+        if (!currentIf) return defaultBody;
+        lastIf.elseBranch = defaultBody;
+      }
       return currentIf;
     }
 
@@ -6961,7 +7441,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             case 'ceil':
               return new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'ceil'), args);
             case 'round':
-              return new PythonCall(new PythonIdentifier('round'), args);
+              return new PythonCall(new PythonIdentifier('_js_round'), args);
             case 'min':
               return new PythonCall(new PythonIdentifier('min'), args);
             case 'max':
@@ -6969,7 +7449,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             case 'pow':
               return new PythonBinaryExpression(args[0], '**', args[1]);
             case 'sqrt':
-              return new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'sqrt'), args);
+              return new PythonCall(new PythonIdentifier('_js_num'), [new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'sqrt'), args)]);
             case 'log':
               return new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'log'), args);
             case 'exp':
@@ -7291,7 +7771,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
         // IL AST ArrowFunction - (x) => expr -> lambda x: expr
         case 'ArrowFunction': {
-          if (this._lambdaNeedsDef(node.body)) {
+          if (this._lambdaNeedsDef(node.body) || PythonTransformer._hasLateDefault(node.params)) {
             const params = (node.params || []).map(p => typeof p === 'string' ? { type: 'Identifier', name: p } : p);
             return this.transformLambdaExpression(Object.assign({}, node, { params }));
           }
@@ -7723,7 +8203,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (flags.includes('m')) pyFlags.push('re.MULTILINE');
         if (flags.includes('s')) pyFlags.push('re.DOTALL');
 
-        const args = [PythonLiteral.Str(pattern, true)]; // true for raw string
+        const args = [PythonLiteral.Str(PythonTransformer._translateRegexSource(pattern, flags), true)]; // true for raw string
         if (pyFlags.length > 0) {
           args.push(new PythonIdentifier(pyFlags.join(' | ')));
         }
@@ -7956,6 +8436,14 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformBinaryExpression(node) {
+      // 'ab' + 'cd' + ... of string literals is one string. Folded without
+      // recursion: a data table spelled as a thousand-line concatenation
+      // (brotli-dictionary.data.js) nests deeper than the call stack allows.
+      if (node.operator === '+') {
+        const folded = PythonTransformer._foldStringConcatenation(node);
+        if (folded !== null) return PythonLiteral.Str(folded);
+      }
+
       // `(a / b) * 100` / `100 * (a / b)` - a percentage computation (e.g.
       // classical/al-kindi-frequency.js's `(frequencies[letter] /
       // totalLetters) * 100`). The default `/`-transform further below
@@ -8036,6 +8524,12 @@ class OpCodes(metaclass=_OpCodesMeta):
             case 'number': check = isType(new PythonTuple([new PythonIdentifier('int'), new PythonIdentifier('float')])); break;
             case 'bigint': check = isType(new PythonIdentifier('int')); break;
             case 'function': check = new PythonCall(new PythonIdentifier('callable'), [argExpr]); break;
+            // arrays, objects and null: anything not a primitive or a function
+            case 'object':
+              check = new PythonUnaryExpression('not', new PythonBinaryExpression(
+                isType(new PythonTuple([new PythonIdentifier('str'), new PythonIdentifier('bool'), new PythonIdentifier('int'), new PythonIdentifier('float')])),
+                'or', new PythonCall(new PythonIdentifier('callable'), [argExpr])));
+              break;
             case 'undefined':
               return new PythonBinaryExpression(argExpr, isNeg ? 'is not' : 'is', PythonLiteral.None());
           }
@@ -8168,9 +8662,19 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (operator === '&&') operator = 'and';
       if (operator === '||') operator = 'or';
 
+      // A comparison with null or undefined (both None) is an identity test
+      if ((operator === '==' || operator === '!=') &&
+          [node.left, node.right].some(n => isUndefinedOrNullLiteral(n) || (n && n.type === 'Literal' && n.value === null && !n.regex)))
+        return new PythonBinaryExpression(left, operator === '==' ? 'is' : 'is not', right);
+
       // Handle instanceof -> isinstance(left, right)
       if (operator === 'instanceof') {
         return new PythonCall(new PythonIdentifier('isinstance'), [left, right]);
+      }
+
+      // BigInt division and remainder: exact, truncating toward zero
+      if ((operator === '/' || operator === '%') && this._isBigIntOperation(node)) {
+        return new PythonCall(new PythonIdentifier(operator === '/' ? '_js_idiv' : '_js_imod'), [left, right]);
       }
 
       // Handle division - use integer division when dividing by integer literals
@@ -8211,8 +8715,16 @@ class OpCodes(metaclass=_OpCodesMeta):
           if (rawPropName && this._knownIntThisProps.has(rawPropName)) return false;
           return true;
         };
+        // A JavaScript quotient is one Number whether or not it has a
+        // fraction; _js_div keeps a whole one an int, so `8 + n / 32` (n from
+        // Math.pow) still sizes and indexes arrays
         if (isFloatOperand(node.left) || isFloatOperand(node.right)) {
-          return new PythonBinaryExpression(left, '/', right);
+          return new PythonCall(new PythonIdentifier('_js_div'), [left, right]);
+        }
+        // A quotient stored into a float-typed variable or field keeps its
+        // fraction (`/** @type {float64} */ const mean = sum / n`)
+        if (['float32', 'float64', 'float', 'double'].includes(node.contextType)) {
+          return new PythonCall(new PythonIdentifier('_js_div'), [left, right]);
         }
         // A BigInt literal divisor (`d = d / 2n`) is just as much an exact
         // integer division as a plain-number literal divisor - but
@@ -8352,6 +8864,83 @@ class OpCodes(metaclass=_OpCodesMeta):
       return new PythonBinaryExpression(left, operator, right);
     }
 
+    /**
+     * The value of a left-nested `+` chain of string literals, walked
+     * iteratively.
+     * @param {Object} node - IL BinaryExpression
+     * @returns {string|null} the concatenated string, null when any operand is not a string literal
+     */
+    static _foldStringConcatenation(node) {
+      const parts = [];
+      let n = node;
+      while (n && n.type === 'BinaryExpression' && n.operator === '+') {
+        if (!n.right || n.right.type !== 'Literal' || typeof n.right.value !== 'string') return null;
+        parts.push(n.right.value);
+        n = n.left;
+      }
+      if (!n || n.type !== 'Literal' || typeof n.value !== 'string') return null;
+      parts.push(n.value);
+      return parts.reverse().join('');
+    }
+
+    /**
+     * A JavaScript regex source as Python `re` reads it. Python has no
+     * Unicode property escapes: `\p{L}` (with the u or v flag) becomes the
+     * character class of every code point JavaScript itself puts in it.
+     * @param {string} pattern - JavaScript regex source
+     * @param {string} flags - JavaScript regex flags
+     * @returns {string} Python regex source
+     */
+    static _translateRegexSource(pattern, flags) {
+      if (!/[uv]/.test(flags) || !/\\[pP]\{/.test(pattern)) return pattern;
+      let out = '';
+      let inClass = false;
+      for (let i = 0; i < pattern.length; ++i) {
+        const c = pattern[i];
+        if (c === '\\') {
+          const m = /^\\([pP])\{([^}]+)\}/.exec(pattern.slice(i));
+          if (m && (m[1] === 'p' || !inClass)) {
+            const ranges = PythonTransformer._unicodePropertyRanges(m[2]);
+            out += inClass ? ranges : (m[1] === 'p' ? '[' + ranges + ']' : '[^' + ranges + ']');
+            i += m[0].length - 1;
+            continue;
+          }
+          out += c + (pattern[i + 1] || '');
+          ++i;
+          continue;
+        }
+        if (c === '[' && !inClass) inClass = true;
+        else if (c === ']' && inClass) inClass = false;
+        out += c;
+      }
+      return out;
+    }
+
+    /**
+     * The code points of a Unicode property as Python regex class ranges,
+     * taken from this JavaScript engine's own `\p{...}`.
+     * @param {string} property - Property name, e.g. L or Script=Greek
+     * @returns {string} class body such as \u0041-\u005a...
+     */
+    static _unicodePropertyRanges(property) {
+      const cache = PythonTransformer._unicodePropertyCache || (PythonTransformer._unicodePropertyCache = new Map());
+      if (cache.has(property)) return cache.get(property);
+      const re = new RegExp('^\\p{' + property + '}$', 'u');
+      const esc = cp => cp <= 0xFFFF ? '\\u' + cp.toString(16).padStart(4, '0') : '\\U' + cp.toString(16).padStart(8, '0');
+      let body = '';
+      let start = -1;
+      for (let cp = 0; cp <= 0x110000; ++cp) {
+        const inside = cp < 0x110000 && !(cp >= 0xD800 && cp <= 0xDFFF) && re.test(String.fromCodePoint(cp));
+        if (inside && start < 0) start = cp;
+        else if (!inside && start >= 0) {
+          body += cp - 1 === start ? esc(start) : esc(start) + '-' + esc(cp - 1);
+          start = -1;
+        }
+      }
+      cache.set(property, body);
+      return body;
+    }
+
     // Does `node` (an untransformed IL/JS AST node) contain a raw `*`
     // reachable through a chain of +/- operators, that ISN'T already an
     // inlined, Math.imul-based OpCodes.Mul32 (flagged `ilNodeType:
@@ -8474,12 +9063,30 @@ class OpCodes(metaclass=_OpCodesMeta):
     // actually BigInt at runtime (64-bit PRNG/hash state, explicit qword/long
     // casts, BigInt literals) rather than a plain 32-bit-truncated JS Number.
     static WIDE_INT_RESULT_TYPES = new Set(['bigint', 'uint64', 'int64', 'qword']);
+
+    /**
+     * True if the IL types a binary operation as BigInt arithmetic: its
+     * result or an operand is a BigInt, or an operand is a BigInt literal.
+     * @param {Object} node - IL BinaryExpression
+     * @returns {boolean}
+     */
+    _isBigIntOperation(node) {
+      const isBig = (n) => !!n && (String(n.resultType || '').toLowerCase() === 'bigint' ||
+        (n.type === 'Literal' && typeof n.value === 'bigint'));
+      return isBig(node) || isBig(node.left) || isBig(node.right);
+    }
     static isWideIntResultType(resultType) {
       return PythonTransformer.WIDE_INT_RESULT_TYPES.has(resultType);
     }
 
     transformUnaryExpression(node) {
       let operator = node.operator;
+
+      // The parser gives prefix ++x/--x as a unary expression; as a statement
+      // it is the same augmented assignment as x++, so a module variable it
+      // updates is declared `global` like any other assignment target
+      if (operator === '++' || operator === '--')
+        return this.transformUpdateExpression(node);
 
       if (operator === 'typeof' && node.argument.type === 'Identifier' &&
           PythonTransformer.UNDECLARABLE_JS_GLOBALS.has(node.argument.name)) {
@@ -8983,6 +9590,27 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformAssignmentExpressionCore(node) {
+      // `engine.blockSize = bits` on a framework block cipher instance: the
+      // framework only has BlockSize, which shares the snake_case name, so
+      // JavaScript creates a separate property unless the actual class
+      // defines a blockSize accessor; _js_set_twin decides at run time
+      if (node.operator === '=' && node.left && node.left.type === 'MemberExpression' && !node.left.computed &&
+          node.left.object && node.left.object.type !== 'ThisExpression' &&
+          FRAMEWORK_INSTANCE_BASES.includes(node.left.object.resultType)) {
+        const raw = node.left.property && (node.left.property.name || node.left.property.value);
+        if (raw === 'blockSize' || raw === 'keySize') {
+          return new PythonCall(new PythonIdentifier('_js_set_twin'), [
+            this.transformExpression(node.left.object), PythonLiteral.Str(toSnakeCaseProperty(raw)),
+            PythonLiteral.Str(raw), this.transformExpression(node.right)]);
+        }
+      }
+      // A quotient stored into an element of a float array keeps its
+      // fraction (`prob[i] = freq[i] / n` on a float64[])
+      if (node.operator === '=' && node.left && node.left.type === 'MemberExpression' && node.left.computed &&
+          node.right && node.right.type === 'BinaryExpression' && node.right.operator === '/' && !node.right.contextType) {
+        const floatElement = /^(float32|float64)\[\]$/.exec(node.left.object && node.left.object.resultType || '');
+        if (floatElement) node.right.contextType = floatElement[1];
+      }
       // `X.method = function(...) { ...this.foo...; return bar; }` -
       // dynamically attaching a method after construction (e.g. siphash.js's
       // `instance.Feed = function(data) { this._inputBuffer = ...; }` /
@@ -9514,7 +10142,15 @@ class OpCodes(metaclass=_OpCodesMeta):
         } else {
           property = this.transformExpression(prop);
         }
-        return new PythonSubscript(object, property);
+        const subscript = new PythonSubscript(object, property);
+        // obj[name] with a computed string name reads a property of any
+        // object; on an instance of a class Python needs getattr (the emitter
+        // keeps a plain subscript where this is assigned to)
+        const objectType = String(node.object && node.object.resultType || '');
+        if (prop && prop.resultType === 'string' && prop.type !== 'Literal' &&
+            !/(\[\]|Array|^string|^Map\b|^Set\b)$/.test(objectType))
+          subscript.isJsPropRead = true;
+        return subscript;
       } else {
         // Dot access: obj.prop
         const propName = node.property.name || node.property.value;
@@ -10248,6 +10884,14 @@ class OpCodes(metaclass=_OpCodesMeta):
           return new PythonCall(target, args.slice(1));
         }
 
+        // A method of a class the program declares (a ring buffer's own
+        // push/pop/shift) is called as written, not mapped as an array method
+        const receiverType = node.callee && node.callee.object && node.callee.object.resultType;
+        if (typeof receiverType === 'string' && this._userClassNames && this._userClassNames.has(receiverType) &&
+            !node.arguments.some(arg => arg.type === 'SpreadElement') &&
+            ['push', 'pop', 'shift', 'unshift', 'splice', 'slice', 'indexOf', 'includes', 'fill', 'reverse', 'join', 'concat', 'sort'].includes(methodName))
+          return new PythonCall(new PythonMemberAccess(target, toSnakeCaseProperty(methodName)), args);
+
         // Handle array methods
         if (methodName === 'push') {
           // Check if any argument is a spread element (arr.push(...data) -> arr.extend(data))
@@ -10877,9 +11521,10 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (typeName && HELPER_CLASSES.has(typeName))
         this.helperClasses.add(typeName);
 
-      // new ClassName(args) -> ClassName(args)
+      // new ClassName(args) -> ClassName(args); `new Rule(this.next++)` passes
+      // the value and increments in a statement of its own
       const className = typeName ? toPascalCase(typeName) : this.transformExpression(node.callee);
-      const args = node.arguments.map(arg => this.transformExpression(arg));
+      const args = node.arguments.map(arg => this.transformSideEffectFreeValue(arg));
 
       const callee = typeof className === 'string'
         ? new PythonIdentifier(className)
@@ -11095,7 +11740,9 @@ class OpCodes(metaclass=_OpCodesMeta):
       // branch, typically surfacing as a much-later, harder-to-diagnose
       // failure once the exception unwinds through an unrelated caller's
       // broad `except Exception: pass`.
-      const condition = this._safeLogicalMemberOperand(node.test, this.transformExpression(node.test));
+      const condition = this._containsArrayLikeCondition(node.test)
+        ? this._buildArrayAwareCondition(node.test)
+        : this._safeLogicalMemberOperand(node.test, this.transformExpression(node.test));
       const trueExpr = this.transformExpression(node.consequent);
       const falseExpr = this.transformExpression(node.alternate);
 
@@ -11109,11 +11756,16 @@ class OpCodes(metaclass=_OpCodesMeta):
       // with an assignment or update whose side effect is the point, is
       // hoisted into a local def ahead of the current statement; reducing it
       // to its first expression silently dropped the rest of the body.
-      if (this._lambdaNeedsDef(bodyNode)) {
+      // A default computed per call (`(a, b = a * 2) => ...`) needs a body
+      // to be applied in, too
+      const lateDefault = PythonTransformer._hasLateDefault(node.params);
+      const needsDef = this._lambdaNeedsDef(bodyNode);
+      if (needsDef || lateDefault) {
         this._lambdaHelperCounter = (this._lambdaHelperCounter || 0) + 1;
         const fnName = `_fn_${this._lambdaHelperCounter}`;
         // An assignment body runs as a statement and returns the assigned target.
         const block = bodyNode.type === 'BlockStatement' ? bodyNode
+          : !needsDef ? { type: 'BlockStatement', body: [{ type: 'ReturnStatement', argument: bodyNode }] }
           : { type: 'BlockStatement', body: [{ type: 'ExpressionStatement', expression: bodyNode },
             ...(bodyNode.type === 'AssignmentExpression' ? [{ type: 'ReturnStatement', argument: bodyNode.left }] : [])] };
         const func = this.transformArrowToFunction(fnName, Object.assign({}, node, { body: block }));
@@ -11122,7 +11774,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         return new PythonIdentifier(fnName);
       }
 
-      const params = node.params.map(p => this.transformParameter(p));
+      // A lambda has no body to apply a default in
+      const params = node.params.map(p => this.transformParameter(p, false));
       let body;
       if (bodyNode.type === 'BlockStatement') {
         // BlockStatement body - extract the first statement's return value or expression
@@ -11449,12 +12102,12 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       // Calculate mask based on byte count to ensure value fits
       // For 4 bytes: 0xFFFFFFFF, for 8 bytes: 0xFFFFFFFFFFFFFFFF, etc.
+      // A BigInt: as a Number, 2^64 - 1 would round up to 2^64.
       const mask = (1n << BigInt(bits)) - 1n;
-      const maskValue = Number(mask);
 
       // Mask the value to ensure it's unsigned and fits in the byte count
       // (value & mask).to_bytes(byteCount, byteOrder)
-      const maskedValue = new PythonBinaryExpression(value, '&', PythonLiteral.Int(maskValue));
+      const maskedValue = new PythonBinaryExpression(value, '&', PythonLiteral.Int(mask));
 
       // Wrap in list() to get a list of bytes that can be concatenated
       return new PythonCall(
@@ -11490,8 +12143,24 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformArrayAppend(node) {
       const array = this.transformExpression(node.array);
 
+      // `.push(...)` on an instance of a class the program declares is that
+      // class's own push method, not Array.prototype.push
+      const receiverType = node.array && node.array.resultType;
+      if (typeof receiverType === 'string' && this._userClassNames && this._userClassNames.has(receiverType)) {
+        const args = (node.values || (node.value ? [node.value] : [])).map(v => this.transformExpression(v));
+        return new PythonCall(new PythonMemberAccess(array, 'push'), args);
+      }
+
       // Handle multiple values (push with multiple arguments)
       const values = node.values || (node.value ? [node.value] : []);
+
+      // A value pushed onto a float array is stored as a float, as a value
+      // assigned to a float variable is (the IL records only the latter)
+      const floatElement = /^(float32|float64)\[\]$/.exec(node.array && node.array.resultType || '');
+      if (floatElement) {
+        for (const v of values)
+          if (v && v.type === 'BinaryExpression' && v.operator === '/' && !v.contextType) v.contextType = floatElement[1];
+      }
 
       // Check if any values are SpreadElements
       const hasSpread = values.some(v => v?.type === 'SpreadElement');
@@ -11718,12 +12387,9 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformArrayReverse(node) {
       const array = this.transformExpression(node.array);
-      // Use list(reversed(array)) to get a new reversed list
-      // For in-place reversal, caller should use array.reverse()
-      return new PythonCall(
-        new PythonIdentifier('list'),
-        [new PythonCall(new PythonIdentifier('reversed'), [array])]
-      );
+      // Array.prototype.reverse reverses in place and returns the same array,
+      // so `a.reverse();` as a statement must still reverse `a`
+      return new PythonCall(new PythonIdentifier('_js_reverse'), [array]);
     }
 
     /**
@@ -11756,7 +12422,11 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformArrayCreation(node) {
       if (node.size) {
-        const size = this.transformExpression(node.size);
+        let size = this.transformExpression(node.size);
+        // a float length (`new Array(Math.log2(n))`) is a whole Number in
+        // JavaScript; Python repeats a list only an int number of times
+        if (/^(float32|float64|double|float)$/.test(String(node.size.resultType || '')))
+          size = new PythonCall(new PythonIdentifier('int'), [size]);
         // `new Array(n)` needs JS-style auto-growing __setitem__ just like
         // any other array literal (e.g. feal-nx.js's key-schedule loop
         // `subKeys[4*i] = ...` up to the preallocated length) - PythonList
@@ -11788,6 +12458,10 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformTypedArrayCreation(node) {
       const arrayType = node.arrayType || 'Uint8Array';
+      // The IL files a call argument under `size` even when its type is an
+      // array (`new Uint32Array(OpCodes.Hex32ToDWords(...))`): that is a copy
+      if (!node.buffer && node.size && this._isLikelyArrayArgument(node.size))
+        node = Object.assign({}, node, { buffer: node.size, size: null });
 
       // Check if this is a copy from an existing array vs size-based creation
       // When buffer is set and is an identifier, we need to distinguish between:
@@ -11861,6 +12535,8 @@ class OpCodes(metaclass=_OpCodesMeta):
           const [width, fmt] = viewParams;
           const args = [buffer, PythonLiteral.Int(width)];
           if (fmt) args.push(PythonLiteral.Str(fmt));
+          else if (isBufferPeel) args.push(PythonLiteral.None());
+          if (isBufferPeel) args.push(PythonLiteral.Bool(true));
           return new PythonCall(new PythonIdentifier('_typed_array_view'), args);
         }
         return new PythonCall(new PythonIdentifier('list'), [buffer]);
@@ -12156,7 +12832,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       this.preserveFloatDivision = true;
       const argument = this.transformExpression(node.argument);
       this.preserveFloatDivision = prevPreserveFloatDivision;
-      return new PythonCall(new PythonIdentifier('round'), [argument]);
+      return new PythonCall(new PythonIdentifier('_js_round'), [argument]);
     }
 
     /**
@@ -12271,7 +12947,8 @@ class OpCodes(metaclass=_OpCodesMeta):
           return new PythonCall(new PythonIdentifier('OpCodes.ToLong'), [expression]);
         case 'int':
         case 'integer':
-          return new PythonCall(new PythonIdentifier('int'), [expression]);
+          // OpCodes.ToInt is `value | 0`: a signed 32-bit wrap, not a truncation
+          return new PythonCall(new PythonMemberAccess(new PythonIdentifier('OpCodes'), 'ToInt'), [expression]);
         case 'float':
         case 'double':
           return new PythonCall(new PythonIdentifier('float'), [expression]);
@@ -13521,6 +14198,14 @@ class OpCodes(metaclass=_OpCodesMeta):
       const source = this.transformExpression(node.source || node.values);
       const offset = node.offset ? this.transformExpression(node.offset) : PythonLiteral.Int(0);
 
+      // The slice form names the source twice; a source that is a call
+      // (`sig.set(VoleHash(...), off)`) is evaluated once by _js_set_into
+      const sourceNode = node.source || node.values;
+      const plainSource = sourceNode && (sourceNode.type === 'Identifier' || sourceNode.type === 'ThisPropertyAccess' ||
+        (sourceNode.type === 'MemberExpression' && !sourceNode.computed));
+      if (!plainSource)
+        return new PythonCall(new PythonIdentifier('_js_set_into'), [target, source, offset]);
+
       // target[offset:offset+len(source)] = source
       const sourceLen = new PythonCall(new PythonIdentifier('len'), [source]);
       const endIndex = new PythonBinaryExpression(offset, '+', sourceLen);
@@ -13576,6 +14261,12 @@ class OpCodes(metaclass=_OpCodesMeta):
       const key = this.transformExpression(node.key);
       const value = this.transformExpression(node.value);
 
+      // A receiver the IL does not know as a Map may be an object with its
+      // own set(key, value) method; _map_set decides at run time
+      const mapType = String(node.map && node.map.resultType || '');
+      if (!/^Map\b/.test(mapType))
+        return new PythonCall(new PythonIdentifier('_map_set'), [map, key, value]);
+
       // map[key] = value
       return new PythonAssignment(
         new PythonSubscript(map, key),
@@ -13611,10 +14302,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformSqrt(node) {
       this.imports.add('math');
       const argument = this.transformExpression(node.argument || node.arguments?.[0]);
-      return new PythonCall(
+      return new PythonCall(new PythonIdentifier('_js_num'), [new PythonCall(
         new PythonMemberAccess(new PythonIdentifier('math'), 'sqrt'),
         [argument]
-      );
+      )]);
     }
 
     /**
@@ -13633,10 +14324,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformLog2(node) {
       this.imports.add('math');
       const argument = this.transformExpression(node.argument);
-      return new PythonCall(
+      return new PythonCall(new PythonIdentifier('_js_num'), [new PythonCall(
         new PythonMemberAccess(new PythonIdentifier('math'), 'log2'),
         [argument]
-      );
+      )]);
     }
 
     /**

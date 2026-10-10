@@ -308,6 +308,73 @@ test('JavaScript harness: given a wrong vector, a throwing setter and an unappli
   checkProbe(runProbe('javascript', JS_PROBE));
 });
 
+const TS_PROBE = `
+declare const console: { log(...data: any[]): void };
+var AlgorithmFramework: any = { Algorithms: [] };
+class ProbeInstance {
+  algorithm: any; data: number[] = []; _key: number[] = null; _iv: number[] = null;
+  constructor(algorithm: any, inverse: boolean) { this.algorithm = algorithm; }
+  set key(k: number[]) { this._key = k; } get key(): number[] { return this._key; }
+  set iv(v: number[]) { if (this.algorithm.name === 'Throwing') throw new Error('iv rejected'); this._iv = v; } get iv(): number[] { return this._iv; }
+  Feed(d: number[]): void { for (const b of d) this.data.push(b); }
+  Result(): number[] {
+    const out = this.data.map((b, i) => b ^ this._key[i % this._key.length] ^ this._iv[0]);
+    if (this.algorithm.name === 'Wrong' && out.length === 2) out[0] ^= 1;
+    return out;
+  }
+}
+for (const name of ${JSON.stringify(PROBES)}) {
+  const tests: any[] = ${JSON.stringify(PROBE_VECTORS)};
+  AlgorithmFramework.Algorithms.push({ name, tests: name === 'Lacking' ? tests.map(t => Object.assign({ counter: 7 }, t)) : tests,
+    CreateInstance(inverse: boolean) { return new ProbeInstance(this, inverse); } });
+}
+`;
+
+test('TypeScript harness: given a wrong vector, a throwing setter and an unapplied field, when compiled and run, then each is reported, none swallowed', () => {
+  if (!hasTool('typescript')) return 'skip';
+  checkProbe(runProbe('typescript', TS_PROBE));
+});
+
+// PHP: the probe runs on the JavaScript-semantics runtime the transpiled code carries
+const phpArray = list => `new \\JS\\JsArray([${list.join(', ')}])`;
+const phpVector = (v, extra) => `\\JS\\obj(['text' => '${v.text}', 'input' => ${phpArray(v.input)}, 'key' => ${phpArray(v.key)}, 'iv' => ${phpArray(v.iv)}, 'expected' => ${phpArray(v.expected)}${extra}])`;
+const PHP_PROBE = () => '<?php\n'
+  + fs.readFileSync(path.join(__dirname, '..', 'codingplugins', 'php-runtime.php'), 'utf-8')
+    .replace(/^<\?php\s*/, '').replace(/^namespace JS;\s*$/m, 'namespace JS {') + '\n}\n'
+  + `namespace AlgorithmFramework { final class M { public static $Algorithms; } }
+namespace {
+#[\\AllowDynamicProperties]
+class ProbeInstance implements \\ArrayAccess {
+  use \\JS\\ObjectBehavior;
+  public $algorithm; public $data = []; public $_key = null; public $_iv = null;
+  public function __construct($algorithm) { $this->algorithm = $algorithm; }
+  public function set_key($k) { $this->_key = $k->toList(); }
+  public function get_key() { return $this->_key; }
+  public function set_iv($v) { if ($this->algorithm->name === 'Throwing') throw new \\JS\\Error('iv rejected'); $this->_iv = $v->toList(); }
+  public function get_iv() { return $this->_iv; }
+  public function Feed($d) { foreach ($d->toList() as $b) $this->data[] = $b; }
+  public function Result() {
+    $out = [];
+    foreach ($this->data as $i => $b) $out[] = $b ^ $this->_key[$i % count($this->_key)] ^ $this->_iv[0];
+    if ($this->algorithm->name === 'Wrong' && count($out) === 2) $out[0] ^= 1;
+    return new \\JS\\JsArray($out);
+  }
+}
+#[\\AllowDynamicProperties]
+class ProbeAlgorithm {
+  public $name; public $tests;
+  public function __construct($name, $tests) { $this->name = $name; $this->tests = $tests; }
+  public function CreateInstance($inverse = false) { return new ProbeInstance($this); }
+}
+\\AlgorithmFramework\\M::$Algorithms = new \\JS\\JsArray([${PROBES.map(name => `new ProbeAlgorithm('${name}', new \\JS\\JsArray([${PROBE_VECTORS.map(v => phpVector(v, name === 'Lacking' ? ", 'counter' => 7" : '')).join(', ')}]))`).join(', ')}]);
+}
+`;
+
+test('PHP harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('php')) return 'skip';
+  checkProbe(runProbe('php', PHP_PROBE()));
+});
+
 const PY_PROBE = `
 _algorithms_by_name = {}
 class ProbeInstance:

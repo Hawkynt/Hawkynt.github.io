@@ -118,26 +118,32 @@
 
   // ===== EXTENDABLE OUTPUT =====
 
-  // The two XOFs are loaded on first use rather than at load: requiring them
-  // here would register hash algorithms while this file is being loaded, and
-  // every tool that attributes an algorithm to whichever file was loading when
-  // it registered would then file SHAKE under asymmetric ciphers.
-  let hashesLoaded = false;
+  // The two XOFs are looked up on first use rather than at load: requiring
+  // them here would register hash algorithms while this file is being loaded,
+  // and every tool that attributes an algorithm to whichever file was loading
+  // when it registered would then file SHAKE under asymmetric ciphers.
 
   /**
-   * Load the XOF module this file needs, once.
-   * @returns {void}
+   * The registered XOF (registry first, CommonJS fallback to shake.js)
+   * @param {string} name - Registered XOF name, SHAKE128 or SHAKE256
+   * @returns {Algorithm} The XOF algorithm
+   * @throws {Error} If the XOF is not registered
    */
-  function loadHashes() {
-    if (hashesLoaded) return;
-    hashesLoaded = true;
-    if (typeof require === 'undefined') return;
-
-    try {
-      require('../hash/shake.js');
-    } catch (error) {
-      // In the browser this arrives as a script tag instead; Find() reports it.
+  function findXof(name) {
+    /** @type {Algorithm} */
+    let algorithm = AlgorithmFramework.Find(name);
+    if (!algorithm && typeof require !== 'undefined') {
+      try {
+        require('../hash/shake.js');
+      } catch (error) {
+        // In the browser this arrives as a script tag instead; reported below.
+      }
+      algorithm = AlgorithmFramework.Find(name);
     }
+    if (!algorithm) {
+      throw new Error('LWE-Signature requires ' + name + ', which is not registered');
+    }
+    return algorithm;
   }
 
   // The registered SHAKE refuses to squeeze more than this in one call, so a
@@ -155,16 +161,8 @@
      * @param {uint8[]} seed - Seed octets
      */
     constructor(name, seed) {
-      loadHashes();
-
       /** @type {Algorithm} */
-      const algorithm = AlgorithmFramework.Find(name);
-      if (!algorithm) {
-        throw new Error('LWE-Signature requires ' + name + ', which is not registered');
-      }
-
-      /** @type {Algorithm} */
-      this.algorithm = algorithm;
+      this.algorithm = findXof(name);
       /** @type {uint8[]} */
       this.seed = seed;
       /** @type {uint32} */
