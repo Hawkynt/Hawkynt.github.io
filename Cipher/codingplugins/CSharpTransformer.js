@@ -5594,6 +5594,8 @@
         const method = node.callee.property.name || node.callee.property.value;
         // /re/.test(s) is Regex.IsMatch: a bool (not an object compared to null)
         if (method === 'test' && obj?.type === 'Literal' && obj.regex) return CSharpType.Bool();
+        // A byte buffer's byteLength() is its Length (see transformCallExpression)
+        if (method === 'byteLength' && (node.arguments || []).length === 0 && this.inferFullExpressionType(obj)?.isArray) return CSharpType.Int();
 
         // AlgorithmFramework.Find(name)/etc - resolves at emission time to the
         // `dynamic`-returning stub method (see transformCallExpression's identical
@@ -16524,6 +16526,11 @@
     }
 
     transformCallExpression(node) {
+      // `buf.byteLength()` (the IL keeps the method call): a byte buffer's is its
+      // Length, an object's own byteLength() method stays that call
+      if (node.callee?.type === 'MemberExpression' && !node.callee.computed && (node.callee.property?.name === 'byteLength') &&
+          (node.arguments || []).length === 0 && this.inferFullExpressionType(node.callee.object)?.isArray)
+        return new CSharpMemberAccess(this.transformExpression(node.callee.object), 'Length');
       // Handle super() calls - these should be handled in constructor transformation
       // If we reach here, skip them (return null which will be filtered out)
       // Support both Super node type and Identifier with name "super"
