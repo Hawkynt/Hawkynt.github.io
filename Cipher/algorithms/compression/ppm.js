@@ -795,7 +795,7 @@
       /** @type {uint8[]} */
       const lengthBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(input.length));
       /** @type {uint8[]} */
-      const header = [MAX_ORDER, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
+      const header = [OpCodes.ToByte(MAX_ORDER), lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
       if (input.length === 0) {
         return header;
       }

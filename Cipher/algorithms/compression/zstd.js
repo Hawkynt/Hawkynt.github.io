@@ -898,12 +898,12 @@
    * @param {float64} end - End of the stream
    * @param {HuffmanDecodeTable} huf - Decoding table
    * @param {float64} count - Symbols to decode
-   * @returns {int32[]} Decoded symbols
+   * @returns {uint8[]} Decoded literal bytes
    */
   function decodeHuffmanStream(bytes, start, end, huf, count) {
     /** @type {BwdBitCursor} */
     const cur = new BwdBitCursor(bytes, start, end);
-    /** @type {int32[]} */
+    /** @type {uint8[]} */
     const out = new Array(count);
     /** @type {int32} */
     const mask = huf.table.length - 1;
@@ -2779,7 +2779,7 @@
         /** @type {float64} */
         let sp = jumpTableEnd;
         for (let i = 0; i < 4; ++i) {
-          /** @type {int32[]} */
+          /** @type {uint8[]} */
           const part = decodeHuffmanStream(bytes, sp, sp + sizes[i], huf, counts[i]);
           for (let k = 0; k < part.length; ++k) {
             literals.push(part[k]);
@@ -3025,12 +3025,12 @@
       let sizeBytes = null;
       if (len < 256) {
         sizeFlag = 0;
-        sizeBytes = [len];
+        sizeBytes = [OpCodes.ToByte(len)];
       } else if (len <= 256 + 0xFFFF) {
         sizeFlag = 1;
         /** @type {int32} */
         const v = len - 256;
-        sizeBytes = [OpCodes.And32(v, 0xFF), OpCodes.And32(OpCodes.Shr32(v, 8), 0xFF)];
+        sizeBytes = [OpCodes.ToByte(v), OpCodes.GetByte(v, 1)];
       } else if (len <= 0xFFFFFFFF) {
         sizeFlag = 2;
         sizeBytes = OpCodes.Unpack32LE(len);

@@ -84,7 +84,7 @@
    */
   function _countingSortByKey(arr, key, keyRange) {
     /** @type {int32[]} */
-    const count = filledArray(keyRange, 0);
+    const count = OpCodes.CreateArray(keyRange, 0);
     for (let i = 0; i < arr.length; i++) {
       count[key[arr[i]]]++;
     }
@@ -622,7 +622,7 @@
 
         // Block header: [length(4)][primary_index(4)][data...]
         /** @type {uint32[]} */
-        const lengthWord = [postProcessed.length];
+        const lengthWord = [OpCodes.ToUint32(postProcessed.length)];
         /** @type {uint8[]} */
         const lengthBytes = OpCodes.Words32ToBytesBE(lengthWord);
         for (let i = 0; i < lengthBytes.length; i++) {
@@ -630,7 +630,7 @@
         }
 
         /** @type {uint32[]} */
-        const indexWord = [encoded.primaryIndex];
+        const indexWord = [OpCodes.ToUint32(encoded.primaryIndex)];
         /** @type {uint8[]} */
         const indexBytes = OpCodes.Words32ToBytesBE(indexWord);
         for (let i = 0; i < indexBytes.length; i++) {

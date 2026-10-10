@@ -822,7 +822,7 @@
   }
 
   /**
-   * @param {float64[]} counts - Count per symbol
+   * @param {int32[]} counts - Count per symbol
    * @returns {float64[]} Cost per symbol in units of 1/BIT_SCALE bit
    */
   function entropyCosts(counts) {
@@ -851,8 +851,8 @@
 
   class ZopfliCostModel {
     /**
-     * @param {float64[]} litLenCounts - Literal/length counts
-     * @param {float64[]} distCounts - Distance counts
+     * @param {int32[]} litLenCounts - Literal/length counts
+     * @param {int32[]} distCounts - Distance counts
      */
     constructor(litLenCounts, distCounts) {
       /** @type {float64[]} */
@@ -1737,7 +1737,7 @@
     /** @type {int32[][]} */
     const distPrefix = new Array(count);
     /** @type {float64[]} */
-    const bytePrefix = zeroArray(count);
+    const bytePrefix = OpCodes.CreateArray(count, 0);
     litLenPrefix[0] = zeroArray(LIT_LEN_ALPHABET_SIZE);
     distPrefix[0] = zeroArray(DIST_ALPHABET_SIZE);
 

@@ -3694,7 +3694,7 @@
     const pairCost = [];
     for (let i = 0; i < clusters.length; ++i) {
       /** @type {float64[]} */
-      const row = filledArray(clusters.length, 0);
+      const row = OpCodes.CreateArray(clusters.length, 0);
       for (let j = i + 1; j < clusters.length; ++j) {
         row[j] = mergeCostUnits(clusters[i], clusters[j]);
       }
