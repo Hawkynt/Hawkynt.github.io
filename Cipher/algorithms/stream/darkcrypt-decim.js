@@ -310,7 +310,7 @@
     _computeFeedbackAndFilter() {
       const lfsr = this._lfsr;
 
-      /** @type {uint32} */
+      /** @type {uint8} */
       let feedback = 0;
       for (let i = 0; i < FEEDBACK_TAPS.length; i++) feedback = OpCodes.Xor32(feedback, lfsr[FEEDBACK_TAPS[i]]);
 
@@ -322,6 +322,7 @@
       let sum = 0;
       for (let i = 0; i < FILTER_SUM_TAPS.length; i++) sum += lfsr[FILTER_SUM_TAPS[i]];
 
+      /** @type {uint8} */
       const filterBit = OpCodes.Xor32(OpCodes.And32(OpCodes.Shr32(sum, 1), 1), xorAll);
 
       /** @type {uint8[]} */
