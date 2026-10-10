@@ -229,7 +229,7 @@
 
     get key() {
       /** @type {uint8[]} */
-      const pair = [this.keyA, this.keyB];
+      const pair = [OpCodes.ToByte(this.keyA), OpCodes.ToByte(this.keyB)];
       return pair;
     }
 

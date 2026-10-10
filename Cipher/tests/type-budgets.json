@@ -323,7 +323,7 @@
   "algorithms/checksum/verhoeff.js": 0,
   "algorithms/checksum/vin-checksum.js": 0,
   "algorithms/checksum/xor-checksum.js": 0,
-  "algorithms/classical/affine.js": 1,
+  "algorithms/classical/affine.js": 0,
   "algorithms/classical/al-kindi-frequency.js": 0,
   "algorithms/classical/autokey.js": 0,
   "algorithms/classical/bazeries.js": 0,
