@@ -647,7 +647,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
     try {
       const depSource = fs.readFileSync(depPath, 'utf-8');
-      const depOptions = LIBRARY_BUNDLE_LANGUAGES.has(language) ? { library: true, symbolPrefix: depName + '_' } : noPreludeOptions;
+      const depOptions = LIBRARY_BUNDLE_LANGUAGES.has(language) ? { library: true, symbolPrefix: (/^[0-9]/.test(depName) ? '_' : '') + depName + '_' } : noPreludeOptions;
       const depCode = transpileOne(depSource, plugin, depName, depOptions, parserOptions);
       if (JS_BUNDLING.has(language)) {
         const variable = '__validation_' + depName;
