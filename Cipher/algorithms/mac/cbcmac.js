@@ -75,7 +75,7 @@
       this.subCategory = "Block Cipher MAC";
       this.securityStatus = SecurityStatus.DEPRECATED;
       this.complexity = ComplexityType.BEGINNER;
-      this.country = CountryCode.INT;
+      this.country = CountryCode.INTL;
 
       // MAC-specific configuration
       // BouncyCastle defaults to block_size / 2 bits if not specified
