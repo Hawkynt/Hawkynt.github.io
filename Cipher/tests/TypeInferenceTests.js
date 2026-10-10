@@ -340,10 +340,14 @@ class TypeInferenceTestSuite {
 
   testArrayTypes() {
     this.runCategory('Array Type Inference', () => {
-      // Empty array - defaults to int32[] (element type follows int32 default)
+      // Empty array - untyped (no element type is guessed; a declared context types it)
       this.assertEqual(
         this.inferType('const x = [];', this.findVarInit),
-        'int32[]', 'Empty array → default int32[]', 'const x = []'
+        null, 'given an empty array without @type, then it is untyped (was guessed int32[])', 'const x = []'
+      );
+      this.assertEqual(
+        this.inferType('/** @type {uint16[]} */\nconst x = [];', this.findVarInit),
+        'uint16[]', 'given an empty array with @type {uint16[]}, then the declared type', 'const x = []'
       );
 
       // Integer literal arrays take the tightest element type that fits every
@@ -729,15 +733,20 @@ class TypeInferenceTestSuite {
         'boolean', 'true && string → boolean', 'true && "hello"'
       );
 
-      // Logical OR → always boolean
+      // Logical OR on values: the type both operands share
       this.assertEqual(
         this.inferType('const x = 5 || 10;', this.findVarInit),
-        'boolean', 'int32 || int32 → boolean', '5 || 10'
+        'int32', 'given int32 || int32, then int32 (was boolean)', '5 || 10'
       );
 
       this.assertEqual(
         this.inferType('const x = "hello" || 5;', this.findVarInit),
-        'boolean', 'string || int32 → boolean', '"hello" || 5'
+        null, 'given string || int32, then no shared type (exceptional; was boolean)', '"hello" || 5'
+      );
+
+      this.assertEqual(
+        this.inferType('const x = true || false;', this.findVarInit),
+        'boolean', 'given boolean || boolean, then boolean', 'true || false'
       );
     });
   }
@@ -852,7 +861,7 @@ class TypeInferenceTestSuite {
         'uint32', 'Class field this.hash = 0xFFFFFFFF → uint32', 'this.hash = 0xFFFFFFFF'
       );
 
-      // Empty array defaults to int32[]
+      // An empty array is untyped (no int32[] guess)
       const code2 = `
         class Test {
           constructor() {
@@ -866,7 +875,7 @@ class TypeInferenceTestSuite {
       );
       this.assertEqual(
         node2?.value?.resultType || node2?.right?.resultType,
-        'int32[]', 'Class field this.buffer = [] → int32[]', 'this.buffer = []'
+        null, 'given this.buffer = [] without @type, then the field value is untyped (was int32[])', 'this.buffer = []'
       );
 
       // TypedArray constructor preserves specific type
@@ -1793,8 +1802,8 @@ class TypeInferenceTestSuite {
       check(bytes + 'const x = b.map(v => { if (v) return "a"; return "b"; }); return x; }', 'x', 'string[]', 'given a block callback returning strings, then string[]');
       check(bytes + 'const x = b.map(v => v); return x; }', 'x', 'uint8[]', 'given an identity callback, then the source type (boundary)');
       check(bytes + 'const x = b.map(v => { const g = () => "s"; return v; }); return x; }', 'x', 'uint8[]', 'given a nested function, then its returns do not count');
-      check(bytes + 'const x = b.map(v => { if (v) return; return v; }); return x; }', 'x', 'uint8[]', 'given a bare return, then the result is not inferred and the source type is kept (exceptional)');
-      check(bytes + 'const x = b.map(v => String(v)); return x; }', 'x', 'uint8[]', 'given an untyped callback result, then the source type is kept (exceptional)');
+      check(bytes + 'const x = b.map(v => { if (v) return; return v; }); return x; }', 'x', null, 'given a bare return, then the result is untyped, not the source type (exceptional)');
+      check(bytes + 'const x = b.map(v => ({ v })); return x; }', 'x', null, 'given a callback returning object literals, then untyped, not the source type (mayo KAT rows; exceptional)');
 
       // Sums and products of fixed-width numbers: unsigned when no result is negative
       check(nums + 'const x = u * u; return x; }', 'x', 'uint64', 'given uint32 * uint32, then uint64 (was int64)');

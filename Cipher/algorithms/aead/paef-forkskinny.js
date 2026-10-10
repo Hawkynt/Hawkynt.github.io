@@ -72,6 +72,7 @@
      * @returns {uint32}
      */
     function skinny128_sbox(x) {
+      /** @type {uint32} */
       var y;
 
       // Mix the bits
@@ -97,6 +98,7 @@
      * @returns {uint32}
      */
     function skinny128_inv_sbox(x) {
+      /** @type {uint32} */
       var y;
 
       // Mix the bits
@@ -258,7 +260,10 @@
       var s1 = state.S[1];
       var s2 = state.S[2];
       var s3 = state.S[3];
-      var temp, rc;
+      /** @type {uint32} */
+      var temp;
+      /** @type {uint8} */
+      var rc;
 
       for (var round = first; round < last; ++round) {
         // Apply S-box to all cells
@@ -311,7 +316,10 @@
       var s1 = state.S[1];
       var s2 = state.S[2];
       var s3 = state.S[3];
-      var temp, rc;
+      /** @type {uint32} */
+      var temp;
+      /** @type {uint8} */
+      var rc;
 
       while (first > last) {
         // Inverse permute tweakey
@@ -881,6 +889,7 @@
       var tag = [];
       /** @type {uint8[]} */
       var block = [];
+      /** @type {int32} */
       var counter;
 
       // Check data limits (2^17 bytes = 128KB for PAEF-128-192)
@@ -1028,6 +1037,7 @@
       var tag = new Array(BLOCK_SIZE);
       /** @type {uint8[]} */
       var block = new Array(BLOCK_SIZE);
+      /** @type {int32} */
       var counter;
 
       // Check data limits

@@ -373,19 +373,13 @@
       }
     }
 
-    // Hash computation using Node.js crypto (CommonJS only) or framework algorithms
+    // Hash computation with the registered SHA family
     /**
      * SHA-1 digest
      * @param {uint8[]} message - Message
      * @returns {uint8[]} 20-byte digest
      */
     sha1(message) {
-      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
-        const crypto = require('crypto');
-        return Array.from(crypto.createHash('sha1').update(Buffer.from(message)).digest());
-      }
-
-      // Fallback: try using framework hash algorithm
       return this.computeHashWithFramework(message, 'SHA-1');
     }
 
@@ -395,11 +389,6 @@
      * @returns {uint8[]} 32-byte digest
      */
     sha256(message) {
-      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
-        const crypto = require('crypto');
-        return Array.from(crypto.createHash('sha256').update(Buffer.from(message)).digest());
-      }
-
       return this.computeHashWithFramework(message, 'SHA-256');
     }
 
@@ -409,11 +398,6 @@
      * @returns {uint8[]} 64-byte digest
      */
     sha512(message) {
-      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
-        const crypto = require('crypto');
-        return Array.from(crypto.createHash('sha512').update(Buffer.from(message)).digest());
-      }
-
       return this.computeHashWithFramework(message, 'SHA-512');
     }
 

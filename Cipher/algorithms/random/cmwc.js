@@ -232,7 +232,7 @@
 
       // Generator state
       /** @type {BigInt[]} */
-      this._state = OpCodes.CreateArray(this.R, 0n);               // State array Q[0..R-1]
+      this._state = new Array(this.R).fill(0n);               // State array Q[0..R-1]
       /** @type {BigInt} */
       this._carry = 0n;                              // Carry value
       /** @type {int32} */

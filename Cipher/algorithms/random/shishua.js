@@ -198,15 +198,15 @@
 
       // SHISHUA state: 16 x 64-bit values (4 lanes of 4 values each)
       /** @type {BigInt[]} */
-      this._state = OpCodes.CreateArray(16, 0n);
+      this._state = new Array(16).fill(0n);
 
       // Output buffer: 16 x 64-bit values
       /** @type {BigInt[]} */
-      this._output = OpCodes.CreateArray(16, 0n);
+      this._output = new Array(16).fill(0n);
 
       // Counter: 4 x 64-bit values (1 lane)
       /** @type {BigInt[]} */
-      this._counter = OpCodes.CreateArray(4, 0n);
+      this._counter = new Array(4).fill(0n);
 
       // Phi constants: hex digits of golden ratio (Φ)
       // "Nothing up my sleeve" numbers from reference implementation
@@ -333,7 +333,7 @@
         // Shuffle: 32-bit lane permutation implementing bit rotation
         // Creates temporary shuffled values for mixing
         /** @type {BigInt[]} */
-        const temp = OpCodes.CreateArray(8, 0n);
+        const temp = new Array(8).fill(0n);
         for (let k = 0; k < 8; ++k) {
           /** @type {int32} */
           const leftIdx = this.SHUFFLE_OFFSETS[k];

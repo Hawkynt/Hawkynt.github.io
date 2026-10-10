@@ -1493,8 +1493,6 @@
 
   // ===== the NTRU solver =====
 
-  const SOLVE_FAIL = null;
-
   /**
    * Depth 1 subtracts through two primes and keeps the centred residue, so a
    * coefficient must lie within half the product of the primes in use.
@@ -1538,7 +1536,7 @@
 
     let F = MulNeg(Expand2(Fd), NegX(g));
     let G = MulNeg(Expand2(Gd), NegX(f));
-    if (!FitsAtDepth(F, depth, llen) || !FitsAtDepth(G, depth, llen)) return SOLVE_FAIL;
+    if (!FitsAtDepth(F, depth, llen) || !FitsAtDepth(G, depth, llen)) return null;
 
     const rlen = Math.min(prof.window[depth], slen);
     const blen = slen - rlen;
@@ -1599,13 +1597,13 @@
         F[u] -= OpCodes.ShiftLn(kf[u], scaleK);
         G[u] -= OpCodes.ShiftLn(kg[u], scaleK);
       }
-      if (!FitsAtDepth(F, depth, FGlen) || !FitsAtDepth(G, depth, FGlen)) return SOLVE_FAIL;
+      if (!FitsAtDepth(F, depth, FGlen) || !FitsAtDepth(G, depth, FGlen)) return null;
 
       if (scaleFG <= scaleFg) break;
       if (scaleFG <= scaleFg + prof.reduceBits) scaleFG = scaleFg;
       else scaleFG -= prof.reduceBits;
       while (FGlen > slen && 31 * (FGlen - slen) > scaleFG - scaleFg + 30) --FGlen;
-      if (!FitsAtDepth(F, depth, FGlen) || !FitsAtDepth(G, depth, FGlen)) return SOLVE_FAIL;
+      if (!FitsAtDepth(F, depth, FGlen) || !FitsAtDepth(G, depth, FGlen)) return null;
     }
 
     return [F, G];
@@ -1699,7 +1697,7 @@
       Fp[u] = SubMod(Fp[u], MulMod(nk[u], nf[u], p), p);
       Gp[u] = SubMod(Gp[u], MulMod(nk[u], ng[u], p), p);
       const x = SubMod(MulMod(nf[u], Gp[u], p), MulMod(ng[u], Fp[u], p), p);
-      if (x !== 1) return SOLVE_FAIL;
+      if (x !== 1) return null;
     }
 
     const F = InverseNtt(Fp, logn, p).map(function (v) { return Centered(v, p); });
@@ -1731,7 +1729,7 @@
     const prof = P.profile;
     const logn = P.logn;
 
-    if (!IsInvertibleMod(f, logn, P1)) return SOLVE_FAIL;
+    if (!IsInvertibleMod(f, logn, P1)) return null;
 
     /** @type {BigInt[][]} */
     const fs = [ToBigInts(f)];
@@ -1742,10 +1740,10 @@
       gs.push(FieldNorm(gs[d]));
       const len = prof.small[d + 1];
       if (d + 1 < logn) {
-        if (!FitsSigned(fs[d + 1], 31 * len) || !FitsSigned(gs[d + 1], 31 * len)) return SOLVE_FAIL;
+        if (!FitsSigned(fs[d + 1], 31 * len) || !FitsSigned(gs[d + 1], 31 * len)) return null;
       } else {
         const lim = OpCodes.ShiftLn(1n, 31 * len);
-        if (fs[d + 1][0] >= lim || gs[d + 1][0] >= lim) return SOLVE_FAIL;
+        if (fs[d + 1][0] >= lim || gs[d + 1][0] >= lim) return null;
       }
     }
 
@@ -1753,24 +1751,24 @@
     // binary extended GCD returns, which is the one with 0 <= G < Res(g).
     const rf = fs[logn][0];
     const rg = gs[logn][0];
-    if (rf <= 0n || rg <= 0n || rf % 2n === 0n || rg % 2n === 0n) return SOLVE_FAIL;
+    if (rf <= 0n || rg <= 0n || rf % 2n === 0n || rg % 2n === 0n) return null;
     const G0 = ModInverseBig(rf, rg);
-    if (G0 < 0n) return SOLVE_FAIL;
+    if (G0 < 0n) return null;
     const F0 = (rf * G0 - 1n) / rg;
 
     let Fd = [F0];
     let Gd = [G0];
     for (let depth = logn - 1; depth >= 1; --depth) {
       const r = SolveIntermediate(P, depth, fs[depth], gs[depth], Fd, Gd);
-      if (!r) return SOLVE_FAIL;
+      if (!r) return null;
       Fd = r[0];
       Gd = r[1];
     }
 
     const top = SolveDepth0(P, f, g, Fd, Gd);
-    if (!top) return SOLVE_FAIL;
+    if (!top) return null;
     for (let u = 0; u < P.n; ++u)
-      if (top[0][u] < -127 || top[0][u] > 127 || top[1][u] < -127 || top[1][u] > 127) return SOLVE_FAIL;
+      if (top[0][u] < -127 || top[0][u] > 127 || top[1][u] < -127 || top[1][u] > 127) return null;
     return top;
   }
 

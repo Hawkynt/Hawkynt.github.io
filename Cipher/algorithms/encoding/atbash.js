@@ -165,6 +165,7 @@
     }
 
     // Property setter for key (Atbash doesn't use keys)
+    /** @param {uint8[]|null} keyData - Ignored */
     set key(keyData) {
       // Atbash doesn't use keys - ignore the key data
     }
@@ -175,7 +176,7 @@
    */
 
     get key() {
-      return ""; // Atbash has no key
+      return null; // Atbash has no key
     }
 
     // Feed data to the cipher

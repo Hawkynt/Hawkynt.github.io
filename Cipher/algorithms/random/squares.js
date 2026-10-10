@@ -67,6 +67,7 @@
    * @returns {uint32} 32-bit random output
    */
   function squares32(counter, key) {
+    /** @type {BigInt} */
     let x, y, z;
 
     // Initialize: y = x = counter * key (mod 2^64)
@@ -97,6 +98,7 @@
    * @returns {uint32} 32-bit random output
    */
   function squares32_4round(counter, key) {
+    /** @type {BigInt} */
     let x, y, z;
 
     y = x = (counter * key)&MASK64;

@@ -268,6 +268,7 @@
     let key3 = OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
 
     for (let i = 0; i < 16; i += 2) {
+      /** @type {uint32} */
       let KC_i, keyt;
 
       KC_i = KC[i];

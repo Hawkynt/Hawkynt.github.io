@@ -340,6 +340,7 @@
      *   z3 = ((z3 AND 0xFFFFFFF0) shl 17) XOR b
      *
      * Output: z1 XOR z2 XOR z3
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

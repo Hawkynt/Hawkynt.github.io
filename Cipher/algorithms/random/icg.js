@@ -48,6 +48,7 @@
   function ModInverse(value, modulus) {
     if (value === 0n) return 0n;
 
+    /** @type {BigInt} */
     let t = 0n, newT = 1n;
     let r = modulus, newR = value % modulus;
 

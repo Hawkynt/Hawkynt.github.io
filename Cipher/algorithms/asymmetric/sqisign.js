@@ -1943,6 +1943,7 @@
      * @returns {XzPoint} Result
      */
     function xMul(Pt, k, kbits, E) {
+      /** @type {XzPoint} */
       let A24;
       if (!E.normalized) {
         let x = FieldAdd(F, E.C, E.C);
@@ -2230,6 +2231,7 @@
     function findNqrFactor(E, start) {
       let n = start;
       let qr = true;
+      /** @type {Fp2} */
       let z;
       for (;;) {
         while (qr) {
@@ -2287,6 +2289,7 @@
 
       const hintA = hint % 2;
       const hintP = Math.floor(hint / 2);
+      /** @type {Fp2} */
       let px;
       if (!hintP) {
         px = hintA ? findNqrFactor(E, 128) : findNAxCoord(E, 128);
