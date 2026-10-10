@@ -67,7 +67,7 @@
       this.category = CategoryType.HASH;
       this.subCategory = "Fast Hash";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.complexity = ComplexityType.BASIC;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Hash-specific metadata

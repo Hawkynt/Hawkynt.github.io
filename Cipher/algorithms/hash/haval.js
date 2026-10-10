@@ -607,8 +607,8 @@
         this.description = "HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable passes (3, 4, 5).";
         this.category = CategoryType.HASH;
         this.subCategory = "Variable Hash";
-        this.securityStatus = SecurityStatus.INSECURE; // Known vulnerabilities
-        this.complexity = ComplexityType.HIGH;
+        this.securityStatus = SecurityStatus.BROKEN; // Known vulnerabilities
+        this.complexity = ComplexityType.ADVANCED;
 
         // Algorithm properties
         this.inventor = "Yuliang Zheng, Josef Pieprzyk, Jennifer Seberry";

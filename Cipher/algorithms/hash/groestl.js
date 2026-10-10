@@ -113,12 +113,12 @@
         this.category = CategoryType.HASH;
         this.subCategory = "Cryptographic Hash";
         this.securityStatus = SecurityStatus.EDUCATIONAL; // SHA-3 finalist but not selected
-        this.complexity = ComplexityType.HIGH;
+        this.complexity = ComplexityType.ADVANCED;
 
         // Algorithm properties
         this.inventor = "Praveen Gauravaram, Lars R. Knudsen, Krystian Matusiewicz, et al.";
         this.year = 2011;
-        this.country = CountryCode.MULTI;
+        this.country = CountryCode.INTL;
 
         // Hash-specific properties
         /** @type {int32} */

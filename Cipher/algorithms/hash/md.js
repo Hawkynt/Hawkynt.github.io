@@ -216,8 +216,8 @@
       this.year = 1989;
       this.category = CategoryType.HASH;
       this.subCategory = "MD Family";
-      this.securityStatus = SecurityStatus.INSECURE;
-      this.complexity = ComplexityType.BASIC;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Hash-specific metadata
@@ -481,8 +481,8 @@
       this.year = 1990;
       this.category = CategoryType.HASH;
       this.subCategory = "MD Family";
-      this.securityStatus = SecurityStatus.INSECURE;
-      this.complexity = ComplexityType.BASIC;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Hash-specific metadata
