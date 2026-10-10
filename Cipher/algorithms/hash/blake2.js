@@ -974,7 +974,8 @@
       this.country = CountryCode.CH;
 
       // Hash-specific metadata - XOF supports variable output
-      this.SupportedOutputSizes = null; // Variable output size
+      // Variable output size: 1 to 2^16-2 bytes; 2^16-1 marks a length not known in advance
+      this.SupportedOutputSizes = [new KeySize(1, 65534, 1)];
 
       // Performance and technical specifications
       /** @type {int32} */

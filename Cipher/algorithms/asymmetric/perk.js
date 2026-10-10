@@ -86,6 +86,7 @@
   // hashes, both chosen by the security level. The collection's FIPS 202
   // modules already agree with the published digests, so they are reused.
 
+  /** @type {Map<string, Algorithm>} */
   const HASH_CACHE = new Map();
   let hashesLoaded = false;
 

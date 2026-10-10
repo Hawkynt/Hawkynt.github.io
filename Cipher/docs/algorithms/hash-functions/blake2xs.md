@@ -15,6 +15,12 @@
 | Origin | 🇨🇭 Switzerland |
 | Source | [`algorithms/hash/blake2.js`](../../../algorithms/hash/blake2.js) |
 
+## Parameters
+
+| Parameter | Supported values |
+| --- | --- |
+| Output sizes | 1 byte (8 bits) to 65534 bytes (524272 bits) |
+
 ## Security
 
 **Status:** 🧪 Experimental

@@ -570,6 +570,7 @@
   // reused. Without this every instance would pay for two probable-prime searches
   // and the encrypting and decrypting instances of a single message would each
   // spend that time separately.
+  /** @type {Map<string, RabinKeyPair>} */
   const KEY_PAIR_CACHE = new Map();
 
   // ===== RABIN ALGORITHM IMPLEMENTATION =====

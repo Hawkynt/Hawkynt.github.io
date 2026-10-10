@@ -174,21 +174,12 @@
     }
 
     /**
-     * @param {uint8[]|null} keyData
+     * @param {uint8[]|null} keyData - 16 key bytes; any other value leaves the key unchanged
      */
     set key(keyData) {
       if (Array.isArray(keyData) && keyData.length === 16) {
         this.keyData = keyData.slice();
         this.initializeKey();
-      } else if (keyData) {
-        // also accepts a { key: [...] } wrapper
-        /** @type {uint8[]} */
-        const nestedKey = keyData.key;
-        if (nestedKey && Array.isArray(nestedKey)) {
-          this.keyData = nestedKey.slice(0, 16);
-          while (this.keyData.length < 16) this.keyData.push(0);
-          this.initializeKey();
-        }
       }
     }
 

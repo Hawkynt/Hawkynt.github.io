@@ -133,7 +133,7 @@
 
   class DpcmInstance extends IAlgorithmInstance {
     /**
-     * @param {Dpcm} algorithm - Parent algorithm
+     * @param {DpcmTransform} algorithm - Parent algorithm
      * @param {boolean} [isInverse=false] - True for the inverse transform
      */
     constructor(algorithm, isInverse = false) {

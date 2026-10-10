@@ -75,8 +75,12 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.UA;
 
-      /** @type {int32[]} */
-      this.SupportedBlockSizes = [128, 256, 512]; // Kalyna block sizes in bits
+      // Kalyna block sizes in bytes: 128, 256 and 512 bits
+      this.SupportedBlockSizes = [
+        new KeySize(16, 16, 0),
+        new KeySize(32, 32, 0),
+        new KeySize(64, 64, 0)
+      ];
       this.SupportedKeySizes = [
         new KeySize(16, 32, 8),   // 128-bit Kalyna: 128/256-bit keys
         new KeySize(16, 64, 16)   // 256/512-bit Kalyna: variable key sizes
