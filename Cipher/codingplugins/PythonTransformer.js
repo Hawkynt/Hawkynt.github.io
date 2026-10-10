@@ -8648,7 +8648,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       // both must be recognized here or this fires for one code path but
       // not the other.
       const isUndefinedOrNullLiteral = (n) => n && ((n.type === 'Identifier' && (n.name === 'undefined' || n.name === 'null')) ||
-        (n.type === 'Literal' && n.resultType === 'void'));
+        (n.type === 'Literal' && (n.isUndefined || n.resultType === 'void')));
       if (['===', '!==', '==', '!='].includes(node.operator)) {
         if (isUndefinedOrNullLiteral(node.right)) left = this._safeLogicalMemberOperand(node.left, left);
         else if (isUndefinedOrNullLiteral(node.left)) right = this._safeLogicalMemberOperand(node.right, right);
@@ -13473,7 +13473,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     _collectUndefinedCheckedNames(node, into) {
       if (!node || typeof node !== 'object') return;
       if (node.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(node.operator)) {
-        const isUndefinedLiteral = (n) => n && ((n.type === 'Literal' && n.resultType === 'void') ||
+        const isUndefinedLiteral = (n) => n && ((n.type === 'Literal' && (n.isUndefined || n.resultType === 'void')) ||
           (n.type === 'Identifier' && n.name === 'undefined'));
         const other = isUndefinedLiteral(node.right) ? node.left : (isUndefinedLiteral(node.left) ? node.right : null);
         if (other && other.type === 'Identifier' && other.name) into.add(other.name);

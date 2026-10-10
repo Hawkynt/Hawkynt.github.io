@@ -2794,7 +2794,8 @@
       if (name === 'Infinity' || name === 'NaN') {
         resultType = 'float64';
       } else if (name === 'undefined') {
-        resultType = 'void';
+        // The global `undefined` is the undefined literal, however it was parsed.
+        return this._transformLiteral({ type: 'Literal', value: undefined, raw: 'undefined', ...(node.loc ? { loc: node.loc } : {}), ...(node.range ? { range: node.range } : {}) }, context);
       } else {
         // Look up variable type from scope - no name-based fallback
         resultType = this.lookupVariableType(name);
@@ -5677,8 +5678,12 @@
         resultType = 'boolean';
       } else if (value === null) {
         resultType = 'null';
-      } else if (value === undefined) {
-        resultType = 'void';
+      } else if (value === undefined && !node.regex) {
+        // `undefined` is a value: the absent reference every target spells
+        // as its null (null, None, nil, nullptr, ...). It is typed like null
+        // and marked, so a consumer tells it from null without reading
+        // `value` (an undefined property does not survive serialization).
+        return { ...node, value: undefined, raw: 'undefined', isUndefined: true, resultType: 'null', ilNodeType: 'Literal' };
       } else if (node.regex) {
         // Regex literal
         resultType = 'regex';

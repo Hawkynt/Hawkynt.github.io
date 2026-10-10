@@ -566,6 +566,15 @@ test('length: given a local class without a length field, when x.length is read,
   const ast = il('class M { constructor() { /** @type {int32} */ this.size = 0; } }\n/** @param {M} m\n * @returns {int32} */\nfunction f(m) { return m.length; }');
   equal(find(ast, n => n.type === 'ReturnStatement').argument.type, 'ArrayLength');
 });
+test('undefined: given the undefined keyword, when transformed, then it is a marked undefined literal typed like null', () => {
+  const lit = find(il('/** @returns {?uint8[]} */\nfunction f() { return undefined; }'), n => n.type === 'ReturnStatement').argument;
+  same([lit.type, lit.isUndefined, lit.raw, lit.resultType, 'value' in lit && lit.value === undefined], ['Literal', true, 'undefined', 'null', true]);
+});
+test('undefined: given null, when transformed, then it is no undefined literal', () => {
+  const lit = find(il('/** @returns {?uint8[]} */\nfunction f() { return null; }'), n => n.type === 'ReturnStatement').argument;
+  same([lit.value, lit.isUndefined, lit.resultType], [null, undefined, 'null']);
+});
+
 // ------------------------------------------------------------ enum members
 test('enum: given the framework, when loaded, then each enum knows its members', () => {
   const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;
