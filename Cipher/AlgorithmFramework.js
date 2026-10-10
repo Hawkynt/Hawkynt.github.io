@@ -954,6 +954,7 @@
         const blockSize = this.BlockSize
         this.RequireBlockMultiple(blockSize)
 
+        /** @type {byte[]} */
         const output = []
         for (let offset = 0; offset < this.inputBuffer.length; offset += blockSize) {
           const block = this.inputBuffer.slice(offset, offset + blockSize)
