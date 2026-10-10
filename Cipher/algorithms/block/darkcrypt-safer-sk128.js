@@ -317,7 +317,7 @@
       a = OpCodes.Xor32(a, ek[++keyIndex]); b = OpCodes.And32(OpCodes.Add32(b, ek[++keyIndex]), 0xFF); c = OpCodes.And32(OpCodes.Add32(c, ek[++keyIndex]), 0xFF); d = OpCodes.Xor32(d, ek[++keyIndex]);
       e = OpCodes.Xor32(e, ek[++keyIndex]); f = OpCodes.And32(OpCodes.Add32(f, ek[++keyIndex]), 0xFF); g = OpCodes.And32(OpCodes.Add32(g, ek[++keyIndex]), 0xFF); h = OpCodes.Xor32(h, ek[++keyIndex]);
 
-      return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF), OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
+      return [OpCodes.ToByte(a), OpCodes.ToByte(b), OpCodes.ToByte(c), OpCodes.ToByte(d), OpCodes.ToByte(e), OpCodes.ToByte(f), OpCodes.ToByte(g), OpCodes.ToByte(h)];
     }
 
     /**
@@ -377,7 +377,7 @@
         a = OpCodes.Xor32(LOG_TAB[OpCodes.And32(a, 0xFF)], ek[--keyIndex]);
       }
 
-      return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF), OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
+      return [OpCodes.ToByte(a), OpCodes.ToByte(b), OpCodes.ToByte(c), OpCodes.ToByte(d), OpCodes.ToByte(e), OpCodes.ToByte(f), OpCodes.ToByte(g), OpCodes.ToByte(h)];
     }
   }
 

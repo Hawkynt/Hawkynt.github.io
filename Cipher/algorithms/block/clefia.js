@@ -610,10 +610,10 @@
       // Diffusion matrix multiplication (GF(2^8))
       /** @type {uint8[]} */
       const z = [
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y[0], gfMul(y[1], 2)), gfMul(y[2], 4)), gfMul(y[3], 6)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 2), y[1]), gfMul(y[2], 6)), gfMul(y[3], 4)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(y[0], gfMul(y[1], 2)), gfMul(y[2], 4)), gfMul(y[3], 6)),
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul(y[0], 2), y[1]), gfMul(y[2], 6)), gfMul(y[3], 4)),
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)
@@ -643,10 +643,10 @@
       // Diffusion matrix multiplication (GF(2^8))
       /** @type {uint8[]} */
       const z = [
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y[0], gfMul(y[1], 8)), gfMul(y[2], 2)), gfMul(y[3], 10)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 8), y[1]), gfMul(y[2], 10)), gfMul(y[3], 2)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(y[0], gfMul(y[1], 8)), gfMul(y[2], 2)), gfMul(y[3], 10)),
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul(y[0], 8), y[1]), gfMul(y[2], 10)), gfMul(y[3], 2)),
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
+        OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)

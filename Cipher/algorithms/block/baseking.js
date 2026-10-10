@@ -193,7 +193,11 @@
             template[i] = this.ROUND_CONSTANTS[this.NUM_ROUNDS - r];
           }
         }
-        const diffusedTemplate = this.diffusion([...template.reverse()]);
+        // The template, reversed, holds 16-bit words once its markers are replaced
+        /** @type {uint16[]} */
+        const reversed = [];
+        for (let i = template.length - 1; i >= 0; i--) reversed.push(OpCodes.ToWord(template[i]));
+        const diffusedTemplate = this.diffusion(reversed);
 
         for (let i = 0; i < 12; i++) {
           result[i] = OpCodes.Xor32(OpCodes.Xor32(block[i], key[i]), diffusedTemplate[i]);

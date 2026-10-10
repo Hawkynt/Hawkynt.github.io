@@ -119,7 +119,7 @@
    */
   function xor4(a, b) {
     /** @type {uint8[]} */
-    const r = [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1]), OpCodes.Xor32(a[2], b[2]), OpCodes.Xor32(a[3], b[3])];
+    const r = [OpCodes.Xor8(a[0], b[0]), OpCodes.Xor8(a[1], b[1]), OpCodes.Xor8(a[2], b[2]), OpCodes.Xor8(a[3], b[3])];
     return r;
   }
 
@@ -236,7 +236,7 @@
    */
   function p8(x) {
     /** @type {uint8[]} */
-    const r = [OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(x[1], x[3]), OpCodes.Xor32(OpCodes.Xor32(x[1], x[2]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[2]), x[3])];
+    const r = [OpCodes.Xor8(x[0], x[2]), OpCodes.Xor8(x[1], x[3]), OpCodes.Xor8(OpCodes.Xor8(x[1], x[2]), x[3]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[2]), x[3])];
     return r;
   }
 
@@ -248,10 +248,10 @@
   function p16(x) {
     /** @type {uint8[]} */
     const r = [
-      OpCodes.Xor32(x[0], x[4]), OpCodes.Xor32(x[1], x[5]),
-      OpCodes.Xor32(x[2], x[6]), OpCodes.Xor32(x[3], x[7]),
-      OpCodes.Xor32(OpCodes.Xor32(x[2], x[4]), x[6]), OpCodes.Xor32(OpCodes.Xor32(x[3], x[5]), x[7]),
-      OpCodes.Xor32(OpCodes.Xor32(x[0], x[4]), x[6]), OpCodes.Xor32(OpCodes.Xor32(x[1], x[5]), x[7])
+      OpCodes.Xor8(x[0], x[4]), OpCodes.Xor8(x[1], x[5]),
+      OpCodes.Xor8(x[2], x[6]), OpCodes.Xor8(x[3], x[7]),
+      OpCodes.Xor8(OpCodes.Xor8(x[2], x[4]), x[6]), OpCodes.Xor8(OpCodes.Xor8(x[3], x[5]), x[7]),
+      OpCodes.Xor8(OpCodes.Xor8(x[0], x[4]), x[6]), OpCodes.Xor8(OpCodes.Xor8(x[1], x[5]), x[7])
     ];
     return r;
   }
@@ -264,10 +264,10 @@
   function p16Inv(y) {
     /** @type {uint8[]} */
     const r = [
-      OpCodes.Xor32(OpCodes.Xor32(y[0], y[2]), y[4]), OpCodes.Xor32(OpCodes.Xor32(y[1], y[3]), y[5]),
-      OpCodes.Xor32(OpCodes.Xor32(y[0], y[2]), y[6]), OpCodes.Xor32(OpCodes.Xor32(y[1], y[3]), y[7]),
-      OpCodes.Xor32(y[2], y[4]), OpCodes.Xor32(y[3], y[5]),
-      OpCodes.Xor32(y[0], y[6]), OpCodes.Xor32(y[1], y[7])
+      OpCodes.Xor8(OpCodes.Xor8(y[0], y[2]), y[4]), OpCodes.Xor8(OpCodes.Xor8(y[1], y[3]), y[5]),
+      OpCodes.Xor8(OpCodes.Xor8(y[0], y[2]), y[6]), OpCodes.Xor8(OpCodes.Xor8(y[1], y[3]), y[7]),
+      OpCodes.Xor8(y[2], y[4]), OpCodes.Xor8(y[3], y[5]),
+      OpCodes.Xor8(y[0], y[6]), OpCodes.Xor8(y[1], y[7])
     ];
     return r;
   }
@@ -279,7 +279,7 @@
    */
   function m5(x) {
     /** @type {uint8[]} */
-    const r = [OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[2]), OpCodes.Xor32(x[1], x[3])];
+    const r = [OpCodes.Xor8(x[0], x[2]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[1]), x[3]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[1]), x[2]), OpCodes.Xor8(x[1], x[3])];
     return r;
   }
 
@@ -289,7 +289,7 @@
    */
   function mB(x) {
     /** @type {uint8[]} */
-    const r = [OpCodes.Xor32(x[1], x[3]), OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[2]), x[3])];
+    const r = [OpCodes.Xor8(x[1], x[3]), OpCodes.Xor8(x[0], x[2]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[1]), x[3]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[2]), x[3])];
     return r;
   }
 
