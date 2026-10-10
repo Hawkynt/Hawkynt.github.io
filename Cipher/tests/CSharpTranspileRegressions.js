@@ -1129,9 +1129,13 @@ check('division: a quotient of integers nested in a value going into doubles div
   expectMatch(code, /\(double\)\(?counts\[k\]\)? \/ total \* 100/, '(double)counts[k] / total * 100 in the push');
   expectMatch(code, /double first = \(double\)\(?counts\[0\]\)? \/ total \* 100/, '(double)counts[0] / total * 100 in the declaration');
 });
-const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
-  'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
-  '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
+check('defaults: a default computed from another argument is applied in the body', () => {
+  const code = transpile('/**\n * @param {float64[]} weights - weights\n * @param {int32} [symbolCount] - count\n * @returns {int32[]} lengths\n */\n' +
+    'function buildCodeLengths(weights, symbolCount = weights.length) {\n  /** @type {int32} */\n  const count = symbolCount;\n  return new Array(count).fill(0);\n}\n' +
+    '/**\n * @param {float64[]} w - weights\n * @returns {int32[]} lengths\n */\nfunction all(w) { return buildCodeLengths(w); }');
+  expectMatch(code, /BuildCodeLengths\(double\[\] weights = default, int\? symbolCountArg = null\)/, 'int? symbolCountArg = null');
+  expectMatch(code, /int symbolCount = symbolCountArg \?\? weights\.Length;/, 'int symbolCount = symbolCountArg ?? weights.Length');
+});
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
   const code = transpile(SAME_NAMED_CALLS);
   expectMatch(code, /return Generated\.Decapsulate\(.*\)\.Select\(_v => (unchecked\()?\(int\)\(?_v\)?\)?\)\.ToArray\(\);/, 'the byte[] result converted to int[]');

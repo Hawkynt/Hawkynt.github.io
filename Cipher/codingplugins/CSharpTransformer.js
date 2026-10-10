@@ -11450,6 +11450,22 @@
           }
         }
 
+        // A default computed from the other arguments (huffman-code-lengths.data.js's
+        // `symbolCount = weights.length`) is no C# constant: the parameter takes null
+        // and the body starts by applying the default - a value type through a
+        // nullable `<name>Arg` parameter, `T name = nameArg ?? <default>;`
+        if (literalDefaultNode && !hasLiteralDefault && !isRef && !inheritedDefaultValue && !csParam.defaultValue) {
+          if (!paramType.isArray && CSHARP_VALUE_TYPES.has(paramType.name) && !paramType.isNullable) {
+            csParam.name = `${paramName}Arg`;
+            csParam.type = new CSharpType(paramType.name, { isNullable: true });
+            csParam.defaultValue = CSharpLiteral.Null();
+            (method.defaultPrelude ||= []).push({ name: paramName, type: paramType, arg: csParam.name, node: literalDefaultNode });
+          } else if (paramType.isArray || paramType.name === 'string' || paramType.name === 'object') {
+            csParam.defaultValue = CSharpLiteral.Null();
+            (method.defaultPrelude ||= []).push({ name: paramName, type: paramType, arg: null, node: literalDefaultNode });
+          }
+        }
+
         method.parameters.push(csParam);
       }
 
@@ -11520,6 +11536,17 @@
         for (const n of this.collectThisAliasNames(funcNode.body)) this.thisAliasNames.add(n);
         method.body = this.transformFunctionBody(funcNode.body, method);
         this.thisAliasNames = prevThisAliasNames;
+        // Defaults computed from other arguments, applied first (see the parameter loop)
+        if (method.defaultPrelude?.length && method.body) {
+          const prelude = method.defaultPrelude.map(d => {
+            const value = this.castIfNeeded(this.transformExpression(d.node), this.inferFullExpressionType(d.node), d.type);
+            return d.arg
+              ? new CSharpVariableDeclaration(d.name, d.type, new CSharpBinaryExpression(new CSharpIdentifier(d.arg), '??', value))
+              : new CSharpExpressionStatement(new CSharpAssignment(new CSharpIdentifier(d.name), '??=', value));
+          });
+          method.body.statements.unshift(...prelude);
+        }
+        delete method.defaultPrelude;
       }
 
       // Pop scope when done with method
