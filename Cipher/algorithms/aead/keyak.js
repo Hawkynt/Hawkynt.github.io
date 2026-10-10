@@ -603,7 +603,7 @@
     // preceding state cannot be recovered from what follows
     _makeKnot() {
       const intermediate = new ByteStream();
-      this.engine.GetTags(intermediate, OpCodes.CreateArray(this.Pi, this.cprime / 8));
+      this.engine.GetTags(intermediate, OpCodes.CreateArray(this.Pi, Math.floor(this.cprime / 8)));
       intermediate.rewind();
       this.engine.InjectCollective(intermediate, false);
     }
@@ -720,7 +720,7 @@
       }
 
       /** @type {uint8[]} */
-      const result = [l];
+      const result = [OpCodes.ToByte(l)];
       for (let i = 0; i < K.length; ++i) result.push(K[i]);
       result.push(0x01);
       while (result.length < l) result.push(0x00);
