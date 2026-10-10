@@ -96,7 +96,7 @@ const CASES = [
   {
     name: 'expressions: a conditional argument of push keeps the push in place',
     // Given push(c ? a : b) inside a loop
-    js: '/** @returns {int32[]} */\nfunction pick() { const out = []; for (let i = 0; i < 4; ++i) out.push(i % 2 ? i * 10 : i); return out; }',
+    js: '/** @returns {int32[]} */\nfunction pick() { /** @type {int32[]} */ const out = []; for (let i = 0; i < 4; ++i) out.push(i % 2 ? i * 10 : i); return out; }',
     go: 'fmt.Println(PFXpick())',
     rust: 'println!("{:?}", PFXpick().to_vec());',
     // Then every element is pushed once, in order
@@ -134,7 +134,7 @@ const CASES = [
   },
   {
     name: 'strings: char codes, String.fromCharCode.apply, padStart and toString(16)',
-    js: '/** @param {string} s @returns {string} */\nfunction f(s) { const codes = []; for (let i = 0; i < s.length; ++i) codes.push(s.charCodeAt(i) + 1);\n' +
+    js: '/** @param {string} s @returns {string} */\nfunction f(s) { /** @type {int32[]} */ const codes = []; for (let i = 0; i < s.length; ++i) codes.push(s.charCodeAt(i) + 1);\n' +
       '  return String.fromCharCode.apply(null, codes) + ":" + (255).toString(16).padStart(4, "0"); }',
     go: 'fmt.Println(PFXf("HAL"))',
     rust: 'println!("{}", PFXf("HAL".to_string()));',
