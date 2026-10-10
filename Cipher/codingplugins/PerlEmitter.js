@@ -51,6 +51,448 @@
     'LinkItem', 'Vulnerability', 'TestCase', 'KeySize', 'AuthResult'
   ]);
 
+  // AlgorithmFramework.js in Perl (see PerlEmitter.emitFrameworkRuntime).
+  // Every class here mirrors its JavaScript counterpart field for field, so
+  // a transpiled subclass that inherits Feed, Result or the key accessor
+  // behaves as it does in JavaScript.
+  const FRAMEWORK_RUNTIME = String.raw`{
+no warnings 'redefine';
+
+package Algorithm;
+sub new { my $class = shift; my $self = bless {}, $class; $self->BUILD(@_); return $self; }
+sub BUILD {
+    my ($self) = @_;
+    $self->{$_} = undef for qw(name description inventor year category subCategory securityStatus complexity country);
+    $self->{$_} = [] for qw(documentation references knownVulnerabilities tests);
+    return;
+}
+sub CreateInstance { die "CreateInstance() not implemented\n"; }
+
+package CryptoAlgorithm; our @ISA = ('Algorithm');
+package SymmetricCipherAlgorithm; our @ISA = ('CryptoAlgorithm');
+package AsymmetricCipherAlgorithm; our @ISA = ('CryptoAlgorithm');
+package AsymmetricAlgorithm; our @ISA = ('CryptoAlgorithm');
+package BlockCipherAlgorithm; our @ISA = ('SymmetricCipherAlgorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedKeySizes} = []; $self->{SupportedBlockSizes} = []; return; }
+package StreamCipherAlgorithm; our @ISA = ('SymmetricCipherAlgorithm');
+package EncodingAlgorithm; our @ISA = ('Algorithm');
+package CompressionAlgorithm; our @ISA = ('Algorithm');
+package ErrorCorrectionAlgorithm; our @ISA = ('Algorithm');
+package ChecksumAlgorithm; our @ISA = ('Algorithm');
+package ClassicalCipherAlgorithm; our @ISA = ('Algorithm');
+package EccAlgorithm; our @ISA = ('Algorithm');
+package SpecialAlgorithm; our @ISA = ('Algorithm');
+package HashFunctionAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedOutputSizes} = []; return; }
+package MacAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedMacSizes} = []; $self->{NeedsKey} = 1; return; }
+package KdfAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedOutputSizes} = []; $self->{SaltRequired} = 1; return; }
+package PaddingAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{IsLengthIncluded} = 0; return; }
+package CipherModeAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{RequiresIV} = 1; $self->{SupportedIVSizes} = []; return; }
+package AeadAlgorithm; our @ISA = ('CryptoAlgorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedTagSizes} = []; $self->{SupportsDetached} = 0; return; }
+package RandomGenerationAlgorithm; our @ISA = ('Algorithm');
+sub BUILD {
+    my ($self) = @_; $self->Algorithm::BUILD();
+    $self->{IsDeterministic} = 0; $self->{IsCryptographicallySecure} = 1; $self->{SupportedSeedSizes} = [];
+    return;
+}
+
+package IAlgorithmInstance;
+sub new { my $class = shift; my $self = bless {}, $class; $self->BUILD(@_); return $self; }
+sub BUILD { my ($self, $algorithm) = @_; $self->{algorithm} = $algorithm; $self->{isInverse} = 0; $self->{inputBuffer} = []; return; }
+sub Feed {
+    my ($self, $data) = @_;
+    return if !defined($data) || ref($data) ne 'ARRAY' || !@$data;
+    $self->{inputBuffer} = [] if !$self->{inputBuffer};
+    push @{$self->{inputBuffer}}, @$data;
+    return;
+}
+sub Result { die "Result() not implemented\n"; }
+sub Dispose { my ($self) = @_; @{$self->{inputBuffer}} = () if $self->{inputBuffer}; return; }
+
+package IBlockCipherInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD {
+    my ($self, $algorithm) = @_;
+    $self->IAlgorithmInstance::BUILD($algorithm);
+    $self->{BlockSize} = 0; $self->{KeySize} = 0; $self->{_key} = undef;
+    return;
+}
+sub key { my $self = shift; if (@_) { $self->{_key} = shift; return; } return $self->{_key}; }
+sub EncryptBlock { die "EncryptBlock() not implemented\n"; }
+sub DecryptBlock { die "DecryptBlock() not implemented\n"; }
+sub RequireBlockMultiple {
+    my ($self, $blockSize) = @_;
+    my $size = $blockSize || $self->{BlockSize};
+    die "BlockSize not set\n" if !($size && $size > 0);
+    my $length = $self->{inputBuffer} ? scalar(@{$self->{inputBuffer}}) : 0;
+    die "Input length must be multiple of $size bytes\n" if $length % $size != 0;
+    return int($length / $size);
+}
+sub Result {
+    my ($self) = @_;
+    die "Key not set\n" if !$self->key();
+    die "No data fed\n" if !$self->{inputBuffer} || !@{$self->{inputBuffer}};
+    my $blockSize = $self->{BlockSize};
+    $self->RequireBlockMultiple($blockSize);
+    my @output;
+    my $buffer = $self->{inputBuffer};
+    for (my $offset = 0; $offset < @$buffer; $offset += $blockSize) {
+        my $block = [@{$buffer}[$offset .. $offset + $blockSize - 1]];
+        my $processed = $self->{isInverse} ? $self->DecryptBlock($block) : $self->EncryptBlock($block);
+        push @output, @$processed;
+    }
+    $self->{inputBuffer} = [];
+    return \@output;
+}
+
+package IHashFunctionInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD { my ($self, $algorithm) = @_; $self->IAlgorithmInstance::BUILD($algorithm); $self->{OutputSize} = 0; return; }
+package IMacInstance; our @ISA = ('IAlgorithmInstance');
+sub ComputeMac { die "ComputeMac() not implemented\n"; }
+package IKdfInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD { my ($self, $algorithm) = @_; $self->IAlgorithmInstance::BUILD($algorithm); $self->{OutputSize} = 0; $self->{Iterations} = 0; return; }
+package IAeadInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD { my ($self, $algorithm) = @_; $self->IAlgorithmInstance::BUILD($algorithm); $self->{aad} = []; $self->{tagSize} = 0; return; }
+package IErrorCorrectionInstance; our @ISA = ('IAlgorithmInstance');
+sub DetectError { die "DetectError() not implemented\n"; }
+package IRandomGeneratorInstance; our @ISA = ('IAlgorithmInstance');
+sub NextBytes { die "NextBytes() not implemented\n"; }
+package IStreamCipherInstance; our @ISA = ('IAlgorithmInstance');
+package ICompressionInstance; our @ISA = ('IAlgorithmInstance');
+package IEncodingInstance; our @ISA = ('IAlgorithmInstance');
+package IPaddingInstance; our @ISA = ('IAlgorithmInstance');
+package ICipherModeInstance; our @ISA = ('IAlgorithmInstance');
+package IAsymmetricCipherInstance; our @ISA = ('IAlgorithmInstance');
+
+package BlockAbsorber;
+sub new {
+    my ($class, $blockSize, $processBlock) = @_;
+    die "BlockAbsorber: blockSize must be positive\n" if !(defined($blockSize) && $blockSize > 0);
+    die "BlockAbsorber: processBlock must be a function\n" if ref($processBlock) ne 'CODE';
+    return bless { BlockSize => $blockSize, _processBlock => $processBlock, _held => [(0) x $blockSize], Pending => 0, Length => 0 }, $class;
+}
+sub BlockSize { return $_[0]{BlockSize}; }
+sub Pending { return $_[0]{Pending}; }
+sub Length { return $_[0]{Length}; }
+sub Absorb {
+    my ($self, $data) = @_;
+    return if !defined($data) || ref($data) ne 'ARRAY' || !@$data;
+    my $blockSize = $self->{BlockSize};
+    my $total = scalar(@$data);
+    my $offset = 0;
+    while ($offset < $total) {
+        if ($self->{Pending} == $blockSize) {
+            $self->{_processBlock}->($self->{_held});
+            $self->{Pending} = 0;
+        }
+        my $take = $blockSize - $self->{Pending};
+        $take = $total - $offset if $total - $offset < $take;
+        $self->{_held}[$self->{Pending} + $_] = main::_FrameworkByte($data->[$offset + $_]) for 0 .. $take - 1;
+        $self->{Pending} += $take;
+        $offset += $take;
+        $self->{Length} += $take;
+    }
+    return;
+}
+sub Finish {
+    my ($self, $finalize) = @_;
+    die "BlockAbsorber: finalize must be a function\n" if ref($finalize) ne 'CODE';
+    my @held = @{$self->{_held}}[0 .. $self->{Pending} - 1];
+    return $finalize->(\@held, $self->{Pending}, $self->{Length});
+}
+sub Reset { my ($self) = @_; $_ = 0 for @{$self->{_held}}; $self->{Pending} = 0; $self->{Length} = 0; return; }
+
+package main;
+sub _FrameworkByte {
+    my $reduced = int($_[0] // 0) % 256;
+    return $reduced < 0 ? $reduced + 256 : $reduced;
+}
+sub _FrameworkEncodeLength {
+    my ($value, $byteCount, $littleEndian) = @_;
+    my @encoded = (0) x $byteCount;
+    my $remaining = $value > 0 ? int($value) : 0;
+    for my $i (0 .. $byteCount - 1) {
+        $encoded[$littleEndian ? $i : $byteCount - 1 - $i] = $remaining % 256;
+        $remaining = int($remaining / 256);
+    }
+    return @encoded;
+}
+sub _JsClz32 {
+    my $value = int($_[0] // 0) & 0xFFFFFFFF;
+    my $count = 32;
+    while ($value) { --$count; $value >>= 1; }
+    return $count;
+}
+sub _JsPad {
+    my ($atStart, $string, $targetLength, $padString) = @_;
+    $string = '' if !defined($string);
+    $padString = ' ' if !defined($padString);
+    my $missing = int($targetLength // 0) - length($string);
+    return $string if $missing <= 0 || $padString eq '';
+    my $fill = substr($padString x (int($missing / length($padString)) + 1), 0, $missing);
+    return $atStart ? $fill . $string : $string . $fill;
+}
+use Scalar::Util ();
+# A property of a class instance whose class is not known statically: a
+# blessed object's accessor method, else the hash element.
+sub _JsSetProp {
+    my ($object, $name, $value) = @_;
+    if (Scalar::Util::blessed($object) && $object->can($name)) { $object->$name($value); }
+    else { $object->{$name} = $value; }
+    return $value;
+}
+sub _JsGetProp {
+    my ($object, $name) = @_;
+    return $object->{$name} if !Scalar::Util::blessed($object) || exists($object->{$name});
+    my $method = $object->can($name);
+    return $method ? $object->$method() : undef;
+}
+# Array.prototype.reverse/sort: in place, returning the same array. The
+# comparator gets its operands as arguments; without one the order is by
+# string, as in JavaScript.
+sub _JsReverse { my ($array) = @_; @$array = reverse(@$array); return $array; }
+sub _JsSort {
+    my ($array, $compare) = @_;
+    if ($compare) { @$array = sort { $compare->($a, $b) } @$array; }
+    else { @$array = sort { (defined($a) ? "$a" : '') cmp (defined($b) ? "$b" : '') } @$array; }
+    return $array;
+}
+# JavaScript BigInt as Math::BigInt: _Big makes one from any integer value
+# (an IV/UV exactly, an NV by its exact integer digits, a decimal or 0x
+# string); _BigDiv/_BigMod truncate toward zero as JavaScript does.
+use Math::BigInt try => 'GMP,FastCalc';
+sub _Big {
+    my ($value) = @_;
+    return $value if ref($value) && $value->isa('Math::BigInt');
+    return Math::BigInt->new(0) if !defined($value) || $value eq '';
+    return Math::BigInt->new($value) if $value =~ /^\s*[-+]?(?:0[xX][0-9a-fA-F]+|0[bB][01]+|\d+)\s*$/;
+    return Math::BigInt->new(sprintf('%.0f', $value));
+}
+sub _BigUnsigned {
+    my ($value) = @_;
+    return $value if ref($value) && $value->isa('Math::BigInt');
+    return Math::BigInt->new(sprintf('%u', $value)) if defined($value) && $value =~ /^-\d+$/ && $value >= -9223372036854775808;
+    return _Big($value);
+}
+sub _ToUint64 {
+    my ($value) = @_;
+    return ($value & Math::BigInt->new('18446744073709551615'))->numify() if ref($value) && $value->isa('Math::BigInt');
+    return int($value // 0) & 18446744073709551615;
+}
+# BigInt operations: native while both operands are small non-negative
+# integers and the result is exact, Math::BigInt otherwise; a Math::BigInt
+# result small enough is returned native again (_BigNorm). A native operand
+# is read as unsigned 64-bit (_BigUnsigned); a possibly negative signed one
+# comes through _BigSigned.
+sub _BigSigned {
+    my ($value) = @_;
+    return $value if ref($value) || (defined($value) && $value =~ /^\d+$/ && $value < 4611686018427387904);
+    return _Big($value);
+}
+sub _BigNorm {
+    my ($value) = @_;
+    return $value if !ref($value) || $value->is_neg() || $value->bacmp(4611686018427387904) >= 0;
+    return $value->numify();
+}
+sub _BigSmall { return !ref($_[0]) && defined($_[0]) && $_[0] >= 0 && $_[0] < 4611686018427387904; }
+sub _BigAdd { my ($l, $r) = @_; return $l + $r if _BigSmall($l) && _BigSmall($r); return _BigNorm(_BigUnsigned($l) + _BigUnsigned($r)); }
+sub _BigSub { my ($l, $r) = @_; return $l - $r if _BigSmall($l) && _BigSmall($r) && $l >= $r; return _BigNorm(_BigUnsigned($l) - _BigUnsigned($r)); }
+sub _BigMul { my ($l, $r) = @_; return $l * $r if _BigSmall($l) && _BigSmall($r) && $l < 2147483648 && $r < 2147483648; return _BigNorm(_BigUnsigned($l) * _BigUnsigned($r)); }
+sub _BigPow { my ($l, $r) = @_; return _BigNorm(_BigUnsigned($l)->copy()->bpow(_BigUnsigned($r))); }
+sub _BigShl { my ($l, $r) = @_; return $l << $r if _BigSmall($l) && $l < 2147483648 && !ref($r) && $r >= 0 && $r < 31; return _BigNorm(_BigUnsigned($l) << _BigUnsigned($r)); }
+sub _BigShr {
+    my ($l, $r) = @_;
+    return ($r >= 64 ? 0 : $l >> $r) if !ref($l) && !ref($r) && defined($l) && $r >= 0;
+    return _BigNorm(_BigUnsigned($l) >> _BigUnsigned($r));
+}
+sub _BigAnd { my ($l, $r) = @_; return $l & $r if !ref($l) && !ref($r); return _BigNorm(_BigUnsigned($l) & _BigUnsigned($r)); }
+sub _BigOr { my ($l, $r) = @_; return $l | $r if !ref($l) && !ref($r); return _BigNorm(_BigUnsigned($l) | _BigUnsigned($r)); }
+sub _BigXor { my ($l, $r) = @_; return $l ^ $r if !ref($l) && !ref($r); return _BigNorm(_BigUnsigned($l) ^ _BigUnsigned($r)); }
+sub _BigCmp {
+    my ($l, $r) = @_;
+    return $l <=> $r if !ref($l) && !ref($r) && defined($l) && defined($r) && $l >= 0 && $r >= 0;
+    return _BigUnsigned($l) <=> _BigUnsigned($r);
+}
+sub _BigDiv {
+    my ($left, $right) = @_;
+    return int($left / $right) if _BigSmall($left) && _BigSmall($right) && $right > 0 && $left < 9007199254740992;
+    my $divisor = _BigUnsigned($right);
+    die "RangeError: Division by zero\n" if $divisor->is_zero();
+    my $quotient = _BigUnsigned($left)->copy();
+    $quotient->btdiv($divisor);
+    return _BigNorm($quotient);
+}
+sub _BigMod {
+    my ($left, $right) = @_;
+    return $left % $right if _BigSmall($left) && _BigSmall($right) && $right > 0;
+    my $divisor = _BigUnsigned($right);
+    die "RangeError: Division by zero\n" if $divisor->is_zero();
+    my $remainder = _BigUnsigned($left)->copy();
+    $remainder->btmod($divisor);
+    return _BigNorm($remainder);
+}
+sub _Num { my ($value) = @_; return ref($value) && $value->isa('Math::BigInt') ? $value->numify() : 0 + ($value // 0); }
+sub _NumUnsigned { my ($value) = @_; return ref($value) ? _Num($value) : (defined($value) && $value < 0 ? ($value & 18446744073709551615) : 0 + ($value // 0)); }
+# Number/BigInt.prototype.toString(radix) of an integer
+sub _JsToString {
+    my ($value, $radix) = @_;
+    $radix = 10 if !defined($radix);
+    return "$value" if $radix == 10;
+    my $big = _Big($value);
+    my $digits = lc($big->copy()->babs()->to_base($radix));
+    return ($big->is_neg() ? '-' : '') . $digits;
+}
+# typeof: 'undefined', 'function', 'bigint', 'object' (any other reference),
+# 'number' or 'string'
+sub _JsTypeof {
+    my ($value) = @_;
+    return 'undefined' if !defined($value);
+    my $kind = ref($value);
+    return 'function' if $kind eq 'CODE';
+    return 'bigint' if $kind && Scalar::Util::blessed($value) && $value->isa('Math::BigInt');
+    return 'object' if $kind;
+    return Scalar::Util::looks_like_number($value) ? 'number' : 'string';
+}
+# An int32 with its sign, from either representation of its bit pattern;
+# anything else (a fraction, a wider number) is returned as it is
+sub _Int32 {
+    my $v = $_[0] // 0;
+    return $v if $v != int($v) || $v < -2147483648 || $v > 4294967295;
+    return $v > 2147483647 ? $v - 4294967296 : $v;
+}
+# A double's value: Perl computes integral operands exactly, JavaScript
+# rounds every result beyond 2^53 to the nearest double
+sub _F64 { my $v = $_[0]; return ($v > 9007199254740992 || $v < -9007199254740992) ? unpack('d', pack('d', $v)) : $v; }
+# typedArray.subarray(begin, end): a view (_JSSubarrayView) aliasing the
+# parent's elements, begin and end read as JavaScript does
+sub _JsSubarray {
+    my ($array, $begin, $end) = @_;
+    my $length = scalar(@$array);
+    $begin = int($begin // 0); $end = defined($end) ? int($end) : $length;
+    $begin += $length if $begin < 0; $end += $length if $end < 0;
+    $begin = 0 if $begin < 0; $begin = $length if $begin > $length;
+    $end = 0 if $end < 0; $end = $length if $end > $length;
+    $end = $begin if $end < $begin;
+    my @view;
+    tie @view, '_JSSubarrayView', $array, $begin, $end - $begin;
+    return \@view;
+}
+# String.prototype.slice (negative bounds count from the end, an end before
+# the start is empty) and substring (bounds clamped to 0..length, swapped
+# when inverted)
+sub _JsSubstring {
+    my ($string, $start, $end, $isSlice) = @_;
+    $string = '' if !defined($string);
+    my $length = length($string);
+    $start = int($start // 0); $end = defined($end) ? int($end) : $length;
+    if ($isSlice) {
+        $start += $length if $start < 0; $end += $length if $end < 0;
+    } elsif ($start > $end) {
+        ($start, $end) = ($end, $start);
+    }
+    $start = 0 if $start < 0; $start = $length if $start > $length;
+    $end = 0 if $end < 0; $end = $length if $end > $length;
+    return $end > $start ? substr($string, $start, $end - $start) : '';
+}
+# crypto.getRandomValues: the array filled from the platform CSPRNG
+sub _JsGetRandomValues {
+    my ($array) = @_;
+    my $bytes = OpCodes::securerandombytes(scalar(@$array));
+    $array->[$_] = $bytes->[$_] for 0 .. $#$array;
+    return $array;
+}
+# Array.prototype.indexOf: strict equality, numbers by value, strings by text
+sub _JsIndexOf {
+    my ($array, $value, $from) = @_;
+    my $count = scalar(@$array);
+    $from = int($from // 0); $from += $count if $from < 0; $from = 0 if $from < 0;
+    my $numeric = defined($value) && !ref($value) && Scalar::Util::looks_like_number($value);
+    for (my $index = $from; $index < $count; ++$index) {
+        my $element = $array->[$index];
+        if (!defined($value)) { return $index if !defined($element); next; }
+        next if !defined($element);
+        if (ref($value) || ref($element)) { return $index if ref($value) && ref($element) && $value == $element; next; }
+        if ($numeric) { return $index if Scalar::Util::looks_like_number($element) && $element == $value; }
+        else { return $index if $element eq $value; }
+    }
+    return -1;
+}
+# obj.name(args) on an object whose class is not known statically: a
+# blessed object's method, else the function stored under that name
+sub _JsInvoke {
+    my ($object, $name, @args) = @_;
+    return $object->$name(@args) if Scalar::Util::blessed($object);
+    return $object->{$name}->(@args) if ref($object) eq 'HASH' && ref($object->{$name}) eq 'CODE';
+    die "TypeError: $name is not a function\n";
+}
+# error.message: an error object's message, or a die string without the
+# location Perl appends to it
+sub _JsErrorMessage {
+    my ($error) = @_;
+    return $error->{message} if ref($error) eq 'HASH' || Scalar::Util::blessed($error);
+    my $text = defined($error) ? "$error" : '';
+    $text =~ s/ at \S+ line \d+\.?\n?\z//;
+    return $text;
+}
+# x.slice(start, end) on a value that may be a string or an array
+sub _JsSlice {
+    my ($value, $start, $end) = @_;
+    return _JsSubstring($value, $start, $end, 1) if ref($value) ne 'ARRAY';
+    my $length = scalar(@$value);
+    $start = int($start // 0); $end = defined($end) ? int($end) : $length;
+    $start += $length if $start < 0; $end += $length if $end < 0;
+    $start = 0 if $start < 0; $start = $length if $start > $length;
+    $end = 0 if $end < 0; $end = $length if $end > $length;
+    return [$end > $start ? @{$value}[$start .. $end - 1] : ()];
+}
+sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
+sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
+sub SpongePadBlocks {
+    my ($held, $pending, $rate, $separator) = @_;
+    die "SpongePadBlocks: rate must be positive\n" if !($rate > 0);
+    die "SpongePadBlocks: pending $pending outside 0..$rate\n" if $pending < 0 || $pending > $rate;
+    my @blocks;
+    my @block = (0) x $rate;
+    $block[$_] = _FrameworkByte($held->[$_]) for 0 .. $pending - 1;
+    my $used = $pending;
+    if ($used == $rate) { push @blocks, [@block]; @block = (0) x $rate; $used = 0; }
+    $block[$used] = _FrameworkByte($separator);
+    $block[$rate - 1] |= 0x80;
+    push @blocks, [@block];
+    return \@blocks;
+}
+sub MerkleDamgardBlocks {
+    my ($held, $pending, $totalLength, $options) = @_;
+    my %settings = %{$options || {}};
+    my $blockSize = $settings{blockSize};
+    die "MerkleDamgardBlocks: blockSize must be positive\n" if !(defined($blockSize) && $blockSize > 0);
+    die "MerkleDamgardBlocks: pending $pending outside 0..$blockSize\n" if $pending < 0 || $pending > $blockSize;
+    my $padByte = defined($settings{padByte}) ? $settings{padByte} : 0x80;
+    my $lengthBytes = defined($settings{lengthBytes}) ? $settings{lengthBytes} : 8;
+    my $littleEndian = $settings{lengthLittleEndian} ? 1 : 0;
+    my $inBits = (exists($settings{lengthInBits}) && defined($settings{lengthInBits}) && !$settings{lengthInBits}) ? 0 : 1;
+    die "MerkleDamgardBlocks: lengthBytes $lengthBytes does not fit a $blockSize-byte block\n"
+        if $lengthBytes < 0 || $lengthBytes >= $blockSize;
+    my @blocks;
+    my @block = (0) x $blockSize;
+    $block[$_] = _FrameworkByte($held->[$_]) for 0 .. $pending - 1;
+    my $used = $pending;
+    if ($used == $blockSize) { push @blocks, [@block]; @block = (0) x $blockSize; $used = 0; }
+    $block[$used++] = _FrameworkByte($padByte);
+    if ($used > $blockSize - $lengthBytes) { push @blocks, [@block]; @block = (0) x $blockSize; }
+    if ($lengthBytes > 0) {
+        my @encoded = _FrameworkEncodeLength($inBits ? $totalLength * 8 : $totalLength, $lengthBytes, $littleEndian);
+        $block[$blockSize - $lengthBytes + $_] = $encoded[$_] for 0 .. $lengthBytes - 1;
+    }
+    push @blocks, [@block];
+    return \@blocks;
+}
+}`;
+
   class PerlEmitter {
     constructor(options = {}) {
       this.options = options;
@@ -115,32 +557,23 @@
      * @returns {string} Perl code defining the stub package
      */
     emitFrameworkBaseClassStub(className) {
-      if (this.skipBaseStubs) {
-        return ''; // Skip when test harness provides stubs
-      }
-      if (this.emittedBaseClassStubs.has(className)) {
-        return ''; // Already emitted
-      }
-      this.emittedBaseClassStubs.add(className);
+      // Every framework base class lives in the one framework runtime.
+      return this.emitFrameworkRuntime();
+    }
 
-      let code = '';
-      code += this.line(`package ${className};`);
-      code += this.line('use strict;');
-      code += this.line('use warnings;');
-      code += this.newline;
-      code += this.line('sub new {');
-      this.indentLevel++;
-      code += this.line('my $class = shift;');
-      code += this.line('my $self = { @_ };');
-      code += this.line('bless $self, $class;');
-      code += this.line('return $self;');
-      this.indentLevel--;
-      code += this.line('}');
-      code += this.newline;
-      code += this.line('1;');
-      code += this.newline;
-
-      return code;
+    /**
+     * The AlgorithmFramework.js runtime in Perl: the algorithm and instance
+     * base classes with their constructors and inherited behaviour (Feed,
+     * the block cipher Result loop, the key accessor, ...), BlockAbsorber,
+     * SpongePadBlocks and MerkleDamgardBlocks. Emitted once per file inside
+     * a block that silences redefinition, so a bundle of several transpiled
+     * files may each carry it.
+     * @returns {string} Perl code
+     */
+    emitFrameworkRuntime() {
+      if (this.skipBaseStubs || this.emittedBaseClassStubs.has('#runtime')) return '';
+      this.emittedBaseClassStubs.add('#runtime');
+      return FRAMEWORK_RUNTIME.split('\n').map(l => l ? this.indent() + l : l).join(this.newline) + this.newline;
     }
 
     /**
@@ -189,7 +622,7 @@
 
         code += this.line(`package ${className};`);
         code += this.line('use strict;');
-        code += this.line('use warnings;');
+        code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
         code += this.newline;
         code += this.line('sub new {');
         this.indentLevel++;
@@ -231,7 +664,7 @@
       let code = '';
       code += this.line('package OpCodes;');
       code += this.line('use strict;');
-      code += this.line('use warnings;');
+      code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
       // POSIX::fmod backs u32mask (see the "u32mask" sub below) - needed
       // unconditionally here since u32mask is emitted whenever this whole
       // stub package is (module.usesOpCodesRuntimeFallback), which is a
@@ -540,7 +973,8 @@
         ["shl32", "$value, $positions", "return ($value << ($positions & 31)) & 0xFFFFFFFF;"],
         ["shr32", "$value, $positions", "return (($value & 0xFFFFFFFF) >> ($positions & 31)) & 0xFFFFFFFF;"],
         ["shr32signed", "$value, $positions",
-          "my $v = $value & 0xFFFFFFFF; $v -= 0x100000000 if $v & 0x80000000; return ($v >> ($positions & 31)) & 0xFFFFFFFF;"],
+          // signed, as JavaScript's ">>" is (an arithmetic shift of the int32)
+          "my $v = $value & 0xFFFFFFFF; $v -= 0x100000000 if $v & 0x80000000; use integer; return $v >> ($positions & 31);"],
 
         // 8/16-bit rotations (OpCodes.RotL8/RotR8/RotL16/RotR16 - RotL32/
         // RotR32 are handled inline via the RotateLeft/RotateRight IL node
@@ -595,6 +1029,34 @@
         ["todword", "$value", "return $value & 0xFFFFFFFF;"],
         ["toword", "$value", "return $value & 0xFFFF;"],
         ["touint32", "$value", "return $value & 0xFFFFFFFF;"],
+        ["uinttobyte", "$value", "return $value & 0xFF;"],
+        ["toshort", "$value", "my $v = $value & 0xFFFF; return $v > 32767 ? $v - 65536 : $v;"],
+        // OpCodes.ToLong: the low 64 bits as a signed value, a Math::BigInt
+        // for a Math::BigInt argument and a native integer otherwise.
+        ["tolong", "$value",
+          "if (ref($value)) { my $v = $value->copy()->band(Math::BigInt->new('18446744073709551615')); " +
+          "$v->bsub(Math::BigInt->new('18446744073709551616')) if $v >= Math::BigInt->new('9223372036854775808'); return $v; } " +
+          // a negative value is a Math::BigInt (a native one reads as a uint64)
+          "my $v = unpack('q', pack('Q', $value & 18446744073709551615)); return $v < 0 ? Math::BigInt->new($v) : $v;"],
+        ["bytestochars", "$bytes", "return join('', map { chr($_) } @$bytes);"],
+        ["bytestowords32be", "$bytes",
+          "my @words; for (my $i = 0; $i < @$bytes; $i += 4) { " +
+          "push @words, ((($bytes->[$i] // 0) & 0xFF) << 24) | ((($bytes->[$i + 1] // 0) & 0xFF) << 16) | " +
+          "((($bytes->[$i + 2] // 0) & 0xFF) << 8) | (($bytes->[$i + 3] // 0) & 0xFF); } return \\@words;"],
+        ["createuint64arrayfromhex", "$hexValues",
+          "return [map { my $h = $_; $h =~ s/^0[xX]//; " +
+          "die \"CreateUint64ArrayFromHex: Invalid hex string: $_\\n\" if $h !~ /^[0-9A-Fa-f]+$/; " +
+          "$h = ('0' x (16 - length($h))) . $h if length($h) < 16; " +
+          "die \"CreateUint64ArrayFromHex: Hex string must represent 64-bit value: $_\\n\" if length($h) != 16; " +
+          "[hex(substr($h, 0, 8)), hex(substr($h, 8, 8))] } @$hexValues];"],
+        // OpCodes.SecureRandomBytes: the platform CSPRNG, never rand().
+        ["securerandombytes", "$count",
+          "die \"SecureRandomBytes: count must be a non-negative integer\\n\" if !defined($count) || $count < 0 || int($count) != $count; " +
+          "return [] if $count == 0; " +
+          "open(my $fh, '<:raw', '/dev/urandom') or die \"SecureRandomBytes: no secure random source available\\n\"; " +
+          "my $got = read($fh, my $buffer, $count); close($fh); " +
+          "die \"SecureRandomBytes: no secure random source available\\n\" if !defined($got) || $got != $count; " +
+          "return [unpack('C*', $buffer)];"],
 
         // 64-bit arithmetic on [HIGH, LOW] word-pairs, returned as a {h, l}
         // hashref matching OpCodes.js's own {h, l} object shape (OpCodes.
@@ -784,7 +1246,7 @@
       let code = '';
       code += this.line('package _OpCodesBitStream;');
       code += this.line('use strict;');
-      code += this.line('use warnings;');
+      code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
       code += this.newline;
 
       const methods = [
@@ -797,7 +1259,8 @@
         ["writeBits", "$self, $value, $numBits",
           "die 'BitStream.writeBits: numBits must be 1-32' if $numBits <= 0 || $numBits > 32; " +
           "my $mask = $numBits == 32 ? 0xFFFFFFFF : (1 << $numBits) - 1; $value = $value & $mask; " +
-          "$self->{buffer} = ($self->{buffer} << $numBits) | $value; " +
+          // JavaScript's 32-bit "<<" shifts by numBits & 31 and wraps
+          "$self->{buffer} = (($self->{buffer} << ($numBits & 31)) | $value) & 0xFFFFFFFF; " +
           "$self->{bufferBits} += $numBits; $self->{totalBitsWritten} += $numBits; " +
           "while ($self->{bufferBits} >= 8) { " +
           "$self->{bufferBits} -= 8; " +
@@ -808,6 +1271,12 @@
         ["writeBit", "$self, $bit", "$self->writeBits($bit & 1, 1);"],
         ["writeByte", "$self, $byte", "$self->writeBits($byte & 0xFF, 8);"],
         ["writeBytes", "$self, $bytes", "for my $b (@$bytes) { $self->writeByte($b); }"],
+        ["writeUint16BE", "$self, $value", "$self->writeBits(($value >> 8) & 0xFF, 8); $self->writeBits($value & 0xFF, 8);"],
+        ["writeUint16LE", "$self, $value", "$self->writeBits($value & 0xFF, 8); $self->writeBits(($value >> 8) & 0xFF, 8);"],
+        ["writeUint32BE", "$self, $value",
+          "$value &= 0xFFFFFFFF; $self->writeBits(($value >> $_) & 0xFF, 8) for (24, 16, 8, 0);"],
+        ["writeUint32LE", "$self, $value",
+          "$value &= 0xFFFFFFFF; $self->writeBits(($value >> $_) & 0xFF, 8) for (0, 8, 16, 24);"],
 
         ["readBits", "$self, $numBits",
           "die 'BitStream.readBits: numBits must be 1-32' if $numBits <= 0 || $numBits > 32; " +
@@ -874,6 +1343,7 @@
         ["readUnary", "$self",
           "my $count = 0; while ($self->hasMoreBits() && $self->readBit() == 1) { $count++; } return $count;"],
         ["alignToByte", "$self", "while ($self->{bufferBits} % 8 != 0) { $self->writeBit(0); }"],
+        ["isAligned", "$self", "return ($self->{bufferBits} % 8 == 0) ? 1 : 0;"],
       ];
 
       for (const [name, params, body] of methods) {
@@ -913,7 +1383,7 @@
       let code = '';
       code += this.line('package _JSSubarrayView;');
       code += this.line('use strict;');
-      code += this.line('use warnings;');
+      code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
       code += this.newline;
 
       const methods = [
@@ -990,6 +1460,10 @@
         code += this.line('package main;');
         code += this.newline;
       }
+
+      // The framework base classes and construction primitives, ahead of
+      // every class that inherits from them.
+      code += this.emitFrameworkRuntime();
 
       // Emit the inline OpCodes runtime package backing OpCodes::<name>
       // fallback calls, when the source actually uses one (see
@@ -1307,7 +1781,7 @@
 
         code += this.line(`package ${node.name};`);
         code += this.line('use strict;');
-        code += this.line('use warnings;');
+        code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
 
         if (node.baseClass) {
           // Always use @ISA for inheritance - all classes are defined in same file
@@ -1372,6 +1846,9 @@
 
           if (hasBuild) {
             code += this.line('$self->BUILD(@_);');
+          } else if (node.baseClass) {
+            // No constructor of its own: JavaScript runs the inherited one.
+            code += this.line('$self->BUILD(@_) if $self->can(\'BUILD\');');
           }
 
           code += this.line('return $self;');
@@ -1486,7 +1963,7 @@
       if (node.useSignatures && node.parameters.length > 0) {
         // Modern Perl signatures
         const params = node.parameters.map(p => this.emitParameterSignature(p));
-        decl += ' (' + params.join(', ') + ')';
+        decl += ' (' + this._withSurplusSlurpy(node.parameters, params).join(', ') + ')';
       }
 
       code += this.line(decl + ' {');
@@ -1511,6 +1988,20 @@
       code += this.line('}');
 
       return code;
+    }
+
+    /**
+     * A JavaScript function ignores surplus arguments (a BlockAbsorber
+     * finalizer declaring two of the three it is passed); a Perl signature
+     * dies on them unless it ends in a slurpy, so a nameless one is added.
+     * @param {Array} parameters - the PerlParameter nodes
+     * @param {string[]} emitted - their emitted signature entries
+     * @returns {string[]} the entries, ending in a slurpy
+     */
+    _withSurplusSlurpy(parameters, emitted) {
+      const last = parameters[parameters.length - 1];
+      if (last && (last.sigil === '@' || last.sigil === '%')) return emitted;
+      return [...emitted, '@'];
     }
 
     emitParameterSignature(node) {
@@ -1987,6 +2478,10 @@
         // when Number.isInteger is true), so stringifying through BigInt
         // instead reproduces precisely what the JS source intended.
         if (typeof node.value === 'bigint') return node.value.toString();
+        // Beyond 64 bits a double is no Perl integer literal ("Number too
+        // long"); its shortest round-trip form is a valid float literal.
+        if (typeof node.value === 'number' && Math.abs(node.value) >= 18446744073709551616)
+          return String(node.value);
         if (typeof node.value === 'number' && Number.isFinite(node.value) && Number.isInteger(node.value)) {
           return BigInt(node.value).toString();
         }
@@ -2454,8 +2949,11 @@
       // requires ("fn(@{$data})", which flattens exactly like JS spread).
       const args = node.args.map(a => {
         const emitted = this.emit(a);
-        if ((a.spread || a.isSpread) && (emitted.startsWith('$') || emitted.includes('->')))
+        if ((a.spread || a.isSpread) && !emitted.startsWith('@')) {
+          // As in emitArray: "@{do{...}}" would read as a hash slice
+          if (/^(map|grep|sort|reverse|do)\b/.test(emitted)) return `@{(${emitted})}`;
           return `@{${emitted}}`;
+        }
         return emitted;
       });
 
@@ -2721,7 +3219,7 @@
         // calling "hash32: function(data, seed) {...}") died with "Too few
         // arguments for subroutine" instead of leaving the extra param undef.
         const params = node.parameters.map(p => this.emitParameterSignature(p));
-        code += ' (' + params.join(', ') + ')';
+        code += ' (' + this._withSurplusSlurpy(node.parameters, params).join(', ') + ')';
       }
 
       code += ' {' + this.newline;

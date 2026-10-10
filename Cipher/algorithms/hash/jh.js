@@ -329,7 +329,7 @@
       this.complexity = ComplexityType.HIGH;
       this.country = CountryCode.CN;
 
-      this.SupportedOutputSizes = [digestSize];
+      this.SupportedOutputSizes = [new KeySize(digestSize, digestSize, 1)];
       this.SupportedHashSizes = [new KeySize(digestSize, digestSize, 1)];
       this.BlockSize = BLOCK_SIZE;
       /** @type {int32} */

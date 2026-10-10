@@ -278,6 +278,7 @@
      *
      * Key constant: 0x6D2B79F5 (1831565813 decimal)
      * This is a carefully chosen increment for the Weyl sequence
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

@@ -273,6 +273,7 @@
       const shifted_left = OpCodes.ToQWord(OpCodes.ShiftLn(s0, 2));
 
       // Arithmetic right shift: treat as signed 64-bit
+      /** @type {BigInt} */
       let arithmetic_shift;
       if (s0 >= 0x8000000000000000n) {
         // Negative number: fill with 1s from left
@@ -399,6 +400,7 @@
       const shifted_left = OpCodes.ToQWord(OpCodes.ShiftLn(s0, 2));
 
       // Arithmetic right shift for signed int64_t
+      /** @type {BigInt} */
       let arithmetic_shift;
       if (s0 >= 0x8000000000000000n) {
         const unsigned_shift = OpCodes.ShiftRn(s0, 19);

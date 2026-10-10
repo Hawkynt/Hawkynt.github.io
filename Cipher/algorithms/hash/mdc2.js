@@ -76,11 +76,11 @@
     for (let i = 0; i < 8; ++i) {
       let bitCount = 0;
       for (let j = 0; j < 8; ++j) {
-        bitCount += OpCodes.GetBit(result[i], j);
+        bitCount += OpCodes.GetBit(result[i], j) ? 1 : 0;
       }
       // If even number of bits, flip LSB to make it odd
       if (bitCount % 2 === 0) {
-        result[i] = OpCodes.SetBit(result[i], 0, 1 - OpCodes.GetBit(result[i], 0));
+        result[i] = OpCodes.SetBit(result[i], 0, !OpCodes.GetBit(result[i], 0));
       }
     }
     return result;
@@ -288,12 +288,12 @@
       /** @type {uint8[]} */
       const key1 = this.h.slice();
       // key1[0] = (key1[0]&0x9F)|0x40 = clear bit 5 and bit 6, then set bit 6
-      key1[0] = OpCodes.SetBit(OpCodes.SetBit(key1[0], 5, 0), 6, 1);
+      key1[0] = OpCodes.SetBit(OpCodes.SetBit(key1[0], 5, false), 6, true);
 
       /** @type {uint8[]} */
       const key2 = this.hh.slice();
       // key2[0] = (key2[0]&0x9F)|0x20 = clear bit 5 and bit 6, then set bit 5
-      key2[0] = OpCodes.SetBit(OpCodes.SetBit(key2[0], 6, 0), 5, 1);
+      key2[0] = OpCodes.SetBit(OpCodes.SetBit(key2[0], 6, false), 5, true);
 
       // Encrypt block with both keys
       const d = this._desEncrypt(block, key1);

@@ -411,7 +411,7 @@
 
       // Clear sensitive data
       OpCodes.ClearArray(this.inputBuffer);
-      OpCodes.ClearArray(tweaks);
+      for (const tweak of tweaks) OpCodes.ClearArray(tweak);
       this.inputBuffer = [];
 
       return output;

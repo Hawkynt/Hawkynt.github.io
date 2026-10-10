@@ -104,6 +104,34 @@
     'functionName'
   ]);
 
+  // Capitalised IL type names that are not classes: builtins and the
+  // container types the Perl translation holds as plain references.
+  const NON_CLASS_TYPE_NAMES = new Set([
+    'Object', 'Array', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Function', 'Promise', 'Date', 'RegExp',
+    'Error', 'String', 'Number', 'Boolean', 'BigInt', 'Symbol', 'Math', 'JSON', 'ArrayBuffer', 'DataView',
+    'Uint8Array', 'Int8Array', 'Uint16Array', 'Int16Array', 'Uint32Array', 'Int32Array',
+    'Float32Array', 'Float64Array', 'BigUint64Array', 'BigInt64Array', 'Uint8ClampedArray',
+    'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'
+  ]);
+
+  // Signed fixed-width IL integer types (a native negative value of one is
+  // negative, not a wrapped unsigned 64-bit pattern)
+  const SIGNED_INTEGER_TYPES = new Set(['int8', 'int16', 'int32', 'int64', 'int', 'number', 'float64', 'double']);
+
+  // JavaScript host globals that never exist in Perl output (CommonJS's
+  // module/exports may: a bundle can provide them)
+  const PERL_ABSENT_HOST_GLOBALS = new Set(['require', 'define', 'window', 'self', 'process']);
+
+  // Operators whose BigInt result needs Math::BigInt arithmetic, and the
+  // framework runtime helper computing each
+  const BIGINT_OPERATION_HELPERS = {
+    '+': '_BigAdd', '-': '_BigSub', '*': '_BigMul', '/': '_BigDiv', '%': '_BigMod', '**': '_BigPow',
+    '<<': '_BigShl', '>>': '_BigShr', '&': '_BigAnd', '|': '_BigOr', '^': '_BigXor'
+  };
+  const BIGINT_OPERATORS = new Set(Object.keys(BIGINT_OPERATION_HELPERS));
+  // Comparisons of BigInt operands, through _BigCmp
+  const BIGINT_COMPARISONS = new Set(['<', '<=', '>', '>=', '==', '===', '!=', '!==']);
+
   // Framework utility classes that should be skipped entirely (provided by runtime)
   const SKIP_CLASSES = new Set([
     'LinkItem', 'KeySize', 'Vulnerability', 'TestCase', 'AuthResult',
@@ -499,7 +527,13 @@
       }
       if (this.options.useWarnings !== false) {
         module.pragmas.push('use warnings');
+        // This perl's integers are 64-bit: a hexadecimal literal beyond 32
+        // bits is exact, not "non-portable"
+        module.pragmas.push("no warnings 'portable'");
       }
+
+      // String literals are JavaScript's (Unicode) text: 'Vigenère'
+      module.pragmas.push('use utf8');
 
       // Add feature pragmas for modern Perl
       if (this.options.addSignatures) {
@@ -712,6 +746,39 @@
       // === 512 ? shadow512 : shadow384;", picking between two
       // interchangeable top-level permutation functions per variant.
       this._topLevelFunctionNames = topLevelFunctionNames;
+      // The framework runtime's free functions live in package main, and so
+      // does every module-scope function of this file - known up front, so a
+      // call that precedes the declaration (a class constructor calling a
+      // helper declared below the class) is qualified as well.
+      for (const name of PerlAST.FRAMEWORK_RUNTIME_FUNCTIONS) this.functionNames.add(name);
+      for (const name of this._collectModuleFunctionNames(jsAst)) this.functionNames.add(name);
+      // Module constants bound to an integer literal (see _constantIntegerValue)
+      this._moduleIntegerConstants = new Map();
+      (function collectConstants(statements, transformer) {
+        for (const stmt of statements || []) {
+          if (stmt?.type === 'VariableDeclaration' && stmt.kind === 'const') {
+            for (const decl of stmt.declarations || []) {
+              if (decl.id?.type !== 'Identifier') continue;
+              const value = transformer._constantIntegerValue(decl.init);
+              if (value !== null) transformer._moduleIntegerConstants.set(decl.id.name, value);
+            }
+          } else if (stmt?.type === 'ExpressionStatement' && stmt.expression?.type === 'CallExpression') {
+            const call = stmt.expression;
+            const factory = (call.arguments || [])[1];
+            const body = factory && /Function|Arrow/.test(factory.type) ? factory.body?.body : (/Function|Arrow/.test(call.callee?.type || '') ? call.callee.body?.body : null);
+            if (body) collectConstants(body, transformer);
+          }
+        }
+      })(jsAst && jsAst.body, this);
+      // Every class this file declares, wherever (see _classPropertyAccess)
+      this.fileClassNames = new Set();
+      (function collectClasses(n, out, seen) {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        if (Array.isArray(n)) { for (const x of n) collectClasses(x, out, seen); return; }
+        if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id?.name) out.add(n.id.name);
+        for (const k of Object.keys(n)) if (k !== 'parent') collectClasses(n[k], out, seen);
+      })(jsAst, this.fileClassNames, new WeakSet());
 
       // Flat whole-file scan for every real "static FIELD = ...;" class
       // field name (ES2022 static class fields, e.g. block/aria.js's
@@ -836,7 +903,9 @@
           const funcList = Array.from(funcs).join(' ');
           module.pragmas.push(`use ${moduleName} qw(${funcList})`);
         } else {
-          module.pragmas.push(`use ${moduleName}`);
+          // Every call into it is qualified; importing its defaults (all of
+          // POSIX) would clash with same-named subs of the algorithm.
+          module.pragmas.push(`use ${moduleName} ()`);
         }
       }
 
@@ -1853,6 +1922,41 @@
     }
 
     /**
+     * Names of the functions this file declares at module scope - the ones
+     * transformTopLevel/transformIIFEContent emit as subs of package main:
+     * function declarations and function-valued const/let/var declarators,
+     * directly in the program, in a module IIFE or UMD factory, or in a
+     * registration if/try block those unwrap.
+     * @param {object} program - the IL Program node
+     * @returns {Set<string>}
+     */
+    _collectModuleFunctionNames(program) {
+      const names = new Set();
+      const isFunction = n => n && (n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression' || n.type === 'ArrowFunction');
+      const visit = statements => {
+        for (const stmt of statements || []) {
+          if (!stmt) continue;
+          if (stmt.type === 'FunctionDeclaration' && stmt.id?.name) names.add(stmt.id.name);
+          else if (stmt.type === 'VariableDeclaration') {
+            for (const decl of stmt.declarations || [])
+              if (decl.id?.type === 'Identifier' && isFunction(decl.init)) names.add(decl.id.name);
+          } else if (stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'CallExpression') {
+            const call = stmt.expression;
+            const factory = (call.arguments || []).find((a, i) => i === 1 && isFunction(a));
+            if (factory) visit(factory.body?.body);
+            else if (isFunction(call.callee)) visit(call.callee.body?.body);
+          } else if (stmt.type === 'IfStatement') {
+            visit(stmt.consequent?.type === 'BlockStatement' ? stmt.consequent.body : [stmt.consequent]);
+          } else if (stmt.type === 'TryStatement') {
+            visit(stmt.block?.body);
+          }
+        }
+      };
+      if (program && program.type === 'Program') visit(program.body);
+      return names;
+    }
+
+    /**
      * Transform a top-level JavaScript node
      */
     transformTopLevel(node, targetModule) {
@@ -1877,6 +1981,13 @@
                 callee.type === 'ArrowFunctionExpression' || callee.type === 'ArrowFunction') {
               // Extract and process IIFE body content
               this.transformIIFEContent(callee, node.expression, targetModule);
+              break;
+            }
+            // The same IIFE spelled "(function () {...}).call(this)"
+            if (callee.type === 'MemberExpression' && !callee.computed &&
+                (callee.property?.name || callee.property?.value) === 'call' &&
+                callee.object && (callee.object.type === 'FunctionExpression' || callee.object.type === 'ArrowFunctionExpression')) {
+              this.transformIIFEContent(callee.object, { arguments: [] }, targetModule);
               break;
             }
           }
@@ -2015,6 +2126,14 @@
         // RegisterAlgorithm() calls - unwrap that one so registration
         // actually happens in standalone output (see transformTopLevel).
         if (stmt.type === 'IfStatement') {
+          // A library's CommonJS export, "if (typeof module !== 'undefined' &&
+          // module.exports) { module.exports = {...}; }": the value goes to
+          // $main::module->{exports} when a bundle provides that module
+          const exported = this._commonJsExport(stmt);
+          if (exported) {
+            targetModule.statements.push(exported);
+            continue;
+          }
           // Also unwrap the plain-existence-check guard variant many legacy
           // "const X = {...}" files use instead of AlgorithmFramework.Find():
           //   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
@@ -3025,9 +3144,43 @@
         seen.add(className);
         const names = this.classAccessors.get(className);
         if (names && names.has(propName)) return true;
+        // A framework base class's accessor (IBlockCipherInstance.key)
+        const runtimeAccessors = PerlAST.FRAMEWORK_RUNTIME_ACCESSORS[className];
+        if (runtimeAccessors && runtimeAccessors.includes(propName)) return true;
         className = this.classBaseClassName.get(className);
       }
       return false;
+    }
+
+    /**
+     * How a property of an object whose IL type is `typeName` is read and
+     * written: 'accessor' when the type is a class of this file with a get/
+     * set accessor of that name, 'runtime' when the type is a class this
+     * file does not define (another file's, or a framework base class) and
+     * only the running program can tell an accessor from a field, and null
+     * for everything else (a field of a class of this file, a primitive, an
+     * array, a plain object or Map).
+     * @param {string} typeName - the object's IL resultType
+     * @param {string} propName - the property
+     * @returns {('accessor'|'runtime'|null)}
+     */
+    /**
+     * Is this IL type an object - a class, a record, a plain object - as
+     * opposed to a primitive, string, array or container?
+     * @param {string} typeName
+     * @returns {boolean}
+     */
+    _isObjectType(typeName) {
+      return typeName === 'object' ||
+        (typeof typeName === 'string' && /^[A-Z][A-Za-z0-9_]*$/.test(typeName) && !NON_CLASS_TYPE_NAMES.has(typeName));
+    }
+
+    _classPropertyAccess(typeName, propName) {
+      if (typeof typeName !== 'string' || !/^[A-Z][A-Za-z0-9_]*$/.test(typeName)) return null;
+      if (NON_CLASS_TYPE_NAMES.has(typeName) || propName === 'length') return null;
+      if (this.fileClassNames && this.fileClassNames.has(typeName))
+        return this._isAccessorProperty(propName, typeName) ? 'accessor' : null;
+      return 'runtime';
     }
 
     /**
@@ -4509,36 +4662,22 @@
      * up and blindly forwarding constructor args into their generic
      * "$self = { @_ }" stub corrupts positional args into bogus hash keys.
      *
-     * Real (locally-defined) parent classes still need their field
-     * initialization to run, though, so when the base class is one we
-     * know has its own constructor-derived BUILD (tracked in
-     * this.classesWithConstructor), the super(args) call is rewritten to
-     * $self->SUPER::BUILD(args) - preserving the exact arguments the JS
-     * super() call passed, so multi-level chains like
-     * "class Foo extends Base { constructor(variant) { super(variant); ... } }"
-     * still initialize Base's fields correctly.
+     * A parent with a BUILD up its chain - a class of this file, or one of
+     * the framework runtime's (PerlAST.FRAMEWORK_RUNTIME_CLASSES, which
+     * mirror AlgorithmFramework.js's constructors field for field) - gets
+     * the super(args) call as $self->SUPER::BUILD(args), with the exact
+     * arguments JavaScript passed.
      *
-     * When the base class is an AlgorithmFramework.js instance-interface
-     * stub (IAlgorithmInstance and everything that extends it -
-     * IBlockCipherInstance, IHashFunctionInstance, ...), those interfaces
-     * are never transpiled themselves (they live in AlgorithmFramework.js,
-     * not the algorithm source file), so they can never appear in
-     * classesWithConstructor - but IAlgorithmInstance's constructor sets
-     * fields (algorithm, isInverse, inputBuffer) that virtually every
-     * instance class's Feed()/Result()/accessors rely on. Since 'new' no
-     * longer chains through the framework stub's generic new(@_), that
-     * contract is replicated here directly from the exact super(...) call
-     * arguments, instead of being silently lost.
-     *
-     * Any other framework/unknown base class's super() call is dropped
-     * entirely - those stubs carry no meaningful state.
+     * Any other (unknown) base class's super() call is dropped.
      */
     transformSuperCallsForBuild(body) {
       if (!body || !body.body) return body;
 
       const baseClass = this.currentClass?.baseClass;
-      const parentHasBuild = baseClass && this.classesWithConstructor.has(baseClass);
-      const parentIsInstanceStub = baseClass && !parentHasBuild && /^I\w*Instance$/.test(baseClass);
+      // A same-file parent and every framework runtime class have a BUILD
+      // somewhere up their chain (the runtime's mirrors AlgorithmFramework.js).
+      const parentHasBuild = baseClass && (this.classesWithConstructor.has(baseClass) ||
+        this.definedClassNames.has(baseClass) || PerlAST.FRAMEWORK_RUNTIME_CLASSES.has(baseClass));
 
       const rewritten = [];
       for (const stmt of body.body) {
@@ -4554,19 +4693,6 @@
                 type: 'ExpressionStatement',
                 expression: { type: 'ParentBuildCall', arguments: expr.arguments || [] }
               });
-            } else if (parentIsInstanceStub) {
-              const args = expr.arguments || [];
-              const thisAssign = (property, value) => ({
-                type: 'ExpressionStatement',
-                expression: {
-                  type: 'AssignmentExpression', operator: '=',
-                  left: { type: 'ThisPropertyAccess', property },
-                  right: value
-                }
-              });
-              rewritten.push(thisAssign('algorithm', args[0] || { type: 'Literal', value: null }));
-              rewritten.push(thisAssign('isInverse', args[1] || { type: 'Literal', value: false }));
-              rewritten.push(thisAssign('inputBuffer', { type: 'ArrayExpression', elements: [] }));
             }
             // else: drop - no parent BUILD/state to replicate
             continue;
@@ -5448,39 +5574,9 @@
         );
       }
 
-      // ArraySort as statement: array.sort(fn) mutates in place
-      // Generate: @{$arr} = sort { ... } @{$arr};
-      if (exprType === 'ArraySort') {
-        const sortArr = this.transformExpression(node.expression.array);
-        const deref = this.wrapArrayDeref(sortArr);
-        const compareFn = node.expression.compareFn;
-        if (compareFn && compareFn.params && compareFn.params.length >= 2) {
-          const aName = compareFn.params[0].name || 'a';
-          const bName = compareFn.params[1].name || 'b';
-          this.registerVariableType(aName, '$');
-          this.registerVariableType(bName, '$');
-          const bodyStmts = compareFn.body.type === 'BlockStatement'
-            ? compareFn.body.body.map(s => this.transformStatement(s)).filter(s => s !== null)
-            : [new PerlExpressionStatement(this.transformExpression(compareFn.body))];
-          return new PerlExpressionStatement(
-            new PerlAssignment(
-              new PerlUnaryExpression('@', sortArr, true),
-              '=',
-              new PerlCall('sort', [new PerlAnonSub(
-                [new PerlParameter(aName, '$'), new PerlParameter(bName, '$')],
-                new PerlBlock(bodyStmts)), deref])
-            )
-          );
-        }
-        // No compareFn - simple sort
-        return new PerlExpressionStatement(
-          new PerlAssignment(
-            new PerlUnaryExpression('@', sortArr, true),
-            '=',
-            new PerlCall('sort', [deref])
-          )
-        );
-      }
+      // ArraySort as statement: array.sort(fn) sorts in place (see 'ArraySort')
+      if (exprType === 'ArraySort')
+        return new PerlExpressionStatement(this.transformExpression(node.expression));
 
       // Handle ClassName = class extends X { ... } assignment
       // Convert to a proper ClassDeclaration so the class body is processed
@@ -5505,6 +5601,12 @@
 
       const expr = this.transformExpression(node.expression);
       if (!expr) return null;
+
+      // A splice whose removed elements nobody reads needs no array
+      // around it (see 'ArraySplice'), which in void context only warns.
+      if (expr.nodeType === 'Array' && expr.elements.length === 1 &&
+          expr.elements[0]?.nodeType === 'Call' && expr.elements[0].callee === 'splice')
+        return new PerlExpressionStatement(expr.elements[0]);
 
       return new PerlExpressionStatement(expr);
     }
@@ -5544,7 +5646,60 @@
     /**
      * Transform an if statement
      */
+    /**
+     * The value of a test that only asks whether a host global absent from
+     * Perl exists ("typeof define === 'function' && define.amd"), as far as
+     * it is decided by that: false, true, or null when it is not decided.
+     * @param {object} test - IL expression
+     * @returns {boolean|null}
+     */
+    /**
+     * The Perl statement for a library's CommonJS export guard
+     * "if (typeof module ... && module.exports) { module.exports = X; }",
+     * or null when the if statement is something else.
+     * @param {object} stmt - IL IfStatement
+     * @returns {PerlNode|null}
+     */
+    _commonJsExport(stmt) {
+      const mentionsModule = (n) => !!n && (
+        (n.type === 'Identifier' && n.name === 'module') ||
+        ['left', 'right', 'argument', 'object', 'value'].some(k => n[k] && typeof n[k] === 'object' && mentionsModule(n[k])));
+      if (!mentionsModule(stmt.test)) return null;
+      const body = stmt.consequent?.type === 'BlockStatement' ? stmt.consequent.body : [stmt.consequent];
+      const assignment = body.length === 1 && body[0]?.type === 'ExpressionStatement' ? body[0].expression : null;
+      if (!assignment || assignment.type !== 'AssignmentExpression' || assignment.left?.type !== 'MemberExpression' ||
+          assignment.left.object?.name !== 'module' || (assignment.left.property?.name || assignment.left.property?.value) !== 'exports')
+        return null;
+      return new PerlIf(new PerlRawCode("ref($main::module) eq 'HASH'"), new PerlBlock([
+        new PerlExpressionStatement(new PerlAssignment(new PerlRawCode("$main::module->{'exports'}"), '=',
+          this.transformExpression(assignment.right)))]));
+    }
+
+    _staticHostGlobalTest(test) {
+      if (!test) return null;
+      if (test.type === 'LogicalExpression' && test.operator === '&&') {
+        const left = this._staticHostGlobalTest(test.left);
+        return left === false ? false : null;
+      }
+      if (test.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(test.operator)) {
+        const typeofSide = [test.left, test.right].find(n => n && (n.type === 'TypeOfExpression' ||
+          (n.type === 'UnaryExpression' && n.operator === 'typeof')));
+        const literal = [test.left, test.right].find(n => n && n.type === 'Literal' && typeof n.value === 'string');
+        const arg = typeofSide && (typeofSide.argument || typeofSide.value);
+        if (arg && arg.type === 'Identifier' && PERL_ABSENT_HOST_GLOBALS.has(arg.name) && literal) {
+          const equal = literal.value === 'undefined';
+          return test.operator.startsWith('=') ? equal : !equal;
+        }
+      }
+      return null;
+    }
+
     transformIfStatement(node) {
+      // A branch only reachable where an absent host global exists is dead
+      // code, and would not even compile under strict
+      const hostTest = this._staticHostGlobalTest(node.test);
+      if (hostTest === false)
+        return node.alternate ? this.transformStatement(node.alternate) : null;
       // "if (typeof X !== 'bigint') X = BigInt(X);" - see
       // _matchNormalizeToBigIntGuard's doc comment for why this needs to
       // be special-cased ahead of the generic typeof/BigInt(...) handling.
@@ -5801,6 +5956,11 @@
       // "Can't use string as an ARRAY ref"), so split it into characters.
       if (this.isStringType(node.right))
         iterable = new PerlCall('split', [PerlLiteral.String('', "//"), iterable]);
+      // An array-typed iterable is an array reference: iterate its elements,
+      // not the one reference (e.g. a call returning byte[][]).
+      else if (/\[\]$/.test(node.right.resultType || '') &&
+               !(iterable.nodeType === 'UnaryExpression' && iterable.operator === '@'))
+        iterable = new PerlUnaryExpression('@', iterable, true);
 
       // "for (const token of tokens)" where "tokens" is known (from the
       // whole-file lengthFieldArrayVarNames pre-scan) to only ever be pushed
@@ -6233,7 +6393,10 @@
           // method ... on an undefined value". "$self->can('property')"
           // returns the actual method as a coderef, callable exactly like
           // the JS pattern once an explicit invocant is supplied.
-          if (this.allPlainClassMethodNames && this.allPlainClassMethodNames.has(node.property)) {
+          // The name is collected file-wide, so the IL type decides: a field
+          // of one class may share its name with another class's method.
+          if (this.allPlainClassMethodNames && this.allPlainClassMethodNames.has(node.property) &&
+              (!node.resultType || /^function/.test(node.resultType))) {
             return new PerlMemberAccess(
               new PerlIdentifier('self', '$'),
               new PerlCall(new PerlIdentifier('can'), [PerlLiteral.String(node.property, "'")]),
@@ -6313,6 +6476,18 @@
           // (e.g. LZ-family match-finder results: { distance, length }) ->
           // $obj->{'length'} - a plain hash key, not the array/string length.
           const arrExpr = this.transformExpression(node.array);
+          // The receiver's IL type decides first: an array (or tuple) counts
+          // its elements, a string its characters, and an object - a class
+          // or record such as an LZ match { distance, length } - has a field.
+          const receiverType = node.array?.resultType;
+          if (typeof receiverType === 'string' && !receiverType.includes('|')) {
+            if (/\[\]$/.test(receiverType) || /^\[.*\]$/.test(receiverType) || /^(Uint|Int|Float|BigUint|BigInt)\d+(Clamped)?Array$|^Array$/.test(receiverType))
+              return new PerlCall('scalar', [this.wrapArrayDeref(arrExpr)]);
+            if (receiverType === 'string')
+              return new PerlCall('length', [arrExpr]);
+            if (receiverType === 'object' || (/^[A-Z][A-Za-z0-9_]*$/.test(receiverType) && !NON_CLASS_TYPE_NAMES.has(receiverType)))
+              return new PerlSubscript(arrExpr, PerlLiteral.String('length', "'"), 'hash', true);
+          }
           if (this.isStringType(node.array)) {
             return new PerlCall('length', [arrExpr]);
           }
@@ -6370,6 +6545,10 @@
           const castArg = node.value || node.argument || (node.arguments && node.arguments[0]);
           const castVal = this.transformExpression(castArg);
           switch (node.targetType) {
+            case 'uint64':
+              // OpCodes.ToQWord: the low 64 bits, unsigned, as a native
+              // integer - of a Math::BigInt as well (see _ToUint64)
+              return new PerlCall(new PerlIdentifier('main::_ToUint64', ''), [castVal]);
             case 'uint32':
               // castVal sometimes derives from a raw (non-Math.imul/
               // OpCodes.Mul32) multiplication - see transformBinaryExpression's
@@ -6535,8 +6714,39 @@
               return result;
             }
           }
-          return new PerlCall('int', [transformedArg]);
+          // int() truncates toward zero; Math.floor rounds a negative
+          // quotient down (Math.floor(-7 / 2) is -4).
+          this.addRequiredModule('POSIX');
+          return new PerlCall(new PerlIdentifier('POSIX::floor', ''), [transformedArg]);
         }
+
+        case 'Truncate':
+          // Math.trunc rounds toward zero, as int() does
+          return new PerlCall('int', [this.transformExpression(node.argument)]);
+
+        case 'CountLeadingZeros':
+          // Math.clz32 (see the framework runtime's _JsClz32)
+          return new PerlCall(new PerlIdentifier('main::_JsClz32', ''), [this.transformExpression(node.argument)]);
+
+        case 'StringPad':
+          // str.padStart/padEnd(targetLength, padString)
+          return new PerlCall(new PerlIdentifier('main::_JsPad', ''), [
+            PerlLiteral.Number(node.method === 'padStart' ? 1 : 0),
+            this.transformExpression(node.string),
+            node.targetLength ? this.transformExpression(node.targetLength) : PerlLiteral.Number(0),
+            node.padString ? this.transformExpression(node.padString) : PerlLiteral.Undef()
+          ]);
+
+        case 'DataViewGetByteLength':
+          // A view is a byte string or an array of bytes, see 'DataViewCreation'
+          return new PerlCall(new PerlIdentifier('main::_JsByteLength', ''), [this.transformExpression(node.view)]);
+
+        case 'ObjectFromEntries':
+          return new PerlCall(new PerlIdentifier('main::_JsFromEntries', ''), [this.transformExpression(node.entries)]);
+
+        case 'DeleteExpression':
+          // delete obj[key] / delete obj.prop
+          return new PerlCall('delete', [this.transformExpression(node.argument)]);
 
         case 'Ceil':
           // ceil(x) -> POSIX::ceil(x)
@@ -6601,22 +6811,22 @@
         case 'Tan':
           // tan(x) -> sin(x)/cos(x)
           return new PerlBinaryExpression(
-            new PerlCall('sin', [this.transformExpression(node.arguments?.[0] || node.value)]),
+            new PerlCall('sin', [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]),
             '/',
-            new PerlCall('cos', [this.transformExpression(node.arguments?.[0] || node.value)])
+            new PerlCall('cos', [this.transformExpression(node.arguments?.[0] || node.argument || node.value)])
           );
 
         case 'Asin':
           // asin(x) -> atan2(x, sqrt(1 - x*x))
           return new PerlCall('atan2', [
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             new PerlCall('sqrt', [new PerlBinaryExpression(
               PerlLiteral.Number(1),
               '-',
               new PerlBinaryExpression(
-                this.transformExpression(node.arguments?.[0] || node.value),
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value),
                 '*',
-                this.transformExpression(node.arguments?.[0] || node.value)
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value)
               )
             )])
           ]);
@@ -6628,18 +6838,18 @@
               PerlLiteral.Number(1),
               '-',
               new PerlBinaryExpression(
-                this.transformExpression(node.arguments?.[0] || node.value),
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value),
                 '*',
-                this.transformExpression(node.arguments?.[0] || node.value)
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value)
               )
             )]),
-            this.transformExpression(node.arguments?.[0] || node.value)
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value)
           ]);
 
         case 'Atan':
           // atan(x) -> atan2(x, 1)
           return new PerlCall('atan2', [
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             PerlLiteral.Number(1)
           ]);
 
@@ -6653,22 +6863,22 @@
         case 'Sinh':
           // sinh(x) -> POSIX::sinh(x)
           this.addRequiredModule('POSIX');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("sinh"), "::"), [this.transformExpression(node.arguments?.[0] || node.value)]);
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("sinh"), "::"), [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]);
 
         case 'Cosh':
           // cosh(x) -> POSIX::cosh(x)
           this.addRequiredModule('POSIX');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("cosh"), "::"), [this.transformExpression(node.arguments?.[0] || node.value)]);
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("cosh"), "::"), [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]);
 
         case 'Tanh':
           // tanh(x) -> POSIX::tanh(x)
           this.addRequiredModule('POSIX');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("tanh"), "::"), [this.transformExpression(node.arguments?.[0] || node.value)]);
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("tanh"), "::"), [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]);
 
         case 'Cbrt':
           // cbrt(x) -> x ** (1/3)
           return new PerlBinaryExpression(
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             '**',
             new PerlGrouped(new PerlBinaryExpression(PerlLiteral.Number(1), '/', PerlLiteral.Number(3)))
           );
@@ -6686,14 +6896,14 @@
         case 'Sign':
           // sign(x) -> (x <=> 0)
           return new PerlGrouped(new PerlBinaryExpression(
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             '<=>',
             PerlLiteral.Number(0)
           ));
 
         case 'Fround':
           // fround(x) -> x (no native equivalent, pass through)
-          return this.transformExpression(node.arguments?.[0] || node.value);
+          return this.transformExpression(node.arguments?.[0] || node.argument || node.value);
 
         case 'MathConstant': {
           // Math constants -> Perl expressions
@@ -6831,6 +7041,12 @@
           // array.slice(start?, end?) -> [@{$array}] or [@{$array}[start..end-1]]
           // NOTE: Slice returns list, so we wrap in [...] to get arrayref
           const sliceArr = this.transformExpression(node.array);
+          // A receiver of no known IL type may be a string or an array:
+          // decided when it runs (see _JsSlice)
+          if (!node.array?.resultType || /^(any|object|unknown)$/.test(node.array.resultType))
+            return new PerlCall(new PerlIdentifier('main::_JsSlice', ''), [sliceArr,
+              node.start ? this.transformExpression(node.start) : PerlLiteral.Number(0),
+              node.end ? this.transformExpression(node.end) : PerlLiteral.Undef()]);
           if (!node.start && !node.end) {
             // No args: copy entire array
             return new PerlArray([this.wrapArrayDeref(sliceArr)]);
@@ -6849,6 +7065,10 @@
           // the rest for multi-arg push() calls).
           const appendArr = this.transformExpression(node.array);
           const pushArgs = (node.values && node.values.length) ? node.values : [node.value];
+          // obj.push(...) on a class instance (by its IL type) is its method
+          if (this._isObjectType(node.array?.resultType))
+            return new PerlMemberAccess(appendArr, new PerlCall(new PerlIdentifier('push'),
+              pushArgs.map(v => this.transformExpression(v))), '->');
           const valueExprs = pushArgs.map(v => {
             if (v && v.type === 'SpreadElement') {
               // Spread element: push(@arr, @$data) - dereference the spread source
@@ -6902,64 +7122,24 @@
           return new PerlCall('join', [joinSep, this.wrapArrayDeref(joinArr)]);
         }
 
-        case 'ArrayReverse': {
-          // array.reverse() -> [reverse @arr]
-          const revArr = this.transformExpression(node.array);
-          return new PerlArray([
-            new PerlCall('reverse', [this.wrapArrayDeref(revArr)])
-          ]);
-        }
+        case 'ArrayReverse':
+          // array.reverse() reverses in place and returns the same array
+          return new PerlCall(new PerlIdentifier('main::_JsReverse', ''), [this.transformExpression(node.array)]);
 
-        case 'ArraySort': {
-          // array.sort(fn?) -> [sort @arr]
-          const sortArr = this.transformExpression(node.array);
-          if (node.compareFn) {
-            return new PerlArray([
-              new PerlCall('sort', [
-                this.transformExpression(node.compareFn),
-                this.wrapArrayDeref(sortArr)
-              ])
-            ]);
-          }
-          return new PerlArray([
-            new PerlCall('sort', [this.wrapArrayDeref(sortArr)])
-          ]);
-        }
+        case 'ArraySort':
+          // array.sort(fn?) sorts in place and returns the same array; the
+          // comparator is called with its two arguments (see _JsSort)
+          return new PerlCall(new PerlIdentifier('main::_JsSort', ''),
+            node.compareFn ? [this.transformExpression(node.array), this.transformExpression(node.compareFn)]
+              : [this.transformExpression(node.array)]);
 
-        case 'ArrayIndexOf': {
-          // array.indexOf(val) -> simplified: first index or -1
-          this.addRequiredModule('List::Util', 'first');
-          const idxArr = this.transformExpression(node.array);
-          const idxVal = this.transformExpression(node.value);
-          // Use inline loop to find index
-          const forLoop = new PerlFor();
-          forLoop.isCStyle = true;
-          forLoop.init = new PerlVarDeclaration('my', 'i', '$', PerlLiteral.Number(0));
-          forLoop.condition = new PerlBinaryExpression(
-            new PerlIdentifier('i', '$'),
-            '<',
-            new PerlCall('scalar', [this.wrapArrayDeref(idxArr)])
-          );
-          forLoop.increment = new PerlUnaryExpression('++', new PerlIdentifier('i', '$'), false);
-          forLoop.body = new PerlBlock([
-            new PerlIf(
-              new PerlBinaryExpression(
-                new PerlSubscript(idxArr, new PerlIdentifier('i', '$'), 'array'),
-                'eq',
-                idxVal
-              ),
-              new PerlBlock([
-                new PerlExpressionStatement(new PerlAssignment(new PerlIdentifier('idx', '$'), '=', new PerlIdentifier('i', '$'))),
-                new PerlLast()
-              ])
-            )
-          ]);
-          return new PerlCall('do', [new PerlBlock([
-            new PerlVarDeclaration('my', 'idx', '$', PerlLiteral.Number(-1)),
-            forLoop,
-            new PerlExpressionStatement(new PerlIdentifier('idx', '$'))
-          ])]);
-        }
+        case 'ArrayIndexOf':
+          // array.indexOf(val[, from]): the array and value are evaluated once,
+          // outside any loop of the helper, so an index variable of the
+          // caller's cannot be shadowed (see _JsIndexOf)
+          return new PerlCall(new PerlIdentifier('main::_JsIndexOf', ''), [
+            this.transformExpression(node.array), this.transformExpression(node.value),
+            node.fromIndex ? this.transformExpression(node.fromIndex) : PerlLiteral.Number(0)]);
 
         case 'ArrayIncludes': {
           // Check if this is actually a string.includes() call
@@ -7287,10 +7467,12 @@
           const findArr = this.transformExpression(node.array);
           const callbackBlock = this.transformListUtilCallback(node.callback);
           this.addRequiredModule('List::Util', 'first');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [
+          // Grouped: "first BLOCK LIST" swallows whatever follows it, so a
+          // ".find(fn).prop" would subscript the list instead of the result
+          return new PerlGrouped(new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [
             callbackBlock,
             this.wrapArrayDeref(findArr)
-          ]);
+          ]));
         }
 
         case 'ArrayFindIndex': {
@@ -7648,6 +7830,11 @@
           // type-aware-transpiler.js's StringSubstring IL node).
           const str = this.transformExpression(node.string || node.object);
           const start = node.start ? this.transformExpression(node.start) : PerlLiteral.Number(0);
+          // slice() and substring() read their bounds differently (negative
+          // from the end, or clamped and swapped): see _JsSubstring
+          if (node.method === 'slice' || node.method === 'substring')
+            return new PerlCall(new PerlIdentifier('main::_JsSubstring', ''), [str, start,
+              node.end ? this.transformExpression(node.end) : PerlLiteral.Undef(), PerlLiteral.Number(node.method === 'slice' ? 1 : 0)]);
           const args = [str, start];
           if (node.length) {
             args.push(this.transformExpression(node.length));
@@ -7773,9 +7960,13 @@
         // ========================[ Additional IL Node Types ]========================
 
         case 'BigIntCast': {
-          // BigInt(value) -> Perl handles arbitrary precision integers natively
-          // Just return the value
+          // BigInt(value): a Math::BigInt with the value's exact integer
           const val = this.transformExpression(node.value || node.argument || (node.arguments && node.arguments[0]));
+          const source = node.value || node.argument || (node.arguments && node.arguments[0]);
+          // A signed source may be negative (see _bigIntOperation); a string
+          // or fraction is parsed; an unsigned integer stays as it is.
+          if (SIGNED_INTEGER_TYPES.has(source?.resultType) || !/^(uint(8|16|32|64)|BigInt|bigint)$/.test(source?.resultType || ''))
+            return new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [val]);
           return val;
         }
 
@@ -7819,11 +8010,11 @@
           // assignment RHS, ...) exactly like the old array-literal did.
           this.usesSubarrayView = true;
           const array = this.transformExpression(node.array);
+          // begin and end as JavaScript reads them: negative counts from the
+          // end, both clamped to the array (see _JsSubarray)
           const begin = node.begin ? this.transformExpression(node.begin) : PerlLiteral.Number(0);
-          const len = node.end
-            ? new PerlBinaryExpression(this.transformExpression(node.end), '-', begin)
-            : new PerlBinaryExpression(new PerlCall('scalar', [this.wrapArrayDeref(array)]), '-', begin);
-          const subarrayView = new PerlRawCode(`do { my @__sav; tie @__sav, '_JSSubarrayView', ${array}, ${begin}, ${len}; \\@__sav }`);
+          const end = node.end ? this.transformExpression(node.end) : PerlLiteral.Undef();
+          const subarrayView = new PerlCall(new PerlIdentifier('main::_JsSubarray', ''), [array, begin, end]);
           // Tells wrapArrayDeref (see its 'RawCode' case) this evaluates to
           // an arrayref *scalar*, not an already-flattened list - needed so
           // e.g. a subarray used as .set()'s source argument (TypedArraySet
@@ -8052,14 +8243,18 @@
           // test-vector execution anyway (mirrors transformUnaryExpression's
           // identical jsGlobals handling for the sibling raw-UnaryExpression
           // "typeof" shape this IL node normally supersedes).
-          if (arg && arg.type === 'Identifier' && arg.name === 'require')
+          // The same for the other JavaScript host globals a module loader
+          // tests (AMD's define, the browser's window/self): none exists in
+          // Perl.
+          if (arg && arg.type === 'Identifier' &&
+              PERL_ABSENT_HOST_GLOBALS.has(arg.name))
             return PerlLiteral.String('undefined', "'");
-          const value = this.transformExpression(arg);
-          return new PerlBinaryExpression(
-            new PerlCall('ref', [value]),
-            '||',
-            PerlLiteral.String('SCALAR', "'")
-          );
+          // A 64-bit or BigInt IL type is a JavaScript BigInt, whose native
+          // Perl value looks like a number
+          if (/^(BigInt|bigint|u?int64)$/.test(arg?.resultType || ''))
+            return PerlLiteral.String('bigint', "'");
+          // JavaScript's typeof names, decided by the value (see _JsTypeof)
+          return new PerlCall(new PerlIdentifier('main::_JsTypeof', ''), [this.transformExpression(arg)]);
         }
 
         // IL AST ObjectFreeze - Object.freeze(x) -> just return x (no-op in Perl)
@@ -8438,7 +8633,7 @@
           if (method === 'warn' || method === 'error') {
             return new PerlCall('warn', args);
           }
-          return new PerlCall('print', [...args, PerlLiteral.String("\\n", '"')]);
+          return new PerlCall('print', [...args, PerlLiteral.String("\n", '"')]);
         }
 
         // IL AST DataViewWrite - view.setUint32(offset, value, le) -> pack/substr
@@ -8614,6 +8809,28 @@
         return new PerlIdentifier(emittedName, sigil);
       }
 
+      // Checked before the class-name guesses below: a function named like
+      // a class (ApplyTransform) is still a function.
+      // If this identifier refers to a declared sub and is used as a value (not as a callee),
+      // emit a code reference: \&functionName. Package-qualified with
+      // "main::" - top-level JS helper functions are emitted as top-level
+      // Perl subs, which always land in "package main" (see
+      // PerlEmitter.js emitModule), same as the direct-call qualification
+      // just above (this.functionNames.has(funcName) branch). An
+      // unqualified "\&functionName" written from inside a class's
+      // "package Foo;" block (e.g. "this.permute = spongent160Permute;" -
+      // see codeRefFieldNames' doc comment) resolves against the CURRENT
+      // package at compile time, not main:: - silently binding to
+      // "\&Foo::functionName" (which doesn't exist) instead of the real
+      // sub, so calling the stored coderef later died "Undefined
+      // subroutine &Foo::functionName called".
+      if (this.functionNames.has(name) && !this.variableTypes.has(name)) {
+        // See _collectNestedFunctionRenames' doc comment - a nested
+        // function's Perl sub may have been given a unique per-method name.
+        const qualified = this.nestedFunctionNames.has(name) ? this._resolveNestedFunctionName(name) : ('main::' + name);
+        return new PerlUnaryExpression('\\&', new PerlIdentifier(qualified, ''), true);
+      }
+
       // Class names (PascalCase, TypedArrays, etc.) should have no sigil
       // They are used as barewords for method calls like Uint8Array->from()
       const isClassName = /^[A-Z]/.test(name) &&
@@ -8642,26 +8859,6 @@
         // Return as quoted string - Perl resolves 'ClassName'->method() correctly
         // and this avoids bareword errors under 'use strict' in boolean/value context
         return PerlLiteral.String(name, "'");
-      }
-
-      // If this identifier refers to a declared sub and is used as a value (not as a callee),
-      // emit a code reference: \&functionName. Package-qualified with
-      // "main::" - top-level JS helper functions are emitted as top-level
-      // Perl subs, which always land in "package main" (see
-      // PerlEmitter.js emitModule), same as the direct-call qualification
-      // just above (this.functionNames.has(funcName) branch). An
-      // unqualified "\&functionName" written from inside a class's
-      // "package Foo;" block (e.g. "this.permute = spongent160Permute;" -
-      // see codeRefFieldNames' doc comment) resolves against the CURRENT
-      // package at compile time, not main:: - silently binding to
-      // "\&Foo::functionName" (which doesn't exist) instead of the real
-      // sub, so calling the stored coderef later died "Undefined
-      // subroutine &Foo::functionName called".
-      if (this.functionNames.has(name) && !this.variableTypes.has(name)) {
-        // See _collectNestedFunctionRenames' doc comment - a nested
-        // function's Perl sub may have been given a unique per-method name.
-        const qualified = this.nestedFunctionNames.has(name) ? this._resolveNestedFunctionName(name) : ('main::' + name);
-        return new PerlUnaryExpression('\\&', new PerlIdentifier(qualified, ''), true);
       }
 
       // Get sigil from registered type or infer
@@ -8786,7 +8983,159 @@
       return false;
     }
 
+    /**
+     * Is this IL type JavaScript's arbitrary-precision BigInt (as opposed
+     * to the fixed-width int64/uint64)?
+     * @param {string} type - an IL resultType
+     * @returns {boolean}
+     */
+    _isBigIntType(type) {
+      return type === 'BigInt' || type === 'bigint';
+    }
+
+    /**
+     * An arbitrary-precision BigInt operation on two translated operands,
+     * through the framework runtime's _BigOp helpers: they compute natively
+     * while the operands are small enough for the result to be exact, and in
+     * Math::BigInt otherwise, so the result is always JavaScript's. Division
+     * and remainder truncate toward zero as JavaScript's do.
+     * A native operand is a non-negative integer or, held by the native
+     * 64-bit arithmetic, the bit pattern of a uint64; an operand whose IL
+     * type is a signed integer may be genuinely negative, and is made a
+     * Math::BigInt first when it is (_BigSigned).
+     * @param {string} operator - the JavaScript operator, without "="
+     * @param {PerlNode} left
+     * @param {PerlNode} right
+     * @param {string} [leftType] - the left operand's IL type
+     * @param {string} [rightType] - the right operand's IL type
+     * @returns {PerlNode}
+     */
+    _bigIntOperation(operator, left, right, leftType, rightType) {
+      const operand = (value, type) => SIGNED_INTEGER_TYPES.has(type)
+        ? new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [value]) : value;
+      const l = operand(left, leftType), r = operand(right, rightType);
+      const call = new PerlCall(new PerlIdentifier('main::' + BIGINT_OPERATION_HELPERS[operator], ''), [l, r]);
+      // A bitwise operation on two native operands is the native operator
+      // (see _BigAnd/_BigOr/_BigXor), tested inline where reading an operand
+      // twice is free
+      const simple = (n) => n && (n.nodeType === 'Identifier' || n.nodeType === 'Literal' ||
+        (n.nodeType === 'Subscript' && simple(n.object) && simple(n.index)) ||
+        (n.nodeType === 'BinaryExpression' && ['+', '-'].includes(n.operator) && simple(n.left) && simple(n.right)));
+      if ((operator === '^' || operator === '|' || operator === '&') && simple(l) && simple(r))
+        return new PerlGrouped(new PerlConditional(
+          new PerlBinaryExpression(new PerlCall('ref', [l]), '||', new PerlCall('ref', [r])),
+          call, new PerlGrouped(new PerlBinaryExpression(l, operator, r))));
+      return call;
+    }
+
+    /**
+     * The value of a constant integer operand: a number or BigInt literal,
+     * BigInt(<literal>), or a module constant bound to one.
+     * @param {object} node - IL node
+     * @returns {bigint|null}
+     */
+    _constantIntegerValue(node) {
+      if (!node) return null;
+      try {
+        if (node.type === 'Literal' && (typeof node.value === 'bigint' || Number.isInteger(node.value))) return BigInt(node.value);
+        if (node.type === 'BigIntCast') {
+          const arg = node.value || node.argument || (node.arguments && node.arguments[0]);
+          if (arg && arg.type === 'Literal' && (typeof arg.value === 'string' || Number.isInteger(arg.value) || typeof arg.value === 'bigint'))
+            return BigInt(arg.value);
+        }
+        if (node.type === 'Identifier' && this._moduleIntegerConstants && this._moduleIntegerConstants.has(node.name))
+          return this._moduleIntegerConstants.get(node.name);
+      } catch (e) { /* not an integer literal */ }
+      return null;
+    }
+
+    /**
+     * A BigInt expression whose result only matters modulo 2^64 (it is
+     * masked to at most 64 bits) in native 64-bit arithmetic: the low 64
+     * bits of a sum, difference, product, shift-left or bitwise operation
+     * depend only on the low 64 bits of its operands, so wrapping native
+     * arithmetic is exact there and avoids Math::BigInt.
+     * @param {object} node - IL node
+     * @returns {PerlNode}
+     */
+    _lowBits64(node) {
+      if (node && node.type === 'BinaryExpression') {
+        const helper = { '+': 'u64add', '-': 'u64sub', '*': 'u64mul' }[node.operator];
+        if (helper) {
+          this.usesOpCodesRuntimeFallback = true;
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier('OpCodes'), new PerlIdentifier(helper), '::'),
+            [this._lowBits64(node.left), this._lowBits64(node.right)]);
+        }
+        if (node.operator === '^' || node.operator === '|' || node.operator === '&')
+          return new PerlGrouped(new PerlBinaryExpression(this._lowBits64(node.left), node.operator, this._lowBits64(node.right)));
+      }
+      const value = this.transformExpression(node);
+      if (this._isBigIntType(node?.resultType))
+        return new PerlCall(new PerlIdentifier('main::_ToUint64', ''), [value]);
+      return value;
+    }
+
     transformBinaryExpression(node) {
+      // Floating-point arithmetic is Perl's own (an NV), whatever integer
+      // emulation the operands' file may otherwise need
+      // emulation the operands' file may otherwise need. An int32 operand
+      // takes part with its sign: the 32-bit arithmetic may hold it as the
+      // unsigned bit pattern (see the 'int32' Cast).
+      if (/^(float64|float32|double)$/.test(node.resultType || '') && ['+', '-', '*', '/'].includes(node.operator) &&
+          !this.isStringType(node.left) && !this.isStringType(node.right)) {
+        const operand = (n) => {
+          const value = this.transformExpression(n);
+          // only a stored value: an int32-typed expression may exceed 32 bits
+          return /^(int32|int)$/.test(n?.resultType || '') && /^(Identifier|MemberExpression|ThisPropertyAccess)$/.test(n.type)
+            ? new PerlCall(new PerlIdentifier('main::_Int32', ''), [value]) : value;
+        };
+        const arithmetic = new PerlGrouped(new PerlBinaryExpression(operand(node.left), node.operator, operand(node.right)));
+        // Perl keeps integral operands in exact integer arithmetic; a
+        // double's result beyond 2^53 is rounded (see _F64)
+        if (node.operator === '/') return arithmetic;
+        return new PerlCall(new PerlIdentifier('main::_F64', ''), [arithmetic]);
+      }
+      // A BigInt masked to at most 64 bits: native 64-bit arithmetic
+      if (this._isBigIntType(node.resultType) && node.operator === '&') {
+        const rightMask = this._constantIntegerValue(node.right);
+        const mask = rightMask !== null ? rightMask : this._constantIntegerValue(node.left);
+        if (mask !== null && mask >= 0n && mask <= 0xFFFFFFFFFFFFFFFFn) {
+          const operand = rightMask !== null ? node.left : node.right;
+          return new PerlGrouped(new PerlBinaryExpression(this._lowBits64(operand), '&', PerlLiteral.Number(mask)));
+        }
+      }
+      // A comparison of BigInt operands reads a native operand as unsigned
+      // 64-bit, as the arithmetic does (see _bigIntOperation)
+      if (BIGINT_COMPARISONS.has(node.operator) &&
+          (this._isBigIntType(node.left?.resultType) || this._isBigIntType(node.right?.resultType)) &&
+          !(node.left?.type === 'Literal' && node.left.value === null) && !(node.right?.type === 'Literal' && node.right.value === null) &&
+          !(node.left?.type === 'Literal' && node.left.value === undefined) && !(node.right?.type === 'Literal' && node.right.value === undefined)) {
+        const operand = (n) => SIGNED_INTEGER_TYPES.has(n?.resultType)
+          ? new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [this.transformExpression(n)]) : this.transformExpression(n);
+        const perlOperator = { '===': '==', '!==': '!=' }[node.operator] || node.operator;
+        return new PerlGrouped(new PerlBinaryExpression(
+          new PerlCall(new PerlIdentifier('main::_BigCmp', ''), [operand(node.left), operand(node.right)]), perlOperator, PerlLiteral.Number(0)));
+      }
+      // Arbitrary-precision BigInt arithmetic, by the IL type
+      if (this._isBigIntType(node.resultType) && BIGINT_OPERATORS.has(node.operator))
+        return this._bigIntOperation(node.operator, this.transformExpression(node.left), this.transformExpression(node.right),
+          node.left?.resultType, node.right?.resultType);
+      // A chain of string literals joined by "+" (a test vector's hex text
+      // split over hundreds of lines) is one literal - folded here, as
+      // recursing down the chain overflows the stack.
+      if (node.operator === '+') {
+        const parts = [];
+        let n = node;
+        while (n.type === 'BinaryExpression' && n.operator === '+' && n.right?.type === 'Literal' && typeof n.right.value === 'string') {
+          parts.push(n.right.value);
+          n = n.left;
+        }
+        if (parts.length > 0 && n.type === 'Literal' && typeof n.value === 'string') {
+          parts.push(n.value);
+          return PerlLiteral.String(parts.reverse().join(''), "'");
+        }
+      }
+
       // typeof X === 'string' / !== 'string' / == / != - the general
       // "case 'TypeOfExpression'" transform below (used when typeof isn't
       // directly compared to a literal) maps typeof to "ref($x) || 'SCALAR'"
@@ -9288,7 +9637,11 @@
       // is avoided. Skipped for genuine float literal operands (harmless in
       // practice - this file family never mixes floats with 64-bit hash
       // state - but cheap to guard).
+      // Two operands of at most 32 bits (by their IL types) cannot leave 64
+      // bits, so they need no helper - loop counters and indices above all.
+      const narrow = (n) => /^(u?int(8|16|32)|int|byte)$/.test(n?.resultType || '');
       if ((operator === '+' || operator === '-' || operator === '*') && this._fileHasBigIntLiterals &&
+          !(narrow(node.left) && narrow(node.right)) &&
           !this._isFloatLiteralNode(node.left) && !this._isFloatLiteralNode(node.right)) {
         return this._u64SafeArithCall(operator, left, right);
       }
@@ -9368,7 +9721,11 @@
       // up to 2**53 exactly, so forcing float arithmetic there changes
       // nothing about the result, only (negligibly) how it's computed.
       if (operator === '*' && !this._fileHasBigIntLiterals) {
-        return this._forceDoubleMultiply(left, right);
+        // OpCodes.Mul32 (Math.imul's spelling) keeps the exact low 32 bits,
+        // which Perl's exact integer product has
+        if (node.opCodesMethod === 'Mul32')
+          return new PerlBinaryExpression(new PerlGrouped(new PerlBinaryExpression(left, '*', right)), '&', PerlLiteral.Number(0xFFFFFFFF));
+        return this._forceDoubleMultiply(left, right, node.left, node.right);
       }
 
       // NOTE: a "+"/"-" immediately combining with a forced-double multiply
@@ -9451,9 +9808,16 @@
      * @param {PerlNode} right - already-transformed right operand
      * @returns {PerlBinaryExpression}
      */
-    _forceDoubleMultiply(left, right) {
-      const one = new PerlRawCode('1.0');
-      const result = new PerlBinaryExpression(new PerlBinaryExpression(one, '*', left), '*', right);
+    _forceDoubleMultiply(left, right, leftNode, rightNode) {
+      // Perl multiplies integral operands exactly however they are written
+      // ("1.0 * $a * $b" included); _F64 rounds the product to the double
+      // JavaScript computes. A stored int32 operand takes part with its sign.
+      const signed = (value, n) => /^(int32|int)$/.test(n?.resultType || '') &&
+        /^(Identifier|MemberExpression|ThisPropertyAccess|BinaryExpression)$/.test(n?.type || '') &&
+        !(n.type === 'BinaryExpression' && n.operator !== '|')
+        ? new PerlCall(new PerlIdentifier('main::_Int32', ''), [value]) : value;
+      const result = new PerlCall(new PerlIdentifier('main::_F64', ''),
+        [new PerlGrouped(new PerlBinaryExpression(signed(left, leftNode), '*', signed(right, rightNode)))]);
       // Marker consumed by _containsForcedDoubleMultiply (see the Cast/
       // 'uint32'/'int32' cases) - identifies which Cast operands actually
       // need the POSIX::fmod-backed OpCodes::u32mask safe extraction
@@ -9661,6 +10025,15 @@
     transformUnaryExpression(node) {
       let operator = node.operator;
 
+      // BigInt negation and complement (see _bigIntOperation): a negative
+      // result is a Math::BigInt, never a native that reads as unsigned
+      if ((operator === '-' || operator === '~') && this._isBigIntType(node.resultType)) {
+        const operand = this.transformExpression(node.argument);
+        if (operator === '-') return new PerlCall(new PerlIdentifier('main::_BigSub', ''), [PerlLiteral.Number(0), operand]);
+        return new PerlCall(new PerlIdentifier('main::_BigSub', ''),
+          [new PerlCall(new PerlIdentifier('main::_BigSub', ''), [PerlLiteral.Number(0), operand]), PerlLiteral.Number(1)]);
+      }
+
       // Handle typeof specially before transforming operand
       if (operator === 'typeof') {
         // For known package names (OpCodes, Math, etc.), typeof returns 'object' (always defined)
@@ -9797,6 +10170,44 @@
      * Transform an assignment expression
      */
     transformAssignmentExpression(node) {
+      // A store into an element of a fixed-width integer array (a typed
+      // array in JavaScript) wraps to the element type as the typed array
+      // does; a value of that very type needs nothing.
+      const elementType = node.left?.type === 'MemberExpression' && node.left.computed &&
+        /^(u?int(8|16|32))\[\]$/.exec(node.left.object?.resultType || '');
+      // A compound assignment reads its target again, so only a target
+      // without side effects (no a[i++] ^= x) is rewritten
+      const hasSideEffect = (n) => !!n && typeof n === 'object' && (
+        ['UpdateExpression', 'CallExpression', 'AssignmentExpression', 'NewExpression'].includes(n.type) ||
+        Object.keys(n).some(k => k !== 'parent' && n[k] && typeof n[k] === 'object' &&
+          (Array.isArray(n[k]) ? n[k].some(hasSideEffect) : hasSideEffect(n[k]))));
+      if (elementType && (node.operator === '=' || (['+=', '-=', '*=', '<<='].includes(node.operator) && !hasSideEffect(node.left))) &&
+          !(node.operator === '=' && node.right?.resultType === elementType[1]) && !node._perlElementWrapped) {
+        const value = node.operator === '=' ? node.right
+          : { type: 'BinaryExpression', operator: node.operator.slice(0, -1), left: Object.assign({}, node.left),
+              right: node.right, resultType: 'number' };
+        const wrapped = this.transformExpression(value);
+        const width = { int8: 8, uint8: 8, int16: 16, uint16: 16, int32: 32, uint32: 32 }[elementType[1]];
+        const masked = new PerlBinaryExpression(new PerlGrouped(wrapped), '&', PerlLiteral.Number(2 ** width - 1));
+        const stored = elementType[1].startsWith('u') ? masked
+          : new PerlCall('unpack', [PerlLiteral.String({ 8: 'c', 16: 's', 32: 'l' }[width], "'"),
+            new PerlCall('pack', [PerlLiteral.String({ 8: 'C', 16: 'S', 32: 'L' }[width], "'"), masked])]);
+        node.left._perlAssignTarget = true;
+        return new PerlAssignment(this.transformExpression(node.left), '=', stored);
+      }
+      // Its target is written, not read (see transformMemberExpression)
+      if (node.left && node.left.type === 'MemberExpression') node.left._perlAssignTarget = true;
+      // "x op= y" on a BigInt: x = x op y in Math::BigInt arithmetic
+      if (node.operator !== '=' && this._isBigIntType(node.resultType || node.left?.resultType) &&
+          BIGINT_OPERATORS.has(node.operator.slice(0, -1))) {
+        const target = this.transformExpression(node.left);
+        const current = node.left.type === 'MemberExpression'
+          ? this.transformExpression(Object.assign({}, node.left, { _perlAssignTarget: false }))
+          : target;
+        return new PerlAssignment(target, '=',
+          this._bigIntOperation(node.operator.slice(0, -1), current, this.transformExpression(node.right),
+            node.left?.resultType, node.right?.resultType));
+      }
       // Track if a plain "x = <string-expr>;" reassignment (as opposed to
       // transformLetStatement's declare-with-initializer case) makes a
       // local variable structurally a string, so later Identifier
@@ -9895,6 +10306,17 @@
       // JavaScript: arr.length = 0 clears the array
       // JavaScript: arr.length = N truncates or extends with undefined
       // Perl: @arr = () to clear, or splice(@arr, N) to truncate
+      // "obj.length = n" on a class or record (by its IL type) sets a field
+      {
+        const lengthTarget = (node.left.type === 'ArrayLength' || node.left.ilNodeType === 'ArrayLength') ? node.left.array
+          : (node.left.type === 'MemberExpression' && !node.left.computed &&
+             (node.left.property?.name || node.left.property?.value) === 'length') ? node.left.object : null;
+        if (lengthTarget && node.operator === '=' && this._isObjectType(lengthTarget.resultType))
+          return new PerlAssignment(
+            new PerlSubscript(this.transformExpression(lengthTarget), PerlLiteral.String('length', "'"), 'hash', true),
+            '=', this.transformExpression(node.right));
+      }
+
       if (node.left.type === 'ArrayLength' || node.left.ilNodeType === 'ArrayLength') {
         const arrExpr = this.transformExpression(node.left.array);
         const lengthVal = this.transformExpression(node.right);
@@ -9909,11 +10331,9 @@
           );
         }
 
-        // Otherwise use splice to truncate: splice(@{$arr}, $length)
-        return new PerlCall('splice', [
-          this.wrapArrayDeref(arrExpr),
-          lengthVal
-        ]);
+        // Otherwise truncate or extend: $#{$arr} = $length - 1
+        return new PerlAssignment(new PerlUnaryExpression('$#', arrExpr, true), '=',
+          new PerlBinaryExpression(new PerlGrouped(lengthVal), '-', PerlLiteral.Number(1)));
       }
 
       // Handle array.length = N assignment specially (original MemberExpression version)
@@ -9933,11 +10353,9 @@
           );
         }
 
-        // Otherwise use splice to truncate: splice(@{$arr}, $length)
-        return new PerlCall('splice', [
-          this.wrapArrayDeref(arrExpr),
-          lengthVal
-        ]);
+        // Otherwise truncate or extend: $#{$arr} = $length - 1
+        return new PerlAssignment(new PerlUnaryExpression('$#', arrExpr, true), '=',
+          new PerlBinaryExpression(new PerlGrouped(lengthVal), '-', PerlLiteral.Number(1)));
       }
 
       // Handle object destructuring assignment: { a: target1, b: target2 } = func()
@@ -10015,6 +10433,18 @@
       if (node.operator === '=' && node.left.type === 'MemberExpression' &&
           !node.left.computed) {
         const propName = node.left.property?.name || node.left.property?.value;
+        // A setter of a class instance, by the object's IL type (see
+        // _classPropertyAccess): a setter is code, not a hash store.
+        if (node.left.object?.type !== 'ThisExpression') {
+          const access = this._classPropertyAccess(node.left.object?.resultType, propName);
+          if (access === 'accessor' || access === 'runtime') {
+            const objExpr = this.transformExpression(node.left.object);
+            const rightExpr = this.transformExpression(node.right);
+            if (access === 'accessor')
+              return new PerlMemberAccess(objExpr, new PerlCall(new PerlIdentifier(propName), [rightExpr]), '->');
+            return new PerlCall(new PerlIdentifier('main::_JsSetProp', ''), [objExpr, PerlLiteral.String(propName, "'"), rightExpr]);
+          }
+        }
         if (CROSS_INSTANCE_ACCESSOR_PROPS.has(propName) && this._isCipherInstanceRef(node.left.object)) {
           const objExpr = this.transformExpression(node.left.object);
           const rightExpr = this.transformExpression(node.right);
@@ -10221,6 +10651,7 @@
       // precision; Perl's native "+=" would silently float-promote and
       // permanently corrupt the low bits first).
       if ((operator === '+=' || operator === '-=' || operator === '*=') && this._fileHasBigIntLiterals &&
+          !(/^(u?int(8|16|32)|int|byte)$/.test(node.left?.resultType || '') && /^(u?int(8|16|32)|int|byte)$/.test(node.right?.resultType || '')) &&
           !this._isFloatLiteralNode(node.right)) {
         const baseOp = operator === '+=' ? '+' : (operator === '-=' ? '-' : '*');
         const call = this._u64SafeArithCall(baseOp, left, right);
@@ -10234,6 +10665,7 @@
      * Transform an update expression (++, --)
      */
     transformUpdateExpression(node) {
+      if (node.argument && node.argument.type === 'MemberExpression') node.argument._perlAssignTarget = true;
       const operand = this.transformExpression(node.argument);
 
       // Perl has ++ and --, same as JavaScript
@@ -10529,6 +10961,24 @@
         // must go through its get/set accessor - see _isCipherInstanceRef()
         // and CROSS_INSTANCE_ACCESSOR_PROPS' doc comments for why
         // classAccessors can't see this.
+        // error.message: a caught Perl error is the die string (see
+        // _JsErrorMessage)
+        if (member === 'message' && !node._perlAssignTarget &&
+            (!node.object?.resultType || /^(Error|object|any)$/.test(node.object.resultType)))
+          return new PerlCall(new PerlIdentifier('main::_JsErrorMessage', ''), [object]);
+
+        // A property of a class instance, by the object's IL type: an
+        // accessor of a class of this file is called, and one of a class
+        // this file cannot see (another file's, a framework base) is
+        // resolved at run time. An assignment target stays a hash element.
+        if (!node._perlAssignTarget && node.object?.type !== 'ThisExpression') {
+          const access = this._classPropertyAccess(node.object.resultType, member);
+          if (access === 'accessor')
+            return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
+          if (access === 'runtime')
+            return new PerlCall(new PerlIdentifier('main::_JsGetProp', ''), [object, PerlLiteral.String(member, "'")]);
+        }
+
         if (CROSS_INSTANCE_ACCESSOR_PROPS.has(member) && this._isCipherInstanceRef(node.object)) {
           return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
         }
@@ -10992,8 +11442,17 @@
         const methodName = node.callee.property.name || node.callee.property.value;
         const args = node.arguments.map(arg => this.transformExpression(arg));
 
+        // crypto.getRandomValues(typedArray): fills it from the platform
+        // CSPRNG, as OpCodes.SecureRandomBytes does
+        if (objName === 'crypto' && methodName === 'getRandomValues') {
+          this.usesOpCodesRuntimeFallback = true;
+          return new PerlCall(new PerlIdentifier('main::_JsGetRandomValues', ''), [args[0]]);
+        }
+
         // Array.isArray(x) -> ref(x) eq 'ARRAY'
-        if (objName === 'Array' && methodName === 'isArray') {
+        // ArrayBuffer.isView(x): a typed array is an array reference in Perl
+        // as well, so both are the same test.
+        if ((objName === 'Array' && methodName === 'isArray') || (objName === 'ArrayBuffer' && methodName === 'isView')) {
           return new PerlBinaryExpression(
             new PerlCall('ref', [args[0]]),
             'eq',
@@ -11121,7 +11580,7 @@
         // console.error(x) -> warn(x) (Perl sends to STDERR)
         if (objName === 'console') {
           if (methodName === 'log') {
-            return new PerlCall('print', [...args, PerlLiteral.String("\\n", '"')]);
+            return new PerlCall('print', [...args, PerlLiteral.String("\n", '"')]);
           }
           if (methodName === 'warn' || methodName === 'error') {
             return new PerlCall('warn', args);
@@ -11276,6 +11735,26 @@
       // Handle method calls
       if (node.callee.type === 'MemberExpression') {
         const method = node.callee.property.name || node.callee.property.value;
+
+        // A method of a class of this file (by the receiver's IL type) is
+        // that class's own, even when it shares a name with an Array or
+        // String method (a SlotValues.push)
+        const receiverType = node.callee.object?.resultType;
+        if (!node.callee.computed && node.callee.object?.type !== 'ThisExpression' &&
+            this.fileClassNames && this.fileClassNames.has(receiverType)) {
+          const methodCall = new PerlCall(new PerlIdentifier(method), node.arguments.map(a => this.transformExpression(a)));
+          methodCall.isMethodCall = true;
+          return new PerlMemberAccess(this.transformExpression(node.callee.object), methodCall, '->');
+        }
+        // A plain object of functions (a library's export, typed 'object' or
+        // not at all) is called through its entry; an object of a class
+        // through its method (see _JsInvoke)
+        if (!node.callee.computed && node.callee.object?.type === 'Identifier' &&
+            (!receiverType || receiverType === 'object') && !this._exprIsOpCodesReference(node.callee.object) &&
+            !this.variableTypes.has(node.callee.object.name) && !this._isClassObjName(node.callee.object.name) &&
+            !['Math', 'JSON', 'Object', 'Array', 'Number', 'String', 'console', 'AlgorithmFramework', 'BigInt', 'Date'].includes(node.callee.object.name))
+          return new PerlCall(new PerlIdentifier('main::_JsInvoke', ''), [this.transformExpression(node.callee.object),
+            PerlLiteral.String(method, "'"), ...node.arguments.map(a => this.transformExpression(a))]);
 
         // Handle array reduce specially
         if (method === 'reduce') {
@@ -11435,7 +11914,8 @@
         if (method === 'find' && firstArgIsCallback) {
           const callback = args[0];
           this.addRequiredModule('List::Util', 'first');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [wrapAsPredicateBlock(callback), this.wrapArrayDeref(object)]);
+          // Grouped, as in 'ArrayFind'
+          return new PerlGrouped(new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [wrapAsPredicateBlock(callback), this.wrapArrayDeref(object)]));
         }
 
         // findIndex(fn) -> index of the first matching element, or -1 - no
@@ -11501,18 +11981,12 @@
         }
 
         // reverse() -> [reverse @{$array}]
-        if (method === 'reverse') {
-          return new PerlArray([new PerlCall('reverse', [new PerlUnaryExpression('@', object, true)])]);
-        }
+        if (method === 'reverse')
+          return new PerlCall(new PerlIdentifier('main::_JsReverse', ''), [object]);
 
-        // sort() -> [sort @{$array}]
-        if (method === 'sort') {
-          if (args.length === 0) {
-            return new PerlArray([new PerlCall('sort', [new PerlUnaryExpression('@', object, true)])]);
-          }
-          // With comparator - need special handling
-          return new PerlArray([new PerlCall('sort', [args[0], new PerlUnaryExpression('@', object, true)])]);
-        }
+        // sort(fn?) - see 'ArraySort'
+        if (method === 'sort')
+          return new PerlCall(new PerlIdentifier('main::_JsSort', ''), [object, ...args.slice(0, 1)]);
 
         // splice(start, deleteCount, ...items)
         if (method === 'splice') {
@@ -11919,6 +12393,9 @@
         // with "Can't locate object method toString" at runtime unless obj
         // happens to be blessed. Convert to the equivalent stringification.
         if (method === 'toString') {
+          // An integer (a Math::BigInt included) in any radix (see _JsToString)
+          if (node.arguments[0] && /^(u?int(8|16|32|64)|BigInt|bigint)$/.test(node.callee.object?.resultType || ''))
+            return new PerlCall(new PerlIdentifier('main::_JsToString', ''), [object, this.transformExpression(node.arguments[0])]);
           if (node.arguments[0] && node.arguments[0].type === 'Literal' && typeof node.arguments[0].value === 'number') {
             const radix = node.arguments[0].value;
             if (radix === 16) return new PerlCall('sprintf', [PerlLiteral.String('%x', "'"), object]);
@@ -12014,7 +12491,10 @@
         // the same way JS's Number() does, rather than emitting a bareword
         // call to a nonexistent &Number sub (Perl has no such builtin).
         if (funcName === 'Number' && args.length === 1) {
-          return new PerlGrouped(new PerlBinaryExpression(PerlLiteral.Number(0), '+', args[0]));
+          // A Math::BigInt argument is numified, not added to; a native
+          // BigInt is read as unsigned 64-bit (see _bigIntOperation)
+          const unsigned = /^(BigInt|bigint|uint64)$/.test(node.arguments[0]?.resultType || '');
+          return new PerlCall(new PerlIdentifier(unsigned ? 'main::_NumUnsigned' : 'main::_Num', ''), [args[0]]);
         }
 
         // String(x) -> stringification (JS ToString), mirroring Perl's
@@ -12887,6 +13367,9 @@
       // In Perl, array flattening is automatic: @array
       // Mark the result as spread so the emitter knows to dereference it
       const result = this.transformExpression(node.argument);
+      // Spreading a string yields its characters
+      if (result && node.argument?.resultType === 'string')
+        return new PerlCall('split', [PerlLiteral.String('', "//"), result]);
       if (result) result.spread = true;
       return result;
     }
@@ -13936,6 +14419,13 @@
       // Check IL AST resultType - this is the most reliable indicator
       if (node.resultType === 'string' || node.resultType === 'String')
         return true;
+      // Any other definite IL type decides as well: the name-based guesses
+      // below would otherwise let one binding's string type leak onto an
+      // unrelated same-named one (a local string "nonce" making the byte
+      // array this.nonce a string).
+      if (typeof node.resultType === 'string' && node.resultType !== '' &&
+          !/^(any|unknown|\*|mixed|undefined|null)$/i.test(node.resultType) && !node.resultType.includes('|'))
+        return /^char$/i.test(node.resultType);
 
       // Check for string literals
       if (node.type === 'Literal' && typeof node.value === 'string')

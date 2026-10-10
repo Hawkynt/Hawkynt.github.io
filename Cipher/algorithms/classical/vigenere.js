@@ -203,6 +203,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "A"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._processedKey = "A"; // Default key
       } else {
@@ -219,12 +220,11 @@
     }
 
     /**
-   * Get the keyword
-   * @returns {string} Upper-case keyword letters
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._processedKey ? this._processedKey : "A";
+      return this._keyBytes || null;
     }
 
     // Feed data to the cipher

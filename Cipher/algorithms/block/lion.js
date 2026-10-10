@@ -55,7 +55,9 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Load SHA-1 and RC4 algorithms (must be loaded before LION)
+  /** @type {Function|null} */
   let SHA1Class = null;
+  /** @type {Function|null} */
   let RC4Class = null;
 
   // Attempt to load dependencies

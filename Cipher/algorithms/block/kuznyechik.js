@@ -90,7 +90,7 @@
     let aVal = OpCodes.And32(a, 0xFF);
     let bVal = OpCodes.And32(b, 0xFF);
     for (let i = 0; i < 8; ++i) {
-      if (OpCodes.AndN(bVal, 1)) result = OpCodes.Xor32(result, aVal);
+      if (OpCodes.And32(bVal, 1)) result = OpCodes.Xor32(result, aVal);
       const high_bit_set = OpCodes.And32(aVal, 0x80);
       aVal = OpCodes.And32(OpCodes.Shl32(aVal, 1), 0xFF);
       if (high_bit_set) aVal = OpCodes.Xor32(aVal, 0xC3); // Reduction modulo 0x1C3

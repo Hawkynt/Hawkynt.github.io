@@ -165,6 +165,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "CIPHER"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._processedKey = "CIPHER"; // Default key
       } else {
@@ -179,12 +180,11 @@
     }
 
     /**
-   * Get the keyword
-   * @returns {string} Keyword letters
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._processedKey ? this._processedKey : "CIPHER";
+      return this._keyBytes || null;
     }
 
     // Get the result of the transformation

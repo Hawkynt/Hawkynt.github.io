@@ -783,7 +783,8 @@ codingplugins/
     │   ├── php.js
     │   ├── PhpAST.js
     │   ├── PhpTransformer.js
-    │   └── PhpEmitter.js
+    │   ├── PhpEmitter.js
+    │   └── php-runtime.php      (JavaScript semantics for the emitted PHP)
     │
     ├── [Python]
     │   ├── python.js
@@ -1284,6 +1285,14 @@ ThisExpression, UnaryExpression, UpdateExpression
 | Ruby | 💎 | `.rb` | AST Pipeline | ✅ 100% |
 | Rust | 🦀 | `.rs` | AST Pipeline | ✅ 100% |
 | TypeScript | 🔷 | `.ts` | AST Pipeline | ✅ 100% |
+
+TypeScript and PHP build on the JavaScript reference transformer rather than
+an AST of their own: TypeScript adds the IL types and property declarations
+to the JavaScript output (`tsc` with `strict` off, ES2022), PHP spells it on
+`php-runtime.php`, which keeps JavaScript's values and operators (shared
+arrays, typed arrays and views, 32-bit bitwise results, BigInt as GMP).
+Their standalone files carry OpCodes.js and AlgorithmFramework.js themselves:
+typed for TypeScript, transpiled by the same pipeline for PHP.
 
 ---
 

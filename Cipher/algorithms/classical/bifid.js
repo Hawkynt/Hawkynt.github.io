@@ -197,6 +197,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for the standard grid and period 5
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this.keyword = "";
         this.period = 5;
@@ -251,16 +252,11 @@
     }
 
     /**
-   * Get the key as text
-   * @returns {string} "keyword,period", or just the period
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      if (this.keyword.length > 0) {
-        return this.keyword + "," + this.period;
-      } else {
-        return '' + this.period;
-      }
+      return this._keyBytes || null;
     }
 
     /**

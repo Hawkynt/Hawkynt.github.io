@@ -158,6 +158,7 @@
      * @param {uint8[]} keyData - Keyword; empty keeps the standard grid
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       /** @type {string} */
       const keyString = keyData ? String.fromCharCode(...keyData) : '';
 
@@ -168,12 +169,11 @@
     }
 
     /**
-   * Get the keyword
-   * @returns {string|null} Keyword or null
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._key;
+      return this._keyBytes || null;
     }
 
     /**

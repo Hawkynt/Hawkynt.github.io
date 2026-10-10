@@ -186,6 +186,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "KEYWORD"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._keyMatrix = this.createMatrix("KEYWORD"); // Default key
       } else {
@@ -201,12 +202,11 @@
     }
 
     /**
-   * Get the key matrix
-   * @returns {string[][]} 5x5 matrix of letters
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._keyMatrix;
+      return this._keyBytes || null;
     }
 
     /**
