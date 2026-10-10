@@ -12,7 +12,7 @@
 | Complexity | Not specified |
 | Inventor | Freemasons/Rosicrucians |
 | Year | 1700 |
-| Origin | Multi-national |
+| Origin | 🌐 International |
 | Source | [`algorithms/classical/pigpen.js`](../../../algorithms/classical/pigpen.js) |
 
 ## Security
@@ -25,8 +25,8 @@ Historical educational cipher easily broken by frequency analysis. Used by secre
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Geometric symbols are easily recognizable as pigpen cipher once pattern is known | — | — |
-| Maintains letter frequency patterns making cryptanalysis straightforward | — | — |
+| Recognizable Symbols | Geometric symbols are easily recognizable as pigpen cipher once pattern is known | — |
+| Frequency Analysis | Maintains letter frequency patterns making cryptanalysis straightforward | — |
 
 ## Documentation
 
