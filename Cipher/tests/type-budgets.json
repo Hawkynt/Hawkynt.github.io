@@ -833,7 +833,7 @@
   "algorithms/special/gimli.js": 0,
   "algorithms/special/hotp.js": 0,
   "algorithms/special/rc2wrap.js": 0,
-  "algorithms/special/shamir-secret-sharing.js": 1,
+  "algorithms/special/shamir-secret-sharing.js": 0,
   "algorithms/special/time-lock-puzzle.js": 0,
   "algorithms/special/totp.js": 0,
   "algorithms/special/xchacha20-poly1305.js": 0,
