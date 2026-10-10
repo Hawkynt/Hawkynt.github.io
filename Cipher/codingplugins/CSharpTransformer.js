@@ -14564,6 +14564,16 @@
         return new CSharpMethodCall(mapExpr, 'ContainsKey', [keyExpr]);
       }
 
+      // `x | 0` is ToInt32: the signed 32-bit value (spinal-code.js's `(value|0) *
+      // 0x27d4eb2d`, whose double product differs for the unsigned value)
+      if (op === '|') {
+        const zero = n => n?.type === 'Literal' && n.value === 0;
+        const operand = zero(node.right) ? node.left : zero(node.left) ? node.right : null;
+        const operandType = operand ? this.inferFullExpressionType(operand) : null;
+        if (operandType && !operandType.isArray && ['uint', 'long', 'ulong'].includes(operandType.name))
+          return new CSharpCast(CSharpType.Int(), this.transformExpression(operand));
+      }
+
 
       // Handle typeof comparisons: typeof x === "string" -> x is string
       // The IL AST builder (type-aware-transpiler.js) normalizes a bare `typeof x`

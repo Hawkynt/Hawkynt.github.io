@@ -1115,6 +1115,12 @@ check('compound assignment: an element with a side-effecting index is read and w
   expectMatch(code, /buf\[n\+\+\] \^= (unchecked\()?\(byte\)\(?data\[i\]\)?\)?;/, 'buf[n++] ^= (byte)data[i]');
   expectNoMatch(code, /buf\[n\+\+\] = /, 'buf[n++] = ...buf[n++]...');
 });
+check('bitwise: x | 0 on an unsigned value is its signed 32-bit value', () => {
+  const code = transpile('/**\n * @param {uint32} value - Input value\n * @returns {uint32} - Hashed value\n */\n' +
+    'function mix(value) {\n  value = OpCodes.ToUint32((value|0) * 0x27d4eb2d);\n  return value;\n}');
+  expectMatch(code, /JsMul\((unchecked\()?\(int\)\(?value\)?\)?, 0x27D4EB2D\)/, 'JsMul((int)value, ...)');
+  expectNoMatch(code, /value \| 0u/, 'value | 0u');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
