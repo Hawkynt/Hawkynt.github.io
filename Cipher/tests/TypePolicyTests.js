@@ -610,6 +610,16 @@ test('soundness: given an argument (kind only), when checked, then any whole num
   equal(TypeSoundness.kindCheckerFor('uint64')(8n), null);
   equal(TypeSoundness.kindCheckerFor('boolean')(1), 'number');
 });
+test('soundness: given a 64-bit parameter (kind only), when BigInts at and beyond 64 bits are passed, then a bit pattern fits and a wider value does not', () => {
+  for (const t of ['uint64', 'int64']) {
+    const check = TypeSoundness.kindCheckerFor(t);
+    equal(check(0xFFFFFFFFFFFFFFFFn), null, `${t} 2^64-1 `);
+    equal(check(-0x8000000000000000n), null, `${t} -2^63 `);
+    equal(check(0x10000000000000000n), 'above-range', `${t} 2^64 `);
+    equal(check(-0x8000000000000001n), 'below-range', `${t} -2^63-1 `);
+    equal(check(2 ** 53), null, `${t} Number `);
+  }
+});
 test('soundness: given an argument declared uint8[] (kind only), when a Uint32Array is passed, then the typed-array kind fails', () => {
   equal(TypeSoundness.kindCheckerFor('uint8[]')(new Uint32Array(2)), 'typed-array-kind');
   equal(TypeSoundness.kindCheckerFor('uint8[]')([300]), null);

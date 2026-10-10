@@ -99,7 +99,8 @@ framework enum (or null, never undefined), and no primitive where another refere
 type is declared. Every read of a framework enum member the enum does not declare is a
 mismatch too, whether or not a vector reaches it. A value
 passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
-checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not. For an assignment the type checked is the
+checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not; a
+64-bit parameter takes a Number or a BigInt bit pattern, but no BigInt wider than 64 bits. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares
 it. A site checks its first 256 values and 16 more per later vector, so a hot loop
 costs a compare once its budget is spent; `Math.random` is seeded, so counts repeat.

@@ -187,8 +187,11 @@ function buildChecker(raw) {
   const whole = v => !Number.isFinite(v) ? (Number.isNaN(v) ? 'nan' : 'infinite') : v !== Math.floor(v) ? 'fraction' : null;
   if (INT_RANGES[type] && kindOnly)
     return v => typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
+  // A 64-bit parameter takes a uint64 or an int64 bit pattern alike; a BigInt
+  // wider than 64 bits fits neither (no typed target's 64-bit integer holds it).
   if (WIDE_RANGES[type] && kindOnly)
-    return v => typeof v === 'bigint' ? null : typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
+    return v => typeof v === 'bigint' ? (v < WIDE_RANGES.int64[0] ? 'below-range' : v > WIDE_RANGES.uint64[1] ? 'above-range' : null)
+      : typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
   if (INT_RANGES[type]) {
     const [lo, hi] = INT_RANGES[type];
     return v => {
