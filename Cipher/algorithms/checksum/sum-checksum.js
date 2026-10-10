@@ -116,7 +116,7 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      /** @type {uint32} Running sum */
+      /** @type {uint8} Running sum modulo 256 */
       this.sum = 0;
     }
 
