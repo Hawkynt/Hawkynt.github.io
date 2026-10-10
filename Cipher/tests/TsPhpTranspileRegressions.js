@@ -113,7 +113,7 @@ function expectOutput(out, lines) {
 // ---------------------------------------------------------------------------
 check('typescript: every property a class reaches through this is declared, and erases to nothing', () => {
   const js = 'class Box extends AlgorithmFramework.IAlgorithmInstance {\n' +
-    '  constructor(algorithm) { super(algorithm); this.count = 0; this.items = []; }\n' +
+    '  constructor(algorithm) { super(algorithm); this.count = 0; /** @type {uint8[]} */ this.items = []; }\n' +
     '  /** @param {uint8} x */ add(x) { this.items.push(x); this.count += 1; this.last = x; }\n' +
     '}\n' +
     'globalThis.Box = Box;';

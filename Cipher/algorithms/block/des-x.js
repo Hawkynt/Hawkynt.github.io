@@ -348,6 +348,7 @@
       this.desKeyPadded = null;
 
       // Cache for DES algorithm
+      /** @type {Algorithm|null} */
       this._desAlgorithm = null;
     }
 
@@ -578,8 +579,8 @@
         const block = input.slice(i * 6, (i + 1) * 6);
 
         // Calculate row (outer bits) and column (middle 4 bits)
-        const row = OpCodes.SetBit(OpCodes.SetBit(0, 1, block[0]), 0, block[5]);
-        const col = OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(0, 3, block[1]), 2, block[2]), 1, block[3]), 0, block[4]);
+        const row = OpCodes.SetBit(OpCodes.SetBit(0, 1, block[0] !== 0), 0, block[5] !== 0);
+        const col = OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(0, 3, block[1] !== 0), 2, block[2] !== 0), 1, block[3] !== 0), 0, block[4] !== 0);
 
         // Get value from S-box
         const val = DESX_SBOX[i][row][col];
@@ -651,7 +652,7 @@
         /** @type {int32} */
         let val = 0;
         for (let j = 0; j < 8; j++) {
-          val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j]);
+          val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j] !== 0);
         }
         bytes[i] = val;
       }

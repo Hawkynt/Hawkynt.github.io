@@ -53,6 +53,7 @@
 
   // Helper function to get SEED algorithm (registry-first, plain require fallback)
   /**
+   * @returns {Algorithm} The registered algorithm
    */
   function getSEEDAlgorithm() {
     let seed = AlgorithmFramework.Find('SEED');

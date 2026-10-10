@@ -239,6 +239,7 @@
        * @param {uint8[]} keyData - Keyword bytes
        */
       set key(keyData) {
+        this._keyBytes = keyData ? Array.from(keyData) : null;
         if (!keyData) return;
         /** @type {string} */
         const keyString = String.fromCharCode(...keyData);
@@ -247,10 +248,10 @@
       }
 
       /**
-       * @returns {string} Keyword as given
+       * @returns {uint8[]|null} The key bytes as set
        */
       get key() {
-        return this._key;
+        return this._keyBytes || null;
       }
 
       /**

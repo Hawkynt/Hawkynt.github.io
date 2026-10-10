@@ -222,7 +222,7 @@
 
       // Xorshift1024* state: 16 × 64-bit values + position index
       /** @type {BigInt[]} */
-      this._state = OpCodes.CreateArray(16, 0n);
+      this._state = new Array(16).fill(0n);
       this._p = 0; // Position index
       this._ready = false;
 
@@ -393,7 +393,7 @@
       ];
 
       /** @type {BigInt[]} */
-      const t = OpCodes.CreateArray(16, 0n);
+      const t = new Array(16).fill(0n);
 
       for (let i = 0; i < JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {

@@ -4044,7 +4044,9 @@
       this._derivedPublicKey = null;
     }
 
+    /** @param {uint8[]} keyData - Key bytes */
     set key(keyData) { this.KeySetup(keyData); }
+    /** @returns {uint8[]} Key bytes as set */
     get key() { return this._keyData; }
 
     /** @param {int32} count - replay the randomness of this record of the KAT generator */

@@ -164,6 +164,7 @@
       return output;
     }
 
+    /** @returns {uint32[]} Key words */
     _keyWords() {
       return [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
@@ -230,6 +231,7 @@
       for (let r = 0; r < ROUNDS; r++) {
         sum = OpCodes.ToUint32(sum + DELTA);
         const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
+        /** @type {int32} */
         let p;
         for (p = 0; p < N - 1; p++) {
           const y = v[p + 1];
@@ -255,6 +257,7 @@
       let y = v[0];
       for (let r = 0; r < ROUNDS; r++) {
         const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
+        /** @type {int32} */
         let p;
         for (p = N - 1; p > 0; p--) {
           const z = v[p - 1];

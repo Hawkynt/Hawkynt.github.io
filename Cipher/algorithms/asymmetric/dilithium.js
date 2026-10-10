@@ -3088,7 +3088,7 @@
     /**
      * Feed message bytes. Repeated calls append, so feeding a message in pieces
      * is the same as feeding it whole.
-     * @param {number[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
@@ -3111,7 +3111,7 @@
 
     /**
      * Produce the key, the signature, or the verification verdict.
-     * @returns {number[]} key bytes, signature bytes, or [1] / [0]
+     * @returns {uint8[]} key bytes, signature bytes, or [1] / [0]
      */
     Result() {
       const message = this.inputBuffer;
@@ -3150,7 +3150,7 @@
 
     /**
      * Generate a key pair from a seed.
-     * @param {number[]} seed - 32 bytes
+     * @param {uint8[]} seed - 32 bytes
      * @returns {DilithiumKeyPair} { publicKey, privateKey }
      */
     GenerateKeyPair(seed) {
@@ -3162,8 +3162,8 @@
 
     /**
      * Sign a message with the configured private key.
-     * @param {number[]} message - the message
-     * @returns {number[]} the signature
+     * @param {uint8[]} message - the message
+     * @returns {uint8[]} the signature
      */
     Sign(message) {
       this.inputBuffer = [];
@@ -3174,8 +3174,8 @@
 
     /**
      * Verify a signature over a message with the configured public key.
-     * @param {number[]} message - the message
-     * @param {number[]} signatureBytes - the signature
+     * @param {uint8[]} message - the message
+     * @param {uint8[]} signatureBytes - the signature
      * @returns {boolean} whether it verifies
      */
     Verify(message, signatureBytes) {

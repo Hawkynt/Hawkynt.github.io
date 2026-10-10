@@ -217,7 +217,7 @@
 
       // Generator state
       /** @type {BigInt[]} */
-      this._Q = OpCodes.CreateArray(this.ARRAY_SIZE, 0n);     // State array Q[0..255]
+      this._Q = new Array(this.ARRAY_SIZE).fill(0n);     // State array Q[0..255]
       /** @type {BigInt} */
       this._carry = 0n;                         // Carry value (must be < MAX_CARRY)
       /** @type {int32} */

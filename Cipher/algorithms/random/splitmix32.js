@@ -294,6 +294,7 @@
      * Key constants:
      * - 0x9E3779B9: Golden ratio constant (creates full-period Weyl sequence)
      * - 0x21f0aaad, 0x735a2d97: Improved mixing constants (better than MurmurHash3 originals)
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

@@ -322,6 +322,7 @@
      * c = d + e
      * d = e + a
      * return d
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

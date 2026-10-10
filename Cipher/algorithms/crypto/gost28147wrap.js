@@ -356,6 +356,7 @@
 
     /**
      * Load GOST 28147-89 cipher with fallback strategies
+     * @returns {Algorithm} The registered algorithm
      */
     _getGOST28147Algorithm() {
       // Return cached instance if available
@@ -382,6 +383,7 @@
 
     /**
      * Load GOST 28147-89 MAC with fallback strategies
+     * @returns {Algorithm} The registered algorithm
      */
     _getGOST28147MACAlgorithm() {
       // Return cached instance if available

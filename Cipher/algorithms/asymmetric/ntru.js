@@ -436,7 +436,7 @@
    * Inverse in F_2[x]/Phi_n, by the extended Euclidean algorithm.
    * @param {int32[]} a - n coefficients
    * @param {NtruParams} P - parameter set
-   * @returns {number[]|null} the inverse, or null when a is not invertible
+   * @returns {int32[]|null} the inverse, or null when a is not invertible
    */
   function r2Inverse(a, P) {
     const n = P.n;
@@ -493,7 +493,7 @@
    *
    * @param {int32[]} a - n coefficients
    * @param {NtruParams} P - parameter set
-   * @returns {number[]|null} the inverse, or null when a is not invertible
+   * @returns {int32[]|null} the inverse, or null when a is not invertible
    */
   function rqInverse(a, P) {
     const seed = r2Inverse(a, P);
@@ -516,7 +516,7 @@
    * Inverse in S_3 = Z_3[x]/Phi_n, by the extended Euclidean algorithm.
    * @param {int32[]} a - n coefficients
    * @param {NtruParams} P - parameter set
-   * @returns {number[]|null} the inverse, or null when a is not invertible
+   * @returns {int32[]|null} the inverse, or null when a is not invertible
    */
   function s3Inverse(a, P) {
     const n = P.n;
@@ -1775,8 +1775,11 @@
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
       this._parameterSet = NTRU_HPS_2048_509;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._sharedSecret = null;
       this._keyData = null;
       this.keyGeneration = false;

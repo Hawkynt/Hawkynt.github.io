@@ -181,6 +181,7 @@
         for (let c = 0; c < 3; c++) {
           // Process 4 bytes per word
           for (let j = 0; j < 4; j++) {
+            /** @type {uint32} */
             let byte;
             let hitEnd = false;
 
