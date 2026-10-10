@@ -9677,10 +9677,15 @@ class OpCodes(metaclass=_OpCodesMeta):
       // `obj.length = n` on an object whose IL type is not an array or
       // string (a class with a `length` field, darkcrypt-pike.js's
       // PikeRegister) writes the field; only an array is truncated.
-      if (node.left && node.left.type === 'ArrayLength' && node.operator === '=') {
-        const objType = String((node.left.array && node.left.array.resultType) || '');
+      // `x.length = v` on an object with a length field of its own: the IL reads
+      // it as an ArrayLength of a non-array, or as a member read of the field.
+      const lengthField = node.left && node.operator === '=' && (node.left.type === 'ArrayLength' ||
+        (node.left.type === 'MemberExpression' && !node.left.computed && node.left.property &&
+         (node.left.property.name || node.left.property.value) === 'length')) ? (node.left.array || node.left.object) : null;
+      if (lengthField) {
+        const objType = String(lengthField.resultType || '');
         if (objType && !/\[\]$|Array$|^array$|^string$/.test(objType))
-          return new PythonAssignment(new PythonMemberAccess(this._transformAsTarget(node.left.array), 'length'),
+          return new PythonAssignment(new PythonMemberAccess(this._transformAsTarget(lengthField), 'length'),
             this._transformExpressionAsRead(node.right));
       }
       if (node.left && node.left.type === 'ArrayLength' && node.operator === '=') {
