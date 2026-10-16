@@ -236,67 +236,92 @@
 
   /* ── flagstones: the ground every other tile sits on ── */
 
-  const FLAG_LAYOUTS = [
-    [[3, 3, 58, 27], [3, 34, 58, 27]],
-    [[3, 3, 27, 58], [34, 3, 27, 58]],
-    [[3, 3, 34, 58], [41, 3, 20, 27], [41, 34, 20, 27]],
-    [[3, 3, 27, 27], [34, 3, 27, 27], [3, 34, 27, 27], [34, 34, 27, 27]]
-  ];
+  /* One paving for the whole realm: a 2 x 2 grid of even flagstones whose
+     grout lines meet the neighbouring tiles, so the walkway reads as one
+     floor. Only the wear changes per variant. */
+  const FLAG_SIZE = 29, FLAG_GAP = 3;
+  const FLAG_OFFSETS = [FLAG_GAP / 2, FLAG_GAP / 2 + FLAG_SIZE + FLAG_GAP];
+  const FLOOR_MOSS = '#6a8a3e';
 
-  function flagstone(ctx, x, y, w, h, fill, rng) {
-    roundRectPath(ctx, x, y, w, h, 3);
+  function flagstone(ctx, x, y, w, h, fill, rng, wear) {
+    roundRectPath(ctx, x, y, w, h, 2.5);
     const g = ctx.createLinearGradient(x, y, x + w * 0.35, y + h);
-    g.addColorStop(0, shade(fill, 0.18));
-    g.addColorStop(0.5, fill);
-    g.addColorStop(1, shade(fill, -0.18));
+    g.addColorStop(0, shade(fill, 0.12));
+    g.addColorStop(0.55, fill);
+    g.addColorStop(1, shade(fill, -0.12));
     ctx.fillStyle = g;
     ctx.fill();
     ctx.save();
     ctx.clip();
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = hexToRgba(shade(fill, 0.55), 0.45);
+    // a soft worn dip in the middle of the stone
     ctx.beginPath();
-    ctx.moveTo(x + 2, y + h - 4);
-    ctx.lineTo(x + 2.5, y + 2.5);
-    ctx.lineTo(x + w - 4, y + 2);
-    ctx.stroke();
-    ctx.strokeStyle = hexToRgba(shade(fill, -0.6), 0.5);
-    ctx.beginPath();
-    ctx.moveTo(x + w - 2, y + 4);
-    ctx.lineTo(x + w - 2.5, y + h - 2.5);
-    ctx.lineTo(x + 4, y + h - 2);
-    ctx.stroke();
-    if (rng() < 0.35) {
-      crack(ctx, rng, x + rr(rng, 4, w - 4), y + rr(rng, 4, h - 4), rr(rng, 5, 10), rr(rng, 0, TWO_PI),
-        hexToRgba(shade(fill, -0.55), 0.5), 0.8);
+    ctx.ellipse(x + w * rr(rng, 0.4, 0.6), y + h * rr(rng, 0.4, 0.6), w * 0.3, h * 0.24, rr(rng, 0, Math.PI), 0, TWO_PI);
+    ctx.fillStyle = hexToRgba(shade(fill, -0.3), 0.1);
+    ctx.fill();
+    speckle(ctx, rng, x + 2, y + 2, w - 4, h - 4, 5, shade(fill, -0.35), 0.28, 0.35, 0.8);
+    speckle(ctx, rng, x + 2, y + 2, w - 4, h - 4, 3, shade(fill, 0.4), 0.3, 0.35, 0.7);
+    if (wear === 'crack') {
+      crack(ctx, rng, x + rr(rng, 6, w - 6), y + rr(rng, 6, h - 6), rr(rng, 9, 14), rr(rng, 0, TWO_PI),
+        hexToRgba(shade(fill, -0.6), 0.6), 0.9);
     }
+    // lit upper-left bevel, shaded lower-right bevel
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = hexToRgba(shade(fill, 0.55), 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x + 1.5, y + h - 3);
+    ctx.lineTo(x + 1.5, y + 1.5);
+    ctx.lineTo(x + w - 3, y + 1.5);
+    ctx.stroke();
+    ctx.strokeStyle = hexToRgba(shade(fill, -0.55), 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x + w - 1.5, y + 3);
+    ctx.lineTo(x + w - 1.5, y + h - 1.5);
+    ctx.lineTo(x + 3, y + h - 1.5);
+    ctx.stroke();
     ctx.restore();
-    const chips = Math.floor(rng() * 2);
-    for (let i = 0; i < chips; ++i) {
-      const cx = x + rr(rng, 3, w - 5), cy = y + rr(rng, 3, h - 5);
+    if (wear === 'chips') {
+      // a broken corner and a nick on the edge
+      const cx = rng() < 0.5 ? x + 1 : x + w - 1, cy = rng() < 0.5 ? y + 1 : y + h - 1;
+      const sx = cx < x + w / 2 ? 1 : -1, sy = cy < y + h / 2 ? 1 : -1;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + rr(rng, 1.5, 3.5), cy + rr(rng, -1.5, 1.5));
-      ctx.lineTo(cx + rr(rng, 0, 1.5), cy + rr(rng, 1.5, 3.5));
+      ctx.lineTo(cx + sx * rr(rng, 3.5, 5.5), cy);
+      ctx.lineTo(cx, cy + sy * rr(rng, 3.5, 5.5));
       ctx.closePath();
-      ctx.fillStyle = hexToRgba(shade(fill, -0.5), 0.45);
+      ctx.fillStyle = hexToRgba(shade(fill, -0.65), 0.75);
+      ctx.fill();
+      const nx = x + rr(rng, 8, w - 8);
+      ctx.beginPath();
+      ctx.moveTo(nx - 2, y + h - 0.5);
+      ctx.lineTo(nx, y + h - 3);
+      ctx.lineTo(nx + 2, y + h - 0.5);
+      ctx.closePath();
       ctx.fill();
     }
   }
 
   function paintFloor(ctx, th, rng, variant) {
-    ctx.fillStyle = shade(th.floor, -0.32);
+    ctx.fillStyle = shade(th.floor, -0.42);
     ctx.fillRect(0, 0, TILE, TILE);
-    const rects = FLAG_LAYOUTS[variant & 3];
-    for (let i = 0; i < rects.length; ++i) {
-      const r = rects[i];
-      flagstone(ctx, r[0] + rr(rng, -1.5, 1.5), r[1] + rr(rng, -1.5, 1.5), r[2], r[3],
-        i % 2 ? th.floorAlt : shade(th.floor, 0.08), rng);
+    const base = shade(th.floor, 0.16);
+    const marked = Math.floor(rng() * 4);
+    for (let i = 0; i < 4; ++i) {
+      const fill = shade(mix(base, th.floorAlt, rng() * 0.4), rr(rng, -0.05, 0.06));
+      let wear = null;
+      if (variant === 1 && i === marked) wear = 'crack';
+      else if (variant === 3 && (i === marked || i === (marked + 2) % 4)) wear = 'chips';
+      flagstone(ctx, FLAG_OFFSETS[i % 2], FLAG_OFFSETS[i >> 1], FLAG_SIZE, FLAG_SIZE, fill, rng, wear);
     }
-    speckle(ctx, rng, 4, 4, 56, 56, 4, th.accent, 0.22, 0.6, 1.2);
-    speckle(ctx, rng, 4, 4, 56, 56, 5, shade(th.floor, -0.35), 0.4, 0.4, 1.0);
-    innerAO(ctx, 0.18);
+    if (variant === 2) {
+      // moss creeping out of the grout where the four stones meet
+      const moss = mix(FLOOR_MOSS, th.floor, 0.3);
+      speckle(ctx, rng, 27, 27, 10, 10, 9, moss, 0.75, 0.6, 1.4);
+      speckle(ctx, rng, 30, 4, 4, 56, 6, moss, 0.6, 0.5, 1.1);
+      speckle(ctx, rng, 4, 30, 56, 4, 6, moss, 0.6, 0.5, 1.1);
+      speckle(ctx, rng, 26, 26, 12, 12, 4, shade(moss, 0.4), 0.6, 0.4, 0.8);
+    }
+    innerAO(ctx, 0.05);
   }
 
   /* ── wall: a solid raised block -- tall dark front face under a lit top,
@@ -350,9 +375,13 @@
     ctx.moveTo(x0 + 2, (faceY + faceBot) / 2);
     ctx.lineTo(x1 - 2, (faceY + faceBot) / 2);
     ctx.stroke();
-    // a carved seal on one variant in four, nothing else on the faces
-    if (variant === 2)
-      carveGlyph(ctx, GLYPHS[4], 32, 36, 9, shade(th.wallTop, 0.4), null, 0);
+    // only one variant in four carries a faint worn seal, the rest stay plain
+    if (variant === 3) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      carveGlyph(ctx, GLYPHS[1], 32, 34, 6, shade(th.wallTop, 0.3), null, 0);
+      ctx.restore();
+    }
     speckle(ctx, rng, 4, faceY + 3, 56, faceBot - faceY - 6, 10, shade(th.wall, 0.35), 0.14, 0.5, 1.4);
     speckle(ctx, rng, 4, topY, 56, faceY - topY, 5, shade(th.wallTop, -0.4), 0.16, 0.5, 1.2);
     innerAO(ctx, 0.12);
@@ -1108,8 +1137,9 @@
       }
     }
 
+    const headY = -44.2, headR = 6.4;
     ctx.beginPath();
-    ctx.arc(0, -45, 6.2, 0, TWO_PI);
+    ctx.arc(0, headY, headR, 0, TWO_PI);
     ctx.fillStyle = back ? shade(robe, -0.2) : skin;
     ctx.fill();
     if (back) {
@@ -1125,33 +1155,107 @@
       ctx.strokeStyle = dark;
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#2a2030';
-      const ex = side ? 2.6 : 2.4;
-      if (side) {
+      const fx = side ? 1.6 : 0;   // the face turns towards the side he looks at
+      const skinDark = shade(skin, -0.28);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, headY, headR, 0, TWO_PI);
+      ctx.clip();
+      // the hat brim throws a shadow over the brow, the far cheek turns away
+      ctx.fillStyle = hexToRgba(skinDark, 0.55);
+      ctx.fillRect(-headR, headY - headR, headR * 2, 3.4);
+      ctx.beginPath();
+      ctx.arc(fx + 2.6, headY - 1.4, 5.6, 0, TWO_PI);
+      ctx.fillStyle = hexToRgba(shade(skin, 0.18), 0.55);
+      ctx.fill();
+      ctx.restore();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = hexToRgba(skinDark, 0.9);
+      ctx.beginPath();
+      ctx.arc(0, headY, headR, 0, TWO_PI);
+      ctx.stroke();
+      // white hair tufts at the temples
+      ctx.fillStyle = '#ece8e0';
+      if (!side) {
         ctx.beginPath();
-        ctx.arc(ex, -46, 1, 0, TWO_PI);
-        ctx.fill();
-      } else {
-        ctx.beginPath();
-        ctx.arc(-ex, -46, 1, 0, TWO_PI);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(ex, -46, 1, 0, TWO_PI);
+        ctx.ellipse(-headR + 0.4, headY - 0.6, 1.8, 2.8, 0.3, 0, TWO_PI);
         ctx.fill();
       }
       ctx.beginPath();
-      ctx.moveTo(-4.5, -43);
-      ctx.quadraticCurveTo(-5, -36, 0, -34.5);
-      ctx.quadraticCurveTo(5, -36, 4.5, -43);
-      ctx.closePath();
-      ctx.fillStyle = '#e6e2da';
+      ctx.ellipse(headR - 0.4 - (side ? headR * 2 - 2 : 0), headY - 0.6, 1.8, 2.8, -0.3, 0, TWO_PI);
       ctx.fill();
+      // rosy cheeks
+      ctx.fillStyle = 'rgba(232,110,110,0.5)';
+      const cheeks = side ? [fx + 3.2] : [-3.7, 3.7];
+      for (let i = 0; i < cheeks.length; ++i) {
+        ctx.beginPath();
+        ctx.ellipse(cheeks[i], headY + 1.8, 1.5, 1.1, 0, 0, TWO_PI);
+        ctx.fill();
+      }
+      // eyes: dark pupils with a white glint, brows above
+      const eyes = side ? [fx + 2.4] : [-2.5, 2.5];
+      for (let i = 0; i < eyes.length; ++i) {
+        const ex = eyes[i], ey = headY - 0.6;
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, 1.25, 1.55, 0, 0, TWO_PI);
+        ctx.fillStyle = '#1e1626';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(ex + 0.45, ey - 0.6, 0.5, 0, TWO_PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 0.9;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#d8d4cc';
+        ctx.beginPath();
+        ctx.moveTo(ex - 1.5, ey - 2.4);
+        ctx.lineTo(ex + 1.4, ey - 2.7);
+        ctx.stroke();
+      }
+      // nose
+      ctx.beginPath();
+      ctx.arc(fx + (side ? 4.2 : 0), headY + 1.2, 1.1, 0, TWO_PI);
+      ctx.fillStyle = shade(skin, -0.12);
+      ctx.fill();
+      // the white beard hangs below the face, the moustache under the nose
+      const bx = side ? fx + 0.8 : 0;
+      ctx.beginPath();
+      ctx.moveTo(bx - 5.4, headY + 2.6);
+      ctx.quadraticCurveTo(bx, headY + 5, bx + 5.4, headY + 2.6);
+      ctx.quadraticCurveTo(bx + 5.6, headY + 9.5, bx + 0.6, headY + 13);
+      ctx.quadraticCurveTo(bx - 5.6, headY + 9.5, bx - 5.4, headY + 2.6);
+      ctx.closePath();
+      ctx.fillStyle = '#ece8e0';
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = '#a8a29a';
+      ctx.stroke();
+      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = 'rgba(150,144,136,0.7)';
+      ctx.beginPath();
+      ctx.moveTo(bx - 1.6, headY + 6);
+      ctx.quadraticCurveTo(bx - 1.2, headY + 9, bx - 0.4, headY + 11);
+      ctx.moveTo(bx + 2, headY + 5.6);
+      ctx.quadraticCurveTo(bx + 2.2, headY + 8.5, bx + 1.4, headY + 10.4);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bx, headY + 3.2);
+      ctx.quadraticCurveTo(bx - 2.6, headY + 2.2, bx - 4.6, headY + 4);
+      ctx.quadraticCurveTo(bx - 2.2, headY + 4.6, bx, headY + 3.9);
+      ctx.quadraticCurveTo(bx + 2.2, headY + 4.6, bx + 4.6, headY + 4);
+      ctx.quadraticCurveTo(bx + 2.6, headY + 2.2, bx, headY + 3.2);
+      ctx.closePath();
+      ctx.fillStyle = '#f6f3ee';
+      ctx.fill();
+      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = '#a8a29a';
+      ctx.stroke();
     }
 
-    const brimY = -49;
+    const brimY = -50;
     const tipX = side ? 5 : 3, tipY = -66 + (pose === 'cast' ? -2 : 0);
     ctx.beginPath();
-    ctx.ellipse(0, brimY, hw + 4, 3, 0, 0, TWO_PI);
+    ctx.ellipse(0, brimY, hw + 4, 2.6, 0, 0, TWO_PI);
     ctx.fillStyle = shade(robe, -0.55);
     ctx.fill();
     ctx.beginPath();

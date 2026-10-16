@@ -29,7 +29,9 @@
   const HINT_BANNER_H = 30;
   const PORTAL_ENTER_TIME = 0.7; // the mage shrinking into the portal
   const DAILY_SHARDS = 5;        // arcane shards for the first solve of the daily puzzle
-  const PROJECTILE_TIME = 0.18;  // the spell orb's flight from the staff to the target
+  const PROJECTILE_TIME = 0.22;  // the spell orb's flight from the staff to the target
+  const ORB_SIZE = 14;           // the orb's bright core, board pixels across
+  const ORB_GLOW_SIZE = 44;      // its cached halo
   const RING_TIME = 0.45;        // one expanding impact ring
   const MAX_RINGS = 24;
   const MOTE_COUNT = 24;         // ambient motes drifting over the board
@@ -129,7 +131,7 @@
   let walk = { from: -1, path: [], t: 0, onDone: null };
   let stepCount = 0;  // tiles the mage has stepped, for the every-other-step footfall
   let pendingCast = null; // { action, standIdx, faceDir, phase, timer }
-  let winSeq = null;      // { phase: 'walk' | 'enter', t }
+  let winSeq = null;      // { phase: 'walk' | 'enter' | 'done', t }
 
   /* visual effects */
   let spells = [];    // { kind, x, y, t, dur } in board space
@@ -1162,9 +1164,9 @@
     }
   }
 
-  /* the staff gem in board space, where every spell orb starts */
-  function gemX() { return hero.x + (hero.dir === 'left' ? -14 : 14); }
-  function gemY() { return hero.y - 38; }
+  /* the staff gem in board space (cast pose), where every spell orb starts */
+  function gemX() { return hero.x + (hero.dir === 'left' ? -15 : hero.dir === 'right' ? 15 : 17); }
+  function gemY() { return hero.y - 48; }
 
   function pushRing(x, y, r0, r1, color, lw, dur) {
     rings.push({ x: x, y: y, t: 0, dur: dur || RING_TIME, r0: r0, r1: r1, color: color, lw: lw || 3 });
@@ -1179,7 +1181,12 @@
       pr.t += dt;
       const k = Math.min(1, pr.t / pr.dur);
       const x = pr.x0 + (pr.x1 - pr.x0) * k, y = pr.y0 + (pr.y1 - pr.y0) * k;
-      particles.trail(toViewX(x), toViewY(y), { color: pr.color, size: 2, life: 0.3, decay: 0.04 });
+      /* a short comet tail in the element colour, with a few white sparks */
+      const vx = toViewX(x), vy = toViewY(y);
+      particles.trail(vx, vy, { color: pr.color, size: 3.4, life: 0.55, decay: 0.07, shrink: 0.9 });
+      particles.trail(vx + (Math.random() - 0.5) * 6, vy + (Math.random() - 0.5) * 6, { color: pr.color, size: 2.2, life: 0.45, decay: 0.07, shrink: 0.9 });
+      if (Math.random() < 0.5)
+        particles.trail(vx, vy, { color: '#ffffff', size: 1.4, life: 0.4, decay: 0.08 });
       if (pr.t >= pr.dur) {
         pushRing(pr.x1, pr.y1, 8, 46, pr.color, 3);
         screenShake.trigger(2 + Math.min(2, (pr.changed / 4) | 0), 140);
@@ -1362,8 +1369,11 @@
       hero.scale = 1 - k * 0.8;
       hero.alpha = 1 - k;
       hero.pose = 'idle';
-      if (k >= 1)
+      /* finish once: the complete panel and its star pop-in start from here */
+      if (k >= 1) {
+        winSeq.phase = 'done';
         completeLevel();
+      }
     }
   }
 
@@ -1774,24 +1784,48 @@
     ctx.restore();
   }
 
+  /* the orb's halo, painted once per element colour */
+  const orbGlowCache = {};
+  function getOrbGlow(color) {
+    let c = orbGlowCache[color];
+    if (c)
+      return c;
+    const n = ORB_GLOW_SIZE * 2;
+    c = document.createElement('canvas');
+    c.width = n;
+    c.height = n;
+    const g = c.getContext('2d');
+    const rg = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    rg.addColorStop(0, ui.hexToRgba(color, 0.95));
+    rg.addColorStop(0.3, ui.hexToRgba(color, 0.6));
+    rg.addColorStop(0.65, ui.hexToRgba(color, 0.18));
+    rg.addColorStop(1, ui.hexToRgba(color, 0));
+    g.fillStyle = rg;
+    g.fillRect(0, 0, n, n);
+    orbGlowCache[color] = c;
+    return c;
+  }
+
   function drawProjectiles() {
     for (const pr of projectiles) {
       const k = Math.min(1, pr.t / pr.dur);
       const x = pr.x0 + (pr.x1 - pr.x0) * k, y = pr.y0 + (pr.y1 - pr.y0) * k;
+      const pulse = 1 + 0.12 * Math.sin(pr.t * 60);
+      const gs = ORB_GLOW_SIZE * pulse;
       ctx.save();
+      ctx.drawImage(getOrbGlow(pr.color), x - gs / 2, y - gs / 2, gs, gs);
       ctx.fillStyle = pr.color;
-      ctx.globalAlpha = 0.35;
       ctx.beginPath();
-      ctx.arc(x, y, 9, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.arc(x, y, ORB_SIZE / 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = 0.85;
       ctx.beginPath();
-      ctx.arc(x, y, 1.8, 0, Math.PI * 2);
+      ctx.arc(x, y, ORB_SIZE * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(x - ORB_SIZE * 0.12, y - ORB_SIZE * 0.12, ORB_SIZE * 0.12, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -2115,7 +2149,7 @@
       const cx = VIEW_W / 2 + (i - 1) * 130;
       const earned = i < stars;
       /* the earned stars pop in one after another, each with a rising coin */
-      const appearAt = 0.25 + i * 0.35;
+      const appearAt = 0.25 + i * 0.3;
       const popped = !earned || !panelAnim || elapsed >= appearAt;
       if (popped && earned && panelAnim && !panelAnim.starPlayed[i]) {
         panelAnim.starPlayed[i] = true;
