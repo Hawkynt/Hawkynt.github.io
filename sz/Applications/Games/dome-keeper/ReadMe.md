@@ -141,7 +141,11 @@ The player must immediately understand:
 - [x] As a player, I can mine different tile types (dirt, hard rock, ore) requiring different mining times so that not all tiles are equal
 - [x] As a player, I see a progress bar while mining a block that shows how long until it breaks so that mining feels deliberate
 - [x] As a player, deeper blocks take longer to mine (depth scaling) so that deep mining requires commitment
-- [x] As a player, excess resources drop on the ground when my inventory is full so that I can return for them later
+- [x] As a player, excess resources drop on the ground when my bag is full so that I can return for them later
+- [x] As a player, loose ore gathers in one pile per tile (showing its biggest kind and the total) so that thousands of dropped items stay readable and the game stays smooth
+- [x] As a player, I can level up Bag Size (+25 slots per level, 50 up to 1,000) so that each trip brings more ore home
+- [x] As a player, I can research the Compressor (5 levels) so that 9 ore pack into a Block, 9 Blocks into a Compressed Block and so on up to Quadruple Compressed Blocks, in my bag and in drone cargo; every stack takes one slot (20 iron = 2 Iron Blocks + 2 ore = 4 slots)
+- [x] As a player, I see my packed stacks with tier frames in the cargo panel and their full names when hovering it
 - [x] As a player, I can pick up dropped resources by walking over them so that nothing is permanently lost
 - [x] As a player, I can see mining debris particles, dust clouds, and floating text on tile destruction so that mining has visual feedback
 - [x] As a player, I can see an animated miner with pickaxe swing, idle bob, and directional facing so that the character feels alive
@@ -196,9 +200,10 @@ The player must immediately understand:
 
 ### Drones
 - [x] As a player, I can buy a Drone Bay so that a courier drone flies through my tunnels to the keeper, takes the cargo home and picks up loose ore
-- [x] As a player, I can upgrade drone thrusters (speed, pickup radius) and cargo, and add Mining Lasers so that couriers mine exposed ore near the keeper
-- [x] As a player, I can add gun drones that guard the dome and a repair drone that welds it
-- [x] As a player, I can add couriers with Drone Swarm; the Droneyard gadget gives a free courier and makes drones 50% faster
+- [x] As a player, I can upgrade drone thrusters (speed, pickup radius), level up Drone Cargo (+20 per level, 25 levels) and add Mining Lasers so that couriers mine exposed ore near the keeper
+- [x] As a player, I can add gun drones that guard the dome and repair drones that weld it
+- [x] As a player, I can level up Courier Drones, Gun Drones and Repair Drones to field up to 10 drones of each kind; the Droneyard gadget gives a free courier and makes drones 50% faster
+- [x] As a player, the mine HUD groups my drones by kind (one status cell per courier) so that a full fleet still fits in a small panel
 
 ### World, Biomes and Weather
 - [x] As a player, every run and every relocation lands on a seeded biome (Rocky Badlands, Dune Sea, Frozen Shelf, Alien Jungle, Ashen Caldera, Crystal Fields) with its own sky, mountains, ground, plants, weather odds and ore mix
@@ -381,7 +386,9 @@ The underground is a tile grid of **165 columns x 224 rows** (40 px tiles): sixt
 * Player must dig adjacent solid tiles to create tunnels.
 * Different tile types require different mining time.
 * Destroyed solid tiles become empty tunnel tiles.
-* Ore is credited when mined; the carried amount is limited by the cargo capacity and freed when the keeper (or a courier drone) brings it home. Overflow drops on the ground.
+* Ore is credited when mined; the bag only limits how much the keeper carries and is emptied when the keeper (or a courier drone) brings it home. Overflow drops on the ground.
+* The bag counts slots: without the Compressor one ore is one slot; with it, every packed stack of any tier is one slot (Compressor level L packs up to 9^L ore into one stack).
+* Loose ore lies in one pile per tile holding every kind dropped there; piles vanish after 120 s.
 
 ### Acceptance Criteria
 
@@ -559,10 +566,10 @@ There is only one upgrade path: the panel is a view of the tree. Saves from befo
 | Branch | Nodes | Content |
 | ------ | ----: | ------- |
 | Dome | 25 | Shield capacity and recharge chains, regen, auto-repair, reinforced dome, expansion, energy shield, reflect, emergency shield, fortified base, last stand |
-| Mining | 29 | Mining tools, carry capacity, drill speed, magnet, fortune, silk touch, speed mining, auto-mine, tunnel bore, vein miner |
+| Mining | 26 | Mining tools, Bag Size, Compressor, drill speed, magnet, fortune, silk touch, speed mining, auto-mine, tunnel bore, vein miner |
 | Movement | 16 | Move speed, jetpack (+fuel), phase shift, double jump, wall climb, dash |
 | Weapon | 27 | Fire rate, damage, turret speed, chain lightning, freeze ray, plasma cannon, multi-shot, homing, critical hit, explosive rounds |
-| Drones | 18 | See 8.18 |
+| Drones | 15 | See 8.18 |
 | Tools | 39 | Two groups side by side. **Tools**: Drill Gadget I-II, Blast Mining I-II, Teleporter and its cooldown, Scanner, Echo Location, Ground Radar, Ore Detector. **Bombs**: see 8.19 |
 
 The Tools branch took over the Drill Gadget, Blast Mining, Scanner, Echo Location, Ground Radar and Ore Detector from Mining and the Teleporter (with its cooldown nodes) from Movement. Node ids did not change, so owned nodes stay owned in older saves; their roots no longer need nodes of other branches (Tunnel Bore now needs Drill Speed III instead of the Drill Gadget).
@@ -652,7 +659,7 @@ The five tools are nodes of the upgrade tree and keep their number keys:
 
 ### Tutorial Overlay (Implemented)
 
-* Thirteen-page guide shown on first launch:
+* Fourteen-page guide shown on first launch:
   1. **How to Play**: controls and the day/night loop
   2. **Day & Night**: nightfall, moon phases, reinforcements, dawn
   3. **Seasons & Weather**: what each season and weather does, meteor ore
@@ -660,12 +667,13 @@ The five tools are nodes of the upgrade tree and keep their number keys:
   5. **Stronger Every Night**: threat, elites and their auras, enraged monsters
   6. **Combat Skill**: weak points, combo, charged shots, parry, boss tells
   7. **Upgrades & Tips**: the single tree, the Next upgrades panel, fading panels
-  8. **Drones**: couriers, mining lasers, gun and repair drones
-  9. **Relocation**: the Relocation Core, carry-over rules
-  10. **Gadgets**: primary gadget selection, mine gadget chambers, activation keys
-  11. **Tools**: the Tools branch and keyboard shortcuts 1-5
-  12. **Bombs**: workshop, combining, dropping, throwing, lobbing
-  13. **Secret Chests**: the three chests per mine, the minigames and artifacts
+  8. **Drones**: couriers, mining lasers, gun and repair drones, up to 10 of each kind
+  9. **Bag & Compressor**: bag slots, Bag Size, packing tiers, loose ore piles
+  10. **Relocation**: the Relocation Core, carry-over rules
+  11. **Gadgets**: primary gadget selection, mine gadget chambers, activation keys
+  12. **Tools**: the Tools branch and keyboard shortcuts 1-5
+  13. **Bombs**: workshop, combining, dropping, throwing, lobbing
+  14. **Secret Chests**: the three chests per mine, the minigames and artifacts
 * Toggle with **H**
 * Persist completion / dismissal with localStorage
 
@@ -790,13 +798,17 @@ Weather (weighted by season and biome, 30-60 s each, announced on change):
 | ---- | ------ |
 | Drone Bay | A courier drone flies through the tunnels to the keeper, takes the cargo home and collects loose ore |
 | Drone Thrusters I-III | +30% flight speed and +1 tile pickup radius per level |
-| Drone Cargo I-III | +15 cargo per level (15 base) |
+| Drone Cargo (25 levels) | +20 cargo slots per drone per level (15 base); packed by the Compressor like the bag |
 | Mining Laser I-III | Couriers laser-mine exposed ore within 4 (+2 per level) tiles of the keeper |
-| Gun Drone I-III | A drone guarding the dome; level 2 hits harder and faster, level 3 adds a second gun drone |
-| Repair Drone I-III | Welds the dome back together (0.5 HP/s, +0.45 per level) |
-| Drone Swarm I-II | +1 courier each |
+| Gun Drone I-II | A drone guarding the dome; level 2 hits harder and faster |
+| Gun Drones (9 levels) | +1 gun drone per level (up to 10), evenly spread around the dome; with level 2 a squad of two or more hits harder still |
+| Repair Drone I-II | Welds the dome back together (0.5 HP/s, +0.45 with level 2) |
+| Repair Drones (9 levels) | +1 repair drone per level (up to 10); together they weld at most 4x as fast as one |
+| Courier Drones (9 levels) | +1 courier per level (up to 10 with the Drone Bay and the Droneyard) |
 
-Couriers follow BFS paths through the tunnels, carry their own lights and show their cargo; idle couriers hover beside the dome. The mine HUD lists every courier's job.
+Level-up upgrades are single cards in the tree: they show the level (Lv n / max), the effect now and after the next level, the next level's cost and a progress bar, and can be bought again and again. Their costs rise per level and move from common to rare ores. Older saves keep their progress: Carry Capacity, Drone Cargo, Drone Swarm and the third Gun Drone and Repair Drone levels turn into levels of the new upgrades.
+
+Couriers follow BFS paths through the tunnels, carry their own lights and show their cargo; idle couriers hover beside the dome. The mine HUD groups the fleet by kind: couriers with one status cell per drone, then gun and repair drones.
 
 ## 8.19 Bombs
 
@@ -1132,16 +1144,17 @@ Not:
 * Mine of 165 x 224 tiles in 16 strata, 20 resource types (6 deep-stratum ores)
 * 11 monster types including 2 bosses, elite variants with three auras, enraged monsters
 * Day/night cycle with 8 moon phases, 4 seasons, 6 weather states (clear, rain, snow, blizzard, thunderstorm, meteor shower)
-* One upgrade tree with 154 nodes across 6 branches (Dome, Mining, Movement, Weapon, Drones, Tools) and a Next upgrades panel
+* One upgrade tree with 148 nodes across 6 branches (Dome, Mining, Movement, Weapon, Drones, Tools) and a Next upgrades panel
 * 5 bomb sizes with a crafting and combining workshop
 * 3 secret chests per mine with 3 minigames and 16 artifacts
 * Skill combat: weak points, combos, charged shots, parry, boss tells
-* Courier, gun and repair drones
+* Courier, gun and repair drones, up to 10 of each kind
+* Bag of up to 1,000 slots and a 5-tier ore Compressor
 * Relocation Cores and endless relocation between sites
 * 4 primary gadgets (Shield Generator, Repellent Field, Orchard, Droneyard)
 * 6 mine gadgets found in 2x2 underground chambers
 * 5 tools in the upgrade tree (Drill Gadget, Blast Mining, Scanner, Reinforced Dome, Teleporter)
-* 13-page help with localStorage persistence
+* 14-page help with localStorage persistence
 * Local high scores (top 5) with nights and sites
 * Autosave and Continue (save format v2 with v1 migration)
 * BFS pathfinding for mouse-based navigation and drone routes
@@ -1298,7 +1311,7 @@ These decisions have been resolved and implemented:
 * Weather: rain, snowfall, blizzard fog, thunderstorms with lightning strikes, meteor showers with collectible ore
 * Destructible mine of 165 x 224 tiles in 16 textured strata with 20 resources
 * Eleven monster types with their own sprites, behaviours and sounds; bosses every fifth night; elites with auras, enraged monsters and armour that grow with the threat
-* One upgrade tree (154 nodes, 6 branches) with tabs, zoom, keyboard control and a Next upgrades quick panel
+* One upgrade tree (148 nodes, 6 branches) with tabs, zoom, keyboard control and a Next upgrades quick panel
 * Bomb Workshop: craft and combine five bomb sizes, drop and throw them in the mine, lob them at monsters
 * Three secret chests per mine with lock picking, power circuit and rune memory minigames
 * Sixteen artifacts with visible effects, an Artifacts gallery and HUD icons
@@ -1335,7 +1348,7 @@ This is deployment/publishing scope, not core game design scope. Separate it unl
 
 ## 21. Appendix: Implemented Upgrade Tables
 
-The full tree (154 nodes) is defined in `UPGRADE_TREE` in `controller.js`; the in-game tree shows every cost. Highlights:
+The full tree (148 nodes) is defined in `UPGRADE_TREE` in `controller.js`; the in-game tree shows every cost. Highlights:
 
 | Branch   | Chain / node        | Tiers | First cost        | Top tier cost                         |
 | -------- | ------------------- | ----: | ----------------- | ------------------------------------- |
@@ -1343,17 +1356,20 @@ The full tree (154 nodes) is defined in `UPGRADE_TREE` in `controller.js`; the i
 | Dome     | Last Stand          |     1 | -                 | 3 voidstone, 5 fire opal, 15 ruby     |
 | Mining   | Mining Tools        |     7 | 15 iron           | 6 uranium, 10 titanium, 12 diamond    |
 | Mining   | Drill Speed         |     5 | 20 iron           | 6 titanium, 20 gold, 15 redstone      |
-| Mining   | Carry Capacity      |     5 | 20 iron           | 8 titanium, 25 gold, 20 lead          |
+| Mining   | Bag Size            |    38 | 18 iron, 11 copper | 310 uranium, 186 voidstone           |
+| Mining   | Compressor          |     5 | 60 iron, 36 cobalt | 960 uranium, 576 voidstone           |
 | Movement | Move Speed          |     7 | 15 iron           | 10 titanium, 6 sapphire, 8 emerald    |
 | Weapon   | Damage              |     7 | 25 iron           | 6 amethyst, 6 uranium, 15 ruby        |
 | Weapon   | Fire Rate           |     6 | 20 iron           | 4 fire opal, 8 sapphire, 10 ruby      |
 | Drones   | Drone Bay           |     1 | 30 iron, 12 copper | -                                    |
 | Drones   | Drone Thrusters     |     3 | 25 iron, 10 tin   | 15 gold, 6 titanium, 10 quartz        |
-| Drones   | Drone Cargo         |     3 | 30 iron, 15 copper | 15 gold, 5 sapphire, 20 lead         |
+| Drones   | Drone Cargo         |    25 | 25 iron, 15 copper | 198 sapphire, 119 fire opal          |
 | Drones   | Mining Laser        |     3 | 40 iron, 20 coal, 15 copper | 5 uranium, 8 titanium, 20 gold |
-| Drones   | Gun Drone           |     3 | 45 iron, 20 copper, 15 coal | 6 uranium, 10 ruby, 20 gold   |
-| Drones   | Repair Drone        |     3 | 40 iron, 25 water, 15 copper | 6 sapphire, 10 emerald, 40 water |
-| Drones   | Drone Swarm         |     2 | 20 gold, 8 titanium, 25 cobalt | 6 amethyst, 4 fire opal, 2 voidstone |
+| Drones   | Gun Drone           |     2 | 45 iron, 20 copper, 15 coal | 15 silver, 12 redstone, 20 cobalt |
+| Drones   | Gun Drones          |     9 | 20 iron, 12 redstone | 119 uranium, 72 voidstone          |
+| Drones   | Repair Drone        |     2 | 40 iron, 25 water, 15 copper | 15 silver, 35 water, 10 quartz |
+| Drones   | Repair Drones       |     9 | 18 iron, 11 quartz | 107 diamond, 64 fire opal            |
+| Drones   | Courier Drones      |     9 | 20 copper, 12 cobalt | 119 amethyst, 72 voidstone         |
 | Tools    | Bomb Recipes        |     4 | 20 iron, 10 coal  | 6 uranium, 5 amethyst, 2 voidstone    |
 | Tools    | Blast Radius        |     3 | 30 iron, 20 coal  | 6 titanium, 12 redstone, 12 gold      |
 | Tools    | Shaped Charges      |     3 | 25 iron, 15 copper, 10 coal | 5 sapphire, 6 diamond, 12 redstone |
