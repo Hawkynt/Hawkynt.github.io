@@ -10,6 +10,7 @@
   let canvasW = 700;
   let canvasH = 500;
   let uiS = 1;                       // HUD scale (screen px per UI unit)
+  const HUD_MIN_UW = 560;            // narrowest virtual screen: farm panel plus quick panel
   let UW = 700, UH = 500;            // HUD size in UI units
   const MAX_DT = 0.05;
   const TWO_PI = Math.PI * 2;
@@ -1868,8 +1869,9 @@
     canvas.style.width = canvasW + 'px';
     canvas.style.height = canvasH + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // the HUD is laid out on a virtual screen about 690 units tall
-    uiS = Math.max(0.7, Math.min(1.6, canvasW / 1060, canvasH / 690));
+    // the HUD is laid out on a virtual screen about 690 units tall; a phone
+    // still gets room for the side panels next to each other
+    uiS = Math.min(Math.max(0.7, Math.min(1.6, canvasW / 1060, canvasH / 690)), canvasW / HUD_MIN_UW);
     UW = canvasW / uiS;
     UH = canvasH / uiS;
   }
@@ -7517,7 +7519,10 @@
     if (quickCollapsed)
       return { x, y, w, h: headerH + 4, rows: [], headerH };
     let ry = y + headerH + 8;
-    const rows = getQuickPicks().map(p => {
+    // a short screen shows only the rows that fit above the dock (and below the panel on the left on narrow ones)
+    const room = UH - dockHeight() - HUD_M - 8 - y;
+    const fit = Math.max(0, Math.floor((room - headerH - 8 - 42 + gap) / (rowH + gap)));
+    const rows = getQuickPicks().slice(0, fit).map(p => {
       const r = Object.assign({ x: x + 8, y: ry, w: w - 16, h: rowH }, p);
       ry += rowH + gap;
       return r;
@@ -7898,15 +7903,20 @@
   function drawMarketDialog() {
     const c = beginDialog('Market', 820, 520, { icon: 'market', accent: UI.gold, titleRight: `${Math.round(credits).toLocaleString('en-US')} [[coin]]`, titleRightColor: UI.gold });
     const split = c.w >= 640;
+    // too narrow for two columns: a tall dialog lists the orders under the storage
+    const stack = !split && c.h >= 420;
+    const ordersH = stack ? Math.min(Math.round(c.h * 0.5), 24 + Math.max(1, orders.length) * 94) : 0;
     const leftW = split ? Math.round(c.w * 0.56) : c.w;
-    const rightX = c.x + leftW + 16, rightW = c.w - leftW - 16;
+    const leftH = stack ? c.h - ordersH - 16 : c.h;
+    const rightX = split ? c.x + leftW + 16 : c.x, rightW = split ? c.w - leftW - 16 : c.w;
+    const rightY = split ? c.y : c.y + leftH + 16, rightH = split ? c.h : ordersH;
     // Storage list
     const items = storageItems();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     fitText(`[[basket]] Storage ${getTotalInventoryCount()} / ${getStorageCapacity()}`, c.x, c.y + 8, leftW - 120, 14, { weight: 'bold', color: UI.text });
     const rowH = 34;
-    const listY = c.y + 24, listH = c.h - 24 - 50;
+    const listY = c.y + 24, listH = leftH - 24 - 50;
     const maxScroll = Math.max(0, items.length * (rowH + 4) - listH);
     dialogScroll = Math.max(0, Math.min(maxScroll, dialogScroll));
     ctx.save();
@@ -7944,21 +7954,24 @@
     addRegion({ id: 'market-wheel', x: c.x, y: listY, w: leftW, h: listH, modal: true, passive: true, onWheel: (dy) => { dialogScroll += dy > 0 ? 50 : -50; } });
     reorderPassiveRegions();
     const total = getEstimatedStorageValue();
-    drawButton({ id: 'market-sellall', x: c.x, y: c.y + c.h - 40, w: leftW, h: 36 }, { label: total ? `Sell everything · ${total} [[coin]]` : 'Sell everything', icon: 'coin', key: 'S', primary: total > 0, disabled: !total, color: '#59c96a', px: 14, onClick: sellAllProduce, tip: buildSellButtonTooltip });
+    drawButton({ id: 'market-sellall', x: c.x, y: c.y + leftH - 40, w: leftW, h: 36 }, { label: total ? `Sell everything · ${total} [[coin]]` : 'Sell everything', icon: 'coin', key: 'S', primary: total > 0, disabled: !total, color: '#59c96a', px: 14, onClick: sellAllProduce, tip: buildSellButtonTooltip });
 
     // Orders
-    if (split) {
+    if (split || stack) {
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(rightX - 9, c.y, 1, c.h);
+      if (split)
+        ctx.fillRect(rightX - 9, c.y, 1, c.h);
+      else
+        ctx.fillRect(c.x, rightY - 9, c.w, 1);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      fitText(`[[order]] Orders ${orders.length} / ${orderSlots()}`, rightX, c.y + 8, rightW, 14, { weight: 'bold', color: UI.text });
-      let y = c.y + 24;
+      fitText(`[[order]] Orders ${orders.length} / ${orderSlots()}`, rightX, rightY + 8, rightW, 14, { weight: 'bold', color: UI.text });
+      let y = rightY + 24;
       if (!orders.length)
         drawTextBlock(`Traders bring orders now and then; the next one arrives in about ${Math.ceil(Math.max(0, orderTimer))}s. Orders pay well above market prices.`, rightX, y + 4, rightW, 70, 12, { color: UI.textMute });
       for (const o of orders) {
         const h = 86;
-        if (y + h > c.y + c.h) break;
+        if (y + h > rightY + rightH) break;
         const ok = canDeliver(o);
         roundRectPath(rightX, y, rightW, h, 10);
         ctx.fillStyle = ok ? 'rgba(111,224,138,0.12)' : 'rgba(255,255,255,0.04)';
@@ -7985,6 +7998,8 @@
 
   const HUD_M = 10;                  // margin around HUD panels (UI units)
   const DOCK_H = 84;
+  const DOCK_TWO_ROW_H = 156;        // narrow screens: tools and actions above the slots
+  const NARROW_UW = 840;             // below this the dock splits and the clock moves left
   const SLOT_W = 58, SLOT_H = 64, SLOT_GAP = 6;
   const SEASON_COLORS = ['#8ef08a', '#ffd75a', '#ff9a4a', '#a8dcff'];
 
@@ -8005,15 +8020,44 @@
     return 'plant';
   }
 
+  function isNarrowHud() {
+    return UW < NARROW_UW;
+  }
+
+  function dockHeight() {
+    return isNarrowHud() ? DOCK_TWO_ROW_H : DOCK_H;
+  }
+
   function hudLayout() {
+    const narrow = isNarrowHud();
     const farm = { x: HUD_M, y: HUD_M, w: 244, h: 112 };
-    const clockW = Math.min(330, UW - 2 * (farm.w + HUD_M * 3));
-    const clock = { x: Math.round(UW / 2 - clockW / 2), y: HUD_M, w: clockW, h: 64 };
+    let clock;
+    if (narrow)
+      // no room between the side panels: the clock goes under the farm panel
+      clock = { x: HUD_M, y: farm.y + farm.h + 8, w: farm.w, h: 64 };
+    else {
+      const clockW = Math.min(330, UW - 2 * (farm.w + HUD_M * 3));
+      clock = { x: Math.round(UW / 2 - clockW / 2), y: HUD_M, w: clockW, h: 64 };
+    }
     const dockW = Math.min(UW - HUD_M * 2, 1180);
-    const dock = { x: Math.round((UW - dockW) / 2), y: UH - DOCK_H - HUD_M, w: dockW, h: DOCK_H };
-    const storeTop = farm.y + farm.h + 8;
-    const storage = { x: HUD_M, y: storeTop, w: farm.w, h: 0, maxH: dock.y - 68 - storeTop };
+    const dockH = dockHeight();
+    const dock = { x: Math.round((UW - dockW) / 2), y: UH - dockH - HUD_M, w: dockW, h: dockH };
+    const storeTop = narrow ? clock.y + clock.h + 8 : farm.y + farm.h + 8;
+    const storage = { x: HUD_M, y: storeTop, w: farm.w, h: 0, maxH: narrow ? Math.min(220, dock.y - 68 - storeTop) : dock.y - 68 - storeTop };
     return { farm, clock, dock, storage };
+  }
+
+  /* Canvas rectangle the farm should stay inside, clear of the HUD panels */
+  function fieldViewRect(bottomGap) {
+    if (!isNarrowHud())
+      return { left: 270 * uiS, right: canvasW - 300 * uiS, top: 90 * uiS, bottom: canvasH - (DOCK_H + bottomGap) * uiS };
+    // narrow screens stack the panels at the top, the farm uses the full width below them
+    const L = hudLayout();
+    const G = goalPanelLayout(L);
+    const goalsShown = G.y + 96 <= L.dock.y - 34;
+    const panelsBottom = Math.max(L.storage.y + 60, goalsShown ? G.y + Math.min(G.h, L.dock.y - 34 - G.y) : G.y);
+    const top = Math.min(panelsBottom + 8, L.dock.y - 160);
+    return { left: HUD_M * uiS, right: canvasW - HUD_M * uiS, top: top * uiS, bottom: canvasH - (dockHeight() + bottomGap) * uiS };
   }
 
   /* ── HUD fading: panels turn see-through while farm action is behind them ── */
@@ -8374,7 +8418,10 @@
     beginHudPanel('dock', d.x, d.y, d.w, d.h);
     drawPanel(d.x, d.y, d.w, d.h, { accent: UI.leaf, radius: 14 });
     const mode = dockMode();
-    const top = d.y + (d.h - SLOT_H) / 2;
+    // a narrow dock has two rows: tools and actions on top, the slots below
+    const twoRow = d.h > DOCK_H;
+    const top = twoRow ? d.y + 8 : d.y + (d.h - SLOT_H) / 2;
+    const slotTop = twoRow ? top + SLOT_H + 10 : top;
 
     // Tools
     const tools = [
@@ -8396,7 +8443,10 @@
     }
     x += 6;
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(x - 5, d.y + 12, 1, d.h - 24);
+    if (twoRow)
+      ctx.fillRect(d.x + 12, slotTop - 5, d.w - 24, 1);
+    else
+      ctx.fillRect(x - 5, d.y + 12, 1, d.h - 24);
 
     // Actions (right)
     const actions = [
@@ -8413,18 +8463,20 @@
         active: (a.id === 'act-animals' && dialog === 'livestock') || (a.id === 'act-market' && dialog === 'market') || (a.id === 'act-upgrades' && dialog === 'tree')
       });
     });
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(actX0 - 7, d.y + 12, 1, d.h - 24);
+    if (!twoRow) {
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(actX0 - 7, d.y + 12, 1, d.h - 24);
+    }
 
     // Slots
-    const sx0 = x, sx1 = actX0 - 12;
+    const sx0 = twoRow ? d.x + 10 : x, sx1 = twoRow ? d.x + d.w - 10 : actX0 - 12;
     const items = dockItems(mode);
     if (mode === 'hoe') {
-      roundRectPath(sx0, top, sx1 - sx0, SLOT_H, 10);
+      roundRectPath(sx0, slotTop, sx1 - sx0, SLOT_H, 10);
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fill();
-      drawSprite('hoe', sx0 + 30, top + SLOT_H / 2, 32);
-      drawTextBlock(`Click soil beside water (or water itself) to enrich it: +20% nutrients, sand turns into farmland. Click a rock to break it up (${ROCK_CLEAR_COST} cr). Right-click a crop to uproot it for half its seed cost.`, sx0 + 56, top + 4, sx1 - sx0 - 66, SLOT_H - 8, 12, { color: UI.textDim, valign: 'middle' });
+      drawSprite('hoe', sx0 + 30, slotTop + SLOT_H / 2, 32);
+      drawTextBlock(`Click soil beside water (or water itself) to enrich it: +20% nutrients, sand turns into farmland. Click a rock to break it up (${ROCK_CLEAR_COST} cr). Right-click a crop to uproot it for half its seed cost.`, sx0 + 56, slotTop + 4, sx1 - sx0 - 66, SLOT_H - 8, 12, { color: UI.textDim, valign: 'middle' });
     } else {
       const areaW = sx1 - sx0;
       const total = items.length * (SLOT_W + SLOT_GAP) - SLOT_GAP;
@@ -8435,20 +8487,20 @@
       dockScroll[mode] = Math.max(0, Math.min(maxScroll, dockScroll[mode]));
       ctx.save();
       ctx.beginPath();
-      ctx.rect(viewX0, d.y + 2, viewW, d.h - 4);
+      ctx.rect(viewX0, twoRow ? slotTop - 4 : d.y + 2, viewW, twoRow ? d.y + d.h - slotTop + 2 : d.h - 4);
       ctx.clip();
       items.forEach((it, i) => {
         const sx = viewX0 + i * (SLOT_W + SLOT_GAP) - dockScroll[mode];
         if (sx + SLOT_W < viewX0 || sx > viewX0 + viewW) return;
-        drawDockSlot(it, sx, top, i, viewX0, viewX0 + viewW);
+        drawDockSlot(it, sx, slotTop, i, viewX0, viewX0 + viewW);
       });
       ctx.restore();
       if (overflow) {
         const step = (SLOT_W + SLOT_GAP) * 3;
-        drawButton({ id: 'dock-left', x: sx0, y: top, w: arrowW - 2, h: SLOT_H }, { label: '', chevron: -1, disabled: dockScroll[mode] <= 0, onClick: () => { dockScroll[mode] -= step; } });
-        drawButton({ id: 'dock-right', x: sx1 - arrowW + 2, y: top, w: arrowW - 2, h: SLOT_H }, { label: '', chevron: 1, disabled: dockScroll[mode] >= maxScroll, onClick: () => { dockScroll[mode] += step; } });
+        drawButton({ id: 'dock-left', x: sx0, y: slotTop, w: arrowW - 2, h: SLOT_H }, { label: '', chevron: -1, disabled: dockScroll[mode] <= 0, onClick: () => { dockScroll[mode] -= step; } });
+        drawButton({ id: 'dock-right', x: sx1 - arrowW + 2, y: slotTop, w: arrowW - 2, h: SLOT_H }, { label: '', chevron: 1, disabled: dockScroll[mode] >= maxScroll, onClick: () => { dockScroll[mode] += step; } });
       }
-      addRegion({ id: 'dock-slots-wheel', x: sx0, y: d.y, w: areaW, h: d.h, passive: true, onWheel: (dy) => { dockScroll[mode] += dy > 0 ? 64 : -64; } });
+      addRegion({ id: 'dock-slots-wheel', x: sx0, y: twoRow ? slotTop - 4 : d.y, w: areaW, h: twoRow ? d.y + d.h - slotTop + 4 : d.h, passive: true, onWheel: (dy) => { dockScroll[mode] += dy > 0 ? 64 : -64; } });
       // keep the selected slot visible
       const sel = items.findIndex(it => it.index === (mode === 'plant' ? selectedCropIndex : selectedBuildingIndex));
       if (sel >= 0 && dockFollow) {
@@ -9043,7 +9095,7 @@
     let x = (g.x + g.size) / uiS + 12, y = g.y / uiS - 10;
     if (x + w > UW - 10) x = g.x / uiS - w - 12;
     x = Math.max(10, Math.min(UW - w - 10, x));
-    y = Math.max(84, Math.min(UH - DOCK_H - 30 - h, y));
+    y = Math.max(84, Math.min(UH - dockHeight() - 30 - h, y));
     addRegion({ id: 'insp-panel', x, y, w, h });
     const top = drawPanel(x, y, w, h, { title: bdef.name, icon: bdef.sprite, accent: '#4cc4ff', headerH: 40, titlePx: 16, titleRight: `Lv ${lvl}/${BUILDING_MAX_LEVEL}`, titleRightColor: UI.gold, closeId: 'insp-close', onClose: () => { inspect = null; } });
     // Level pips
@@ -9954,7 +10006,7 @@
   /* Pans the view so a tile stays inside the area between the HUD panels */
   function revealTile(col, row) {
     const g = gridToScreen(col, row);
-    const left = 270 * uiS, right = canvasW - 300 * uiS, top = 90 * uiS, bottom = canvasH - (DOCK_H + 50) * uiS;
+    const { left, right, top, bottom } = fieldViewRect(50);
     if (g.x < left) viewPanX += left - g.x;
     else if (g.x + g.size > right) viewPanX -= g.x + g.size - right;
     if (g.y < top) viewPanY += top - g.y;
@@ -10441,8 +10493,9 @@
   /* Fits the whole farm between the HUD panels, with a strip of sky above it */
   function resetView() {
     const T = BASE_TILE_SIZE;
-    const left = 270 * uiS, right = canvasW - 300 * uiS;
-    const top = canvasH * 0.03, bottom = canvasH - (DOCK_H + 56) * uiS;
+    const R = fieldViewRect(56);
+    const left = R.left, right = R.right, bottom = R.bottom;
+    const top = isNarrowHud() ? R.top : canvasH * 0.03;
     const wx0 = GRID_OFFSET_X - T * 1.2, wx1 = GRID_OFFSET_X + (gridCols + 1.2) * T;
     const wy0 = horizonWorldY() - T * 2.4, wy1 = GRID_OFFSET_Y + (gridRows + 1.3) * T;
     viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(1.5, (right - left) / (wx1 - wx0), (bottom - top) / (wy1 - wy0)));
@@ -10517,10 +10570,16 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function handleResize() {
+    const wasNarrow = isNarrowHud(), wasPortrait = canvasH > canvasW;
     setupCanvas();
     textFitCache.clear();
-    if (state === STATE_PLAYING || state === STATE_PAUSED)
-      clampPan();
+    if (state === STATE_PLAYING || state === STATE_PAUSED) {
+      // a turned phone gets the whole farm back in view
+      if (isNarrowHud() !== wasNarrow || (canvasH > canvasW) !== wasPortrait)
+        resetView();
+      else
+        clampPan();
+    }
   }
 
   let shownTitle = '';

@@ -26,6 +26,16 @@
   box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.3);
 }
 
+/* a window smaller than the dialog (a phone screen): the dialog scrolls instead of reaching past the edges */
+@media (max-width: 480px), (max-height: 480px) {
+  .dialog {
+    min-width: 0;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    overflow: auto;
+  }
+}
+
 .dialog-title {
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);

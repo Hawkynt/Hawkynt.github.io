@@ -1137,13 +1137,31 @@
   }
 
   /* ---- Window Resize ---- */
+  const gameFrame = document.querySelector('.game-frame');
+
   function requestWindowResize() {
     requestAnimationFrame(() => {
+      // ask for the unscaled size; a smaller screen shrinks the window and fitToWindow scales the game down
+      gameFrame.style.transform = '';
       const w = document.documentElement.scrollWidth;
       const h = document.documentElement.scrollHeight;
+      fitToWindow();
       SZ.Dlls.User32.MoveWindow(w, h);
     });
   }
+
+  /* A window smaller than the game (a phone screen) shows all of it, scaled down */
+  function fitToWindow() {
+    gameFrame.style.transform = '';
+    const top = gameFrame.offsetTop;
+    const needW = document.documentElement.scrollWidth;
+    const needH = document.documentElement.scrollHeight - top;
+    const scale = Math.min(1, window.innerWidth / needW, (window.innerHeight - top) / needH);
+    gameFrame.style.transformOrigin = '0 0';
+    gameFrame.style.transform = scale < 1 ? `scale(${scale})` : '';
+  }
+
+  window.addEventListener('resize', fitToWindow);
 
   /* ---- Init ---- */
   function init() {

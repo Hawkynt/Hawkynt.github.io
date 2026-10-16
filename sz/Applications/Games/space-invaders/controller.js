@@ -419,10 +419,11 @@
   let gameOffsetY = 0;
 
   function resizeCanvas() {
+    // the frame's content box: its padding and border stay around the canvas
     const parent = canvas.parentElement;
-    const rect = parent.getBoundingClientRect();
-    canvasW = Math.max(1, rect.width);
-    canvasH = Math.max(1, rect.height);
+    const cs = getComputedStyle(parent);
+    canvasW = Math.max(1, parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    canvasH = Math.max(1, parent.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     // never render more than ~1.5 backing pixels per logical pixel
     const fit = Math.min(canvasW / GAME_W, canvasH / GAME_H);
     dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, 1.5 / Math.max(fit, 0.01)));
@@ -4347,6 +4348,10 @@
   });
 
   canvas.addEventListener('pointerup', () => {
+    mouseDown = false;
+  });
+
+  canvas.addEventListener('pointercancel', () => {
     mouseDown = false;
   });
 

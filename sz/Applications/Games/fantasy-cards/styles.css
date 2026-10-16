@@ -24,6 +24,7 @@ canvas {
   width: 800px;
   height: 560px;
   image-rendering: pixelated;
+  touch-action: none;
 }
 
 .status-bar {
