@@ -530,6 +530,14 @@
     sushi: paintSushi, ramen: paintRamen, cake: paintCake, lobster: paintLobster
   };
 
+  /* small white glints on the shiny parts of each dish */
+  const DISH_GLINTS = {
+    burger: [[-11, -16, 2.6], [12, -4, 1.4]], salad: [[-3, 3, 1.6], [12, 3, 1.3]], tacos: [[-17, 4, 1.6], [9, 4, 1.6]],
+    pancakes: [[-5, 2, 2.4], [-12, 9, 1.2]], pasta: [[-3, 4, 1.8], [8, 9, 1.2]], pizza: [[-13, -7, 1.6], [9, -10, 1.4], [15, 4, 1.2]],
+    steak: [[-17, 4, 2.4]], curry: [[-17, 11, 1.6], [12, 7, 1.6]], sushi: [[21, 10, 1.6], [-19, 4, 1.2]],
+    ramen: [[11, 6, 1.6], [-12, 4, 1.2]], cake: [[14, -16, 1.2], [8, 2, 1.6]], lobster: [[-5, 1, 2.2], [-19, -9, 1.4]]
+  };
+
   function dishFor(id) {
     return DISH_PAINTERS[id] ? id : 'burger';
   }
@@ -569,6 +577,27 @@
       ctx.translate(px / 2, px / 2);
       ctx.scale(px / DISH_DESIGN, px / DISH_DESIGN);
       DISH_PAINTERS[dish](ctx);
+      /* glaze: a soft specular bloom from the upper left and a warm
+         shadow along the bottom, laid only over what was painted */
+      ctx.globalCompositeOperation = 'source-atop';
+      const hl = ctx.createRadialGradient(-14, -16, 2, -10, -10, 34);
+      hl.addColorStop(0, 'rgba(255,255,255,0.42)');
+      hl.addColorStop(0.5, 'rgba(255,250,235,0.12)');
+      hl.addColorStop(1, 'rgba(255,250,235,0)');
+      ctx.fillStyle = hl;
+      ctx.fillRect(-48, -48, 96, 96);
+      const sh = ctx.createLinearGradient(0, 0, 0, 40);
+      sh.addColorStop(0, 'rgba(80,40,10,0)');
+      sh.addColorStop(1, 'rgba(80,40,10,0.22)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(-48, 0, 96, 48);
+      ctx.globalCompositeOperation = 'source-over';
+      /* crisp specular glints */
+      const glints = DISH_GLINTS[dish] || [];
+      for (let i = 0; i < glints.length; ++i) {
+        const g = glints[i];
+        ell(ctx, g[0], g[1], g[2], g[2] * 0.55, 'rgba(255,255,255,0.85)');
+      }
     }
     dishCache[key] = canvas;
     return canvas;
@@ -788,33 +817,119 @@
     return canvas;
   }
 
-  /* ── the five kitchen stations, painted in a 150 x 120 box ── */
+  /* ── ingredient states: raw -> cooked -> burnt, plus grill marks ── */
 
-  function flame(ctx, x, y, h, w) {
-    ctx.beginPath();
-    ctx.moveTo(x - w, y);
-    ctx.quadraticCurveTo(x - w * 0.8, y - h * 0.55, x - w * 0.2, y - h * 0.7);
-    ctx.quadraticCurveTo(x, y - h, x + w * 0.15, y - h * 0.72);
-    ctx.quadraticCurveTo(x + w * 0.8, y - h * 0.5, x + w, y);
-    ctx.closePath();
-    const g = ctx.createLinearGradient(x, y, x, y - h);
-    g.addColorStop(0, '#ff8a2a');
-    g.addColorStop(0.6, '#ffb03a');
-    g.addColorStop(1, '#ffe08a');
+  /* how a raw ingredient looks before the heat: a tint laid over the cooked sprite */
+  const RAW_TINT = {
+    burger: ['#e0707a', 0.62], steak: ['#d0404a', 0.6], pancakes: ['#fbefc0', 0.6], pizza: ['#f6ecd4', 0.45],
+    pasta: ['#f8f0c8', 0.45], ramen: ['#f8f0c8', 0.35], lobster: ['#4a5a7a', 0.6], cake: ['#fbeed0', 0.55],
+    curry: ['#f0c070', 0.35], tacos: ['#f8e8b0', 0.35], salad: ['#9ad870', 0.25], sushi: ['#ffffff', 0.1]
+  };
+  const GRILL_MARKED = { burger: true, steak: true, tacos: true, lobster: true };
+
+  const ingStateCache = {};
+
+  /* variant: 'raw' | 'cooked' | 'burnt' */
+  function getIngredientState(id, variant) {
+    if (variant !== 'raw' && variant !== 'burnt') return getIngredientMarked(id);
+    const key = id + ':' + variant;
+    const hit = ingStateCache[key];
+    if (hit) return hit;
+    const base = getIngredient(id);
+    const px = ING_DESIGN * SCALE;
+    const canvas = document.createElement('canvas');
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(base, 0, 0);
+    ctx.globalCompositeOperation = 'source-atop';
+    if (variant === 'raw') {
+      const tint = RAW_TINT[id] || ['#ffffff', 0.2];
+      ctx.fillStyle = hexToRgba(tint[0], tint[1]);
+      ctx.fillRect(0, 0, px, px);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(0, 0, px, px * 0.45);
+    } else {
+      ctx.fillStyle = 'rgba(30,18,10,0.78)';
+      ctx.fillRect(0, 0, px, px);
+      ctx.fillStyle = 'rgba(255,90,30,0.25)';
+      for (let i = 0; i < 5; ++i) dot(ctx, px * (0.25 + 0.12 * i), px * (0.45 + 0.08 * ((i * 7) % 3)), px * 0.035, 'rgba(255,110,40,0.55)');
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ingStateCache[key] = canvas;
+    return canvas;
+  }
+
+  /* the cooked look: grill-cooked items get crossing char marks */
+  function getIngredientMarked(id) {
+    if (!GRILL_MARKED[id]) return getIngredient(id);
+    const key = id + ':cooked';
+    const hit = ingStateCache[key];
+    if (hit) return hit;
+    const base = getIngredient(id);
+    const px = ING_DESIGN * SCALE;
+    const canvas = document.createElement('canvas');
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(base, 0, 0);
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.strokeStyle = 'rgba(40,18,6,0.7)';
+    ctx.lineWidth = px * 0.05;
+    ctx.lineCap = 'round';
+    for (let i = -2; i <= 2; ++i) {
+      ctx.beginPath();
+      ctx.moveTo(px * (0.3 + i * 0.13), px * 0.3);
+      ctx.lineTo(px * (0.5 + i * 0.13), px * 0.72);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,220,160,0.18)';
+    ctx.fillRect(0, 0, px, px * 0.4);
+    ctx.globalCompositeOperation = 'source-over';
+    ingStateCache[key] = canvas;
+    return canvas;
+  }
+
+  /* ── the five kitchen stations, painted in a 150 x 120 box ──
+     The worktop surface runs across local y 70..104 (view 590..624), so
+     every appliance stands with its feet around y 100. */
+
+  function metal(ctx, x0, y0, x1, y1, base) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, shade(base, 0.45));
+    g.addColorStop(0.25, shade(base, 0.15));
+    g.addColorStop(0.6, base);
+    g.addColorStop(1, shade(base, -0.4));
+    return g;
+  }
+
+  function contact(ctx, x, y, rx, ry, a) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    g.addColorStop(0, 'rgba(20,8,0,' + a + ')');
+    g.addColorStop(1, 'rgba(20,8,0,0)');
     ctx.fillStyle = g;
-    ctx.fill();
+    ctx.fillRect(-rx, -rx, rx * 2, rx * 2);
+    ctx.restore();
+  }
+
+  function knob(ctx, x, y, r, on) {
+    dot(ctx, x + 0.6, y + 1, r, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = metal(ctx, x - r, y - r, x + r, y + r, '#3a3a40');
     ctx.beginPath();
-    ctx.moveTo(x - w * 0.45, y);
-    ctx.quadraticCurveTo(x - w * 0.3, y - h * 0.4, x, y - h * 0.55);
-    ctx.quadraticCurveTo(x + w * 0.3, y - h * 0.38, x + w * 0.45, y);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(255,240,160,0.85)';
+    ctx.arc(x, y, r, 0, TWO_PI);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    line(ctx, x, y, x + r * 0.55, y - r * 0.55, on ? '#ff9a3a' : '#d8dce4', 1.6);
   }
 
   function smokePuff(ctx, x, y, r, alpha) {
-    glowDot(ctx, x, y, r, '#5a524a', alpha);
-    dot(ctx, x, y, r * 0.55, 'rgba(72,66,60,' + (alpha * 1.4) + ')');
+    glowDot(ctx, x, y, r, '#4a443e', alpha);
+    dot(ctx, x, y, r * 0.5, 'rgba(60,56,52,' + (alpha * 1.2) + ')');
   }
 
   function steamWisp(ctx, x, y, h, phase) {
@@ -828,174 +943,345 @@
     ctx.stroke();
   }
 
-  const FLAME_H = [13, 19, 15, 21];
-
-  function paintGrill(ctx, state, frame) {
-    line(ctx, 48, 92, 40, 112, '#4a4a52', 5);
-    line(ctx, 102, 92, 110, 112, '#4a4a52', 5);
-    line(ctx, 42, 104, 108, 104, '#4a4a52', 4);
+  function flame(ctx, x, y, h, w) {
     ctx.beginPath();
-    ctx.ellipse(75, 72, 42, 26, 0, 0, Math.PI);
+    ctx.moveTo(x - w, y);
+    ctx.quadraticCurveTo(x - w * 0.8, y - h * 0.55, x - w * 0.2, y - h * 0.7);
+    ctx.quadraticCurveTo(x, y - h, x + w * 0.15, y - h * 0.72);
+    ctx.quadraticCurveTo(x + w * 0.8, y - h * 0.5, x + w, y);
     ctx.closePath();
-    ctx.fillStyle = bodyGradient(ctx, '#4a4a52', 33, 46, 117, 98);
+    const g = ctx.createLinearGradient(x, y, x, y - h);
+    g.addColorStop(0, '#ff6a1a');
+    g.addColorStop(0.6, '#ffb03a');
+    g.addColorStop(1, '#ffe08a');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.45, y);
+    ctx.quadraticCurveTo(x - w * 0.3, y - h * 0.4, x, y - h * 0.55);
+    ctx.quadraticCurveTo(x + w * 0.3, y - h * 0.38, x + w * 0.45, y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,240,160,0.85)';
+    ctx.fill();
+  }
+
+  /* char-grill: a steel box, glowing coals under a chrome grate */
+  function paintGrill(ctx, state, frame) {
+    contact(ctx, 75, 102, 70, 10, 0.5);
+    /* front panel */
+    rrect(ctx, 12, 64, 126, 38, 5, metal(ctx, 12, 64, 12, 102, '#5a5e66'), OUTLINE, 2);
+    for (let i = 0; i < 6; ++i) rrect(ctx, 30 + i * 9, 80, 5, 14, 2, '#24262a');
+    knob(ctx, 104, 84, 6, state !== 'idle');
+    knob(ctx, 122, 84, 6, state !== 'idle');
+    /* fire box top, seen from above */
+    ctx.beginPath();
+    ctx.moveTo(18, 46);
+    ctx.lineTo(132, 46);
+    ctx.lineTo(138, 66);
+    ctx.lineTo(12, 66);
+    ctx.closePath();
+    ctx.fillStyle = '#1a1412';
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = 2;
     ctx.stroke();
-    const hot = state === 'working' || state === 'burning';
-    const coal = state === 'burning' ? '#ff4a1a' : hot ? '#ff6a2a' : '#6a2a1a';
+    const hot = state === 'working' || state === 'ready' || state === 'burning';
+    /* coal bed */
+    const coalCol = state === 'burning' ? '#ff4a1a' : hot ? '#ff7a2a' : '#5a2416';
+    if (hot) glowDot(ctx, 75, 58, 64, state === 'burning' ? '#ff3a10' : '#ff7a20', state === 'burning' ? 0.65 : 0.5);
+    for (let i = 0; i < 26; ++i) {
+      const cx = 22 + ((i * 37) % 108), cy = 51 + ((i * 13) % 12);
+      dot(ctx, cx, cy, 4 + (i % 3), hot ? shade(coalCol, -0.15 - (i % 4) * 0.12) : '#3a2a24');
+      if (hot && (i + frame) % 3 === 0) dot(ctx, cx - 1, cy - 1, 1.8, '#ffd08a');
+    }
+    /* grate bars */
     for (let i = 0; i < 7; ++i) {
-      const x = 45 + i * 10;
-      if (hot) glowDot(ctx, x, 78, 8, coal, state === 'burning' ? 0.6 : 0.4);
-      dot(ctx, x, 78, 3.4, hot ? coal : '#5a2416');
-    }
-    ell(ctx, 75, 72, 42, 7, bodyGradient(ctx, '#5a5a62', 33, 65, 117, 79), OUTLINE, 2);
-    ctx.strokeStyle = '#3a3a42';
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 2; ++i) {
+      const gy = 48 + i * 2.9;
+      const inset = 6 - i * 0.9;
+      ctx.strokeStyle = '#22242a';
+      ctx.lineWidth = 2.6;
       ctx.beginPath();
-      ctx.moveTo(36, 66 + i * 5);
-      ctx.lineTo(114, 66 + i * 5);
+      ctx.moveTo(18 - (gy - 46) * 0.3 + inset, gy + 0.8);
+      ctx.lineTo(132 + (gy - 46) * 0.3 - inset, gy + 0.8);
+      ctx.stroke();
+      ctx.strokeStyle = hot ? '#e8c8a8' : '#c8ccd4';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(18 - (gy - 46) * 0.3 + inset, gy);
+      ctx.lineTo(132 + (gy - 46) * 0.3 - inset, gy);
       ctx.stroke();
     }
-    if (state === 'working') {
-      const xs = [55, 75, 95];
-      for (let i = 0; i < xs.length; ++i)
-        flame(ctx, xs[i], 64, FLAME_H[(frame + i) % 4], 7);
-    }
+    /* front lip with highlight */
+    rrect(ctx, 10, 62, 130, 6, 3, metal(ctx, 10, 62, 10, 68, '#8a9098'), OUTLINE, 1.5);
+    line(ctx, 14, 63, 136, 63, 'rgba(255,255,255,0.6)', 1);
     if (state === 'burning') {
-      glowDot(ctx, 75, 74, 46, '#ff3a1a', 0.35);
-      const puffs = [[62, 44], [78, 34], [92, 46], [70, 24]];
+      const puffs = [[52, 30], [78, 22], [98, 32], [70, 10]];
       for (let i = 0; i < puffs.length; ++i)
-        smokePuff(ctx, puffs[i][0] + (frame % 2) * 3, puffs[i][1] - frame * 2, 8 + (i % 3) * 3, 0.4 - i * 0.06);
+        smokePuff(ctx, puffs[i][0] + (frame % 2) * 3, puffs[i][1] - frame * 2, 10 + (i % 3) * 3, 0.45 - i * 0.06);
     }
   }
 
+  /* range: a steel cooker with a stock pot and a pan on two burners */
   function paintStove(ctx, state, frame) {
-    rrect(ctx, 22, 62, 106, 44, 6, bodyGradient(ctx, '#c8ccd4', 22, 62, 128, 106), OUTLINE, 2);
-    rrect(ctx, 22, 56, 106, 10, 4, '#d8dce4', OUTLINE, 2);
-    dot(ctx, 48, 61, 10, '#3a3a42', OUTLINE, 1.5);
-    dot(ctx, 104, 61, 10, '#3a3a42', OUTLINE, 1.5);
-    dot(ctx, 48, 61, 5.5, '#2a2a30');
-    dot(ctx, 104, 61, 5.5, '#2a2a30');
-    if (state === 'working') glowDot(ctx, 48, 61, 12, '#4aa3ff', 0.5);
-    dot(ctx, 34, 92, 4, '#8a909a', OUTLINE, 1.2);
-    dot(ctx, 48, 92, 4, '#8a909a', OUTLINE, 1.2);
-    rrect(ctx, 88, 30, 32, 28, 4, bodyGradient(ctx, '#8a909a', 88, 30, 120, 58), OUTLINE, 2);
-    rrect(ctx, 82, 38, 6, 8, 2, '#6a707a', OUTLINE, 1.4);
-    rrect(ctx, 120, 38, 6, 8, 2, '#6a707a', OUTLINE, 1.4);
-    ell(ctx, 104, 30, 16, 4.5, '#a8aeb8', OUTLINE, 2);
-    ell(ctx, 104, 30, 13, 3.2, state === 'idle' ? '#bfe0f0' : '#a8d0e8');
+    contact(ctx, 75, 102, 70, 10, 0.5);
+    rrect(ctx, 12, 64, 126, 38, 5, metal(ctx, 12, 64, 12, 102, '#c8ccd4'), OUTLINE, 2);
+    rrect(ctx, 22, 74, 106, 20, 3, 'rgba(40,44,52,0.25)');
+    for (let i = 0; i < 4; ++i) knob(ctx, 34 + i * 27, 84, 6, state !== 'idle' && i === 0);
+    /* hob top */
+    ctx.beginPath();
+    ctx.moveTo(18, 52);
+    ctx.lineTo(132, 52);
+    ctx.lineTo(138, 66);
+    ctx.lineTo(12, 66);
+    ctx.closePath();
+    ctx.fillStyle = metal(ctx, 0, 52, 0, 66, '#3a3e46');
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ell(ctx, 50, 59, 22, 5.5, '#1a1c20', '#5a5e66', 1.5);
+    ell(ctx, 106, 59, 18, 4.5, '#1a1c20', '#5a5e66', 1.5);
+    if (state !== 'idle') glowDot(ctx, 50, 60, 26, '#3a8aff', 0.55);
+    /* frying pan on the right */
+    ell(ctx, 106, 56, 18, 5, metal(ctx, 88, 51, 124, 61, '#3a3a40'), OUTLINE, 1.6);
+    ell(ctx, 106, 55.5, 14, 3.5, '#26262a');
+    rrect(ctx, 122, 52, 18, 4, 2, '#2a1a10', OUTLINE, 1);
+    /* the stock pot */
+    ctx.beginPath();
+    ctx.moveTo(26, 22);
+    ctx.lineTo(74, 22);
+    ctx.lineTo(72, 58);
+    ctx.quadraticCurveTo(50, 64, 28, 58);
+    ctx.closePath();
+    ctx.fillStyle = metal(ctx, 26, 0, 74, 0, '#9aa0aa');
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    line(ctx, 32, 26, 31, 54, 'rgba(255,255,255,0.7)', 2);
+    rrect(ctx, 18, 30, 9, 6, 2, '#5a5e66', OUTLINE, 1.2);
+    rrect(ctx, 73, 30, 9, 6, 2, '#5a5e66', OUTLINE, 1.2);
+    ell(ctx, 50, 22, 24, 6, '#c8ccd4', OUTLINE, 2);
+    const liquid = state === 'burning' ? '#6a4a2a' : state === 'idle' ? '#bfe0f0' : '#e8c070';
+    ell(ctx, 50, 22.5, 20, 4.5, liquid);
     if (state === 'working' || state === 'ready') {
-      const bub = [[-8, 0], [-2, 1], [5, 0], [9, 1]];
-      for (let i = 0; i < bub.length; ++i) {
+      for (let i = 0; i < 5; ++i) {
         const on = (frame + i) % 2 === 0 || state === 'ready';
-        if (on) dot(ctx, 104 + bub[i][0], 29 + bub[i][1], 1.4, 'rgba(255,255,255,0.8)');
+        if (on) dot(ctx, 38 + i * 6, 22 + (i % 2), 1.6, 'rgba(255,255,255,0.85)');
       }
-      steamWisp(ctx, 98, 24, 16 + (frame % 2) * 4, frame % 3);
-      steamWisp(ctx, 110, 24, 14 + ((frame + 1) % 2) * 4, (frame + 2) % 3);
     }
     if (state === 'burning') {
       for (let i = 0; i < 3; ++i)
-        smokePuff(ctx, 100 + i * 6, 22 - i * 9 - frame * 2, 7 + i * 2, 0.42 - i * 0.08);
+        smokePuff(ctx, 44 + i * 8, 12 - i * 9 - frame * 2, 9 + i * 2, 0.45 - i * 0.08);
     }
   }
 
+  /* oven: a tall range oven with a glass door and a lit interior */
   function paintOven(ctx, state, frame) {
-    rrect(ctx, 28, 18, 94, 88, 8, bodyGradient(ctx, '#d8dce4', 28, 18, 122, 106), OUTLINE, 2);
-    rrect(ctx, 28, 18, 94, 16, 6, '#e8ecf2', OUTLINE, 2);
-    dot(ctx, 44, 26, 3.4, '#8a909a', OUTLINE, 1.2);
-    dot(ctx, 56, 26, 3.4, '#8a909a', OUTLINE, 1.2);
-    dot(ctx, 106, 26, 3.4, state === 'idle' ? '#8a909a' : '#ff8a2a', OUTLINE, 1.2);
-    rrect(ctx, 40, 36, 70, 5, 2.5, '#c8ccd4', OUTLINE, 1.5);
-    rrect(ctx, 38, 44, 74, 52, 6, bodyGradient(ctx, '#8a909a', 38, 44, 112, 96), OUTLINE, 2);
-    rrect(ctx, 48, 52, 54, 30, 4, '#241c14', OUTLINE, 2);
-    if (state === 'working' || state === 'ready') {
-      const flick = [0.5, 0.62, 0.55, 0.68];
-      const a = state === 'ready' ? 0.85 : flick[frame];
-      const g = ctx.createRadialGradient(75, 70, 4, 75, 70, 30);
-      g.addColorStop(0, 'rgba(255,170,58,' + a + ')');
-      g.addColorStop(1, 'rgba(255,120,26,0)');
+    contact(ctx, 75, 102, 62, 10, 0.5);
+    rrect(ctx, 22, 4, 106, 98, 8, metal(ctx, 22, 4, 128, 102, '#d0d4dc'), OUTLINE, 2);
+    rrect(ctx, 22, 4, 106, 20, 7, metal(ctx, 22, 4, 22, 24, '#5a5e66'), OUTLINE, 2);
+    knob(ctx, 38, 14, 5, state !== 'idle');
+    knob(ctx, 54, 14, 5, false);
+    rrect(ctx, 70, 9, 38, 10, 2, '#0e1a12', OUTLINE, 1);
+    if (state !== 'idle') {
+      ctx.fillStyle = state === 'burning' ? '#ff4a3a' : '#5aff8a';
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(state === 'burning' ? 'HOT!' : '220°', 89, 14.5);
+    }
+    dot(ctx, 118, 14, 3, state === 'idle' ? '#5a5e66' : '#ff8a2a');
+    /* handle */
+    rrect(ctx, 34, 28, 82, 6, 3, metal(ctx, 34, 28, 34, 34, '#e8ecf2'), OUTLINE, 1.5);
+    /* door + window */
+    rrect(ctx, 30, 38, 90, 58, 6, metal(ctx, 30, 38, 120, 96, '#b8bcc4'), OUTLINE, 2);
+    rrect(ctx, 38, 44, 74, 44, 5, '#140e0a', OUTLINE, 2);
+    const lit = state === 'working' || state === 'ready';
+    if (lit || state === 'burning') {
+      const g = ctx.createRadialGradient(75, 70, 4, 75, 66, 44);
+      g.addColorStop(0, state === 'burning' ? 'rgba(255,90,40,0.9)' : 'rgba(255,190,90,0.95)');
+      g.addColorStop(0.6, state === 'burning' ? 'rgba(160,40,10,0.6)' : 'rgba(230,120,40,0.6)');
+      g.addColorStop(1, 'rgba(120,40,10,0.2)');
       ctx.fillStyle = g;
+      rrect(ctx, 39, 45, 72, 42, 4, g);
+      /* heating element and rack */
+      ctx.strokeStyle = state === 'burning' ? '#ff5a2a' : '#ff8a3a';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(75, 70, 30, 0, TWO_PI);
-      ctx.fill();
-      dot(ctx, 75, 76, 7, state === 'ready' ? '#ffb03a' : '#c8781e');
-    }
-    if (state === 'burning') {
-      rrect(ctx, 48, 52, 54, 30, 4, 'rgba(60,50,42,0.9)');
-      for (let i = 0; i < 3; ++i)
-        smokePuff(ctx, 58 + i * 18, 48 - i * 8 - frame * 2, 7 + (i % 2) * 3, 0.42 - i * 0.07);
-    }
-  }
-
-  function paintBoard(ctx, state, frame) {
-    rrect(ctx, 32, 62, 86, 40, 8, bodyGradient(ctx, '#c08a4a', 32, 62, 118, 102), OUTLINE, 2);
-    ctx.strokeStyle = 'rgba(90,50,20,0.4)';
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < 3; ++i) {
-      ctx.beginPath();
-      ctx.moveTo(38, 70 + i * 10);
-      ctx.lineTo(112, 70 + i * 10);
+      ctx.moveTo(44, 50);
+      for (let i = 0; i < 6; ++i) ctx.lineTo(50 + i * 11, i % 2 ? 50 : 54);
       ctx.stroke();
     }
-    if (state === 'working') {
-      const pieces = [[52, 84], [64, 90], [76, 82], [88, 88], [70, 76]];
+    line(ctx, 42, 80, 108, 80, 'rgba(200,200,200,0.5)', 1.5);
+    /* glass reflection */
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.beginPath();
+    ctx.moveTo(44, 44);
+    ctx.lineTo(62, 44);
+    ctx.lineTo(48, 88);
+    ctx.lineTo(38, 88);
+    ctx.closePath();
+    ctx.fill();
+    rrect(ctx, 26, 96, 10, 6, 2, '#2a2a30');
+    rrect(ctx, 114, 96, 10, 6, 2, '#2a2a30');
+    if (state === 'burning') {
+      for (let i = 0; i < 3; ++i)
+        smokePuff(ctx, 56 + i * 18, 34 - i * 8 - frame * 2, 9 + (i % 2) * 3, 0.45 - i * 0.07);
+    }
+  }
+
+  /* prep board: a thick wooden board, a knife and a bowl of veg */
+  function paintBoard(ctx, state, frame) {
+    contact(ctx, 75, 100, 64, 9, 0.45);
+    /* board slab in perspective */
+    ctx.beginPath();
+    ctx.moveTo(26, 66);
+    ctx.lineTo(128, 66);
+    ctx.lineTo(138, 94);
+    ctx.lineTo(14, 94);
+    ctx.closePath();
+    ctx.fillStyle = bodyGradient(ctx, '#d4a060', 14, 66, 138, 94);
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    rrect(ctx, 14, 94, 124, 7, 2, '#9a6a34', OUTLINE, 1.5);
+    ctx.strokeStyle = 'rgba(110,64,24,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; ++i) {
+      ctx.beginPath();
+      ctx.moveTo(24 - i * 1.6, 70 + i * 5);
+      ctx.quadraticCurveTo(75, 68 + i * 5 + (i % 2) * 2, 130 + i * 1.6, 70 + i * 5);
+      ctx.stroke();
+    }
+    line(ctx, 30, 68, 124, 68, 'rgba(255,240,210,0.6)', 1);
+    /* bowl of veg at the back left */
+    ell(ctx, 30, 58, 16, 5, '#e8ecf0', OUTLINE, 1.5);
+    dot(ctx, 24, 54, 5, '#e8452a', OUTLINE, 1);
+    dot(ctx, 33, 53, 5, '#6cc04a', OUTLINE, 1);
+    dot(ctx, 29, 50, 4, '#f2cf5a', OUTLINE, 1);
+    ctx.beginPath();
+    ctx.ellipse(30, 58, 16, 9, 0, 0, Math.PI);
+    ctx.fillStyle = bodyGradient(ctx, '#e8ecf0', 14, 58, 46, 67);
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    if (state !== 'idle') {
+      const pieces = [[92, 82], [102, 86], [110, 80], [98, 76], [116, 86]];
       const cols = ['#e8452a', '#6cc04a', '#f2cf5a', '#e8452a', '#6cc04a'];
       for (let i = 0; i < pieces.length; ++i) {
         ctx.save();
         ctx.translate(pieces[i][0], pieces[i][1]);
         ctx.rotate(i * 0.7);
-        rrect(ctx, -3, -3, 6, 6, 1.4, cols[i], OUTLINE, 1.2);
+        rrect(ctx, -3, -2.5, 6, 5, 1.4, cols[i], OUTLINE, 1);
         ctx.restore();
       }
     }
-    const chop = state === 'working' ? [0, -9, -2, -11][frame] : 0;
+    const chop = state === 'working' ? [0, -14, -4, -18][frame] : 0;
     ctx.save();
     ctx.translate(0, chop);
-    ctx.rotate(state === 'working' ? [0, -0.12, -0.02, -0.16][frame] : 0);
+    ctx.translate(96, 66);
+    ctx.rotate(state === 'working' ? [0, -0.18, -0.04, -0.24][frame] : -0.05);
     ctx.beginPath();
-    ctx.moveTo(62, 44);
-    ctx.lineTo(112, 38);
-    ctx.lineTo(114, 48);
-    ctx.lineTo(64, 54);
+    ctx.moveTo(-34, -6);
+    ctx.lineTo(18, -10);
+    ctx.quadraticCurveTo(28, -6, 22, 4);
+    ctx.lineTo(-34, 4);
     ctx.closePath();
-    ctx.fillStyle = bodyGradient(ctx, '#c8ccd4', 62, 38, 114, 54);
+    ctx.fillStyle = metal(ctx, -34, -10, -34, 4, '#d8dce4');
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = 1.6;
     ctx.stroke();
-    rrect(ctx, 40, 42, 24, 9, 4, '#5a3a1e', OUTLINE, 1.6);
+    line(ctx, -30, -4, 16, -7, 'rgba(255,255,255,0.8)', 1);
+    rrect(ctx, -58, -4.5, 26, 9, 4, bodyGradient(ctx, '#5a3a1e', -58, -4, -32, 4), OUTLINE, 1.6);
+    dot(ctx, -50, 0, 1.4, '#d8dce4');
+    dot(ctx, -40, 0, 1.4, '#d8dce4');
     ctx.restore();
   }
 
+  /* plating: a marble pass with a big plate under a heat lamp */
   function paintPlateStation(ctx, state, frame) {
-    rrect(ctx, 20, 74, 110, 32, 6, bodyGradient(ctx, '#e0d8c8', 20, 74, 130, 106), OUTLINE, 2);
-    rrect(ctx, 20, 68, 110, 8, 3, '#efe8da', OUTLINE, 2);
-    ell(ctx, 75, 76, 34, 12, '#f2ede2', OUTLINE, 2);
-    ell(ctx, 75, 75, 26, 8.5, shade('#f2ede2', -0.06));
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 1.6;
+    contact(ctx, 75, 102, 66, 9, 0.45);
+    /* heat lamp on a chrome stand */
+    line(ctx, 131, 72, 131, 0, '#5a5e66', 4);
+    line(ctx, 130, 72, 130, 0, '#e8ecf0', 1.4);
+    line(ctx, 131, 0, 82, 0, '#5a5e66', 4);
+    line(ctx, 131, -1, 82, -1, '#e8ecf0', 1.2);
+    line(ctx, 75, 0, 75, 6, '#2a2a30', 3);
+    ell(ctx, 131, 72, 7, 2.5, '#3a3e46');
     ctx.beginPath();
-    ctx.ellipse(75, 76, 30.5, 9.5, 0, Math.PI * 1.02, Math.PI * 1.78);
+    ctx.moveTo(62, 6);
+    ctx.lineTo(88, 6);
+    ctx.lineTo(100, 20);
+    ctx.lineTo(50, 20);
+    ctx.closePath();
+    ctx.fillStyle = metal(ctx, 50, 6, 100, 20, '#c04a2a');
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1.6;
     ctx.stroke();
-    if (state === 'working') {
-      const spots = [[48, 60], [102, 58], [60, 92], [94, 90], [75, 52]];
-      for (let i = 0; i < spots.length; ++i) {
-        if ((frame + i) % 2 === 0)
-          sparkle(ctx, spots[i][0], spots[i][1], 4 + (i % 2) * 2, '#ffd23f');
-      }
+    const on = state !== 'idle';
+    ell(ctx, 75, 20, 25, 3.5, on ? '#ffd890' : '#8a6a5a');
+    if (on) {
+      ctx.beginPath();
+      ctx.moveTo(52, 21);
+      ctx.lineTo(98, 21);
+      ctx.lineTo(124, 92);
+      ctx.lineTo(26, 92);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, 20, 0, 92);
+      g.addColorStop(0, 'rgba(255,180,90,0.35)');
+      g.addColorStop(1, 'rgba(255,160,80,0.04)');
+      ctx.fillStyle = g;
+      ctx.fill();
     }
-    if (state === 'ready') sparkle(ctx, 75, 52, 6, '#ffd23f');
+    /* marble slab */
+    ctx.beginPath();
+    ctx.moveTo(22, 70);
+    ctx.lineTo(128, 70);
+    ctx.lineTo(136, 92);
+    ctx.lineTo(14, 92);
+    ctx.closePath();
+    ctx.fillStyle = bodyGradient(ctx, '#ece6da', 14, 70, 136, 92);
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,110,100,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(30, 74);
+    ctx.quadraticCurveTo(60, 84, 90, 78);
+    ctx.quadraticCurveTo(110, 74, 126, 88);
+    ctx.stroke();
+    rrect(ctx, 14, 92, 122, 8, 2, '#a8a094', OUTLINE, 1.5);
+    /* plate */
+    ell(ctx, 75, 82, 30, 9, 'rgba(40,20,0,0.25)');
+    ell(ctx, 75, 80, 30, 9, '#fbf8f0', OUTLINE, 1.8);
+    ell(ctx, 75, 79.5, 21, 5.5, shade('#f2ede2', -0.05));
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.ellipse(75, 80, 27, 7.5, 0, Math.PI * 1.05, Math.PI * 1.75);
+    ctx.stroke();
+    /* squeeze bottles */
+    rrect(ctx, 104, 52, 9, 22, 3, '#d8302a', OUTLINE, 1.2);
+    rrect(ctx, 115, 56, 8, 18, 3, '#f2c81a', OUTLINE, 1.2);
+    line(ctx, 108.5, 52, 108.5, 46, '#d8302a', 2);
+    line(ctx, 119, 56, 119, 50, '#f2c81a', 2);
+    if (state === 'ready') sparkle(ctx, 75, 60, 7, '#ffd23f');
   }
 
   const STATION_PAINTERS = {
     grill: paintGrill, stove: paintStove, oven: paintOven, board: paintBoard, plate: paintPlateStation
   };
 
-  /* Where the small ingredient sprite sits on each station (design coords). */
+  /* Where the ingredient sits on each station (design coords) and its size. */
   const CONTENT_POS = {
-    grill: [75, 58], stove: [104, 27], oven: [75, 66], board: [75, 82], plate: null
+    grill: [75, 52, 34], stove: [50, 21, 22], oven: [75, 70, 34], board: [62, 78, 32], plate: [75, 72, 44]
   };
 
   const stationCache = {};
@@ -1016,19 +1302,173 @@
   }
 
   /* drawStation blits the cached frame with (x, y) as the top-left of the
-   * 150 x 120 box; t only picks one of four baked animation frames. */
-  function drawStation(ctx, id, x, y, state, t, contents) {
+   * 150 x 120 box; t only picks one of four baked animation frames. The
+   * contents blend from raw to cooked with progress (0..1) and char past 1;
+   * on the plating station the finished dish itself is laid out. */
+  function drawStation(ctx, id, x, y, state, t, contents, progress) {
     const st = STATION_PAINTERS[id] ? id : 'grill';
     const s = state === 'working' || state === 'ready' || state === 'burning' ? state : 'idle';
-    let f = Math.floor((t || 0) * 6) % 4;
+    let f = Math.floor((t || 0) * 8) % 4;
     if (f < 0) f += 4;
     if (s === 'idle' || s === 'ready') f = 0;
+    if (st !== 'board' && s === 'working') f = f % 2;
     ctx.drawImage(getStation(st, s, f), x - ST_PAD, y - ST_PAD, ST_W + 2 * ST_PAD, ST_H + 2 * ST_PAD);
     const pos = CONTENT_POS[st];
-    if (contents && pos) {
-      const sz = st === 'stove' ? 20 : 26;
-      ctx.drawImage(getIngredient(contents), x + pos[0] - sz / 2, y + pos[1] - sz / 2, sz, sz);
+    if (!contents || !pos) return;
+    const sz = pos[2];
+    const cx = x + pos[0] - sz / 2, cy = y + pos[1] - sz / 2;
+    const p = progress === undefined ? (s === 'idle' ? 0 : 1) : progress;
+    const base = ctx.globalAlpha === undefined ? 1 : ctx.globalAlpha;
+    if (st === 'plate') {
+      const d = getDishSprite(dishFor(contents), 'small', false);
+      ctx.globalAlpha = base * Math.max(0.25, Math.min(1, p * 1.2));
+      ctx.drawImage(d, x + pos[0] - sz / 2, y + pos[1] - sz / 2 - 4, sz, sz);
+      ctx.globalAlpha = base;
+      return;
     }
+    if (st === 'board' || p <= 0) {
+      ctx.drawImage(getIngredientState(contents, st === 'board' && p > 0.5 ? 'cooked' : 'raw'), cx, cy, sz, sz);
+      return;
+    }
+    const k = Math.min(1, p);
+    ctx.globalAlpha = base * (1 - k * k);
+    ctx.drawImage(getIngredientState(contents, 'raw'), cx, cy, sz, sz);
+    ctx.globalAlpha = base * k;
+    ctx.drawImage(getIngredientState(contents, 'cooked'), cx, cy, sz, sz);
+    if (p > 1) {
+      ctx.globalAlpha = base * Math.min(1, (p - 1) / 0.25);
+      ctx.drawImage(getIngredientState(contents, 'burnt'), cx, cy, sz, sz);
+    }
+    ctx.globalAlpha = base;
+  }
+
+  /* ── per-frame station life: cached sprites only ── */
+
+  const fxCache = {};
+
+  function fxSprite(name) {
+    const hit = fxCache[name];
+    if (hit) return hit;
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (name === 'flame') {
+      flame(ctx, 32, 62, 58, 16);
+    } else if (name === 'blue') {
+      const g = ctx.createRadialGradient(32, 40, 2, 32, 36, 30);
+      g.addColorStop(0, 'rgba(220,240,255,0.95)');
+      g.addColorStop(0.3, 'rgba(80,150,255,0.8)');
+      g.addColorStop(1, 'rgba(40,80,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(32, 6);
+      ctx.quadraticCurveTo(48, 40, 40, 58);
+      ctx.lineTo(24, 58);
+      ctx.quadraticCurveTo(16, 40, 32, 6);
+      ctx.fill();
+    } else if (name === 'smoke') {
+      smokePuff(ctx, 32, 32, 28, 0.55);
+    } else if (name === 'steam') {
+      const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+      g.addColorStop(0, 'rgba(255,255,255,0.55)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 64);
+    } else if (name === 'bubble') {
+      dot(ctx, 32, 32, 22, 'rgba(255,250,235,0.85)');
+      ctx.strokeStyle = 'rgba(160,110,40,0.6)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(32, 32, 22, 0, TWO_PI);
+      ctx.stroke();
+      dot(ctx, 25, 25, 6, '#ffffff');
+    } else {
+      const col = name === 'red' ? '#ff3a1a' : name === 'green' ? '#5aff7a' : name === 'gold' ? '#ffd23f' : '#ff9a3a';
+      glowDot(ctx, 32, 32, 32, col, 0.9);
+    }
+    fxCache[name] = canvas;
+    return canvas;
+  }
+
+  /* drawStationFx: flames licking the grill, a blue burner and bubbling pot,
+   * the oven's pulsing interior, the heat lamp's breathing cone, and a red
+   * flicker plus smoke while a step burns. (x, y) is the station box. */
+  function drawStationFx(ctx, id, x, y, state, t, progress) {
+    if (state !== 'working' && state !== 'ready' && state !== 'burning') return;
+    const base = ctx.globalAlpha === undefined ? 1 : ctx.globalAlpha;
+    const op = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    const burning = state === 'burning';
+    if (id === 'grill') {
+      const fl = fxSprite('flame');
+      for (let i = 0; i < 5; ++i) {
+        const ph = t * (7 + i) + i * 1.9;
+        const h = (burning ? 34 : 22) + Math.sin(ph) * 7 + Math.sin(ph * 2.3) * 4;
+        const fx = x + 30 + i * 22 + Math.sin(ph * 0.7) * 3;
+        ctx.globalAlpha = base * (0.55 + 0.25 * Math.sin(ph * 1.7));
+        ctx.drawImage(fl, fx - h * 0.3, y + 64 - h, h * 0.6, h);
+      }
+      ctx.globalAlpha = base * (0.35 + 0.15 * Math.sin(t * 9));
+      ctx.drawImage(fxSprite(burning ? 'red' : 'orange'), x + 15, y + 30, 120, 50);
+    } else if (id === 'stove') {
+      const bl = fxSprite('blue');
+      for (let i = 0; i < 7; ++i) {
+        const a = i / 7 * TWO_PI;
+        const fx = x + 50 + Math.cos(a) * 21, fy = y + 60 + Math.sin(a) * 5;
+        const h = 9 + Math.sin(t * 13 + i * 2) * 2.5;
+        ctx.globalAlpha = base * 0.75;
+        ctx.drawImage(bl, fx - h * 0.35, fy - h, h * 0.7, h);
+      }
+      ctx.globalCompositeOperation = op;
+      const bb = fxSprite('bubble');
+      for (let i = 0; i < 4; ++i) {
+        const ph = (t * (1.3 + i * 0.37) + i * 0.29) % 1;
+        const r = 2 + ph * 4;
+        ctx.globalAlpha = base * (1 - ph) * 0.9;
+        ctx.drawImage(bb, x + 36 + i * 9 - r, y + 21 + (i % 2) - r, r * 2, r * 2);
+      }
+      ctx.globalCompositeOperation = 'lighter';
+    } else if (id === 'oven') {
+      ctx.globalAlpha = base * (0.35 + 0.2 * Math.sin(t * 5) + 0.08 * Math.sin(t * 13));
+      ctx.drawImage(fxSprite(burning ? 'red' : 'orange'), x + 26, y + 34, 98, 64);
+    } else if (id === 'plate') {
+      ctx.globalAlpha = base * (0.18 + 0.08 * Math.sin(t * 3));
+      ctx.drawImage(fxSprite('orange'), x + 30, y + 46, 90, 46);
+      if (state === 'ready' || Math.sin(t * 5) > 0.6) {
+        const g = fxSprite('gold');
+        const sx = x + 60 + ((t * 37) % 30), sy = y + 58 + Math.sin(t * 9) * 6;
+        ctx.globalAlpha = base * 0.8;
+        ctx.drawImage(g, sx - 8, sy - 8, 16, 16);
+      }
+    }
+    if (burning) {
+      const fl = Math.sin(t * 23) > 0 ? 0.5 : 0.25;
+      ctx.globalAlpha = base * fl;
+      ctx.drawImage(fxSprite('red'), x - 10, y + 10, 170, 110);
+      ctx.globalCompositeOperation = op;
+      const sm = fxSprite('smoke');
+      for (let i = 0; i < 3; ++i) {
+        const ph = (t * 0.7 + i / 3) % 1;
+        const sz = 30 + ph * 50;
+        ctx.globalAlpha = base * Math.sin(ph * Math.PI) * 0.8;
+        ctx.drawImage(sm, x + 50 + i * 22 + Math.sin(t * 2 + i) * 8 - sz / 2, y + 30 - ph * 80 - sz / 2, sz, sz);
+      }
+    }
+    ctx.globalCompositeOperation = op;
+    ctx.globalAlpha = base;
+  }
+
+  /* a soft coloured halo (ready green, burning red) behind a station */
+  function drawHalo(ctx, cx, cy, w, h, color, alpha) {
+    const name = color === 'red' ? 'red' : color === 'gold' ? 'gold' : 'green';
+    const base = ctx.globalAlpha === undefined ? 1 : ctx.globalAlpha;
+    const op = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = base * alpha;
+    ctx.drawImage(fxSprite(name), cx - w / 2, cy - h / 2, w, h);
+    ctx.globalCompositeOperation = op;
+    ctx.globalAlpha = base;
   }
 
   /* ── order-ticket icons ── */
@@ -1115,6 +1555,6 @@
   }
 
   SZ.FoodArt = Object.freeze({
-    DISHES, getDish, drawDish, drawStation, drawStepIcon
+    DISHES, getDish, drawDish, drawStation, drawStationFx, drawHalo, drawStepIcon
   });
 })();

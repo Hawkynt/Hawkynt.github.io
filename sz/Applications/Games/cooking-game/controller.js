@@ -32,11 +32,13 @@
   const SEAT_X0 = 180, SEAT_X1 = 1100, SEAT_Y = 330;
   const PASS_MAX = 4, PASS_X0 = 300, PASS_X1 = 980, PASS_Y = 360;
   const STATION_X0 = 40, STATION_STEP = 245, STATION_Y = 520, STATION_W = 150, STATION_H = 120;
-  const BAR_Y = 652, BAR_H = 12;
+  const BAR_Y = 672, BAR_H = 12;
   const CHEF_Y = 704;
   const TRASH = { x: 1042, y: 374, r: 30 };
   const RAIL_X0 = 52, RAIL_Y = 452, RAIL_W = 120, RAIL_H = 86, RAIL_GAP = 12, RAIL_MAX = 9;
-  const BUBBLE_DY = 150;          // order bubble above a seated guest
+  const BUBBLE_DY = 158;          // order bubble above a seated guest
+  const GUEST_SCALE = 1.22;       // guests are drawn a little larger than the sprites
+  const STATION_ART = 1.25;       // the station art grows around its base
   const WALK_SPEED = 140;         // px/s on the way in and out
   const BURN_AT = 1.25;           // a step self-burns past this progress
   const EAT_TIME = 2;             // seconds a served guest enjoys the dish
@@ -57,7 +59,7 @@
   const WAITER_DELAY = 0.8;       // seconds before the waiter picks a dish up
   const WAITER_HOME = 640;        // where the waiter waits between runs
   const WAITER_Y = 430;           // the waiter walks in front of the counter
-  const BELL = { x: 1246, y: 96, r: 15 };
+  const BELL = { x: 1246, y: 150, r: 15 };
 
   /* ══════════════════════════════════════════════════════════════════
      KITCHEN UPGRADE TREE — five branches, seventeen upgrades
@@ -146,9 +148,8 @@
      VISUAL EFFECTS
      ══════════════════════════════════════════════════════════════════ */
 
-  const particles = new SZ.GameEffects.ParticleSystem();
+  const fx = SZ.KitchenFX.create();
   const screenShake = new SZ.GameEffects.ScreenShake();
-  const floatingText = new SZ.GameEffects.FloatingText();
 
   /* ── sound gate ──
      Every effect goes through sfx: the same name never fires more than
@@ -176,7 +177,7 @@
   let animT = 0;
 
   /* ── menu screen state ── */
-  let hitAreas = [], menuCursor = 0, mouseX = -1, mouseY = -1;
+  let hitAreas = [], menuCursor = 0, mouseX = -1, mouseY = -1, mouseDown = false;
   let prevScreen = STATE_TITLE, helpPage = 0, helpFrom = STATE_TITLE;
   let treeBranch = 0, treeSelected = null, treeLayout = null, treeBuyFlash = null;
   let menuFade = 0.5;
@@ -219,12 +220,35 @@
   let edgeGlow = 0;             // gold screen-edge glow seconds left
   let tension = 0;              // rush-moment vignette strength 0..1
   let dayOverT = 0;             // seconds since the day-end panel opened
+  let dayIntro = 0;             // seconds left on the 'Day 1-1' opening banner
   let starPopped = 0;           // day-end stars already popped with a coin sound
   let carpet = null;            // { x, t } VIP red-carpet shimmer at a seat
   let coach = null;             // { step, ticket, t, hideT } first-day coach marks
   let coachSkip = null;         // { x, y, w, h } the 'Skip tips' button as drawn
+  let hudBump = 0;              // the earnings number bumps as a coin lands
+  let trashWobble = 0;          // the bin rocks after a toss
+  let hitFlash = null;          // { t, color } a short full-screen flash on a burn
+  let chefFacing = 1;           // the chef looks toward the station he works at
+  const stationPress = [0, 0, 0, 0, 0];   // a clicked station squashes for a beat
+
+  /* paint the step verdicts and combo banners into the headline cache once,
+     so the first PERFECT! of a session costs no more than the hundredth */
+  let headlinesWarm = false;
+  function prewarmHeadlines() {
+    if (headlinesWarm) return;
+    headlinesWarm = true;
+    ctx.save();
+    ctx.globalAlpha = 0;
+    const verdicts = [['PERFECT!', '#ffd23f', 22], ['Oops!', '#f55', 20], ['Oops!', '#f55', 18], ['Good', '#cfd6e4', 14]];
+    for (const v of verdicts)
+      ui.drawHeadline(v[0], 0, 0, 400, Math.round(v[2] * 1.25), v[1], v[1] === '#ffd23f' ? '#ff7a1a' : undefined);
+    for (const n of [3, 6, 10])
+      ui.drawHeadline('COMBO ×' + n + '!', 0, 0, 640, 64, '#ffd23f', '#ff5a1a');
+    ctx.restore();
+  }
 
   function startDay(dayMode, index) {
+    prewarmHeadlines();
     mode = dayMode && typeof dayMode === 'object' ? mode : dayMode;
     const dayObj = dayMode && typeof dayMode === 'object'
       ? dayMode
@@ -278,6 +302,7 @@
     edgeGlow = 0;
     tension = 0;
     dayOverT = 0;
+    dayIntro = 2.2;
     starPopped = 0;
     carpet = null;
     coach = mode === 'career' && index === 0 && !save.coached ? { step: 1, ticket: null, t: 0, hideT: 0 } : null;
@@ -285,12 +310,15 @@
     fade = 1;
     dailyDate = dateKey(new Date());
     rand = mode === 'daily' ? SZ.KitchenData.rng(SZ.KitchenData.dailySeed(new Date())) : Math.random;
-    chefX = VIEW_W / 2;
-    chefTargetX = VIEW_W / 2;
+    chefX = chefSpotX(1);
+    chefTargetX = chefX;
+    chefFacing = -1;
     chefPose = 'idle';
     chefTimer = 0;
-    particles.clear();
-    floatingText.clear();
+    hudBump = 0;
+    trashWobble = 0;
+    hitFlash = null;
+    fx.clear();
     state = STATE_PLAYING;
     sfx('select');
     updateWindowTitle();
@@ -308,6 +336,9 @@
   function stationX(i) { return STATION_X0 + i * STATION_STEP; }
 
   function stationCX(id) { return stationX(SZ.KitchenData.STATION_ORDER.indexOf(id)) + STATION_W / 2; }
+
+  /* the chef works from the gap right of a station, so he never hides a gauge */
+  function chefSpotX(i) { return stationX(i) + STATION_W + (STATION_STEP - STATION_W) / 2; }
 
   function passCapacity() { return PASS_MAX + 2 * treeLevel('p_pass'); }
 
@@ -384,7 +415,8 @@
     ++spawned;
     sfx('blip', { pitch: 1.3, volume: 0.25 });
     if (type.id === 'vip') {
-      particles.sparkle(seatX(seat), SEAT_Y - 60, 14, { color: '#ffd23f', speed: 3 });
+      fx.emit('star', seatX(seat), SEAT_Y - 90, 14, { color: '#ffd23f', speed: 180 });
+      fx.emit('glow', seatX(seat), SEAT_Y - 90, 1, { color: '#ffd23f', size: 160 });
       pushRing(seatX(seat), SEAT_Y - 40, 10, '#ffd23f');
       carpet = { x: seatX(seat), t: 1.2 };
     }
@@ -415,10 +447,23 @@
       if (c.hop > 0) c.hop -= dt;
       if (c.state === 'walkIn') {
         c.x += WALK_SPEED * dt;
-        if (c.x >= seatX(c.seat)) { c.x = seatX(c.seat); c.state = 'waiting'; }
+        if (c.x >= seatX(c.seat)) { c.x = seatX(c.seat); c.state = 'waiting'; c.bubbleT = animT; sfx('blip', { pitch: 1.8, volume: 0.2 }); }
       } else if (c.state === 'waiting') {
         c.patience -= dt;
         c.mood = moodFor(c);
+        /* impatient guests sweat, angry ones fume */
+        c.emoteT = (c.emoteT || 0) - dt;
+        if (c.emoteT <= 0 && (c.mood === 'impatient' || c.mood === 'angry')) {
+          const top = SEAT_Y - 95 * GUEST_SCALE;
+          if (c.mood === 'angry') {
+            c.emoteT = 0.35;
+            fx.emit('steam', c.x + (Math.random() < 0.5 ? -22 : 22), top + 8, 2, { color: '#ffffff', speed: 30, scale: 0.8, alpha: 0.8 });
+            if (Math.random() < 0.3) fx.emit('smoke', c.x, top, 1, { color: '#e04040', speed: 20, scale: 0.6, alpha: 0.4 });
+          } else {
+            c.emoteT = 1.1;
+            fx.emit('drop', c.x + 20, top + 12, 1, { color: '#6ab8f0', speed: 40, angle: -Math.PI / 3, spread: 0.6 });
+          }
+        }
         if (c.patience <= 0) {
           c.state = 'leaving';
           c.mood = 'angry';
@@ -426,9 +471,10 @@
           combo = 0;
           ++walkouts;
           cancelTicket(c);
-          floatingText.add(c.x, SEAT_Y - 140, 'Too slow!', { color: '#f66', size: 18 });
+          fx.text(c.x, SEAT_Y - 150, 'Too slow!', { color: '#ff6a5a', size: 24 });
           /* the anger puff: a short red cloud over the empty seat */
-          particles.burst(c.x, SEAT_Y - 90, 10, { color: '#e04545', speed: 1.6, size: 7, life: 0.7, decay: 0.025, friction: 0.96 });
+          fx.emit('smoke', c.x, SEAT_Y - 100, 7, { color: '#d04040', speed: 70 });
+          fx.emit('steam', c.x, SEAT_Y - 110, 4, { color: '#ffffff', speed: 40 });
           pushRing(c.x, SEAT_Y - 90, 8, '#e04545');
           sfx('hurt', { volume: 0.6 });
         }
@@ -438,7 +484,8 @@
         c.crumbT -= dt;
         if (c.crumbT <= 0) {
           c.crumbT = 0.35;
-          particles.burst(c.x + 14, SEAT_Y - 96, 2, { color: '#b08050', speed: 0.8, size: 2, life: 0.5, gravity: 0.08 });
+          fx.emit('crumb', c.x + 8, SEAT_Y - 40, 2, { colors: ['#c8904a', '#e8c070', '#8a5a2a'], speed: 60, angle: -Math.PI / 2, spread: 2.4 });
+          if (Math.random() < 0.3) fx.emit('heart', c.x + (Math.random() - 0.5) * 30, SEAT_Y - 90, 1, { color: '#ff5a7a', speed: 30, size: 16 });
         }
         if (c.eatTimer <= 0) {
           c.state = 'leaving';
@@ -462,7 +509,8 @@
   function takeOrder(c) {
     if (c.state !== 'waiting' || c.ticket) return;
     const recipe = SZ.KitchenData.recipeById(c.order);
-    const ticket = { id: ++ticketSeq, recipe, customer: c, stepIndex: 0, results: [], waitingFor: recipe.steps[0].station, done: false };
+    const ticket = { id: ++ticketSeq, recipe, customer: c, stepIndex: 0, results: [], waitingFor: recipe.steps[0].station, done: false, born: animT };
+    fx.emit('star', c.x, SEAT_Y - BUBBLE_DY, 6, { color: '#ffffff', speed: 120 });
     c.ticket = ticket;
     tickets.push(ticket);
     sfx('select');
@@ -602,24 +650,29 @@
     }
     const cx = stationCX(stationId);
     if (forced) {
-      floatingText.add(cx, STATION_Y - 10, 'Saved!', { color: '#ffd23f', size: 16 });
-      particles.sparkle(cx, STATION_Y + 40, 8, { color: '#ffd23f', speed: 50, life: 0.6 });
+      fx.text(cx, STATION_Y - 10, 'Saved!', { color: '#ffd23f', size: 22 });
+      fx.emit('star', cx, STATION_Y + 50, 10, { color: '#ffd23f', speed: 160 });
       sfx('powerup', { volume: 0.5 });
     } else if (quality === 'perfect') {
       pushPop(cx, STATION_Y - 16, 'PERFECT!', '#ffd23f', 22);
-      particles.sparkle(cx, STATION_Y + 40, 10, { color: '#ffd23f', speed: 50, life: 0.6 });
+      fx.emit('glow', cx, STATION_Y + 50, 1, { color: '#ffb030', size: 150, alpha: 0.6 });
+      fx.emit('star', cx, STATION_Y + 50, 12, { color: '#ffd23f', speed: 220 });
+      fx.emit('spark', cx, STATION_Y + 50, 10, { color: '#fff0a0', speed: 260, gravity: 200 });
       sfx('pickup', { pitch: 1 + combo * 0.08 });
-      if (!auto) { chefTargetX = cx; chefPose = 'cheer'; chefTimer = 0.5; }
+      if (!auto) { chefTargetX = chefSpotX(SZ.KitchenData.STATION_ORDER.indexOf(stationId)); chefPose = 'cheer'; chefTimer = 0.5; }
     } else if (quality === 'burnt') {
       pushPop(cx, STATION_Y - 16, 'Oops!', '#f55', 20);
-      particles.burst(cx, STATION_Y + 40, 12, { color: '#555', speed: 60, life: 0.5 });
-      screenShake.trigger(5, 250);
+      fx.emit('smoke', cx, STATION_Y + 40, 10, { color: '#3a3430', speed: 90 });
+      fx.emit('spark', cx, STATION_Y + 50, 14, { color: '#ff5a1a', speed: 240 });
+      fx.emit('glow', cx, STATION_Y + 50, 1, { color: '#ff3a1a', size: 220 });
+      screenShake.trigger(9, 320);
+      hitFlash = { t: 0.25, color: '255,60,30' };
       sfx('smallExplode');
       sfx('error', { volume: 0.5 });
     } else if (quality === 'raw') {
       pushPop(cx, STATION_Y - 16, 'Oops!', '#f55', 18);
-      particles.burst(cx, STATION_Y + 40, 8, { color: '#666', speed: 40, life: 0.5 });
-      screenShake.trigger(4, 200);
+      fx.emit('smoke', cx, STATION_Y + 40, 6, { color: '#8a8478', speed: 60 });
+      screenShake.trigger(5, 220);
       sfx('error', { volume: 0.5 });
     } else {
       pushPop(cx, STATION_Y - 12, 'Good', '#cfd6e4', 14);
@@ -688,7 +741,7 @@
       if (s.chopF !== cf) {
         s.chopF = cf;
         if (cf === 0 || cf === 2) {
-          particles.burst(px, STATION_Y + 86, 2, { color: '#c08a4a', speed: 1.4, size: 2, life: 0.4, gravity: 0.1 });
+          fx.emit('chip', px - 13, STATION_Y + 76, 3, { colors: ['#e8452a', '#6cc04a', '#f2cf5a', '#f4f0e0'], speed: 180, angle: -Math.PI / 2, spread: 2.2 });
           sfx('thud', { pitch: 1.8, volume: 0.12 });
         }
       }
@@ -696,23 +749,29 @@
     s.fxT -= dt;
     if (s.fxT > 0) return;
     if (s.state === 'burning') {
-      s.fxT = 0.3;
-      particles.burst(px, STATION_Y + 34, 2, { color: '#8a8a92', speed: 0.8, size: 5, life: 0.8, decay: 0.02, vy: -1.3, friction: 0.97 });
+      s.fxT = 0.18;
+      fx.emit('smoke', px + (Math.random() - 0.5) * 40, STATION_Y + 40, 1, { color: '#3e3834', speed: 25, scale: 1.4 });
+      if (Math.random() < 0.5) fx.emit('spark', px, STATION_Y + 50, 2, { color: '#ff5a1a', speed: 140 });
     } else if (id === 'grill') {
-      s.fxT = 0.15;
-      particles.burst(px, STATION_Y + 62, 2, { color: '#ff8a2a', speed: 1.6, size: 2, life: 0.4, gravity: -0.02, vy: -1.2 });
+      s.fxT = 0.09;
+      fx.emit('ember', px + (Math.random() - 0.5) * 90, STATION_Y + 52, 1, { color: '#ffb03a', speed: 30 });
+      if (Math.random() < 0.25) fx.emit('smoke', px + (Math.random() - 0.5) * 50, STATION_Y + 40, 1, { color: '#9a9088', alpha: 0.35, speed: 10 });
     } else if (id === 'stove') {
-      s.fxT = 0.25;
-      particles.burst(px + 29, STATION_Y + 26, 1, { color: '#e8eef4', speed: 0.5, size: 4, life: 0.9, decay: 0.018, vy: -1.1, friction: 0.98 });
+      s.fxT = 0.22;
+      fx.emit('steam', px - 25 + (Math.random() - 0.5) * 20, STATION_Y + 14, 1, { color: '#f4f6f8', speed: 12 });
+    } else if (id === 'oven') {
+      s.fxT = 0.5;
+      fx.emit('steam', px + (Math.random() - 0.5) * 50, STATION_Y + 2, 1, { color: '#f4f0e8', speed: 8, alpha: 0.35 });
     } else {
-      s.fxT = 0.4;
+      s.fxT = 0.35;
+      if (s.state === 'ready' || Math.random() < 0.4) fx.emit('star', px + (Math.random() - 0.5) * 60, STATION_Y + 70, 1, { color: '#ffd23f', speed: 30, gravity: -20 });
     }
   }
 
   function clickStation(i) {
     const id = SZ.KitchenData.STATION_ORDER[i];
-    const cx = stationCX(id);
-    chefTargetX = cx;
+    chefTargetX = chefSpotX(i);
+    stationPress[i] = 0.18;
     chefPose = id === 'board' ? 'chop' : (id === 'stove' || id === 'grill') ? 'flip' : chefPose;
     chefTimer = 0.9;
     let slot = null;
@@ -728,8 +787,11 @@
   /* ── the chef walks to the station last touched ── */
   function updateChef(dt) {
     const d = chefTargetX - chefX;
-    if (Math.abs(d) > 4)
-      chefX += Math.sign(d) * Math.min(Math.abs(d), 320 * dt);
+    if (Math.abs(d) > 4) {
+      chefX += Math.sign(d) * Math.min(Math.abs(d), 420 * dt);
+      chefFacing = Math.sign(d);
+      if (Math.random() < dt * 6) fx.emit('steam', chefX - chefFacing * 14, CHEF_Y - 2, 1, { color: '#e8dccc', speed: 8, scale: 0.45, alpha: 0.3 });
+    } else chefFacing = -1;
     if (chefTimer > 0) {
       chefTimer -= dt;
       if (chefTimer <= 0) chefPose = 'idle';
@@ -755,7 +817,7 @@
       const dish = pass[i];
       const target = serveTarget(dish);
       if (!target) {
-        floatingText.add(px, PASS_Y - 46, 'No one waiting', { color: '#faa', size: 14 });
+        fx.text(px, PASS_Y - 50, 'No one waiting', { color: '#ffb0a0', size: 16 });
         sfx('error', { volume: 0.5 });
         return true;
       }
@@ -771,12 +833,14 @@
     if (Math.hypot(mx - TRASH.x, my - TRASH.y) > TRASH.r + 8) return false;
     const i = pass.findIndex(d => d.quality === 'ruined');
     if (i < 0) {
-      floatingText.add(TRASH.x, TRASH.y - 40, 'Nothing to trash', { color: '#999', size: 12 });
+      fx.text(TRASH.x, TRASH.y - 46, 'Nothing to trash', { color: '#e0d0c0', size: 15 });
       sfx('click');
       return true;
     }
     pass.splice(i, 1);
-    particles.burst(TRASH.x, TRASH.y - 12, 8, { color: '#666', speed: 40, life: 0.4 });
+    trashWobble = 0.5;
+    fx.emit('smoke', TRASH.x, TRASH.y - 18, 5, { color: '#6a6460', speed: 50 });
+    fx.emit('crumb', TRASH.x, TRASH.y - 18, 8, { colors: ['#3a2a20', '#5a4a3a'], speed: 120, angle: -Math.PI / 2, spread: 1.6 });
     sfx('drop', { pitch: 0.5 });
     return true;
   }
@@ -787,8 +851,9 @@
       combo = 0;
       ++ruinedServed;
       c.mood = 'angry';
-      floatingText.add(c.x, SEAT_Y - 130, 'Ruined!', { color: '#f55', size: 16 });
-      particles.burst(c.x, SEAT_Y - 90, 8, { color: '#666', speed: 1.2, size: 5, life: 0.6 });
+      fx.text(c.x, SEAT_Y - 140, 'Ruined!', { color: '#ff5a4a', size: 24 });
+      fx.emit('smoke', c.x, SEAT_Y - 90, 8, { color: '#4a4440', speed: 60 });
+      screenShake.trigger(6, 240);
       sfx('hurt', { volume: 0.5 });
     } else {
       let tip = SZ.KitchenData.tipFor(recipe, f.quality, c.patience / c.patienceMax, c.type, comboMult());
@@ -803,17 +868,19 @@
         combo += treeLevel('c_combo') > 0 ? 2 : 1;
       }
       if (combo > bestCombo) bestCombo = combo;
-      floatingText.add(c.x, SEAT_Y - 130, '+$' + tip, { color: '#ffd23f', size: 20 });
+      fx.text(c.x, SEAT_Y - 150, '+$' + tip, { color: '#ffe060', size: 30, rise: 60, life: 1.3 });
       const nCoins = spawnTipCoins(c.x, tip);
-      particles.confetti(c.x, SEAT_Y - 40, 10);
+      fx.emit('coin', c.x, SEAT_Y - 90, Math.min(8, 2 + Math.floor(tip / 15)), { speed: 260, angle: -Math.PI / 2, spread: 1.6 });
+      fx.emit('confetti', c.x, SEAT_Y - 80, f.quality === 'perfect' ? 22 : 10, { speed: 320, angle: -Math.PI / 2, spread: 1.8 });
+      fx.emit('glow', c.x, SEAT_Y - 70, 1, { color: '#ffe080', size: 150 });
       /* the tip coin rides the size of the shower: more coins, higher chirp */
       sfx('coin', { pitch: 1 + (nCoins - 3) * 0.12, volume: 0.6 });
       c.hop = 0.4;
       if (f.quality === 'perfect') {
         chefPose = 'cheer';
         chefTimer = 0.9;
-        for (let i = 0; i < 3; ++i)
-          floatingText.add(c.x + (i - 1) * 16, SEAT_Y - 122, '♥', { color: '#ff6a8a', font: 'bold ' + (16 + i * 3) + 'px sans-serif' });
+        fx.emit('heart', c.x, SEAT_Y - 100, 5, { color: '#ff5a7a', speed: 90 });
+        fx.emit('star', c.x, SEAT_Y - 90, 8, { color: '#ffd23f', speed: 200 });
       }
       if (c.type.id === 'critic')
         c.rating = f.quality === 'perfect' ? 5 : f.quality === 'good' ? 3 : 1;
@@ -850,9 +917,11 @@
   function celebrateGoals(before, after) {
     while (goalsHit < 3 && dayInfo.goals[goalsHit] > 0 && after >= dayInfo.goals[goalsHit] && before < dayInfo.goals[goalsHit]) {
       const gx = HUD_PX + 16 + Math.min(1, dayInfo.goals[goalsHit] / Math.max(1, dayInfo.goals[2])) * (HUD_PW - 32);
-      particles.sparkle(gx, HUD_PY + 74, 12, { color: '#ffd23f', speed: 3 });
+      fx.emit('star', gx, HUD_PY + 74, 14, { color: '#ffd23f', speed: 220 });
+      fx.emit('glow', gx, HUD_PY + 74, 1, { color: '#ffd23f', size: 180 });
       pushRing(gx, HUD_PY + 74, 6, '#ffd23f');
-      floatingText.add(VIEW_W / 2, 150, '★ Goal reached!', { color: '#ffd23f', size: 26 });
+      fx.text(VIEW_W / 2, 170, '★ Goal reached! ★', { color: '#ffd23f', size: 34, life: 1.6, rise: 40 });
+      fx.emit('confetti', VIEW_W / 2, 170, 30, { speed: 420, angle: -Math.PI / 2, spread: 2.2 });
       sfx('levelup', { volume: 0.6 });
       ++goalsHit;
     }
@@ -862,6 +931,9 @@
   function comboFanfare(n) {
     comboBanner = { n: n, t: 0 };
     edgeGlow = 1;
+    screenShake.trigger(4, 260);
+    fx.emit('confetti', VIEW_W / 2, 150, 40, { speed: 520, angle: -Math.PI / 2, spread: 2.6 });
+    fx.emit('flame', VIEW_W / 2, 170, 16, { color: '#ff7a1a', speed: 220 });
     pushRing(VIEW_W / 2, 130, 20, '#ffb060');
     sfx('powerup', { volume: 0.7 });
   }
@@ -873,11 +945,11 @@
     if (alt) { serveTo(f, alt); return; }
     if (pass.length < passCapacity()) {
       pass.push({ recipe: f.recipe, quality: f.quality, ticket: f.ticket });
-      floatingText.add(f.customer.x, SEAT_Y - 130, 'Gone!', { color: '#faa', size: 14 });
+      fx.text(f.customer.x, SEAT_Y - 140, 'Gone!', { color: '#ffb0a0', size: 18 });
       sfx('error', { volume: 0.4 });
       return;
     }
-    particles.burst(f.customer.x, SEAT_Y - 60, 8, { color: '#666', speed: 40, life: 0.4 });
+    fx.emit('smoke', f.customer.x, SEAT_Y - 60, 6, { color: '#6a6460', speed: 50 });
   }
 
   function updateFlying(dt) {
@@ -893,8 +965,8 @@
       const k = f.t / FLY_TIME;
       f.x = f.x0 + (f.customer.x - f.x0) * k;
       f.y = f.y0 + (SEAT_Y - 60 - f.y0) * k - Math.sin(k * Math.PI) * 90;
-      if (f.quality === 'perfect')
-        particles.trail(f.x, f.y, { color: '#ffd23f', size: 2.5, life: 0.4 });
+      fx.emit('glow', f.x, f.y, 1, { color: f.quality === 'perfect' ? '#ffd23f' : '#fff4d8', size: f.quality === 'perfect' ? 46 : 30, speed: 0, life: 0.3, alpha: 0.7 });
+      if (f.quality === 'perfect') fx.emit('spark', f.x, f.y, 1, { color: '#ffe080', speed: 30, gravity: 0, life: 0.4 });
     }
   }
 
@@ -905,6 +977,8 @@
       if (c.t >= COIN_TIME) {
         coins.splice(i, 1);
         meterTick = 0.25;
+        hudBump = 0.3;
+        fx.emit('spark', COIN_TX, COIN_TY, 3, { color: '#ffd23f', speed: 140 });
       }
     }
   }
@@ -926,17 +1000,26 @@
       if (d.bounce > 0) d.bounce -= dt;
     for (let i = pops.length - 1; i >= 0; --i) {
       pops[i].t += dt;
-      if (pops[i].t > 0.45) pops.splice(i, 1);
+      if (pops[i].t > 0.7) pops.splice(i, 1);
+    }
+    if (hudBump > 0) hudBump = Math.max(0, hudBump - dt);
+    if (trashWobble > 0) trashWobble = Math.max(0, trashWobble - dt);
+    for (let i = 0; i < stationPress.length; ++i)
+      if (stationPress[i] > 0) stationPress[i] = Math.max(0, stationPress[i] - dt);
+    if (hitFlash) {
+      hitFlash.t -= dt;
+      if (hitFlash.t <= 0) hitFlash = null;
     }
     for (let i = rings.length - 1; i >= 0; --i) {
       rings[i].t += dt;
       if (rings[i].t > 0.5) rings.splice(i, 1);
     }
     if (meterTick > 0) meterTick = Math.max(0, meterTick - dt);
+    if (dayIntro > 0 && state === STATE_PLAYING) dayIntro = Math.max(0, dayIntro - dt);
     if (edgeGlow > 0) edgeGlow = Math.max(0, edgeGlow - dt);
     if (comboBanner) {
       comboBanner.t += dt;
-      if (comboBanner.t > 1.1) comboBanner = null;
+      if (comboBanner.t > 1.5) comboBanner = null;
     }
     if (carpet) {
       carpet.t -= dt;
@@ -997,13 +1080,14 @@
   function activateRush() {
     if (state !== STATE_PLAYING || treeLevel('p_rush') <= 0) return;
     if (rushUsed) {
-      floatingText.add(BELL.x, BELL.y - 26, 'Already used', { color: '#faa', size: 12 });
+      fx.text(BELL.x - 30, BELL.y - 30, 'Already used', { color: '#ffb0a0', size: 14 });
       sfx('error', { volume: 0.4 });
       return;
     }
     rushUsed = true;
     rushTimer = RUSH_TIME;
-    floatingText.add(VIEW_W / 2, 200, 'RUSH HOUR!', { color: '#ffd23f', size: 30 });
+    fx.text(VIEW_W / 2, 210, 'RUSH HOUR!', { color: '#ffd23f', size: 44, life: 1.6 });
+    fx.emit('confetti', VIEW_W / 2, 210, 30, { speed: 420, angle: -Math.PI / 2, spread: 2.4 });
     sfx('zap');
   }
 
@@ -1224,6 +1308,16 @@
     return { tabs: tabs, cards: cards, branch: branch };
   }
 
+  /* a bought upgrade bursts with coins, stars and confetti */
+  function celebrateBuy(card) {
+    const cx = card.x + card.w / 2, cy = card.y + card.h / 2;
+    fx.emit('coin', cx, cy, 10, { speed: 360, angle: -Math.PI / 2, spread: 2.4 });
+    fx.emit('star', cx, cy, 14, { color: '#ffd23f', speed: 260 });
+    fx.emit('confetti', cx, cy, 24, { speed: 420, angle: -Math.PI / 2, spread: 2.2 });
+    fx.emit('glow', cx, cy, 1, { color: '#ffd890', size: 360 });
+    fx.text(cx, card.y - 6, 'Installed!', { color: '#9af07a', size: 26 });
+  }
+
   function treeCardById(id) {
     if (!treeLayout) return null;
     return treeLayout.cards.find(c => c.node.id === id) || null;
@@ -1315,31 +1409,28 @@
     return hovered || menuCursor === index;
   }
 
+  /* A candy button: glossy face over a 3D lip; the hot one grows, bobs and
+     glows. opts: color ('orange' | 'green' | 'red' | 'blue' | 'gold' | 'wood'),
+     sub, px, disabled, action */
   function drawButton(id, label, x, y, w, h, opts) {
     opts = opts || {};
     const index = registerHit(id, x, y, w, h, opts.action, opts.disabled);
-    const hot = isHot(index, x, y, w, h);
+    const hot = isHot(index, x, y, w, h) && !opts.disabled;
+    const pressed = hot && mouseDown;
+    const s = hot ? 1.05 + Math.sin(animT * 6) * 0.012 : 1;
+    const bob = opts.bob !== undefined ? Math.sin(animT * 2.2 + opts.bob * 0.9) * 1.5 : 0;
     ctx.save();
-    if (opts.disabled)
-      ctx.globalAlpha *= 0.55;
+    ctx.translate(x + w / 2, y + h / 2 + bob);
+    ctx.scale(s, s);
+    ctx.translate(-(x + w / 2), -(y + h / 2));
     if (hot) {
-      ctx.translate(x + w / 2, y + h / 2);
-      ctx.scale(1.03, 1.03);
-      ctx.translate(-(x + w / 2), -(y + h / 2));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.35;
+      ui.drawGlow(x + w / 2, y + h / 2, Math.max(w, h) * 1.25, '#ffc860');
+      ctx.restore();
     }
-    ui.drawPanel(x, y, w, h, {
-      radius: 10,
-      noStuds: true,
-      accent: hot ? ui.UI.gold : (opts.accent || ui.UI.accent),
-      glow: hot,
-      top: hot ? 'rgba(56,42,22,0.96)' : undefined,
-      bottom: hot ? 'rgba(26,18,10,0.96)' : undefined
-    });
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ui.fitText(label, x + w / 2, opts.sub ? y + h / 2 - 8 : y + h / 2 + 1, w - 24, opts.px || 20, { weight: 'bold', color: hot ? '#ffffff' : ui.UI.text });
-    if (opts.sub)
-      ui.fitText(opts.sub, x + w / 2, y + h - 11, w - 24, 11, { color: ui.UI.textDim });
+    ui.drawButtonFace(x, y, w, h, label, { color: opts.color || 'orange', hot: hot, pressed: pressed, disabled: opts.disabled, sub: opts.sub, px: opts.px });
     ctx.restore();
   }
 
@@ -1360,16 +1451,33 @@
   }
 
   function drawLock(cx, cy, size) {
-    ctx.save();
-    ctx.strokeStyle = '#c8d0e0';
-    ctx.lineWidth = size * 0.16;
-    ctx.beginPath();
-    ctx.arc(cx, cy - size * 0.12, size * 0.3, Math.PI, 0);
-    ctx.stroke();
-    ctx.fillStyle = '#c8d0e0';
-    ui.roundRectPath(cx - size * 0.4, cy - size * 0.12, size * 0.8, size * 0.6, size * 0.1);
-    ctx.fill();
-    ctx.restore();
+    const s = Math.round(size);
+    const img = cachedSprite('lock|' + s, s, s * 1.1, (c) => {
+      c.strokeStyle = '#4a3010';
+      c.lineWidth = s * 0.2;
+      c.beginPath();
+      c.arc(s / 2, s * 0.42, s * 0.28, Math.PI, 0);
+      c.stroke();
+      c.strokeStyle = '#d8dce4';
+      c.lineWidth = s * 0.12;
+      c.stroke();
+      const g = c.createLinearGradient(0, s * 0.4, 0, s);
+      g.addColorStop(0, '#fff0b0');
+      g.addColorStop(0.5, '#e0b048');
+      g.addColorStop(1, '#8a5a14');
+      c.fillStyle = g;
+      rrPath(c, s * 0.12, s * 0.42, s * 0.76, s * 0.58, s * 0.1);
+      c.fill();
+      c.strokeStyle = '#4a3010';
+      c.lineWidth = Math.max(1, s * 0.04);
+      c.stroke();
+      c.fillStyle = '#3a2008';
+      c.beginPath();
+      c.arc(s / 2, s * 0.66, s * 0.08, 0, Math.PI * 2);
+      c.fill();
+      c.fillRect(s / 2 - s * 0.03, s * 0.66, s * 0.06, s * 0.16);
+    });
+    ctx.drawImage(img, cx - s / 2, cy - s * 0.6, s, s * 1.1);
   }
 
   function romanNumeral(n) {
@@ -1416,8 +1524,19 @@
   function drawMenuBackdrop(theme, alpha) {
     const v = visibleRect();
     menuScene(theme).draw(ctx, animT, v);
+    menuScene(theme).drawFront(ctx);
     ctx.fillStyle = 'rgba(8,6,4,' + alpha + ')';
     ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    /* the kitchen line sinks into shadow so the menu owns the screen */
+    const fadeImg = cachedSprite('menufade', 4, 128, (c) => {
+      const g = c.createLinearGradient(0, 0, 0, 128);
+      g.addColorStop(0, 'rgba(10,5,2,0)');
+      g.addColorStop(0.6, 'rgba(10,5,2,0.75)');
+      g.addColorStop(1, 'rgba(10,5,2,0.92)');
+      c.fillStyle = g;
+      c.fillRect(0, 0, 4, 128);
+    });
+    ctx.drawImage(fadeImg, v.x0, 520, v.x1 - v.x0, Math.max(200, v.y1 - 520));
   }
 
   /* Small marker on a career day button: glasses for a critic day, a bolt for
@@ -1497,6 +1616,7 @@
     const p = pointerToView(e);
     mouseX = p.x;
     mouseY = p.y;
+    mouseDown = true;
 
     if (state === STATE_UPGRADES) {
       if (!treeLayout) treeLayout = buildTreeLayout();
@@ -1511,8 +1631,10 @@
       for (const card of treeLayout.cards) {
         if (mouseX >= card.x && mouseX <= card.x + card.w && mouseY >= card.y && mouseY <= card.y + card.h) {
           treeSelected = card.node.id;
-          if (buyNode(card.node.id))
+          if (buyNode(card.node.id)) {
             treeBuyFlash = { id: card.node.id, at: animT };
+            celebrateBuy(card);
+          }
           return;
         }
       }
@@ -1543,7 +1665,10 @@
   canvas.addEventListener('pointerleave', () => {
     mouseX = -1;
     mouseY = -1;
+    mouseDown = false;
   });
+
+  canvas.addEventListener('pointerup', () => { mouseDown = false; });
 
   /* ══════════════════════════════════════════════════════════════════
      KEYBOARD HANDLING
@@ -1594,8 +1719,11 @@
       } else if (e.key === 'ArrowDown') {
         moveTreeSelection(0, 1);
       } else if (e.key === 'Enter' || e.key === ' ') {
-        if (treeSelected && buyNode(treeSelected))
+        if (treeSelected && buyNode(treeSelected)) {
           treeBuyFlash = { id: treeSelected, at: animT };
+          const card = treeCardById(treeSelected);
+          if (card) celebrateBuy(card);
+        }
       } else if (e.key === 'h' || e.key === 'H') {
         openHelp();
       }
@@ -1663,62 +1791,222 @@
      DRAWING — the kitchen, guests, stations and HUD
      ══════════════════════════════════════════════════════════════════ */
 
+  /* ── small cached sprites for the play screen (painted once at 2x) ── */
+  const spriteCache = {};
+
+  function cachedSprite(key, w, h, paint) {
+    let s = spriteCache[key];
+    if (s) return s;
+    s = document.createElement('canvas');
+    s.width = Math.ceil(w * 2);
+    s.height = Math.ceil(h * 2);
+    const c = s.getContext('2d');
+    c.scale(2, 2);
+    paint(c, w, h);
+    spriteCache[key] = s;
+    return s;
+  }
+
+  function rrPath(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  /* the white speech bubble over a seated guest: 96 x 100, tail at the bottom */
+  function bubbleSprite() {
+    return cachedSprite('bubble', 96, 104, (c) => {
+      c.fillStyle = 'rgba(40,20,0,0.28)';
+      c.beginPath();
+      c.arc(49, 52, 40, 0, Math.PI * 2);
+      c.fill();
+      const g = c.createLinearGradient(0, 8, 0, 92);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(1, '#f2e8d4');
+      c.beginPath();
+      c.arc(48, 48, 40, 1.84, 1.23 + Math.PI * 2);
+      c.lineTo(49, 102);
+      c.closePath();
+      c.fillStyle = g;
+      c.fill();
+      c.strokeStyle = '#5a3a1e';
+      c.lineWidth = 2.5;
+      c.lineJoin = 'round';
+      c.stroke();
+      c.fillStyle = 'rgba(255,255,255,0.9)';
+      c.beginPath();
+      c.ellipse(32, 22, 12, 6, -0.6, 0, Math.PI * 2);
+      c.fill();
+    });
+  }
+
+  function checkSprite() {
+    return cachedSprite('check', 26, 26, (c) => {
+      const g = c.createLinearGradient(0, 2, 0, 24);
+      g.addColorStop(0, '#9af07a');
+      g.addColorStop(1, '#2e9a2a');
+      c.fillStyle = 'rgba(0,40,0,0.35)';
+      c.beginPath();
+      c.arc(13.5, 14.5, 11, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = g;
+      c.beginPath();
+      c.arc(13, 13, 11, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = '#1a5a14';
+      c.lineWidth = 1.5;
+      c.stroke();
+      c.strokeStyle = '#ffffff';
+      c.lineWidth = 3;
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      c.beginPath();
+      c.moveTo(8, 13.5);
+      c.lineTo(12, 17.5);
+      c.lineTo(18.5, 9);
+      c.stroke();
+    });
+  }
+
+  function shadowSprite() {
+    return cachedSprite('shadow', 64, 20, (c) => {
+      c.save();
+      c.translate(32, 10);
+      c.scale(1, 0.3);
+      const g = c.createRadialGradient(0, 0, 0, 0, 0, 32);
+      g.addColorStop(0, 'rgba(20,8,0,0.55)');
+      g.addColorStop(1, 'rgba(20,8,0,0)');
+      c.fillStyle = g;
+      c.fillRect(-32, -32, 64, 64);
+      c.restore();
+    });
+  }
+
+  function trashSprite() {
+    return cachedSprite('trash', 64, 72, (c) => {
+      const body = c.createLinearGradient(12, 0, 52, 0);
+      body.addColorStop(0, '#5a626a');
+      body.addColorStop(0.3, '#d8dee4');
+      body.addColorStop(0.6, '#9aa2aa');
+      body.addColorStop(1, '#4a525a');
+      c.fillStyle = 'rgba(20,8,0,0.35)';
+      c.beginPath();
+      c.ellipse(32, 66, 26, 5, 0, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = body;
+      c.beginPath();
+      c.moveTo(13, 24);
+      c.lineTo(51, 24);
+      c.lineTo(47, 66);
+      c.lineTo(17, 66);
+      c.closePath();
+      c.fill();
+      c.strokeStyle = '#2a3036';
+      c.lineWidth = 1.5;
+      c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,0.25)';
+      for (let i = 0; i < 4; ++i) {
+        c.beginPath();
+        c.moveTo(21 + i * 7.5, 30);
+        c.lineTo(22 + i * 6.8, 60);
+        c.stroke();
+      }
+      const lid = c.createLinearGradient(0, 14, 0, 26);
+      lid.addColorStop(0, '#f2f4f6');
+      lid.addColorStop(1, '#6a727a');
+      c.fillStyle = lid;
+      c.beginPath();
+      c.ellipse(32, 22, 22, 6, 0, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+      c.fillStyle = '#3a4046';
+      rrPath(c, 26, 11, 12, 6, 3);
+      c.fill();
+      c.fillStyle = '#e8463a';
+      c.beginPath();
+      c.arc(32, 46, 7, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = '#ffffff';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(28.5, 42.5);
+      c.lineTo(35.5, 49.5);
+      c.moveTo(35.5, 42.5);
+      c.lineTo(28.5, 49.5);
+      c.stroke();
+    });
+  }
+
+  function patienceColor(f) {
+    return f > 0.5 ? '#5ad04a' : f > 0.25 ? '#f2b822' : '#ff4a3a';
+  }
+
   function drawOrderBubble(c) {
-    const bx = c.x, by = SEAT_Y - BUBBLE_DY;
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.94)';
-    ctx.beginPath();
-    ctx.arc(bx, by, 34, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(bx - 7, by + 29);
-    ctx.lineTo(bx + 7, by + 29);
-    ctx.lineTo(bx, by + 44);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(bx, by, 34, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-    SZ.FoodArt.drawDish(ctx, c.order, bx, by, 40, 1, 'good');
-    /* patience ring: green -> yellow -> red */
     const f = Math.max(0, c.patience / c.patienceMax);
-    ctx.strokeStyle = f > 0.5 ? '#4caf50' : f > 0.25 ? '#e6b422' : '#e04545';
-    ctx.lineWidth = 4;
+    /* the bubble bobs gently; an untaken order bounces to invite a click,
+       an impatient one trembles */
+    const shake = f < 0.25 ? Math.sin(animT * 40 + c.seat) * 2 : 0;
+    const bob = c.ticket ? Math.sin(animT * 2 + c.seat) * 1.5 : -Math.abs(Math.sin(animT * 5 + c.seat)) * 5;
+    const pop = c.bubbleT !== undefined ? Math.min(1, (animT - c.bubbleT) / 0.25) : 1;
+    const s = pop < 1 ? 0.3 + 0.7 * (1 - Math.pow(1 - pop, 3)) + Math.sin(pop * Math.PI) * 0.15 : 1;
+    const bx = c.x + shake, by = SEAT_Y - BUBBLE_DY + bob;
+    ctx.save();
+    ctx.translate(bx, by + 50);
+    ctx.scale(s, s);
+    ctx.translate(-bx, -(by + 50));
+    ctx.drawImage(bubbleSprite(), bx - 48, by - 48, 96, 104);
+    /* patience ring: dark track, coloured arc, a pulse when it runs low */
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(60,40,20,0.18)';
+    ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.arc(bx, by, 30, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2);
+    ctx.arc(bx, by, 34, 0, Math.PI * 2);
     ctx.stroke();
-    if (c.ticket) {
-      ctx.fillStyle = '#4caf50';
-      ctx.beginPath();
-      ctx.arc(bx - 26, by - 26, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(bx - 29, by - 26);
-      ctx.lineTo(bx - 26, by - 23);
-      ctx.lineTo(bx - 22, by - 29);
-      ctx.stroke();
-    }
-    SZ.PeopleArt.drawMood(ctx, bx + 54, by - 4, c.mood, 26);
+    ctx.strokeStyle = patienceColor(f);
+    ctx.lineWidth = f < 0.25 ? 6 + Math.sin(animT * 14) * 1.5 : 6;
+    ctx.beginPath();
+    ctx.arc(bx, by, 34, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    SZ.FoodArt.drawDish(ctx, c.order, bx, by + 2, 64, 1, 'good');
+    if (c.ticket) ctx.drawImage(checkSprite(), bx + 18, by - 44, 26, 26);
+    ctx.restore();
+    SZ.PeopleArt.drawMood(ctx, bx + 58, by - 18 + Math.sin(animT * 3 + c.seat) * 2, c.mood, 30);
+  }
+
+  function customerPose(c) {
+    return c.state === 'walkIn' ? 'walk'
+      : c.state === 'waiting' ? (c.mood === 'angry' ? 'angry' : c.mood === 'impatient' ? 'fret' : 'sit')
+      : c.state === 'eating' ? 'eat'
+      : (c.mood === 'angry' ? 'angry' : 'happy');
   }
 
   function drawCustomers() {
     const sorted = customers.slice().sort((a, b) => a.x - b.x);
     for (const c of sorted) {
-      const pose = c.state === 'walkIn' ? 'walk'
-        : c.state === 'waiting' ? 'sit'
-        : c.state === 'eating' ? 'eat'
-        : (c.mood === 'angry' ? 'angry' : 'happy');
       /* a little hop when the dish arrives */
-      const hopY = c.hop > 0 ? -Math.sin((1 - c.hop / 0.4) * Math.PI) * 12 : 0;
-      SZ.PeopleArt.drawCustomer(ctx, c.look, c.x, SEAT_Y + hopY, pose, animT, 1);
+      const hopY = c.hop > 0 ? -Math.sin((1 - c.hop / 0.4) * Math.PI) * 16 : 0;
+      ctx.save();
+      ctx.translate(c.x, SEAT_Y + hopY);
+      ctx.scale(GUEST_SCALE, GUEST_SCALE);
+      SZ.PeopleArt.drawCustomer(ctx, c.look, 0, 0, customerPose(c), animT + c.seat * 0.37, 1);
+      ctx.restore();
+    }
+  }
+
+  /* bubbles, moods and cards sit above the counter layer */
+  function drawCustomerOverlays() {
+    for (const c of customers) {
       if (c.state === 'waiting') drawOrderBubble(c);
-      else if (c.state === 'leaving') {
-        SZ.PeopleArt.drawMood(ctx, c.x + 44, SEAT_Y - 130, c.mood === 'angry' ? 'angry' : 'love', 26);
+      else if (c.state === 'eating') {
+        SZ.FoodArt.drawDish(ctx, c.order, c.x - 4, SEAT_Y + 4, 54, 1, 'good');
+      } else if (c.state === 'leaving') {
+        SZ.PeopleArt.drawMood(ctx, c.x + 44, SEAT_Y - 128 - c.leaveT * 10, c.mood === 'angry' ? 'angry' : 'love', 30);
         if (c.wave > 0) drawWave(c);
         if (c.rating > 0 && c.leaveT < 1.8) drawRatingCard(c);
       }
@@ -1728,12 +2016,12 @@
   /* a small hand waving goodbye beside the head */
   function drawWave(c) {
     ctx.save();
-    ctx.translate(c.x + 36, SEAT_Y - 116);
+    ctx.translate(c.x + 36, SEAT_Y - 92);
     ctx.rotate(Math.sin(animT * 12) * 0.5);
     ctx.fillStyle = c.look.skin;
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 1.2;
-    ui.roundRectPath(-4, -11, 8, 15, 4);
+    ctx.strokeStyle = '#3a2418';
+    ctx.lineWidth = 1.5;
+    ui.roundRectPath(-5, -13, 10, 17, 5);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -1741,144 +2029,160 @@
 
   /* the critic holds up the score card for a moment before vanishing */
   function drawRatingCard(c) {
-    const rx = c.x, ry = SEAT_Y - 176;
+    const rx = c.x, ry = SEAT_Y - 186;
     ctx.save();
     if (c.leaveT > 1.4) ctx.globalAlpha = (1.8 - c.leaveT) / 0.4;
-    ui.drawPanel(rx - 46, ry - 16, 92, 32, { radius: 8, noStuds: true, accent: '#c04cff' });
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = ui.uiFont(15, 'bold');
-    for (let i = 0; i < 5; ++i) {
-      ctx.fillStyle = i < c.rating ? '#ffd23f' : 'rgba(255,255,255,0.2)';
-      ctx.fillText('★', rx - 32 + i * 16, ry);
-    }
+    const k = Math.min(1, c.leaveT / 0.2);
+    ctx.translate(rx, ry);
+    ctx.scale(0.5 + 0.5 * k, 0.5 + 0.5 * k);
+    ui.drawPanel(-62, -20, 124, 40, { style: 'paper', radius: 6, accent: '#c04cff' });
+    for (let i = 0; i < 5; ++i)
+      ui.drawStar(-44 + i * 22, 2, 20, i < c.rating);
     ctx.restore();
   }
 
   function drawTrash() {
+    const hot = mouseX >= TRASH.x - 30 && mouseX <= TRASH.x + 30 && mouseY >= TRASH.y - 36 && mouseY <= TRASH.y + 30;
+    const wob = trashWobble > 0 ? Math.sin(trashWobble * 40) * trashWobble * 0.3 : 0;
     ctx.save();
-    ctx.fillStyle = '#3a3f46';
-    ui.roundRectPath(TRASH.x - 22, TRASH.y - 16, 44, 38, 5);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = '#4a5058';
-    ui.roundRectPath(TRASH.x - 26, TRASH.y - 25, 52, 9, 4);
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-    ctx.lineWidth = 2;
-    for (let i = -1; i <= 1; ++i) {
-      ctx.beginPath();
-      ctx.moveTo(TRASH.x + i * 9, TRASH.y - 6);
-      ctx.lineTo(TRASH.x + i * 9, TRASH.y + 14);
-      ctx.stroke();
-    }
+    ctx.translate(TRASH.x, TRASH.y + 22);
+    ctx.rotate(wob);
+    if (hot && pass.some(d => d.quality === 'ruined')) SZ.FoodArt.drawHalo(ctx, 0, -26, 110, 90, 'red', 0.5);
+    ctx.drawImage(trashSprite(), -28, -63, 56, 63);
     ctx.restore();
   }
 
   function drawPass() {
+    const sh = shadowSprite();
     for (let i = 0; i < pass.length; ++i) {
       const d = pass[i];
       const px = passX(i);
+      const hot = Math.abs(mouseX - px) <= 40 && Math.abs(mouseY - PASS_Y) <= 40;
+      ctx.drawImage(sh, px - 44, PASS_Y + 14, 88, 24);
+      if (hot) SZ.FoodArt.drawHalo(ctx, px, PASS_Y, 130, 110, d.quality === 'ruined' ? 'red' : 'gold', 0.55);
       /* squash-pop as an arced dish settles on the pass */
-      const bounce = d.bounce > 0 ? 1 + 0.18 * Math.sin((d.bounce / 0.3) * Math.PI) : 1;
-      if (bounce !== 1) {
-        ctx.save();
-        ctx.translate(px, PASS_Y + 14);
-        ctx.scale(2 - bounce, bounce);
-        ctx.translate(-px, -(PASS_Y + 14));
-      }
-      SZ.FoodArt.drawDish(ctx, d.recipe, px, PASS_Y, 64, 1, d.quality);
-      if (bounce !== 1) ctx.restore();
+      const bounce = d.bounce > 0 ? 1 + 0.22 * Math.sin((d.bounce / 0.3) * Math.PI) : 1;
+      const lift = hot ? -4 : 0;
+      ctx.save();
+      ctx.translate(px, PASS_Y + 24 + lift);
+      ctx.scale(2 - bounce, bounce);
+      ctx.translate(-px, -(PASS_Y + 24));
+      SZ.FoodArt.drawDish(ctx, d.recipe, px, PASS_Y, 88, 1, d.quality);
+      ctx.restore();
+      /* a serveable dish sparkles now and then */
+      if (d.quality !== 'ruined' && serveTarget(d) && Math.sin(animT * 3 + i * 2) > 0.97)
+        fx.emit('star', px + (Math.random() - 0.5) * 50, PASS_Y - 10, 1, { color: '#fff6c0', speed: 20, gravity: -10 });
     }
     drawTrash();
   }
 
-  /* One progress bar for one slot: green perfect zone, red burn field, marker. */
+  /* The progress gauge on the station's instrument plate: dark track, the
+     cooked part filling amber, a glowing green zone, a hazard-red burn field
+     and a bright needle. */
   function drawSlotBar(x, w, slot) {
     const t = slot.ticket;
     const step = t && !t.done ? t.recipe.steps[t.stepIndex] : null;
     if (!step) return;
     const burn = burnAt();
     const scale = w / burn;
-    ui.roundRectPath(x, BAR_Y, w, BAR_H, BAR_H / 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    const zone = zoneFor(step);
+    const y = BAR_Y, h = BAR_H;
+    ui.roundRectPath(x, y, w, h, h / 2);
+    ctx.fillStyle = '#0a0604';
     ctx.fill();
     ctx.save();
-    ui.roundRectPath(x, BAR_Y, w, BAR_H, BAR_H / 2);
+    ui.roundRectPath(x, y, w, h, h / 2);
     ctx.clip();
-    const zone = zoneFor(step);
-    ctx.fillStyle = 'rgba(70,200,90,0.55)';
-    ctx.fillRect(x + zone[0] * scale, BAR_Y, (zone[1] - zone[0]) * scale, BAR_H);
-    ctx.fillStyle = 'rgba(220,60,50,0.5)';
-    ctx.fillRect(x + scale, BAR_Y, (burn - 1) * scale, BAR_H);
-    ctx.restore();
     const nx = x + Math.min(slot.progress, burn) * scale;
-    /* the needle glows while the perfect zone is live */
-    if (slot.state === 'ready') {
-      ctx.fillStyle = 'rgba(125,255,138,' + (0.3 + 0.2 * Math.sin(animT * 6)).toFixed(3) + ')';
-      ctx.fillRect(nx - 6, BAR_Y - 6, 12, BAR_H + 12);
+    ctx.fillStyle = slot.state === 'burning' ? '#a8401a' : '#c88a2a';
+    ctx.fillRect(x, y, nx - x, h);
+    ctx.fillStyle = 'rgba(255,230,160,0.35)';
+    ctx.fillRect(x, y + 2, nx - x, 3);
+    const live = slot.state === 'ready';
+    const zg = live ? 0.75 + 0.25 * Math.sin(animT * 12) : 0.6;
+    ctx.fillStyle = 'rgba(80,230,100,' + zg.toFixed(3) + ')';
+    ctx.fillRect(x + zone[0] * scale, y, (zone[1] - zone[0]) * scale, h);
+    ctx.fillStyle = 'rgba(220,255,220,0.5)';
+    ctx.fillRect(x + zone[0] * scale, y + 2, (zone[1] - zone[0]) * scale, 3);
+    ctx.fillStyle = '#c8281e';
+    ctx.fillRect(x + scale, y, (burn - 1) * scale, h);
+    ctx.fillStyle = 'rgba(30,0,0,0.45)';
+    for (let sx = x + scale - h; sx < x + w; sx += 8) {
+      ctx.beginPath();
+      ctx.moveTo(sx, y + h);
+      ctx.lineTo(sx + 4, y + h);
+      ctx.lineTo(sx + 4 + h, y);
+      ctx.lineTo(sx + h, y);
+      ctx.closePath();
+      ctx.fill();
     }
-    ctx.fillStyle = slot.state === 'burning' ? '#ff6a4a' : slot.state === 'ready' ? '#7dff8a' : '#fff';
-    ctx.fillRect(nx - 2, BAR_Y - 3, 4, BAR_H + 6);
+    ctx.restore();
+    ui.roundRectPath(x, y, w, h, h / 2);
+    ctx.strokeStyle = 'rgba(255,220,150,0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (live) SZ.FoodArt.drawHalo(ctx, nx, y + h / 2, 60, 44, 'green', 0.8);
+    else if (slot.state === 'burning') SZ.FoodArt.drawHalo(ctx, nx, y + h / 2, 60, 44, 'red', 0.7);
+    ctx.fillStyle = '#2a1408';
+    ui.roundRectPath(nx - 3.5, y - 5, 7, h + 10, 3);
+    ctx.fill();
+    ctx.fillStyle = slot.state === 'burning' ? '#ff7a5a' : live ? '#b8ffb0' : '#ffffff';
+    ui.roundRectPath(nx - 2, y - 4, 4, h + 8, 2);
+    ctx.fill();
   }
 
-  /* The station's key number; it pulses green while a step sits in its
-     perfect zone. */
+  function drawIdleTrack(x, w) {
+    ui.roundRectPath(x, BAR_Y, w, BAR_H, BAR_H / 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,150,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  /* The station's key number; it bounces and glows green while a step
+     sits in its perfect zone. */
   function drawStationKey(i, x, ready) {
-    const kx = x + 2, ky = BAR_Y + BAR_H + 4;
+    const kx = x + 4, ky = BAR_Y - 22;
     if (!ready) {
       ui.drawKeycap(String(i + 1), kx, ky, 12);
       return;
     }
-    const pulse = 0.5 + 0.5 * Math.sin(animT * 9);
-    const s = 1 + 0.22 * pulse;
+    const pulse = 0.5 + 0.5 * Math.sin(animT * 12);
+    const s = 1 + 0.25 * pulse;
+    SZ.FoodArt.drawHalo(ctx, kx + 9, ky + 9, 56, 56, 'green', 0.6 + 0.4 * pulse);
     ctx.save();
-    ctx.translate(kx + 8, ky + 8.5);
+    ctx.translate(kx + 9, ky + 9);
     ctx.scale(s, s);
-    ctx.translate(-(kx + 8), -(ky + 8.5));
-    ctx.shadowColor = 'rgba(125,255,138,0.95)';
-    ctx.shadowBlur = 8 + 8 * pulse;
-    ui.roundRectPath(kx - 1, ky - 1, 18, 19, 4);
-    ctx.fillStyle = 'rgba(60,170,80,' + (0.55 + 0.35 * pulse).toFixed(3) + ')';
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.translate(-(kx + 9), -(ky + 9));
     ui.drawKeycap(String(i + 1), kx, ky, 12);
-    ui.roundRectPath(kx, ky, 16, 17, 3);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#7dff8a';
-    ctx.stroke();
     ctx.restore();
   }
 
-  /* a red '!' speech bubble bobbing over a station that started to burn */
+  /* a red '!' bubble bobbing over a station that started to burn */
   function drawBurnBubble(cx, y) {
-    const by = y + Math.sin(animT * 8) * 2;
-    const r = 13 + (Math.sin(animT * 10) > 0 ? 1.5 : 0);
+    const by = y + Math.sin(animT * 8) * 3;
+    const r = 15 + (Math.sin(animT * 10) > 0 ? 2 : 0);
+    SZ.FoodArt.drawHalo(ctx, cx, by, 90, 90, 'red', 0.8);
     ctx.save();
-    ctx.shadowColor = 'rgba(255,60,40,0.8)';
-    ctx.shadowBlur = 10;
     ctx.fillStyle = '#e03a2e';
     ctx.beginPath();
     ctx.arc(cx, by, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(cx - 5, by + r - 3);
-    ctx.lineTo(cx + 5, by + r - 3);
-    ctx.lineTo(cx, by + r + 7);
+    ctx.moveTo(cx - 6, by + r - 3);
+    ctx.lineTo(cx + 6, by + r - 3);
+    ctx.lineTo(cx, by + r + 9);
     ctx.closePath();
     ctx.fill();
-    ctx.shadowBlur = 0;
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.arc(cx, by, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = ui.uiFont(18, 'bold');
+    ctx.font = ui.uiFont(22, '900');
     ctx.fillStyle = '#fff';
     ctx.fillText('!', cx, by + 1);
     ctx.restore();
@@ -1890,7 +2194,7 @@
     for (let i = 0; i < SZ.KitchenData.STATION_ORDER.length; ++i) {
       const id = SZ.KitchenData.STATION_ORDER[i];
       if (stations[id].slots.some(s => s.ticket && !s.ticket.done && s.state === 'burning'))
-        drawBurnBubble(stationCX(id), RAIL_Y + RAIL_H + 16);
+        drawBurnBubble(stationCX(id), RAIL_Y + RAIL_H + 14);
     }
   }
 
@@ -1901,7 +2205,8 @@
     drawStationKey(i, x, ready);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ui.fitText(step ? step.label : SZ.KitchenData.STATIONS[id].name, x + 26, BAR_Y + BAR_H + 12, STATION_W - 30, 11, { color: 'rgba(255,255,255,0.75)' });
+    ui.fitText(step ? step.label : SZ.KitchenData.STATIONS[id].name, x + 28, BAR_Y - 13, STATION_W - 30, 13,
+      { weight: 'bold', color: step ? '#ffe6b0' : 'rgba(255,230,190,0.55)' });
     drawSlotBar(x, STATION_W, slot);
   }
 
@@ -1909,70 +2214,80 @@
     return slot.ticket ? (slot.ticket.done ? 'ready' : slot.state) : 'idle';
   }
 
+  function slotProgress(slot) {
+    return slot.ticket ? (slot.ticket.done ? 1 : slot.progress) : 0;
+  }
+
+  /* station art, halos and per-frame life (bars come later, above the chef) */
   function drawStations() {
     for (let i = 0; i < SZ.KitchenData.STATION_ORDER.length; ++i) {
       const id = SZ.KitchenData.STATION_ORDER[i];
       const slots = stations[id].slots;
       const x = stationX(i);
-      let anyReady = false, anyBurning = false, anyWorking = false;
+      let anyReady = false, anyBurning = false;
       for (const s of slots) {
         if (!s.ticket || s.ticket.done) continue;
         if (s.state === 'ready') anyReady = true;
         else if (s.state === 'burning') anyBurning = true;
-        else anyWorking = true;
       }
+      const hot = mouseX >= x && mouseX <= x + STATION_W && mouseY >= STATION_Y && mouseY <= STATION_Y + STATION_H &&
+        slots.some(s => s.ticket && !s.ticket.done);
+      if (anyReady) SZ.FoodArt.drawHalo(ctx, x + STATION_W / 2, STATION_Y + 70, 260, 170, 'green', 0.55 + 0.3 * Math.sin(animT * 9));
+      if (anyBurning) SZ.FoodArt.drawHalo(ctx, x + STATION_W / 2, STATION_Y + 70, 260, 170, 'red', 0.45 + 0.35 * (Math.sin(animT * 14) > 0 ? 1 : 0));
+      if (hot) SZ.FoodArt.drawHalo(ctx, x + STATION_W / 2, STATION_Y + 70, 230, 150, 'gold', 0.35);
       /* a burning station sizzles: its art jitters a pixel or two */
       const jx = anyBurning ? Math.sin(animT * 47 + i * 2.1) * 1.5 : 0;
       const jy = anyBurning ? Math.cos(animT * 39 + i * 1.7) * 1.2 : 0;
+      /* a station that just took a click squashes down for a beat */
+      const press = stationPress[i] > 0 ? Math.sin(stationPress[i] / 0.18 * Math.PI) * 0.05 : 0;
+      ctx.save();
+      ctx.translate(x + STATION_W / 2 + jx, STATION_Y + 100 + jy);
+      ctx.scale((1 + press) * STATION_ART, (1 - press) * STATION_ART);
+      ctx.translate(-(x + STATION_W / 2), -(STATION_Y + 100));
       if (slots.length === 1) {
-        ctx.save();
-        ctx.translate(jx, jy);
-        SZ.FoodArt.drawStation(ctx, id, x, STATION_Y, stationArtState(slots[0]), animT, slots[0].ticket ? slots[0].ticket.recipe.id : null);
-        ctx.restore();
-        drawStationBar(i, id, slots[0], anyReady);
+        const st = stationArtState(slots[0]);
+        SZ.FoodArt.drawStation(ctx, id, x, STATION_Y, st, animT, slots[0].ticket ? slots[0].ticket.recipe.id : null, slotProgress(slots[0]));
+        SZ.FoodArt.drawStationFx(ctx, id, x, STATION_Y, st, animT + i, slotProgress(slots[0]));
       } else {
-        /* Upgraded station: the art twice side by side at 70% scale, one bar
-           per slot under it. */
+        /* Upgraded station: the art twice side by side at 70% scale */
         for (let j = 0; j < slots.length; ++j) {
           const slot = slots[j];
+          const st = stationArtState(slot);
           ctx.save();
-          ctx.translate(x + 8 + j * 120 + jx, STATION_Y + 24 + jy);
+          ctx.translate(x - 4 + j * 82, STATION_Y + 36);
           ctx.scale(0.7, 0.7);
-          SZ.FoodArt.drawStation(ctx, id, 0, 0, stationArtState(slot), animT, slot.ticket ? slot.ticket.recipe.id : null);
+          SZ.FoodArt.drawStation(ctx, id, 0, 0, st, animT + j * 0.3, slot.ticket ? slot.ticket.recipe.id : null, slotProgress(slot));
+          SZ.FoodArt.drawStationFx(ctx, id, 0, 0, st, animT + i + j, slotProgress(slot));
           ctx.restore();
-          drawSlotBar(x + 4 + j * 75, (STATION_W - 8) / 2, slot);
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  /* keys, step labels and gauges on the instrument plates */
+  function drawStationBars() {
+    for (let i = 0; i < SZ.KitchenData.STATION_ORDER.length; ++i) {
+      const id = SZ.KitchenData.STATION_ORDER[i];
+      const slots = stations[id].slots;
+      const x = stationX(i);
+      const anyReady = slots.some(s => s.ticket && !s.ticket.done && s.state === 'ready');
+      if (slots.length === 1) {
+        if (!slots[0].ticket || slots[0].ticket.done) drawIdleTrack(x, STATION_W);
+        drawStationBar(i, id, slots[0], anyReady);
+      }
+      else {
+        for (let j = 0; j < slots.length; ++j) {
+          if (!slots[j].ticket || slots[j].ticket.done) drawIdleTrack(x + j * 77, (STATION_W - 4) / 2);
+          drawSlotBar(x + j * 77, (STATION_W - 4) / 2, slots[j]);
         }
         drawStationKey(i, x, anyReady);
-        const step0 = slots[0].ticket && !slots[0].ticket.done ? slots[0].ticket.recipe.steps[slots[0].ticket.stepIndex] : null;
+        const run = slots.find(s => s.ticket && !s.ticket.done);
+        const step0 = run ? run.ticket.recipe.steps[run.ticket.stepIndex] : null;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ui.fitText(step0 ? step0.label : SZ.KitchenData.STATIONS[id].name, x + 26, BAR_Y + BAR_H + 12, STATION_W - 30, 11, { color: 'rgba(255,255,255,0.75)' });
-      }
-      /* the oven door breathes warm light while it bakes */
-      if (id === 'oven' && anyWorking) {
-        const a = (0.10 + 0.09 * Math.sin(animT * 5)).toFixed(3);
-        ctx.fillStyle = 'rgba(255,170,58,' + a + ')';
-        if (slots.length === 1) ctx.fillRect(x + 48, STATION_Y + 52, 54, 30);
-        else for (let j = 0; j < slots.length; ++j)
-          ctx.fillRect(x + 8 + j * 120 + 34, STATION_Y + 24 + 36, 38, 21);
-      }
-      /* ready: a bright green outline glows around the station */
-      if (anyReady) {
-        ctx.save();
-        ctx.shadowColor = 'rgba(125,255,138,0.9)';
-        ctx.shadowBlur = 14;
-        ctx.strokeStyle = 'rgba(125,255,138,' + (0.75 + 0.25 * Math.sin(animT * 9)).toFixed(3) + ')';
-        ctx.lineWidth = 4;
-        ui.roundRectPath(x - 4, STATION_Y - 4, STATION_W + 8, STATION_H + 8, 10);
-        ctx.stroke();
-        ctx.restore();
-      }
-      /* burning: the frame blinks a red warning */
-      if (anyBurning) {
-        ctx.strokeStyle = 'rgba(255,70,50,' + (Math.sin(animT * 10) > 0 ? 0.55 : 0.15) + ')';
-        ctx.lineWidth = 3;
-        ui.roundRectPath(x - 4, STATION_Y - 4, STATION_W + 8, STATION_H + 8, 10);
-        ctx.stroke();
+        ui.fitText(step0 ? step0.label : SZ.KitchenData.STATIONS[id].name, x + 28, BAR_Y - 13, STATION_W - 30, 13,
+          { weight: 'bold', color: step0 ? '#ffe6b0' : 'rgba(255,230,190,0.55)' });
       }
     }
   }
@@ -1982,7 +2297,13 @@
       const k = Math.min(1, f.t / FLY_TIME);
       const x = f.x !== undefined ? f.x : f.x0 + (f.customer.x - f.x0) * k;
       const y = f.y !== undefined ? f.y : f.y0 + (SEAT_Y - 60 - f.y0) * k - Math.sin(k * Math.PI) * 90;
-      SZ.FoodArt.drawDish(ctx, f.recipe, x, y, 44, 1, f.quality);
+      const s = 1 + Math.sin(k * Math.PI) * 0.25;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(k * Math.PI * 2) * 0.25);
+      ctx.scale(s, s);
+      SZ.FoodArt.drawDish(ctx, f.recipe, 0, 0, 60, 1, f.quality);
+      ctx.restore();
     }
   }
 
@@ -1991,8 +2312,14 @@
     for (const a of arcs) {
       const k = Math.min(1, a.t / ARC_TIME);
       const x = a.x0 + (a.x1 - a.x0) * k;
-      const y = a.y0 + (a.y1 - a.y0) * k - Math.sin(k * Math.PI) * 70;
-      SZ.FoodArt.drawDish(ctx, a.recipe, x, y, 40, 1, a.quality);
+      const y = a.y0 + (a.y1 - a.y0) * k - Math.sin(k * Math.PI) * 110;
+      const s = 0.8 + Math.sin(k * Math.PI) * 0.35;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((1 - k) * Math.PI * 2 * (a.x1 > a.x0 ? 1 : -1) * 0.5);
+      ctx.scale(s, s);
+      SZ.FoodArt.drawDish(ctx, a.recipe, 0, 0, 64, 1, a.quality);
+      ctx.restore();
     }
   }
 
@@ -2000,20 +2327,14 @@
     for (const c of coins) {
       if (c.t < 0) continue;
       const k = Math.min(1, c.t / COIN_TIME);
-      const u = 1 - k;
-      const x = u * u * c.x0 + 2 * u * k * c.cx + k * k * COIN_TX;
-      const y = u * u * c.y0 + 2 * u * k * c.cy + k * k * COIN_TY;
-      ctx.fillStyle = '#ffd23f';
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(120,80,0,0.6)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.beginPath();
-      ctx.arc(x - 1.6, y - 1.6, 1.6, 0, Math.PI * 2);
-      ctx.fill();
+      const e = k * k * (3 - 2 * k);
+      const u = 1 - e;
+      const x = u * u * c.x0 + 2 * u * e * c.cx + e * e * COIN_TX;
+      const y = u * u * c.y0 + 2 * u * e * c.cy + e * e * COIN_TY;
+      const sz = 26 - 6 * k + Math.sin(k * Math.PI) * 10;
+      const img = fx.coinFrame(Math.floor(c.t * 20 + c.x0));
+      if (img) ctx.drawImage(img, x - sz / 2, y - sz / 2, sz, sz);
+      if (Math.random() < 0.5) fx.emit('spark', x, y, 1, { color: '#ffd23f', speed: 20, gravity: 0, life: 0.3, size: 12 });
     }
   }
 
@@ -2021,236 +2342,252 @@
   function drawRings() {
     for (const r of rings) {
       const k = r.t / 0.5;
+      const e = 1 - Math.pow(1 - k, 3);
       ctx.save();
-      ctx.globalAlpha = (1 - k) * 0.8;
+      ctx.globalAlpha = (1 - k) * 0.9;
       ctx.strokeStyle = r.color;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 6 * (1 - k) + 1;
       ctx.beginPath();
-      ctx.arc(r.x, r.y, r.r + k * 34, 0, Math.PI * 2);
+      ctx.arc(r.x, r.y, r.r + e * 50, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
   }
 
-  /* step-finish text: pops in at 1.4x and settles to 1x while it rises */
+  /* step-finish words: chunky headline popping in, then rising and fading */
   function drawPops() {
     for (const p of pops) {
-      const k = p.t / 0.45;
-      const s = k < 0.3 ? 1.4 - 0.4 * (k / 0.3) : 1;
+      const k = p.t / 0.7;
+      const s = k < 0.15 ? 0.3 + 1.2 * (k / 0.15) : k < 0.3 ? 1.5 - 0.5 * ((k - 0.15) / 0.15) : 1;
       ctx.save();
-      ctx.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-      ctx.translate(p.x, p.y - k * 26);
+      ctx.globalAlpha = k > 0.7 ? Math.max(0, (1 - k) / 0.3) : 1;
+      ctx.translate(p.x, p.y - Math.max(0, k - 0.3) * 40);
+      ctx.rotate(Math.sin(k * 8) * 0.04);
       ctx.scale(s, s);
-      ctx.font = ui.uiFont(p.size, 'bold');
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.strokeText(p.text, 0, 0);
-      ctx.fillStyle = p.color;
-      ctx.fillText(p.text, 0, 0);
+      ui.drawHeadline(p.text, 0, 0, 400, Math.round(p.size * 1.25), p.color, p.color === '#ffd23f' ? '#ff7a1a' : undefined);
       ctx.restore();
     }
   }
 
-  /* the short red carpet a VIP walks in on, with a travelling shimmer */
+  /* a VIP walks in under a golden spotlight */
   function drawCarpet() {
     if (!carpet) return;
     const k = carpet.t / 1.2;
     ctx.save();
-    ctx.globalAlpha = Math.min(1, k * 1.5) * 0.5;
-    ctx.fillStyle = '#a02040';
-    ui.roundRectPath(carpet.x - 46, SEAT_Y - 2, 92, 14, 4);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(carpet.x - 46 + (1 - k) * 78, SEAT_Y - 2, 14, 14);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, k * 2) * 0.8;
+    ui.drawGlow(carpet.x, SEAT_Y - 60, 260, '#ffd890', 12);
     ctx.restore();
   }
 
-  /* a small two-tone flame for the combo chip */
+  /* a flickering flame sprite for combo chips and banners */
   function drawFlame(x, y, s) {
-    s *= 1 + 0.12 * Math.sin(animT * 10 + x);
+    const img = fx.sprite('flame', '#ff7a1a');
+    if (!img) return;
+    const k = 1 + 0.18 * Math.sin(animT * 14 + x) + 0.08 * Math.sin(animT * 31 + x * 2);
     ctx.save();
-    ctx.fillStyle = '#ff7a3a';
-    ctx.beginPath();
-    ctx.moveTo(x, y - s);
-    ctx.quadraticCurveTo(x + s * 0.8, y - s * 0.2, x + s * 0.5, y + s * 0.6);
-    ctx.quadraticCurveTo(x, y + s * 0.2, x - s * 0.5, y + s * 0.6);
-    ctx.quadraticCurveTo(x - s * 0.8, y - s * 0.2, x, y - s);
-    ctx.fill();
-    ctx.fillStyle = '#ffd23f';
-    ctx.beginPath();
-    ctx.moveTo(x, y - s * 0.4);
-    ctx.quadraticCurveTo(x + s * 0.4, y, x + s * 0.2, y + s * 0.5);
-    ctx.quadraticCurveTo(x, y + s * 0.2, x - s * 0.2, y + s * 0.5);
-    ctx.quadraticCurveTo(x - s * 0.4, y, x, y - s * 0.4);
-    ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(img, x - s * 1.4 * k / 2, y - s * 2.2 * k + s * 0.6, s * 1.4 * k, s * 2.2 * k);
     ctx.restore();
   }
 
   function drawRushBell() {
     const spent = rushUsed && rushTimer <= 0;
+    const ring = rushTimer > 0 ? Math.sin(animT * 30) * 0.25 : 0;
     ctx.save();
     ctx.globalAlpha = spent ? 0.4 : 1;
-    ctx.fillStyle = rushTimer > 0 ? '#ffd23f' : '#e6b422';
+    if (!spent) SZ.FoodArt.drawHalo(ctx, BELL.x, BELL.y, 60, 60, 'gold', rushTimer > 0 ? 0.9 : 0.4 + 0.2 * Math.sin(animT * 4));
+    ctx.translate(BELL.x, BELL.y - 10);
+    ctx.rotate(ring);
+    ctx.translate(-BELL.x, -(BELL.y - 10));
+    const g = ctx.createLinearGradient(BELL.x - 13, 0, BELL.x + 13, 0);
+    g.addColorStop(0, '#a8741c');
+    g.addColorStop(0.35, '#fff2b0');
+    g.addColorStop(1, '#a8741c');
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(BELL.x, BELL.y - 2, 11, Math.PI, 0);
-    ctx.lineTo(BELL.x + 13, BELL.y + 8);
-    ctx.lineTo(BELL.x - 13, BELL.y + 8);
+    ctx.lineTo(BELL.x + 14, BELL.y + 8);
+    ctx.lineTo(BELL.x - 14, BELL.y + 8);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.strokeStyle = '#5a3a0a';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    ctx.fillStyle = '#5a3a0a';
     ctx.beginPath();
     ctx.arc(BELL.x, BELL.y + 11, 3, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = ui.uiFont(10, 'bold');
-    ctx.fillStyle = spent ? 'rgba(255,255,255,0.4)' : '#fff';
-    ctx.fillText(rushTimer > 0 ? Math.ceil(rushTimer) + 's' : 'B', BELL.x, BELL.y + 24);
+    ui.fitText(rushTimer > 0 ? Math.ceil(rushTimer) + 's' : 'B', BELL.x, BELL.y + 24, 30, 11, { weight: 'bold', color: spent ? 'rgba(255,255,255,0.4)' : '#fff', outline: '#3a1a06' });
   }
 
   function drawHUD() {
     const px = HUD_PX, py = HUD_PY, pw = HUD_PW, ph = HUD_PH;
-    ui.drawPanel(px, py, pw, ph, { title: 'Day ' + dayInfo.id, titleRight: location.name, accent: location.color });
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
+    ui.drawPanel(px, py, pw, ph, { title: 'Day ' + dayInfo.id, titleRight: location.name, accent: location.color, titleRightColor: location.color });
     const seated = customers.filter(c => c.state !== 'leaving').length;
     const limit = spawnLimit();
     const left = (isFinite(limit) ? Math.max(0, limit - spawned) : 0) + seated;
+    /* the coin counter: spinning coin and a number that rolls and bumps */
+    const coin = fx.coinFrame(hudBump > 0 || animT % 4 < 0.75 ? Math.floor(animT * 10) : 0);
+    const bump = hudBump > 0 ? Math.sin(hudBump / 0.3 * Math.PI) * 0.22 : 0;
+    if (coin) ctx.drawImage(coin, px + 12, py + 36, 30, 30);
+    ctx.save();
+    ctx.translate(px + 48, py + 52);
+    ctx.scale(1 + bump, 1 + bump);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ui.fitText('$' + Math.round(earnedShown), 0, 0, 110, 24, { weight: '900', color: '#ffe060', outline: '#3a1a04' });
+    ctx.restore();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
     const line = mode === 'career'
-      ? 'Served ' + served + '  ·  Walkouts ' + walkouts + '  ·  Guests left ' + left
-      : 'Served ' + served + '  ·  Walkouts ' + walkouts + ' / 3  ·  Ruined ' + ruinedServed + ' / 3';
-    ui.fitText(line, px + 14, py + 46, pw - 28, 11, { color: 'rgba(255,255,255,0.7)' });
-    const shown = Math.round(earnedShown);
+      ? 'Served ' + served + '  ·  Left ' + left + (walkouts ? '  ·  Out ' + walkouts : '')
+      : 'Served ' + served + '  ·  Out ' + walkouts + '/3  ·  Ruined ' + ruinedServed + '/3';
+    ui.fitText(line, px + pw - 14, py + 52, pw - 180, 12, { weight: 'bold', color: ui.UI.textDim });
     if (dayInfo.goals[2] > 0) {
-      const meterX = px + 16, meterY = py + 66, meterW = pw - 32, meterH = 16;
+      const meterX = px + 16, meterY = py + 84, meterW = pw - 32, meterH = 14;
       const top = Math.max(1, dayInfo.goals[2]);
-      ui.drawMeter(meterX, meterY, meterW, meterH, earnedShown / top, '#ffd23f', { label: '$' + shown });
-      /* the meter ticks white as each coin lands */
+      ui.drawMeter(meterX, meterY, meterW, meterH, earnedShown / top, '#ffc928', { t: animT });
       if (meterTick > 0) {
-        ui.roundRectPath(meterX, meterY, meterW, meterH, meterH / 2);
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.6 * meterTick / 0.25).toFixed(3) + ')';
-        ctx.lineWidth = 2;
+        ui.roundRectPath(meterX - 2, meterY - 2, meterW + 4, meterH + 4, (meterH + 4) / 2);
+        ctx.strokeStyle = 'rgba(255,255,220,' + (0.9 * meterTick / 0.25).toFixed(3) + ')';
+        ctx.lineWidth = 3;
         ctx.stroke();
       }
-      ctx.textAlign = 'center';
-      ctx.font = ui.uiFont(12, 'bold');
       for (let i = 0; i < 3; ++i) {
         const gx = meterX + Math.min(1, dayInfo.goals[i] / top) * meterW;
-        ctx.fillStyle = earned >= dayInfo.goals[i] ? '#ffd23f' : 'rgba(255,255,255,0.35)';
-        ctx.fillText('★', gx, meterY - 9);
+        const got = earned >= dayInfo.goals[i];
+        if (got) ui.drawGlow(gx - (i === 2 ? 6 : 0), meterY + meterH / 2, 44, '#ffd23f');
+        ui.drawStar(gx - (i === 2 ? 6 : 0), meterY + meterH / 2, got ? 24 : 20, got);
       }
     } else {
-      ui.fitText('Earned $' + shown + '   ·   Best $' + bestForMode(), px + 16, py + 74, pw - 64, 14, { weight: 'bold', color: '#ffd23f' });
+      ctx.textAlign = 'left';
+      ui.fitText('Best $' + bestForMode(), px + 16, py + 92, pw - 64, 13, { weight: 'bold', color: ui.UI.textDim });
     }
     if (combo > 0) {
-      const chipW = ui.drawChip('COMBO ×' + comboMult().toFixed(1), px, py + ph + 10, 24, { bg: 'rgba(255,120,40,0.25)', border: 'rgba(255,160,60,0.6)', color: '#ffb060' });
-      /* the chip grows a flame at every combo step */
       const flames = combo >= 10 ? 3 : combo >= 6 ? 2 : combo >= 3 ? 1 : 0;
       for (let i = 0; i < flames; ++i)
-        drawFlame(px + chipW + 12 + i * 15, py + ph + 22, 7);
+        drawFlame(px + 26 + i * 16, py + ph + 24, 12);
+      const chipW = ui.drawChip('COMBO ×' + comboMult().toFixed(1), px + 10, py + ph + 8, 28,
+        { px: 15, bg: 'rgba(120,30,4,0.88)', border: '#ffb048', color: '#ffe080' });
+      if (flames) for (let i = 0; i < flames; ++i) drawFlame(px + chipW + 22 + i * 16, py + ph + 26, 10);
     }
     if (treeLevel('p_rush') > 0) drawRushBell();
   }
 
-  /* Ticket rail in the band between the pass and the stations: a thin metal
-     bar with the ticket cards hanging from it, oldest first, max 9 visible. */
+  /* Ticket rail between the pass and the stations: a brass bar with paper
+     order slips clipped to it, oldest first, max 9 visible. New slips drop
+     in and swing; the next step's station key blinks. */
   function drawTicketRail() {
     if (tickets.length === 0) return;
     const barX0 = 40, barX1 = 1240;
-    const bg = ctx.createLinearGradient(0, RAIL_Y - 3, 0, RAIL_Y + 3);
-    bg.addColorStop(0, '#a8aeb8');
-    bg.addColorStop(1, '#4a505a');
-    ui.roundRectPath(barX0, RAIL_Y - 3, barX1 - barX0, 6, 3);
-    ctx.fillStyle = bg;
+    ui.roundRectPath(barX0, RAIL_Y - 4, barX1 - barX0, 8, 4);
+    ctx.fillStyle = '#7a5214';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ui.roundRectPath(barX0, RAIL_Y - 4, barX1 - barX0, 5, 2.5);
+    ctx.fillStyle = '#e8c060';
+    ctx.fill();
     const shown = Math.min(tickets.length, RAIL_MAX);
     for (let i = 0; i < shown; ++i) {
       const t = tickets[i];
-      const x = RAIL_X0 + i * (RAIL_W + RAIL_GAP), y = RAIL_Y;
-      /* the clip hanging the card on the bar */
-      ctx.fillStyle = '#7a808a';
-      ui.roundRectPath(x + RAIL_W / 2 - 8, y - 5, 16, 10, 3);
-      ctx.fill();
-      ui.drawPanel(x, y, RAIL_W, RAIL_H, { radius: 7, accent: location.color, noStuds: true });
-      SZ.FoodArt.drawDish(ctx, t.recipe.id, x + RAIL_W / 2, y + 24, 40, 1, 'good');
-      /* the customer's patience as a thin bar */
+      if (t.slot === undefined) t.slot = i;
+      t.slot += (i - t.slot) * Math.min(1, 0.18);
+      const age = t.born !== undefined ? animT - t.born : 9;
+      const drop = age < 0.35 ? (1 - age / 0.35) : 0;
+      const swing = age < 1.2 ? Math.sin(age * 14) * 0.06 * (1 - age / 1.2) : Math.sin(animT * 1.3 + i) * 0.006;
+      const x = RAIL_X0 + t.slot * (RAIL_W + RAIL_GAP), y = RAIL_Y - drop * drop * 60;
+      ctx.save();
+      ctx.translate(x + RAIL_W / 2, y);
+      ctx.rotate(swing);
+      ctx.translate(-(x + RAIL_W / 2), -y);
       const f = Math.max(0, t.customer.patience / t.customer.patienceMax);
-      ui.roundRectPath(x + 10, y + 46, RAIL_W - 20, 5, 2.5);
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ui.drawPanel(x, y + 2, RAIL_W, RAIL_H, { style: 'paper', radius: 3, accent: location.color });
+      /* brass clip */
+      ui.roundRectPath(x + RAIL_W / 2 - 11, y - 6, 22, 14, 3);
+      ctx.fillStyle = '#c8962e';
+      ctx.fill();
+      ctx.fillStyle = '#fff0b0';
+      ctx.fillRect(x + RAIL_W / 2 - 9, y - 4, 18, 3);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ui.fitText('#' + t.id, x + 6, y + 14, 30, 10, { weight: 'bold', color: ui.UI.inkDim });
+      SZ.FoodArt.drawDish(ctx, t.recipe.id, x + RAIL_W / 2, y + 26, 44, 1, 'good');
+      /* the guest's patience */
+      ui.roundRectPath(x + 10, y + 47, RAIL_W - 20, 6, 3);
+      ctx.fillStyle = 'rgba(80,50,20,0.25)';
       ctx.fill();
       if (f > 0) {
-        ui.roundRectPath(x + 10, y + 46, (RAIL_W - 20) * f, 5, 2.5);
-        ctx.fillStyle = f > 0.5 ? '#4caf50' : f > 0.25 ? '#e6b422' : '#e04545';
+        ui.roundRectPath(x + 10, y + 47, (RAIL_W - 20) * f, 6, 3);
+        ctx.fillStyle = patienceColor(f);
         ctx.fill();
       }
       /* step icons: done steps ticked, current step highlighted with its key */
       const steps = t.recipe.steps;
       const running = !t.done && ticketInSlot(t);
       const blocked = !t.done && !running && t.waitingFor !== null && stations[t.waitingFor].slots.every(s => s.ticket);
+      const sx0 = x + RAIL_W / 2 - (steps.length - 1) * 13;
       for (let j = 0; j < steps.length; ++j) {
-        const ix = x + 20 + j * 20;
+        const ix = sx0 + j * 26;
         if (j === t.stepIndex) {
-          ui.roundRectPath(ix - 11, y + 55, 22, 26, 5);
-          ctx.fillStyle = 'rgba(255,210,63,0.22)';
+          ui.roundRectPath(ix - 12, y + 56, 24, 28, 5);
+          ctx.fillStyle = running ? 'rgba(255,190,40,0.35)' : 'rgba(120,90,40,0.15)';
           ctx.fill();
-          ctx.strokeStyle = 'rgba(255,210,63,0.85)';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = running ? '#d8901a' : 'rgba(120,90,40,0.5)';
+          ctx.lineWidth = 1.5;
           ctx.stroke();
         }
-        SZ.FoodArt.drawStepIcon(ctx, steps[j].station, ix, y + 64, 18);
+        ctx.save();
+        if (j < t.stepIndex) ctx.globalAlpha *= 0.45;
+        SZ.FoodArt.drawStepIcon(ctx, steps[j].station, ix, y + 66, 20);
+        ctx.restore();
         if (j < t.stepIndex) {
-          ctx.strokeStyle = '#5cd25c';
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#2e9a2a';
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
           ctx.beginPath();
-          ctx.moveTo(ix - 5, y + 64);
-          ctx.lineTo(ix - 1, y + 68);
-          ctx.lineTo(ix + 6, y + 59);
+          ctx.moveTo(ix - 6, y + 66);
+          ctx.lineTo(ix - 1, y + 71);
+          ctx.lineTo(ix + 7, y + 60);
           ctx.stroke();
+          ctx.lineCap = 'butt';
         }
         if (j === t.stepIndex) {
           /* runnable at its station: the key number blinks */
           const blink = running && Math.sin(animT * 10) > 0;
-          if (blink) {
-            ui.roundRectPath(ix - 6, y + 70, 12, 12, 3);
-            ctx.fillStyle = '#ffd23f';
-            ctx.fill();
-          }
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.font = ui.uiFont(running ? 10 : 9, 'bold');
-          ctx.fillStyle = blink ? '#1a1206' : '#ffd23f';
-          ctx.fillText(String(SZ.KitchenData.STATION_ORDER.indexOf(steps[j].station) + 1), ix, y + 76.5);
+          ctx.font = ui.uiFont(10, 'bold');
+          ctx.fillStyle = blink ? '#c83a1a' : ui.UI.ink;
+          ctx.fillText(String(SZ.KitchenData.STATION_ORDER.indexOf(steps[j].station) + 1), ix, y + 79);
         }
       }
-      if (blocked) drawRailClock(x + RAIL_W - 15, y + 15);
+      if (blocked) drawRailClock(x + RAIL_W - 14, y + 16);
+      ctx.restore();
     }
   }
 
   /* the little wait clock on a ticket whose station is busy */
   function drawRailClock(cx, cy) {
     ctx.save();
-    ctx.fillStyle = 'rgba(20,26,42,0.92)';
+    ctx.fillStyle = '#fff4d8';
     ctx.beginPath();
-    ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 9, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#ffb648';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#d8781a';
+    ctx.lineWidth = 2;
     ctx.stroke();
     const a = animT * 2;
     ctx.lineCap = 'round';
+    ctx.strokeStyle = '#5a3a1e';
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.lineTo(cx, cy - 5);
+    ctx.lineTo(cx, cy - 6);
     ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4);
+    ctx.lineTo(cx + Math.cos(a) * 5, cy + Math.sin(a) * 5);
     ctx.stroke();
     ctx.restore();
   }
@@ -2259,46 +2596,118 @@
      TITLE SCREEN
      ══════════════════════════════════════════════════════════════════ */
 
-  function drawTitleScreen() {
-    drawMenuBackdrop('bistro', 0.55);
-    ui.drawHeadline('BISTRO RUSH', 640, 110, 1100, 88, '#ffd23f', '#ff7a3a');
+  /* a red ribbon banner with folded ends, text in the middle */
+  function drawRibbon(cx, cy, w, h, text, color) {
+    const col = color || '#c8302a';
+    const key = 'ribbon|' + Math.round(w) + 'x' + Math.round(h) + '|' + col;
+    const img = cachedSprite(key, w + 60, h + 16, (c) => {
+      const x0 = 30, y0 = 6;
+      c.fillStyle = ui.shade(col, -0.45);
+      for (let s = 0; s < 2; ++s) {
+        const ex = s === 0 ? 2 : w + 34;
+        c.beginPath();
+        c.moveTo(ex, y0 + 10);
+        c.lineTo(ex + 26, y0 + 10);
+        c.lineTo(ex + 26, y0 + h + 8);
+        c.lineTo(ex, y0 + h + 8);
+        c.lineTo(ex + (s === 0 ? 10 : 16), y0 + h / 2 + 9);
+        c.closePath();
+        c.fill();
+      }
+      c.fillStyle = ui.shade(col, -0.6);
+      c.beginPath();
+      c.moveTo(x0, y0 + h);
+      c.lineTo(x0 + 6, y0 + h + 8);
+      c.lineTo(x0 + 6, y0 + h);
+      c.moveTo(x0 + w, y0 + h);
+      c.lineTo(x0 + w - 6, y0 + h + 8);
+      c.lineTo(x0 + w - 6, y0 + h);
+      c.fill();
+      const g = c.createLinearGradient(0, y0, 0, y0 + h);
+      g.addColorStop(0, ui.shade(col, 0.3));
+      g.addColorStop(0.5, col);
+      g.addColorStop(1, ui.shade(col, -0.3));
+      c.fillStyle = g;
+      c.beginPath();
+      c.moveTo(x0, y0);
+      c.quadraticCurveTo(x0 + w / 2, y0 - 6, x0 + w, y0);
+      c.lineTo(x0 + w, y0 + h);
+      c.quadraticCurveTo(x0 + w / 2, y0 + h - 6, x0, y0 + h);
+      c.closePath();
+      c.fill();
+      c.strokeStyle = 'rgba(255,255,255,0.35)';
+      c.setLineDash([4, 3]);
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(x0 + 4, y0 + 4);
+      c.quadraticCurveTo(x0 + w / 2, y0 - 2, x0 + w - 4, y0 + 4);
+      c.moveTo(x0 + 4, y0 + h - 4);
+      c.quadraticCurveTo(x0 + w / 2, y0 + h - 10, x0 + w - 4, y0 + h - 4);
+      c.stroke();
+      c.setLineDash([]);
+    });
+    ctx.drawImage(img, cx - (w + 60) / 2, cy - h / 2 - 6, w + 60, h + 16);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(255,240,210,0.8)';
-    ctx.font = ui.uiFont(22);
-    ctx.fillText('Cook. Serve. Build your restaurant empire.', 640, 176);
+    ui.fitText(text, cx, cy - 2, w - 30, Math.round(h * 0.5), { weight: 'bold', color: '#fff6e0', outline: ui.shade(col, -0.6) });
+  }
+
+  function drawCoinChip(x, y, amount) {
+    const w = ui.drawChip('     $' + amount, x, y, 36, { align: 'right', px: 19, color: ui.UI.gold, bg: 'rgba(30,12,2,0.85)', border: '#e0b048' });
+    const coin = fx.coinFrame(animT % 3 < 0.75 ? Math.floor(animT * 8) : 0);
+    if (coin) ctx.drawImage(coin, x - w + 4, y + 3, 30, 30);
+  }
+
+  function drawTitleScreen() {
+    drawMenuBackdrop('bistro', 0.42);
+    /* warm rays behind the logo, slowly turning */
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.35;
+    ctx.translate(640, 120);
+    ctx.rotate(animT * 0.08);
+    ui.drawGlow(0, 0, 900, '#ffb050', 18);
+    ctx.restore();
+    const breathe = 1 + Math.sin(animT * 2) * 0.02;
+    ctx.save();
+    ctx.translate(640, 112);
+    ctx.scale(breathe, breathe);
+    ctx.rotate(Math.sin(animT * 1.3) * 0.01);
+    ui.drawHeadline('BISTRO RUSH', 0, 0, 1000, 104, '#ffd23f', '#ff6a1a');
+    ctx.restore();
+    drawRibbon(640, 196, 520, 44, 'Cook · Serve · Build your restaurant empire', '#c8302a');
+    if (Math.random() < 0.08) fx.emit('star', 640 + (Math.random() - 0.5) * 760, 112 + (Math.random() - 0.5) * 100, 1, { color: '#fff0a0', speed: 30, gravity: -10 });
 
     /* the chef cheering on the left, dishes orbiting around him */
-    SZ.PeopleArt.drawChef(ctx, 150, 648, 'cheer', animT);
+    SZ.PeopleArt.drawChef(ctx, 170, 640, 'cheer', animT);
     const orbit = ['burger', 'pizza', 'tacos', 'cake', 'salad', 'ramen'];
     for (let i = 0; i < orbit.length; ++i) {
       const a = animT * 1.1 + i * Math.PI / 3;
-      SZ.FoodArt.drawDish(ctx, orbit[i], 150 + Math.cos(a) * 118, 470 + Math.sin(a) * 72, 44, 1, 'good');
+      const depth = Math.sin(a);
+      SZ.FoodArt.drawDish(ctx, orbit[i], 170 + Math.cos(a) * 130, 500 + depth * 60, 56 + depth * 10, 1, 'good');
     }
-
-    /* three customers strolling along the bottom */
+    /* guests strolling along the bottom */
     for (let i = 0; i < 3; ++i) {
       const span = VIEW_W + 220;
       const x = ((animT * 90 + i * 430) % span) - 110;
-      SZ.PeopleArt.drawCustomer(ctx, titleLooks[i], x, 706, 'walk', animT, 1);
+      SZ.PeopleArt.drawCustomer(ctx, titleLooks[i], x, 712, 'walk', animT + i, 1);
     }
 
-    ui.drawChip('$' + save.coins, 1256, 20, 30, { align: 'right', color: ui.UI.gold });
+    drawCoinChip(1256, 16, save.coins);
 
     const stars = countStars();
     const daily = save.best.daily;
     const items = [
-      { id: 't-career', label: 'Career', sub: stars + ' / 90 stars', action: () => setScreen(STATE_CAREER) },
-      { id: 't-endless', label: 'Endless Rush', sub: 'Best $' + save.best.endless, action: () => startDay('endless', 0) },
-      { id: 't-daily', label: 'Daily Special', sub: daily.date === dateKey(new Date()) ? 'Today: $' + daily.earned : 'New menu today', action: () => startDay('daily', 0) },
-      { id: 't-kitchen', label: 'Kitchen', sub: countTreeMaxed() + ' / ' + TREE.length + ' upgrades', action: () => { prevScreen = STATE_TITLE; setScreen(STATE_UPGRADES); } },
-      { id: 't-recipes', label: 'Recipe Book', action: () => setScreen(STATE_RECIPES) },
-      { id: 't-help', label: 'Help', action: openHelp },
+      { id: 't-career', label: 'Career', sub: stars + ' / 90 stars', color: 'orange', x: 430, y: 290, w: 420, h: 76, px: 30, action: () => setScreen(STATE_CAREER) },
+      { id: 't-endless', label: 'Endless Rush', sub: 'Best $' + save.best.endless, color: 'red', x: 430, y: 380, w: 206, h: 62, action: () => startDay('endless', 0) },
+      { id: 't-daily', label: 'Daily Special', sub: daily.date === dateKey(new Date()) ? 'Today: $' + daily.earned : 'New menu today', color: 'blue', x: 644, y: 380, w: 206, h: 62, action: () => startDay('daily', 0) },
+      { id: 't-kitchen', label: 'Kitchen', sub: countTreeMaxed() + ' / ' + TREE.length + ' upgrades', color: 'green', x: 430, y: 454, w: 206, h: 62, action: () => { prevScreen = STATE_TITLE; setScreen(STATE_UPGRADES); } },
+      { id: 't-recipes', label: 'Recipe Book', color: 'wood', x: 644, y: 454, w: 206, h: 62, action: () => setScreen(STATE_RECIPES) },
+      { id: 't-help', label: 'Help', color: 'wood', x: 565, y: 530, w: 150, h: 44, px: 17, action: openHelp },
     ];
     for (let i = 0; i < items.length; ++i) {
-      const x = 640 - 352 + (i % 2) * 364;
-      const y = 300 + Math.floor(i / 2) * 64;
-      drawButton(items[i].id, items[i].label, x, y, 340, 52, { sub: items[i].sub, action: items[i].action });
+      const it = items[i];
+      drawButton(it.id, it.label, it.x, it.y, it.w, it.h, { sub: it.sub, action: it.action, color: it.color, px: it.px || 20, bob: i });
     }
 
     ui.drawKeyHints([
@@ -2306,58 +2715,102 @@
       { key: 'Enter', label: 'Start' },
       { key: 'H', label: 'Help' },
       { key: 'F2', label: 'New Game' },
-    ], 640, 694, 900, 1);
+    ], 640, 600, 900, 1);
   }
 
   /* ══════════════════════════════════════════════════════════════════
      CAREER MAP — five location cards, six days each
      ══════════════════════════════════════════════════════════════════ */
 
+  function drawDayMedal(bx, by, bs, label, color, hot, got, open) {
+    const cx = bx + bs / 2, cy = by + bs / 2;
+    if (hot) ui.drawGlow(cx, cy, bs * 2.2, '#ffd23f');
+    const key = 'medal|' + bs + '|' + color + '|' + (open ? 1 : 0) + (got >= 3 ? 'g' : '');
+    const img = cachedSprite(key, bs + 6, bs + 8, (c) => {
+      const r = bs / 2;
+      c.fillStyle = 'rgba(20,8,0,0.45)';
+      c.beginPath();
+      c.arc(r + 3, r + 6, r, 0, Math.PI * 2);
+      c.fill();
+      const rim = c.createLinearGradient(0, 3, 0, bs + 3);
+      rim.addColorStop(0, '#fff0b0');
+      rim.addColorStop(0.5, '#d8a03a');
+      rim.addColorStop(1, '#7a4a10');
+      c.fillStyle = rim;
+      c.beginPath();
+      c.arc(r + 3, r + 3, r, 0, Math.PI * 2);
+      c.fill();
+      const face = c.createLinearGradient(0, 6, 0, bs);
+      const base = open ? (got >= 3 ? '#4cc23a' : color) : '#6a5a4a';
+      face.addColorStop(0, ui.shade(base, 0.35));
+      face.addColorStop(1, ui.shade(base, -0.35));
+      c.fillStyle = face;
+      c.beginPath();
+      c.arc(r + 3, r + 3, r - 4, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = 'rgba(255,255,255,0.35)';
+      c.beginPath();
+      c.ellipse(r + 3, r - 3, r * 0.6, r * 0.32, 0, 0, Math.PI * 2);
+      c.fill();
+    });
+    ctx.drawImage(img, bx - 3, by - 3, bs + 6, bs + 8);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (open) ui.fitText(label, cx, cy + 1, bs, 18, { weight: '900', color: '#ffffff', outline: 'rgba(40,16,0,0.8)' });
+  }
+
   function drawCareerScreen() {
-    drawMenuBackdrop('truck', 0.62);
-    ui.drawHeadline('Career', 640, 46, 600, 40, '#ffd23f', '#ff7a3a');
+    drawMenuBackdrop('truck', 0.55);
+    ui.drawHeadline('Career', 640, 44, 600, 50, '#ffd23f', '#ff6a1a');
+    drawCoinChip(1256, 16, save.coins);
 
     for (let li = 0; li < SZ.KitchenData.LOCATIONS.length; ++li) {
       const loc = SZ.KitchenData.LOCATIONS[li];
-      const cx = 25 + li * 250, cy = 92, cw = 230, ch = 430;
+      const cx = 25 + li * 250, cy = 90, cw = 230, ch = 440;
       const reached = locationReached(li);
-
-      /* opaque card body first, so the restaurant behind never shows through;
-         only the miniature at the card top shows art */
-      ui.drawPanel(cx, cy, cw, ch, {
-        flat: true, noStuds: true,
-        accent: reached ? loc.color : ui.UI.textMute,
-        top: '#161d30', bottom: '#0a0d18',
-      });
-      /* miniature of the location scene, clipped into the card top */
+      ui.drawPanel(cx, cy, cw, ch, { accent: reached ? loc.color : ui.UI.textMute, noStuds: false });
+      /* miniature of the location scene in a brass frame */
+      const mx = cx + 12, my = cy + 12, mw = cw - 24, mh = 124;
       ctx.save();
-      ui.roundRectPath(cx, cy, cw, 130, 9);
+      ui.roundRectPath(mx, my, mw, mh, 6);
       ctx.clip();
       ctx.save();
-      ctx.translate(cx, cy);
-      ctx.scale(cw / 1280, cw / 1280);
+      ctx.translate(mx - 40, my - 10);
+      ctx.scale((mw + 80) / 1280, (mw + 80) / 1280);
       menuScene(loc.theme).draw(ctx, animT, { x0: 0, y0: 0, x1: 1280, y1: 720 });
+      menuScene(loc.theme).drawFront(ctx);
       ctx.restore();
-      ctx.fillStyle = reached ? 'rgba(6,9,18,0.35)' : 'rgba(4,6,12,0.78)';
-      ctx.fillRect(cx, cy, cw, 130);
+      if (!reached) {
+        ctx.fillStyle = 'rgba(10,6,4,0.72)';
+        ctx.fillRect(mx, my, mw, mh);
+      }
       ctx.restore();
+      ui.roundRectPath(mx, my, mw, mh, 6);
+      ctx.strokeStyle = '#e0b048';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ui.roundRectPath(mx + 2, my + 2, mw - 4, mh - 4, 5);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
 
       let stars = 0;
       for (let k = 0; k < 6; ++k)
         stars += save.stars[(li + 1) + '-' + (k + 1)] || 0;
+      drawRibbon(cx + cw / 2, my + mh + 16, cw - 70, 34, loc.name, reached ? loc.color : '#6a5a4a');
+      ctx.save();
+      ui.drawStar(cx + cw / 2 - 28, cy + 190, 22, stars > 0);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ui.fitText(loc.name, cx + 14, cy + 152, 140, 19, { weight: 'bold', color: reached ? ui.UI.text : ui.UI.textMute });
-      ui.drawChip(stars + ' / 18', cx + cw - 12, cy + 140, 24, {
-        align: 'right', px: 13,
-        color: stars ? ui.UI.gold : ui.UI.textMute,
-        bg: 'rgba(4,6,14,0.8)',
-      });
+      ui.fitText(stars + ' / 18', cx + cw / 2 - 14, cy + 191, 80, 16, { weight: 'bold', color: stars ? ui.UI.gold : ui.UI.textMute });
+      ctx.restore();
 
       if (!reached) {
-        drawLock(cx + cw / 2, cy + 250, 56);
+        const bob = Math.sin(animT * 2 + li) * 3;
+        drawLock(cx + cw / 2, cy + 278 + bob, 64);
         ctx.textAlign = 'center';
-        ui.fitText('Earn a star on day ' + SZ.KitchenData.CAREER[li * 6 - 1].id, cx + cw / 2, cy + 320, cw - 24, 14, { color: ui.UI.warn });
+        ctx.textBaseline = 'middle';
+        ui.drawTextBlock('Earn a star on day ' + SZ.KitchenData.CAREER[li * 6 - 1].id, cx + 20, cy + 330, cw - 40, 40, 15, { color: ui.UI.warn, weight: 'bold', align: 'center' });
         continue;
       }
 
@@ -2366,53 +2819,81 @@
         const day = SZ.KitchenData.CAREER[di];
         const open = careerUnlocked(di);
         const got = save.stars[day.id] || 0;
-        const bx = cx + 12 + k * 36, by = cy + 186, bs = 30;
+        const bs = 46;
+        const bx = cx + 22 + (k % 3) * 66, by = cy + 214 + Math.floor(k / 3) * 84;
         const hit = registerHit('day-' + di, bx, by, bs, bs, () => startDay('career', di), !open);
         const hot = isHot(hit, bx, by, bs, bs);
         ctx.save();
-        if (!open) ctx.globalAlpha *= 0.45;
-        ui.drawPanel(bx, by, bs, bs, {
-          radius: 7, noStuds: true, glow: hot,
-          accent: hot ? ui.UI.gold : got >= 3 ? ui.UI.good : loc.color,
-        });
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = ui.UI.text;
-        ctx.font = ui.uiFont(15, 'bold');
-        ctx.fillText(String(k + 1), bx + bs / 2, by + bs / 2 + 1);
-        if (day.special) drawSpecialIcon(day.special, bx + bs - 7, by + 6);
-        if (!open) drawLock(bx + bs / 2, by + bs / 2, 16);
-        ctx.restore();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        for (let t = 0; t < 3; ++t) {
-          ctx.fillStyle = t < got ? '#ffd23f' : 'rgba(255,255,255,0.2)';
-          ctx.font = ui.uiFont(9);
-          ctx.fillText('★', bx + 6 + t * 9, by + bs + 10);
+        if (hot && open) {
+          ctx.translate(bx + bs / 2, by + bs / 2);
+          const s = 1.1 + Math.sin(animT * 6) * 0.03;
+          ctx.scale(s, s);
+          ctx.translate(-(bx + bs / 2), -(by + bs / 2));
         }
+        drawDayMedal(bx, by, bs, String(k + 1), loc.color, hot && open, got, open);
+        if (day.special) drawSpecialIcon(day.special, bx + bs - 4, by + 4);
+        if (!open) drawLock(bx + bs / 2, by + bs / 2, 22);
+        ctx.restore();
+        for (let t = 0; t < 3; ++t)
+          ui.drawStar(bx + bs / 2 - 15 + t * 15, by + bs + 12, 15, t < got);
         const best = save.best[day.id] || 0;
-        if (best > 0)
-          ui.fitText('$' + best, bx + bs / 2, by + bs + 24, bs + 10, 9, { color: 'rgba(255,255,255,0.4)' });
+        if (best > 0) {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ui.fitText('$' + best, bx + bs / 2, by + bs + 27, bs + 14, 11, { weight: 'bold', color: 'rgba(255,230,190,0.6)' });
+        }
       }
 
       ctx.textAlign = 'left';
-      ui.drawTextBlock(loc.recipes.map(id => SZ.KitchenData.recipeById(id).name).join(' · '), cx + 14, cy + ch - 96, cw - 28, 70, 12, { color: 'rgba(255,255,255,0.5)' });
+      ui.drawTextBlock(loc.recipes.map(id => SZ.KitchenData.recipeById(id).name).join(' · '), cx + 16, cy + ch - 56, cw - 32, 42, 12, { color: 'rgba(255,230,190,0.6)', align: 'center' });
     }
 
-    drawButton('career-back', 'Back', 24, 640, 140, 40, { px: 16, accent: '#8a90a0', action: () => setScreen(STATE_TITLE) });
+    drawButton('career-back', 'Back', 24, 640, 150, 50, { px: 18, color: 'wood', action: () => setScreen(STATE_TITLE) });
     ui.drawKeyHints([
       { key: '↑↓←→', label: 'Select day' },
       { key: 'Enter', label: 'Start' },
       { key: 'Esc', label: 'Title' },
-    ], 640, 694, 900, 1);
+    ], 640, 690, 900, 1);
   }
 
   /* ══════════════════════════════════════════════════════════════════
      KITCHEN UPGRADE TREE
      ══════════════════════════════════════════════════════════════════ */
 
+  /* a round medallion with a picture for each branch */
+  function drawBranchIcon(branchId, cx, cy, size, color) {
+    const r = size / 2;
+    const img = cachedSprite('bicon|' + branchId + '|' + size + '|' + color, size + 4, size + 6, (c) => {
+      c.fillStyle = 'rgba(20,8,0,0.45)';
+      c.beginPath();
+      c.arc(r + 2, r + 5, r, 0, Math.PI * 2);
+      c.fill();
+      const rim = c.createLinearGradient(0, 2, 0, size + 2);
+      rim.addColorStop(0, '#fff0b0');
+      rim.addColorStop(0.5, '#d8a03a');
+      rim.addColorStop(1, '#7a4a10');
+      c.fillStyle = rim;
+      c.beginPath();
+      c.arc(r + 2, r + 2, r, 0, Math.PI * 2);
+      c.fill();
+      const face = c.createRadialGradient(r - 2, r - 4, 2, r + 2, r + 2, r);
+      face.addColorStop(0, ui.shade(color, 0.4));
+      face.addColorStop(1, ui.shade(color, -0.45));
+      c.fillStyle = face;
+      c.beginPath();
+      c.arc(r + 2, r + 2, r - 4, 0, Math.PI * 2);
+      c.fill();
+    });
+    ctx.drawImage(img, cx - r - 2, cy - r - 2, size + 4, size + 6);
+    const icon = { stations: 'stove', gear: 'grill', service: 'plate', charm: null, pantry: 'board' }[branchId];
+    if (icon) SZ.FoodArt.drawStepIcon(ctx, icon, cx, cy, size * 0.62);
+    else {
+      ui.drawStar(cx, cy, size * 0.6, true);
+    }
+  }
+
   function drawUpgradesScreen() {
-    drawMenuBackdrop('hotel', 0.72);
+    drawMenuBackdrop('hotel', 0.6);
     const layout = buildTreeLayout();
     treeLayout = layout;
 
@@ -2429,73 +2910,90 @@
     }
 
     ui.drawPanel(24, 20, 1232, 76);
-    ui.drawHeadline('Kitchen', 130, 58, 220, 40, ui.UI.gold);
-    ui.drawChip('$' + save.coins, 1236, 44, 30, { align: 'right', color: ui.UI.gold });
+    ui.drawHeadline('Kitchen', 140, 58, 240, 48, ui.UI.gold, '#ff8a1a');
+    ctx.textAlign = 'left';
+    ui.fitText('Upgrade your kitchen with the coins you earn', 270, 60, 520, 15, { color: ui.UI.textDim, weight: 'bold' });
+    drawCoinChip(1236, 30, save.coins);
     ctx.textAlign = 'right';
-    ui.fitText(countTreeMaxed() + ' / ' + TREE.length + ' upgrades installed', 1236, 84, 320, 13, { color: ui.UI.textDim });
+    ctx.textBaseline = 'middle';
+    ui.fitText(countTreeMaxed() + ' / ' + TREE.length + ' installed', 1236, 82, 320, 13, { color: ui.UI.textDim, weight: 'bold' });
     ctx.textAlign = 'left';
 
     for (const tab of layout.tabs) {
       const active = tab.index === treeBranch;
-      ui.roundRectPath(tab.x, tab.y, tab.w, tab.h, 8);
-      ctx.fillStyle = '#0d1020';
-      ctx.fill();
-      ui.roundRectPath(tab.x, tab.y, tab.w, tab.h, 8);
-      ctx.fillStyle = ui.hexToRgba(tab.branch.color, active ? 0.55 : 0.25);
-      ctx.fill();
-      if (active) {
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = tab.branch.color;
-        ctx.stroke();
-      }
-      ctx.textAlign = 'center';
+      const hot = mouseX >= tab.x && mouseX <= tab.x + tab.w && mouseY >= tab.y && mouseY <= tab.y + tab.h;
+      ctx.save();
+      if (!active) ctx.globalAlpha *= hot ? 0.95 : 0.8;
+      ui.drawPanel(tab.x, tab.y - (active ? 4 : 0), tab.w, tab.h + (active ? 4 : 0), { radius: 9, noStuds: true, accent: tab.branch.color, glow: active, top: active ? ui.shade(tab.branch.color, -0.35) : undefined, bottom: active ? ui.shade(tab.branch.color, -0.7) : undefined });
+      drawBranchIcon(tab.branch.id, tab.x + 26, tab.y + tab.h / 2 - (active ? 2 : 0), 30, tab.branch.color);
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ui.fitText(tab.branch.name + ' ' + tab.maxed + '/' + tab.total, tab.x + tab.w / 2, tab.y + tab.h / 2 + 1, tab.w - 16, 14, { weight: 'bold', color: active ? '#ffffff' : '#c9d1e8' });
+      ui.fitText(tab.branch.name, tab.x + 48, tab.y + tab.h / 2 - (active ? 2 : 0), tab.w - 110, 16, { weight: 'bold', color: active ? '#ffffff' : ui.UI.textDim, outline: 'rgba(30,10,0,0.7)' });
+      ctx.textAlign = 'right';
+      ui.fitText(tab.maxed + '/' + tab.total, tab.x + tab.w - 14, tab.y + tab.h / 2 - (active ? 2 : 0), 60, 14, { weight: 'bold', color: tab.maxed === tab.total ? ui.UI.good : ui.UI.textDim });
+      ctx.restore();
     }
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
 
-    /* connectors under the cards */
+    /* brass pipes between cards; a met requirement glows in branch colour */
     const byId = {};
     for (const card of layout.cards)
       byId[card.node.id] = card;
-    ctx.lineWidth = 3;
     for (const card of layout.cards) {
       for (let i = 0; i < card.node.req.length; ++i) {
         const reqId = card.node.req[i][0];
         const from = byId[reqId];
         if (!from) continue;
         const met = treeLevel(reqId) >= card.node.req[i][1];
-        ctx.strokeStyle = met ? ui.hexToRgba(layout.branch.color, 0.8) : '#3a4058';
         const x1 = from.x + from.w, y1 = from.y + from.h / 2;
         const x2 = card.x, y2 = card.y + card.h / 2;
         const midX = (x1 + x2) / 2;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(midX, y1);
-        ctx.lineTo(midX, y2);
-        ctx.lineTo(x2, y2);
+        const path = () => {
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(midX, y1);
+          ctx.lineTo(midX, y2);
+          ctx.lineTo(x2, y2);
+        };
+        ctx.lineJoin = 'round';
+        path();
+        ctx.strokeStyle = '#2a1408';
+        ctx.lineWidth = 10;
         ctx.stroke();
+        path();
+        ctx.strokeStyle = met ? '#e0b048' : '#6a5038';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+        path();
+        ctx.strokeStyle = met ? ui.hexToRgba(layout.branch.color, 0.9) : 'rgba(255,230,190,0.15)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if (met) {
+          /* a bead of light running along the pipe */
+          const len = Math.abs(midX - x1) + Math.abs(y2 - y1) + Math.abs(x2 - midX);
+          let d = (animT * 120) % len;
+          let px, py;
+          if (d < midX - x1) { px = x1 + d; py = y1; }
+          else if ((d -= midX - x1) < Math.abs(y2 - y1)) { px = midX; py = y1 + Math.sign(y2 - y1) * d; }
+          else { d -= Math.abs(y2 - y1); px = midX + d; py = y2; }
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ui.drawGlow(px, py, 30, layout.branch.color);
+          ctx.restore();
+        }
       }
     }
 
     for (const card of layout.cards)
       drawTreeNodeCard(card);
 
-    for (const card of layout.cards) {
-      if (card.node.id !== treeSelected) continue;
-      ui.roundRectPath(card.x - 3, card.y - 3, card.w + 6, card.h + 6, 11);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
-    }
-
     ui.drawKeyHints([
       { key: '←→', label: 'Branch' },
       { key: '↑↓', label: 'Select' },
       { key: 'Enter', label: 'Buy' },
       { key: 'Esc', label: 'Back' },
-    ], 640, 694, 900, 1);
+    ], 640, 690, 900, 1);
   }
 
   function drawTreeNodeCard(card) {
@@ -2505,62 +3003,73 @@
     const max = node.costs.length;
     const maxed = card.state === 'maxed';
     const locked = card.state === 'locked';
+    const selected = node.id === treeSelected;
 
     ctx.save();
-    if (locked)
-      ctx.globalAlpha *= 0.45;
-    ui.drawPanel(card.x, card.y, card.w, card.h, { accent: maxed ? ui.UI.good : branch.color });
-
-    if (card.state === 'available') {
-      ui.roundRectPath(card.x, card.y, card.w, card.h, 9);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = ui.hexToRgba(branch.color, 0.4 + 0.3 * Math.sin(animT * 4));
-      ctx.stroke();
+    if (selected) {
+      const s = 1.03 + Math.sin(animT * 5) * 0.008;
+      ctx.translate(card.x + card.w / 2, card.y + card.h / 2);
+      ctx.scale(s, s);
+      ctx.translate(-(card.x + card.w / 2), -(card.y + card.h / 2));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ui.drawGlow(card.x + card.w / 2, card.y + card.h / 2, card.w * 1.5, maxed ? '#6fe08a' : '#ffd23f');
+      ctx.restore();
     }
+    if (locked)
+      ctx.globalAlpha *= 0.94;
+    ui.drawPanel(card.x, card.y, card.w, card.h, { accent: maxed ? ui.UI.good : branch.color, glow: selected,
+      top: locked ? '#3a3028' : undefined, bottom: locked ? '#1e1812' : undefined });
+
+    drawBranchIcon(node.branch, card.x + 40, card.y + 44, 52, locked ? '#5a5048' : branch.color);
+    if (locked) drawLock(card.x + 40, card.y + 46, 26);
 
     ctx.textBaseline = 'middle';
-    ui.fitText(node.name, card.x + 16, card.y + 26, 268, 20, { weight: 'bold', color: ui.UI.text });
-    ui.drawChip((level ? romanNumeral(level) : '0') + ' / ' + romanNumeral(max), card.x + card.w - 14, card.y + 14, 20, { align: 'right', px: 12, color: ui.UI.textDim, bg: 'rgba(255,255,255,0.06)' });
-    ui.drawTextBlock(node.desc, card.x + 16, card.y + 42, 268, 40, 14, { color: ui.UI.textDim });
+    ctx.textAlign = 'left';
+    ui.fitText(node.name, card.x + 76, card.y + 26, card.w - 140, 19, { weight: 'bold', color: ui.UI.text, outline: 'rgba(30,10,0,0.6)' });
+    ui.drawTextBlock(node.desc, card.x + 76, card.y + 38, card.w - 92, 34, 13, { color: ui.UI.textDim, minPx: 11 });
 
+    /* level pips */
     for (let l = 0; l < max; ++l) {
-      const px = card.x + 16 + l * 20;
-      const py = card.y + card.h - 18;
-      ui.roundRectPath(px, py, 16, 8, 2);
-      ctx.fillStyle = l < level ? branch.color : 'rgba(255,255,255,0.07)';
+      const px = card.x + 76 + l * 22;
+      const py = card.y + card.h - 22;
+      ui.roundRectPath(px, py, 18, 10, 3);
+      ctx.fillStyle = l < level ? branch.color : 'rgba(0,0,0,0.45)';
       ctx.fill();
-      if (l >= level) {
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-        ctx.stroke();
-      }
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = l < level ? '#fff6d0' : 'rgba(255,220,160,0.3)';
+      ctx.stroke();
     }
+    ctx.textAlign = 'right';
+    ui.fitText((level ? romanNumeral(level) : '0') + ' / ' + romanNumeral(max), card.x + card.w - 16, card.y + 24, 60, 13, { weight: 'bold', color: ui.UI.textDim });
 
     if (maxed) {
-      ui.drawChip('MAX', card.x + card.w - 16, card.y + card.h - 26, 18, { align: 'right', px: 11, color: ui.UI.good, bg: 'rgba(111,224,138,0.12)', border: ui.hexToRgba(ui.UI.good, 0.5) });
-    } else {
-      ctx.textAlign = 'right';
-      const costColor = card.state === 'expensive' ? ui.UI.bad : locked ? ui.UI.textMute : ui.UI.gold;
-      ui.fitText('$' + node.costs[level], card.x + card.w - 16, card.y + card.h - 14, 120, 15, { weight: 'bold', color: costColor });
-      ctx.textAlign = 'left';
-    }
-
-    if (locked) {
+      ui.drawChip('✓ MAX', card.x + card.w - 14, card.y + card.h - 32, 24, { align: 'right', px: 13, color: '#eaffea', bg: 'rgba(40,140,50,0.9)', border: '#9af07a' });
+    } else if (locked) {
       const missing = [];
       for (let i = 0; i < node.req.length; ++i) {
         if (treeLevel(node.req[i][0]) < node.req[i][1])
           missing.push(TREE_INDEX[node.req[i][0]].name + ' ' + romanNumeral(node.req[i][1]));
       }
-      ctx.textAlign = 'center';
-      ui.fitText('Requires ' + missing.join(', '), card.x + card.w / 2, card.y + card.h - 30, card.w - 32, 12, { color: ui.UI.warn });
-      ctx.textAlign = 'left';
+      ctx.textAlign = 'right';
+      ui.fitText('Needs ' + missing.join(', '), card.x + card.w - 14, card.y + card.h - 20, card.w - 150, 12, { weight: 'bold', color: ui.UI.warn });
+    } else {
+      const afford = card.state !== 'expensive';
+      const bw = 92, bh = 27, bx = card.x + card.w - 14 - bw, by = card.y + card.h - 10 - bh;
+      const pulse = afford && selected ? Math.sin(animT * 6) * 0.04 : 0;
+      ctx.save();
+      ctx.translate(bx + bw / 2, by + bh / 2);
+      ctx.scale(1 + pulse, 1 + pulse);
+      ctx.translate(-(bx + bw / 2), -(by + bh / 2));
+      ui.drawButtonFace(bx, by, bw, bh, '$' + node.costs[level], { color: afford ? 'gold' : 'grey', hot: selected && afford, px: 15, radius: 9 });
+      ctx.restore();
     }
 
     if (treeBuyFlash && treeBuyFlash.id === node.id) {
-      const f = 1 - (animT - treeBuyFlash.at) / 0.3;
+      const f = 1 - (animT - treeBuyFlash.at) / 0.4;
       if (f > 0) {
-        ui.roundRectPath(card.x, card.y, card.w, card.h, 9);
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.55 * f).toFixed(3) + ')';
+        ui.roundRectPath(card.x, card.y, card.w, card.h, 10);
+        ctx.fillStyle = 'rgba(255,250,220,' + (0.7 * f).toFixed(3) + ')';
         ctx.fill();
       }
     }
@@ -2568,61 +3077,86 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     RECIPE BOOK — twelve cards, locked recipes stay silhouettes
+     RECIPE BOOK — twelve paper cards, locked recipes stay silhouettes
      ══════════════════════════════════════════════════════════════════ */
 
   function drawRecipeBook() {
-    drawMenuBackdrop('sushi', 0.66);
-    ui.drawHeadline('Recipe Book', 640, 46, 600, 40, '#ffd23f', '#ff7a3a');
+    drawMenuBackdrop('sushi', 0.6);
+    ui.drawHeadline('Recipe Book', 640, 44, 600, 50, '#ffd23f', '#ff6a1a');
 
     const CW = 296, CH = 168, GX = 16, GY = 14;
     for (let i = 0; i < SZ.KitchenData.RECIPES.length; ++i) {
       const r = SZ.KitchenData.RECIPES[i];
-      const cx = 24 + (i % 4) * (CW + GX), cy = 96 + Math.floor(i / 4) * (CH + GY);
+      const cx = 24 + (i % 4) * (CW + GX), cy = 92 + Math.floor(i / 4) * (CH + GY);
       const reached = recipeReached(r.id);
-      ui.drawPanel(cx, cy, CW, CH, { accent: reached ? ui.UI.gold : ui.UI.textMute, noStuds: true });
+      const hot = reached && mouseX >= cx && mouseX <= cx + CW && mouseY >= cy && mouseY <= cy + CH;
+      const tilt = ((i * 7) % 5 - 2) * 0.004;
+      ctx.save();
+      ctx.translate(cx + CW / 2, cy + CH / 2);
+      ctx.rotate(tilt);
+      if (hot) ctx.scale(1.03, 1.03);
+      ctx.translate(-(cx + CW / 2), -(cy + CH / 2));
+      ui.drawPanel(cx, cy, CW, CH, { style: 'paper', radius: 6, accent: reached ? '#d8402a' : '#9a8a78', bottom: reached ? undefined : '#d8ccb4' });
+      /* a pin at the top */
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.arc(cx + CW / 2 + 1.5, cy + 10, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = reached ? '#d8302a' : '#7a6a5a';
+      ctx.beginPath();
+      ctx.arc(cx + CW / 2, cy + 8, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath();
+      ctx.arc(cx + CW / 2 - 2, cy + 6, 2, 0, Math.PI * 2);
+      ctx.fill();
 
-      SZ.FoodArt.drawDish(ctx, r.id, cx + 52, cy + 62, 76, reached ? 1 : 0.15, 'good');
+      if (reached) ui.drawGlow(cx + 64, cy + 72, 150, '#ffe8b0');
+      SZ.FoodArt.drawDish(ctx, r.id, cx + 64, cy + 72, 104, reached ? 1 : 0.12, 'good');
       if (!reached) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.font = ui.uiFont(30, 'bold');
-        ctx.fillText('?', cx + 52, cy + 62);
+        ui.fitText('?', cx + 64, cy + 70, 60, 46, { weight: '900', color: '#7a6a5a' });
       }
 
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ui.fitText(reached ? r.name : 'Not reached yet', cx + 100, cy + 26, CW - 116, 19, { weight: 'bold', color: reached ? ui.UI.text : ui.UI.textMute });
-      ui.fitText(reached ? '$' + r.price + ' per dish' : 'Serve it to unlock', cx + 100, cy + 48, CW - 116, 14, { color: reached ? ui.UI.gold : ui.UI.textMute });
+      ui.fitText(reached ? r.name : 'Not reached yet', cx + 124, cy + 34, CW - 140, 21, { weight: 'bold', color: reached ? ui.UI.ink : ui.UI.inkDim });
+      ui.fitText(reached ? '$' + r.price + ' per dish' : 'Serve it to unlock', cx + 124, cy + 58, CW - 140, 14, { weight: 'bold', color: reached ? '#b8641a' : ui.UI.inkDim });
 
       for (let j = 0; j < r.steps.length; ++j) {
         if (j > 0) {
-          ctx.fillStyle = 'rgba(255,255,255,0.4)';
-          ctx.font = ui.uiFont(14);
+          ctx.fillStyle = 'rgba(90,60,30,0.6)';
+          ctx.font = ui.uiFont(16, 'bold');
           ctx.textAlign = 'center';
-          ctx.fillText('›', cx + 99 + j * 30, cy + 78);
+          ctx.fillText('›', cx + 122 + j * 36, cy + 90);
         }
-        SZ.FoodArt.drawStepIcon(ctx, r.steps[j].station, cx + 114 + j * 30, cy + 78, 22);
+        ui.roundRectPath(cx + 124 + j * 36 - 15, cy + 74, 30, 30, 7);
+        ctx.fillStyle = 'rgba(120,80,30,0.12)';
+        ctx.fill();
+        SZ.FoodArt.drawStepIcon(ctx, r.steps[j].station, cx + 124 + j * 36, cy + 89, 26);
       }
 
-      let chipX = cx + 12;
+      let chipX = cx + 14;
       for (const loc of SZ.KitchenData.LOCATIONS) {
         if (loc.recipes.indexOf(r.id) < 0) continue;
-        const w = ui.drawChip(loc.name, chipX, cy + CH - 34, 22, {
+        ctx.font = ui.uiFont(11, 'bold');
+        if (chipX + ctx.measureText(loc.name).width + 18 > cx + CW - 10) break;
+        const w = ui.drawChip(loc.name, chipX, cy + CH - 36, 22, {
           px: 11,
-          color: reached ? loc.color : ui.UI.textMute,
-          bg: 'rgba(4,6,14,0.7)',
-          border: ui.hexToRgba(loc.color, 0.5),
+          color: '#ffffff',
+          bg: reached ? ui.shade(loc.color, -0.15) : '#a89880',
+          border: 'rgba(60,30,10,0.4)',
         });
         chipX += w + 6;
       }
+      ctx.restore();
     }
 
-    drawButton('recipes-back', 'Back', 24, 640, 140, 40, { px: 16, accent: '#8a90a0', action: () => setScreen(STATE_TITLE) });
+    drawButton('recipes-back', 'Back', 24, 640, 150, 50, { px: 18, color: 'wood', action: () => setScreen(STATE_TITLE) });
     ui.drawKeyHints([
       { key: 'Esc', label: 'Back' },
-    ], 640, 694, 900, 1);
+    ], 640, 690, 900, 1);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -2636,77 +3170,80 @@
       const y = py + i * 96;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = ui.UI.text;
-      ctx.font = ui.uiFont(19, 'bold');
-      ctx.fillText(lines[i][0], px, y);
-      ui.drawTextBlock(lines[i][1], px, y + 14, 560, 60, 15, { color: ui.UI.textDim });
+      ui.fitText(lines[i][0], px, y, 560, 21, { weight: 'bold', color: ui.UI.gold, outline: 'rgba(30,10,0,0.7)' });
+      ui.drawTextBlock(lines[i][1], px, y + 14, 560, 60, 15, { color: ui.UI.text });
     }
   }
 
   function drawHelp() {
-    drawMenuBackdrop('diner', 0.68);
-    const pw = 1000, ph = 540, px = 140, py = 84;
-    ui.drawPanel(px, py, pw, ph, { title: 'Help · ' + HELP_PAGES[helpPage], accent: '#ffd23f', titlePx: 20 });
+    drawMenuBackdrop('diner', 0.6);
+    const pw = 1000, ph = 560, px = 140, py = 74;
+    ui.drawPanel(px, py, pw, ph, { title: 'Help · ' + HELP_PAGES[helpPage], accent: '#ffd23f', titlePx: 22, headerH: 40 });
+    for (let i = 0; i < HELP_PAGES.length; ++i) {
+      ui.roundRectPath(px + pw - 120 + i * 24, py + 15, 14, 14, 7);
+      ctx.fillStyle = i === helpPage ? '#ffd23f' : 'rgba(0,0,0,0.45)';
+      ctx.fill();
+    }
 
     const ix = px + pw - 250;
     if (helpPage === 0) {
-      helpLines(px + 40, py + 90, [
+      helpLines(px + 40, py + 92, [
         ['Take the order', 'Click a seated customer, or the bubble over their head, to take the order. A ticket appears in the rail above the kitchen.'],
         ['Patience ring', 'The ring around the bubble drains as they wait: green, then yellow, then red. At zero they walk out and your combo breaks.'],
         ['Moods', 'Happy guests tip well, impatient ones start tapping their fingers, angry ones leave a mark on the day.'],
       ]);
-      SZ.PeopleArt.drawCustomer(ctx, titleLooks[0], ix + 60, py + 330, 'sit', animT, 1);
-      const bx = ix + 60, by = py + 180;
-      ctx.fillStyle = 'rgba(255,255,255,0.94)';
+      ui.drawPanel(ix - 40, py + 70, 260, 400, { style: 'chalk', radius: 8 });
+      SZ.PeopleArt.drawCustomer(ctx, titleLooks[0], ix + 90, py + 360, 'sit', animT, 1);
+      const bx = ix + 90, by = py + 190;
+      ctx.drawImage(bubbleSprite(), bx - 48, by - 48, 96, 104);
+      SZ.FoodArt.drawDish(ctx, 'burger', bx, by + 2, 56, 1, 'good');
+      ctx.strokeStyle = '#5ad04a';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(bx, by, 34, 0, Math.PI * 2);
-      ctx.fill();
-      SZ.FoodArt.drawDish(ctx, 'burger', bx, by, 40, 1, 'good');
-      ctx.strokeStyle = '#4caf50';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(bx, by, 30, -Math.PI / 2, -Math.PI / 2 + 0.7 * Math.PI * 2);
+      ctx.arc(bx, by, 34, -Math.PI / 2, -Math.PI / 2 + (0.5 + 0.5 * Math.sin(animT)) * Math.PI * 2);
       ctx.stroke();
+      ctx.lineCap = 'butt';
       const moods = ['happy', 'ok', 'impatient', 'angry'];
       for (let i = 0; i < moods.length; ++i)
-        SZ.PeopleArt.drawMood(ctx, ix - 40 + i * 56, py + 420, moods[i], 26);
+        SZ.PeopleArt.drawMood(ctx, ix + 6 + i * 56, py + 420, moods[i], 34);
     } else if (helpPage === 1) {
-      helpLines(px + 40, py + 90, [
+      helpLines(px + 40, py + 92, [
         ['Tickets move themselves', 'Once an order is taken, its ticket walks through the stations on its own and waits at each one.'],
         ['Catch the green', 'Click a station, or press 1-5, when its needle is inside the green zone for a perfect step.'],
         ['Red burns', 'Let the needle run into the red field and the step burns — a burnt or raw step ruins the dish.'],
         ['Second slots', 'Kitchen upgrades add a second grill, burner, prep board and oven so two steps can run at once.'],
       ]);
-      SZ.FoodArt.drawStation(ctx, 'grill', ix, py + 180, 'working', animT, 'burger');
-      const bw = 150, bx = ix, by = py + 340;
+      ui.drawPanel(ix - 40, py + 70, 260, 400, { style: 'chalk', radius: 8 });
+      const sp = (0.5 + 0.5 * Math.sin(animT * 2));
+      const prog = 0.55 + 0.25 * sp;
+      SZ.FoodArt.drawStation(ctx, 'grill', ix + 15, py + 170, prog > 0.6 && prog < 0.8 ? 'ready' : 'working', animT, 'burger', prog);
+      SZ.FoodArt.drawStationFx(ctx, 'grill', ix + 15, py + 170, 'working', animT, prog);
+      const bw = 150, bx = ix + 15, by = py + 340;
       ui.roundRectPath(bx, by, bw, 12, 6);
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillStyle = '#0a0604';
       ctx.fill();
-      ctx.fillStyle = 'rgba(70,200,90,0.55)';
+      ctx.fillStyle = 'rgba(80,230,100,0.7)';
       ctx.fillRect(bx + 0.55 * bw / 1.25, by, 0.25 * bw / 1.25, 12);
-      ctx.fillStyle = 'rgba(220,60,50,0.5)';
+      ctx.fillStyle = '#c8281e';
       ctx.fillRect(bx + bw / 1.25, by, 0.25 * bw / 1.25, 12);
-      const nx = bx + ((0.55 + 0.25 * (0.5 + 0.5 * Math.sin(animT * 2))) * bw / 1.25);
-      ctx.fillStyle = '#7dff8a';
-      ctx.fillRect(nx - 2, by - 3, 4, 18);
+      const nx = bx + prog * bw / 1.25;
+      ctx.fillStyle = '#b8ffb0';
+      ctx.fillRect(nx - 2, by - 4, 4, 20);
       ui.drawKeycap('1', bx, by + 26, 12);
     } else if (helpPage === 2) {
-      helpLines(px + 40, py + 90, [
+      helpLines(px + 40, py + 92, [
         ['Serve from the pass', 'Finished dishes land on the pass. Click one to carry it to the guest waiting for that dish.'],
         ['Combo', 'Perfect dishes build a combo multiplier on the tips; a walkout or a ruined serve resets it.'],
         ['Trash', 'Click the bin to toss a ruined dish before it reaches a guest.'],
         ['Waiter', 'The Waiter upgrade carries finished dishes to waiting guests by itself.'],
       ]);
-      SZ.FoodArt.drawDish(ctx, 'pasta', ix + 20, py + 200, 64, 1, 'perfect');
-      ctx.fillStyle = '#3a3f46';
-      ui.roundRectPath(ix + 120, py + 190, 44, 38, 5);
-      ctx.fill();
-      ctx.fillStyle = '#4a5058';
-      ui.roundRectPath(ix + 116, py + 181, 52, 9, 4);
-      ctx.fill();
-      SZ.PeopleArt.drawChef(ctx, ix + 70, py + 420, 'cheer', animT);
+      ui.drawPanel(ix - 40, py + 70, 260, 400, { style: 'chalk', radius: 8 });
+      SZ.FoodArt.drawDish(ctx, 'pasta', ix + 30, py + 190, 90, 1, 'perfect');
+      ctx.drawImage(trashSprite(), ix + 120, py + 160, 56, 63);
+      SZ.PeopleArt.drawChef(ctx, ix + 90, py + 430, 'cheer', animT);
     } else {
-      helpLines(px + 40, py + 90, [
+      helpLines(px + 40, py + 92, [
         ['Career', 'Thirty days across five venues. Earn at least one star to unlock the next day; a full venue of stars opens the next. Stars land at $-goal thresholds.'],
         ['Endless Rush', 'Serve until three walkouts or three ruined dishes. The venue rotates and the clock tightens every eight guests; your best run is kept.'],
         ['Daily Special', 'One seeded menu per day — the same kitchen, guests and orders for everyone, twenty guests in.'],
@@ -2715,68 +3252,88 @@
     }
 
     if (helpPage > 0)
-      drawButton('help-prev', '←', px + 20, py + ph - 56, 90, 40, { px: 18, action: () => { helpPage = Math.max(0, helpPage - 1); sfx('click', { volume: 0.4 }); } });
+      drawButton('help-prev', '←', px + 24, py + ph - 66, 90, 46, { px: 22, color: 'wood', action: () => { helpPage = Math.max(0, helpPage - 1); sfx('click', { volume: 0.4 }); } });
     if (helpPage < HELP_PAGES.length - 1)
-      drawButton('help-next', '→', px + pw - 110, py + ph - 56, 90, 40, { px: 18, action: () => { helpPage = Math.min(HELP_PAGES.length - 1, helpPage + 1); sfx('click', { volume: 0.4 }); } });
+      drawButton('help-next', '→', px + pw - 114, py + ph - 66, 90, 46, { px: 22, color: 'orange', action: () => { helpPage = Math.min(HELP_PAGES.length - 1, helpPage + 1); sfx('click', { volume: 0.4 }); } });
     ui.drawKeyHints([
       { key: '←→', label: 'Pages' },
       { key: 'Esc', label: 'Back' },
-    ], 640, 694, 900, 1);
+    ], 640, 690, 900, 1);
   }
 
   function drawPauseOverlay() {
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillStyle = 'rgba(10,4,0,0.62)';
     fillVisibleRect();
-    const pw = 420, ph = 176;
+    const pw = 460, ph = 200;
     const px = VIEW_W / 2 - pw / 2, py = VIEW_H / 2 - ph / 2;
     ui.drawPanel(px, py, pw, ph, { accent: '#ff7a3a' });
-    ui.drawHeadline('PAUSED', VIEW_W / 2, py + 48, pw - 48, 42, '#fff', '#ff7a3a');
-    /* one row of equal-width buttons: side padding 28, gap 16, 52 high,
+    ui.drawHeadline('PAUSED', VIEW_W / 2, py + 54, pw - 48, 54, '#ffffff', '#ff8a3a');
+    /* one row of equal-width buttons: side padding 28, gap 16, 56 high,
        24 px above the panel bottom */
     const btnW = (pw - 2 * 28 - 2 * 16) / 3;
-    const btnY = py + ph - 24 - 52;
-    drawButton('pause-resume', 'Resume', px + 28, btnY, btnW, 52,
-      { px: 15, action: () => { state = STATE_PLAYING; updateWindowTitle(); updateStatus(); } });
-    drawButton('pause-restart', 'Restart Day', px + 28 + btnW + 16, btnY, btnW, 52,
-      { px: 15, action: () => startDay(mode, mode === 'career' ? dayIndex : 0) });
-    drawButton('pause-menu', 'Menu', px + 28 + 2 * (btnW + 16), btnY, btnW, 52,
-      { px: 15, action: () => setScreen(STATE_TITLE) });
+    const btnY = py + ph - 24 - 56;
+    drawButton('pause-resume', 'Resume', px + 28, btnY, btnW, 56,
+      { px: 17, color: 'green', action: () => { state = STATE_PLAYING; updateWindowTitle(); updateStatus(); } });
+    drawButton('pause-restart', 'Restart Day', px + 28 + btnW + 16, btnY, btnW, 56,
+      { px: 15, color: 'orange', action: () => startDay(mode, mode === 'career' ? dayIndex : 0) });
+    drawButton('pause-menu', 'Menu', px + 28 + 2 * (btnW + 16), btnY, btnW, 56,
+      { px: 17, color: 'wood', action: () => setScreen(STATE_TITLE) });
   }
 
   function drawDayOver() {
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-    const px = 400, py = 110, pw = 480, ph = 424;
+    const appear = Math.min(1, dayOverT / 0.35);
+    ctx.fillStyle = 'rgba(10,4,0,' + (0.68 * appear).toFixed(3) + ')';
+    fillVisibleRect();
+    const px = 390, py = 96, pw = 500, ph = 470;
+    const won = mode === 'career' ? dayResult.stars > 0 : dayResult.newBest;
+    /* the panel drops in with a little overshoot */
+    const e = appear < 1 ? 1 - Math.pow(1 - appear, 3) * Math.cos(appear * 7) : 1;
+    ctx.save();
+    ctx.translate(0, (1 - e) * -220);
+    if (won) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.4;
+      ctx.translate(VIEW_W / 2, py + 150);
+      ctx.rotate(animT * 0.25);
+      ui.drawGlow(0, 0, 760, '#ffb040', 16);
+      ctx.restore();
+    }
     const what = mode === 'career' ? 'Day ' : mode === 'daily' ? 'Daily ' : 'Rush ';
-    ui.drawPanel(px, py, pw, ph, { title: what + dayInfo.id + ' — ' + location.name, accent: location.color });
+    ui.drawPanel(px, py, pw, ph, { accent: location.color });
+    drawRibbon(VIEW_W / 2, py + 4, pw - 120, 46, what + dayInfo.id + ' — ' + location.name, won ? '#c8302a' : '#6a5a4a');
     const headline = mode === 'career' ? (dayResult.stars > 0 ? 'Day complete!' : 'Closed at a loss')
       : mode === 'daily' ? 'Daily Special over!' : 'Rush over!';
-    ui.drawHeadline(headline, VIEW_W / 2, py + 76, pw - 40, 30, '#fff', location.color);
+    ui.drawHeadline(headline, VIEW_W / 2, py + 76, pw - 60, 38, won ? '#ffd23f' : '#f2e6d0', won ? '#ff6a1a' : '#8a7a68');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     if (mode === 'career') {
-      ctx.font = ui.uiFont(46, 'bold');
       for (let i = 0; i < 3; ++i) {
-        const sx = VIEW_W / 2 - 62 + i * 62, sy = py + 132;
-        if (i >= dayResult.stars) {
-          ctx.fillStyle = 'rgba(255,255,255,0.18)';
-          ctx.fillText('★', sx, sy);
-          continue;
-        }
-        /* the star pops in at 1.4x and settles, one after another */
-        const k = dayOverT - (0.35 + i * 0.35);
+        const sx = VIEW_W / 2 - 92 + i * 92, sy = py + 150 - (i === 1 ? 12 : 0);
+        const size = i === 1 ? 84 : 70;
+        ui.drawStar(sx, sy, size, false);
+        if (i >= dayResult.stars) continue;
+        /* the star slams in at 2x, settles, and keeps a glow */
+        const k = dayOverT - (0.45 + i * 0.4);
         if (k < 0) continue;
-        const s = k < 0.25 ? 1.4 - 0.4 * (k / 0.25) : 1;
+        const s = k < 0.18 ? 2.2 - 1.3 * (k / 0.18) : k < 0.3 ? 0.9 + 0.1 * ((k - 0.18) / 0.12) : 1;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(1, k * 4) * (0.7 + 0.2 * Math.sin(animT * 3 + i));
+        ctx.translate(sx, sy);
+        ctx.rotate(animT * 0.6 + i);
+        ui.drawGlow(0, 0, size * 2.4, '#ffc840', 10);
+        ctx.restore();
         ctx.save();
         ctx.translate(sx, sy);
+        ctx.rotate((1 - Math.min(1, k / 0.18)) * -0.6);
         ctx.scale(s, s);
-        ctx.fillStyle = '#ffd23f';
-        ctx.fillText('★', 0, 0);
+        ui.drawStar(0, 0, size, true);
         ctx.restore();
       }
     } else {
       const bestLine = 'Best $' + bestForMode() + (dayResult.newBest ? '  ·  NEW BEST' : '');
-      ui.drawHeadline(bestLine, VIEW_W / 2, py + 132, pw - 120, 34, '#ffd23f', location.color);
+      ui.drawHeadline(bestLine, VIEW_W / 2, py + 146, pw - 120, 36, '#ffd23f', location.color);
     }
     const rows = mode === 'career' ? [
       ['Earned', '$' + Math.round(earnedShown)],
@@ -2792,37 +3349,72 @@
       ['Best combo', '×' + (1 + Math.min(1, bestCombo * 0.1)).toFixed(1)]
     ];
     for (let i = 0; i < rows.length; ++i) {
-      const ry = py + 180 + i * 30;
+      const ry = py + 214 + i * 30;
+      const k = Math.min(1, Math.max(0, (dayOverT - 0.3 - i * 0.08) / 0.25));
+      if (k <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha *= k;
+      ctx.translate((1 - k) * 30, 0);
+      ui.roundRectPath(px + 44, ry - 13, pw - 88, 26, 6);
+      ctx.fillStyle = i % 2 ? 'rgba(0,0,0,0.18)' : 'rgba(255,220,160,0.06)';
+      ctx.fill();
       ctx.textAlign = 'left';
-      ui.fitText(rows[i][0], px + 60, ry, 200, 15, { color: 'rgba(255,255,255,0.65)' });
+      ui.fitText(rows[i][0], px + 60, ry, 200, 16, { weight: 'bold', color: ui.UI.textDim });
       ctx.textAlign = 'right';
-      ui.fitText(rows[i][1], px + pw - 60, ry, 200, 15, { weight: 'bold', color: '#fff' });
+      ui.fitText(rows[i][1], px + pw - 60, ry, 220, i === 0 ? 20 : 16, { weight: 'bold', color: i === 0 ? '#ffe060' : '#fff', outline: i === 0 ? '#3a1a04' : null });
+      ctx.restore();
     }
     const nextEnabled = mode === 'career' && dayResult.stars >= 1 &&
       careerUnlocked(dayIndex + 1) && dayIndex + 1 < SZ.KitchenData.CAREER.length;
-    /* one row of equal-width buttons: side padding 28, gap 16, 52 high,
+    /* one row of equal-width buttons: side padding 28, gap 16, 58 high,
        24 px above the panel bottom */
     const btnN = mode === 'career' ? 3 : 2;
     const btnW = (pw - 2 * 28 - (btnN - 1) * 16) / btnN;
-    const btnY = py + ph - 24 - 52;
+    const btnY = py + ph - 24 - 58;
     if (mode === 'career') {
-      drawButton('do-next', 'Next Day', px + 28, btnY, btnW, 52,
-        { px: 17, accent: '#5cb85c', disabled: !nextEnabled, action: () => startDay('career', dayIndex + 1) });
-      drawButton('do-retry', 'Retry', px + 28 + btnW + 16, btnY, btnW, 52,
-        { px: 17, accent: '#e6b422', action: () => startDay('career', dayIndex) });
-      drawButton('do-menu', 'Menu', px + 28 + 2 * (btnW + 16), btnY, btnW, 52,
-        { px: 17, accent: '#8a90a0', action: () => setScreen(STATE_TITLE) });
+      drawButton('do-next', 'Next Day', px + 28, btnY, btnW, 58,
+        { px: 19, color: 'green', disabled: !nextEnabled, action: () => startDay('career', dayIndex + 1) });
+      drawButton('do-retry', 'Retry', px + 28 + btnW + 16, btnY, btnW, 58,
+        { px: 19, color: 'orange', action: () => startDay('career', dayIndex) });
+      drawButton('do-menu', 'Menu', px + 28 + 2 * (btnW + 16), btnY, btnW, 58,
+        { px: 19, color: 'wood', action: () => setScreen(STATE_TITLE) });
     } else {
-      drawButton('do-retry', 'Retry', px + 28, btnY, btnW, 52,
-        { px: 17, accent: '#e6b422', action: () => startDay(mode, 0) });
-      drawButton('do-menu', 'Menu', px + 28 + btnW + 16, btnY, btnW, 52,
-        { px: 17, accent: '#8a90a0', action: () => setScreen(STATE_TITLE) });
+      drawButton('do-retry', 'Retry', px + 28, btnY, btnW, 58,
+        { px: 19, color: 'orange', action: () => startDay(mode, 0) });
+      drawButton('do-menu', 'Menu', px + 28 + btnW + 16, btnY, btnW, 58,
+        { px: 19, color: 'wood', action: () => setScreen(STATE_TITLE) });
     }
     if (mode === 'career' && !nextEnabled) {
       ctx.textAlign = 'center';
       ui.fitText(dayResult.stars < 1 ? 'Earn at least one star to move on.'
-        : 'The career ends here — try endless later.', VIEW_W / 2, py + ph - 94, pw - 60, 12, { color: 'rgba(255,255,255,0.55)' });
+        : 'The career ends here — try endless later.', VIEW_W / 2, py + ph - 100, pw - 60, 13, { weight: 'bold', color: ui.UI.textDim });
     }
+    ctx.restore();
+  }
+
+  /* screen transition: an iris closing to black and opening on the new screen */
+  function drawIris(k) {
+    const v = visibleRect();
+    if (k >= 0.999) {
+      ctx.fillStyle = '#0a0602';
+      fillVisibleRect();
+      return;
+    }
+    const maxR = Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / 2 + 20;
+    const e = 1 - k;
+    const r = Math.max(0, maxR * e * e * (3 - 2 * e));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    ctx.arc(VIEW_W / 2, VIEW_H / 2, r, 0, Math.PI * 2, true);
+    ctx.fillStyle = '#0a0602';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,200,90,' + (0.6 * k).toFixed(3) + ')';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(VIEW_W / 2, VIEW_H / 2, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function draw() {
@@ -2834,53 +3426,66 @@
       else if (state === STATE_UPGRADES) drawUpgradesScreen();
       else if (state === STATE_RECIPES) drawRecipeBook();
       else drawHelp();
+      fx.draw(ctx);
+      fx.drawTexts(ctx);
       if (menuFade > 0) {
-        ctx.fillStyle = 'rgba(12,8,5,' + Math.min(1, menuFade / 0.5).toFixed(3) + ')';
+        ctx.fillStyle = 'rgba(12,8,5,' + (0.5 * Math.min(1, menuFade / 0.5)).toFixed(3) + ')';
         fillVisibleRect();
       }
-      if (fade > 0) {
-        ctx.fillStyle = 'rgba(0,0,0,' + Math.min(1, fade).toFixed(3) + ')';
-        fillVisibleRect();
-      }
+      if (fade > 0) drawIris(fade);
       return;
     }
     ctx.save();
     screenShake.apply(ctx);
     scene.draw(ctx, animT, visibleRect());
+    drawCarpet();
+    drawCustomers();
+    scene.drawFront(ctx);
+    drawPass();
+    drawCustomerOverlays();
+    if (waiter) {
+      SZ.PeopleArt.drawCustomer(ctx, waiterLook, waiter.x, WAITER_Y, 'walk', animT, waiter.facing);
+      if (waiter.state === 'toGuest')
+        SZ.FoodArt.drawDish(ctx, waiter.dish.recipe, waiter.x + waiter.facing * 16, WAITER_Y - 76 + Math.abs(Math.sin(animT * 16)) * -3, 50, 1, waiter.dish.quality);
+    }
+    drawStations();
+    const moving = Math.abs(chefTargetX - chefX) > 4;
+    SZ.PeopleArt.drawChef(ctx, chefX, CHEF_Y, moving && chefPose === 'idle' ? 'run' : chefPose, animT, chefFacing);
+    drawStationBars();
+    drawArcs();
+    drawFlying();
     if (sceneFade > 0) {
       ctx.fillStyle = 'rgba(12,8,5,' + Math.min(1, sceneFade / 0.6).toFixed(3) + ')';
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     }
-    drawCarpet();
-    drawPass();
-    drawCustomers();
-    if (waiter) SZ.PeopleArt.drawCustomer(ctx, waiterLook, waiter.x, WAITER_Y, 'walk', animT, waiter.facing);
-    drawStations();
-    SZ.PeopleArt.drawChef(ctx, chefX, CHEF_Y, chefPose, animT);
-    drawFlying();
-    drawArcs();
     screenShake.restore(ctx);
     ctx.restore();
-    drawCoins();
     drawRings();
-    particles.draw(ctx);
-    floatingText.draw(ctx);
+    if (state !== STATE_DAY_OVER) fx.draw(ctx);
+    drawCoins();
     drawPops();
+    if (state !== STATE_DAY_OVER) fx.drawTexts(ctx);
+    if (hitFlash) {
+      ctx.fillStyle = 'rgba(' + hitFlash.color + ',' + (hitFlash.t * 0.6).toFixed(3) + ')';
+      fillVisibleRect();
+    }
     if (rushTimer > 0) drawRushGlow();
     if (tension > 0) drawTension();
     drawHUD();
     if (comboBanner) drawComboBanner();
+    if (dayIntro > 0 && state === STATE_PLAYING) drawDayIntro();
     if (edgeGlow > 0) drawEdgeGlow();
     drawTicketRail();
     drawBurnAlerts();
     coachSkip = null;
     if (coach && state === STATE_PLAYING) drawCoach();
     if (state === STATE_PAUSED) drawPauseOverlay();
-    if (state === STATE_DAY_OVER) drawDayOver();
-    if (fade > 0) {
-      ctx.fillStyle = 'rgba(0,0,0,' + Math.min(1, fade).toFixed(3) + ')';
-      fillVisibleRect();
+    if (state === STATE_DAY_OVER) {
+      drawDayOver();
+      fx.draw(ctx);
+      fx.drawTexts(ctx);
     }
+    if (fade > 0) drawIris(fade);
   }
 
   /* ── coach marks: pulsing outline, bobbing arrow and the hint panel ── */
@@ -2892,12 +3497,13 @@
     ctx.save();
     ui.roundRectPath(tg.x - g, tg.y - g, tg.w + g * 2, tg.h + g * 2, 12);
     ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.lineWidth = 7;
+    ctx.lineWidth = 9;
     ctx.stroke();
-    ctx.shadowColor = 'rgba(255,215,90,0.9)';
-    ctx.shadowBlur = 10 + pulse * 10;
-    ctx.strokeStyle = 'rgba(255,215,90,' + (0.65 + 0.35 * pulse).toFixed(3) + ')';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,215,90,' + (0.25 + 0.2 * pulse).toFixed(3) + ')';
+    ctx.lineWidth = 10;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,235,150,' + (0.75 + 0.25 * pulse).toFixed(3) + ')';
+    ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.restore();
   }
@@ -2994,38 +3600,69 @@
     ctx.restore();
   }
 
-  /* Rush tension: a red vignette pulses at the screen edges while the day
+  /* Rush tension: a soft red glow pulses at the screen edges while the day
      is a rush day or three guests wait at once. */
   function drawTension() {
     const a = tension * (0.10 + 0.05 * Math.sin(animT * 5));
     ctx.save();
-    ctx.strokeStyle = 'rgba(224,60,50,' + a.toFixed(3) + ')';
-    ctx.lineWidth = 22;
-    ctx.strokeRect(11, 11, VIEW_W - 22, VIEW_H - 22);
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = 'rgba(255,90,70,' + (a * 0.8).toFixed(3) + ')';
-    ctx.strokeRect(20, 20, VIEW_W - 40, VIEW_H - 40);
+    for (let i = 0; i < 4; ++i) {
+      ctx.strokeStyle = 'rgba(224,50,40,' + (a * (1 - i * 0.22)).toFixed(3) + ')';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5 + i * 9, 5 + i * 9, VIEW_W - 10 - i * 18, VIEW_H - 10 - i * 18);
+    }
     ctx.restore();
   }
 
-  /* the big COMBO ×n banner, popping in and fading out over a second */
+  /* the big COMBO ×n banner: slams in over turning rays, burns with a row
+     of flames and fades out over a second and a half */
   function drawComboBanner() {
-    const k = comboBanner.t / 1.1;
-    const s = k < 0.15 ? 1.4 - 0.4 * (k / 0.15) : 1;
+    const k = comboBanner.t / 1.5;
+    const s = k < 0.1 ? 0.2 + 1.6 * (k / 0.1) : k < 0.2 ? 1.8 - 0.8 * ((k - 0.1) / 0.1) : 1 + Math.sin(animT * 8) * 0.02;
+    const a = k > 0.75 ? (1 - k) / 0.25 : 1;
     ctx.save();
-    ctx.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1;
-    ctx.translate(VIEW_W / 2, 130);
+    ctx.globalAlpha = a;
+    ctx.translate(VIEW_W / 2, 150);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = a * 0.5;
+    ctx.rotate(animT * 0.6);
+    ui.drawGlow(0, 0, 520, '#ff8a2a', 14);
+    ctx.restore();
+    for (let i = -3; i <= 3; ++i)
+      drawFlame(i * 46, 34 - Math.abs(i) * 4, 30 - Math.abs(i) * 3);
+    ctx.rotate(Math.sin(k * 20) * 0.03 * (1 - k));
     ctx.scale(s, s);
-    ui.drawHeadline('COMBO ×' + comboBanner.n, 0, 0, 600, 44, '#ffd23f', '#ff7a3a');
+    ui.drawHeadline('COMBO ×' + comboBanner.n + '!', 0, 0, 640, 64, '#ffd23f', '#ff5a1a');
+    ctx.restore();
+  }
+
+  /* the opening banner: a ribbon sweeps in with the day and venue, then away */
+  function drawDayIntro() {
+    const t = 2.2 - dayIntro;
+    const inK = Math.min(1, t / 0.35), outK = Math.max(0, (t - 1.7) / 0.5);
+    const ease = 1 - Math.pow(1 - inK, 3);
+    const x = VIEW_W / 2 + (1 - ease) * -900 + outK * outK * 1100;
+    ctx.save();
+    ctx.globalAlpha = 1 - outK;
+    const what = mode === 'career' ? 'Day ' + dayInfo.id : mode === 'daily' ? 'Daily Special' : 'Endless Rush';
+    drawRibbon(x, 250, 560, 64, what + ' — ' + location.name, '#c8302a');
+    const s = t < 0.5 ? 0.2 + 0.8 * Math.min(1, Math.max(0, (t - 0.15) / 0.35)) : 1 + Math.sin(t * 6) * 0.03;
+    if (t > 0.15) {
+      ctx.translate(x, 330);
+      ctx.scale(s, s);
+      ui.drawHeadline(mode === 'career' && dayInfo.special === 'rush' ? 'Rush hour!' : mode === 'career' && dayInfo.special === 'critic' ? 'A critic is coming!' : 'Let\'s cook!', 0, 0, 700, 56, '#ffd23f', '#ff6a1a');
+    }
     ctx.restore();
   }
 
   /* one second of gold light along the screen edge when the combo steps up */
   function drawEdgeGlow() {
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,210,63,' + (0.35 * edgeGlow).toFixed(3) + ')';
-    ctx.lineWidth = 16;
-    ctx.strokeRect(8, 8, VIEW_W - 16, VIEW_H - 16);
+    for (let i = 0; i < 4; ++i) {
+      ctx.strokeStyle = 'rgba(255,200,60,' + (0.4 * edgeGlow * (1 - i * 0.22)).toFixed(3) + ')';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5 + i * 9, 5 + i * 9, VIEW_W - 10 - i * 18, VIEW_H - 10 - i * 18);
+    }
     ctx.restore();
   }
 
@@ -3067,7 +3704,7 @@
           location = SZ.KitchenData.locationById(dayInfo.location);
           scene = SZ.KitchenScene.create(location.theme);
           sceneFade = 0.6;
-          floatingText.add(VIEW_W / 2, 160, location.name, { color: location.color, size: 26 });
+          fx.text(VIEW_W / 2, 170, location.name, { color: location.color, size: 36, life: 1.6 });
           updateStatus();
         }
       }
@@ -3097,8 +3734,8 @@
          bring confetti */
       while (dayResult && starPopped < dayResult.stars && dayOverT >= 0.35 + starPopped * 0.35) {
         if (starPopped === 2 && dayResult.stars === 3) {
-          particles.confetti(VIEW_W / 2 - 160, 250, 26);
-          particles.confetti(VIEW_W / 2 + 160, 250, 26);
+          fx.emit('confetti', VIEW_W / 2 - 200, 260, 40, { speed: 520, angle: -Math.PI / 2 + 0.3, spread: 1.4 });
+          fx.emit('confetti', VIEW_W / 2 + 200, 260, 40, { speed: 520, angle: -Math.PI / 2 - 0.3, spread: 1.4 });
         }
         sfx('coin', { pitch: 1 + starPopped * 0.2, volume: 0.7 });
         ++starPopped;
@@ -3113,9 +3750,8 @@
     else earnedShown = earned;
     updateCoins(dt);
     updateFx(dt);
-    particles.update();
+    fx.update(dt);
     screenShake.update(dt * 1000);
-    floatingText.update();
 
     draw();
     requestAnimationFrame(gameLoop);
@@ -3275,8 +3911,7 @@
     coachSkip = null;
     fade = 1;
     save = loadSave();
-    particles.clear();
-    floatingText.clear();
+    fx.clear();
     updateWindowTitle();
     updateStatus();
   }

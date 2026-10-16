@@ -18,12 +18,13 @@ The career runs thirty days across five venues, six days each: every day is busi
 - `styles.css` — Layout and theming
 - `icon.svg` — Desktop icon (pan + steam + star)
 - `kitchen-data.js` — Pure data and rules: the five stations, twelve recipes, five locations, the 30-day career, six customer types, the quality/tip/star math, a seeded rng and the endless-day generator; loads in node for the tests
-- `kitchen-ui.js` — Shared drawing kit: one panel style, auto-fitting and wrapping text, chips, keycaps, meters and headlines
-- `food-art.js` — The twelve dishes, station sprites in four animation states and ticket step icons, painted once into cached 2x canvases; the draw calls only blit
-- `people-art.js` — Chibi customers in six types, the chef and the mood bubbles, assembled procedurally from a random look and cached per (look, pose, frame)
-- `scene-art.js` — Five restaurant interiors painted once into a seeded 1280 × 720 canvas, with ambient layers (truck traffic, diner neon, bistro lamp glow, sakura petals, chandelier glints)
+- `kitchen-ui.js` — Shared drawing kit: brass-framed walnut panels, paper order slips and chalkboards, candy buttons, auto-fitting and wrapping text, chips, keycaps, striped meters, stars and extruded headlines — every face cached at 2x
+- `kitchen-fx.js` — Juice: a pooled sprite particle system (sparks, embers, smoke, steam, stars, hearts, confetti, food chips, spinning coins; at most 400 alive, glowing kinds in one additive batch) and pop-in floating texts
+- `food-art.js` — The twelve glazed dishes, five countertop stations in four animation states with per-frame flames, burners, bubbles, oven glow and heat lamp, ingredients that blend raw → cooked (grill marks) → charred, halos and ticket step icons; painted once into cached 2x canvases, the draw calls only blit
+- `people-art.js` — Chibi customers in six types with blinking, worried and angry faces, the chef with a run cycle, and the mood bubbles; cached per (look, pose, frame) and squashed and stretched per pose at draw time
+- `scene-art.js` — Five restaurant interiors baked once from textured materials (wood grain, bevelled tiles, brick, veined marble, brushed steel) with light pools, ambient occlusion and a vignette, plus a separate serving-counter layer the guests sit behind and ambient life (street traffic and walkers, diner neon and jukebox, breathing bistro lamps, sakura petals and lanterns, chandelier sparkle and a shooting star)
 - `controller.js` — IIFE game engine: menu screens, day loop, customers, stations, serving, waiter, upgrade tree, HUD, effects, persistence and OS integration
-- `tests/` — Node test scripts: `kitchen-data.test.js` (data shape, quality/tip/star rules, rng), `kitchen-ui.test.js` (text fitting against a fake context), `food-art.test.js`, `people-art.test.js` and `scene-art.test.js` (module contracts, no shadowBlur, blit-only draws)
+- `tests/` — Node test scripts: `kitchen-data.test.js` (data shape, quality/tip/star rules, rng), `kitchen-ui.test.js` (text fitting against a fake context), `kitchen-fx.test.js`, `food-art.test.js`, `people-art.test.js` and `scene-art.test.js` (module contracts, no shadowBlur, blit-only draws, particle cap)
 
 ## User Stories
 
@@ -120,6 +121,12 @@ The career runs thirty days across five venues, six days each: every day is busi
 - [x] As a player, I can see a red tension vignette pulse on rush days and whenever three guests wait at once so that pressure shows at the screen edge
 - [x] As a player, I can see confetti, sparkles, crumbs, expanding rings and coins flying to the HUD so that every event has a flourish
 - [x] As a player, I can see all food, people and room art pre-rendered into cached 2x canvases and blitted per frame — no blur filters anywhere in the art — so that the whole show stays smooth
+- [x] As a player, I can watch flames lick the grill, a blue burner under a bubbling pot, the oven glow and the heat lamp breathe, and the food turn from raw to cooked with grill marks so that every station looks alive
+- [x] As a player, I can see a station glow green while its step is in the perfect zone and flicker red with smoke and a '!' while it burns so that the right moment is unmistakable
+- [x] As a player, I can see guests blink, bounce, sweat when impatient and fume when angry, eat their dish behind the counter and throw hearts when it is perfect so that every guest has a personality
+- [x] As a player, I can see the chef run to the station I worked, chop, flip and cheer so that the kitchen has a hero
+- [x] As a player, I can see tips burst into spinning coins that fly into a rolling counter, combo banners slam in with fire, and day-end stars stamp in with glow and confetti so that success feels great
+- [x] As a player, I can see every screen change through an iris wipe and each day open with a banner so that the game flows like a show
 
 ### Sound
 - [x] As a player, I can hear synthesized sound effects built from oscillators and filtered noise — no sound files — so that the kitchen has audio without downloads
