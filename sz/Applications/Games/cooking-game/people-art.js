@@ -320,13 +320,39 @@
       dot(ctx, x + ex, y, r * 0.13, '#3a2a22', null);
       return;
     }
-    dot(ctx, x - ex, y, r * 0.19, '#3a2a22', null);
-    dot(ctx, x + ex, y, r * 0.19, '#3a2a22', null);
-    dot(ctx, x - ex - r * 0.06, y - r * 0.07, r * 0.07, '#fff', null);
-    dot(ctx, x + ex - r * 0.06, y - r * 0.07, r * 0.07, '#fff', null);
+    if (mood === 'blink') {
+      ctx.strokeStyle = '#3a2a22';
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(x - ex, y - r * 0.05, r * 0.17, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + ex, y - r * 0.05, r * 0.17, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+      return;
+    }
+    ell(ctx, x - ex, y, r * 0.17, r * 0.23, '#2a1a14', null);
+    ell(ctx, x + ex, y, r * 0.17, r * 0.23, '#2a1a14', null);
+    ell(ctx, x - ex, y + r * 0.08, r * 0.12, r * 0.09, 'rgba(120,80,60,0.6)', null);
+    ell(ctx, x + ex, y + r * 0.08, r * 0.12, r * 0.09, 'rgba(120,80,60,0.6)', null);
+    dot(ctx, x - ex - r * 0.06, y - r * 0.09, r * 0.075, '#fff', null);
+    dot(ctx, x + ex - r * 0.06, y - r * 0.09, r * 0.075, '#fff', null);
+    dot(ctx, x - ex + r * 0.07, y + r * 0.08, r * 0.035, '#fff', null);
+    dot(ctx, x + ex + r * 0.07, y + r * 0.08, r * 0.035, '#fff', null);
   }
 
   function paintMouth(ctx, x, y, r, mood, skin) {
+    if (mood === 'worried') {
+      ctx.strokeStyle = shade(skin, -0.55);
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.2, y + r * 0.04);
+      ctx.quadraticCurveTo(x - r * 0.1, y - r * 0.06, x, y + r * 0.04);
+      ctx.quadraticCurveTo(x + r * 0.1, y + r * 0.12, x + r * 0.2, y + r * 0.02);
+      ctx.stroke();
+      return;
+    }
     if (mood === 'angry') {
       ctx.strokeStyle = '#8a2020';
       ctx.lineWidth = 2;
@@ -391,8 +417,13 @@
     const skin = mood === 'angry' ? blend(look.skin, '#d04030', 0.5) : look.skin;
     paintHeadBase(ctx, x, y, r, skin);
     paintHair(ctx, look, x, y, r);
-    paintEyePair(ctx, x, y - r * 0.08, r, mood === 'open' ? 'joy' : mood === 'big' ? 'love' : mood);
-    if (mood === 'big' || mood === 'joy') blush(ctx, x, y, r);
+    paintEyePair(ctx, x, y - r * 0.08, r, mood === 'open' ? 'joy' : mood === 'big' ? 'love' : mood === 'worried' ? 'calm' : mood);
+    if (mood === 'worried') {
+      const ex = r * 0.42;
+      line(ctx, x - ex - r * 0.2, y - r * 0.36, x - ex + r * 0.14, y - r * 0.46, '#3a2a22', 2);
+      line(ctx, x + ex + r * 0.2, y - r * 0.36, x + ex - r * 0.14, y - r * 0.46, '#3a2a22', 2);
+    }
+    if (mood !== 'angry') blush(ctx, x, y, r);
     paintMouth(ctx, x, y + r * 0.42, r, mood, skin);
     paintGlasses(ctx, look, x, y - r * 0.08, r);
   }
@@ -562,7 +593,16 @@
     if (look.accessory === 'briefcase') paintBriefcase(ctx, b.hw + 12, b.ySeat - 8);
     if (look.accessory === 'camera') paintCamera(ctx, look, b.hw, b.yTop);
     if (look.accessory === 'notebook') paintNotebook(ctx, -b.hw - 8, b.ySeat - 10);
-    paintHead(ctx, look, 0, b.headY, b.d.headR, 'calm');
+    paintHead(ctx, look, 0, b.headY, b.d.headR, frame === 2 ? 'blink' : 'calm');
+  }
+
+  /* impatient at the counter: worried brows, fingers drumming */
+  function paintFret(ctx, look, frame) {
+    const b = paintSitBase(ctx, look, false);
+    paintArm(ctx, -b.hw, b.yTop + 8, -b.hw - 3, b.ySeat - 6, look);
+    paintArm(ctx, b.hw, b.yTop + 8, b.hw + 6, b.ySeat - 10 - (frame ? 3 : 0), look);
+    if (look.accessory === 'camera') paintCamera(ctx, look, b.hw, b.yTop);
+    paintHead(ctx, look, frame ? 1 : 0, b.headY, b.d.headR, 'worried');
   }
 
   function paintEat(ctx, look, frame) {
@@ -603,6 +643,7 @@
       case 'eat': paintEat(ctx, look, frame); break;
       case 'happy': paintHappy(ctx, look); break;
       case 'angry': paintAngry(ctx, look); break;
+      case 'fret': paintFret(ctx, look, frame); break;
       default: paintSit(ctx, look, frame);
     }
   }
@@ -630,7 +671,7 @@
     return canvas;
   }
 
-  const POSE_FPS = { walk: [8, 4], sit: [1.5, 2], eat: [4, 2], happy: [1, 1], angry: [1, 1] };
+  const POSE_FPS = { walk: [8, 4], sit: [1.5, 2], eat: [4, 2], happy: [1, 1], angry: [1, 1], fret: [5, 2] };
 
   function frameOf(t, fps, n) {
     if (n <= 1) return 0;
@@ -642,17 +683,49 @@
     ctx.drawImage(img, cx - (BODY_W + 2 * PAD) / 2, baseY - (BODY_H + PAD), BODY_W + 2 * PAD, BODY_H + 2 * PAD);
   }
 
-  /* drawCustomer blits the cached frame centred on cx with feet/seat at baseY. */
+  /* a blink of 0.13 s every ~3.4 s, offset per look */
+  function blinking(look, t) {
+    let h = 0;
+    const k = look.hair + look.skin + look.shirt;
+    for (let i = 0; i < k.length; ++i) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    const p = ((t || 0) + (h % 97) / 29) % 3.4;
+    return p < 0.13;
+  }
+
+  /* squash and stretch per pose: [scaleX, scaleY, dy] around the feet */
+  function bodyMotion(pose, t) {
+    t = t || 0;
+    if (pose === 'walk') {
+      const ph = t * 8 * Math.PI / 2;
+      const up = Math.abs(Math.sin(ph));
+      return [1 + (1 - up) * 0.06, 1 - (1 - up) * 0.06 + up * 0.03, -up * 5];
+    }
+    if (pose === 'happy') {
+      const up = Math.abs(Math.sin(t * 9));
+      return [1 + (1 - up) * 0.08, 1 - (1 - up) * 0.08 + up * 0.05, -up * 8];
+    }
+    if (pose === 'angry') return [1, 1 + Math.abs(Math.sin(t * 20)) * 0.03, 0];
+    if (pose === 'eat') {
+      const ch = Math.abs(Math.sin(t * 8));
+      return [1 + ch * 0.03, 1 - ch * 0.03, 0];
+    }
+    const br = Math.sin(t * 2.6);
+    return [1 - br * 0.015, 1 + br * 0.025, 0];
+  }
+
+  /* drawCustomer blits the cached frame centred on cx with feet/seat at baseY,
+     squashed and stretched by the pose's rhythm. */
   function drawCustomer(ctx, look, cx, baseY, pose, t, facing = 1) {
     const spec = POSE_FPS[pose] || POSE_FPS.sit;
-    const img = getSprite(look, pose, frameOf(t, spec[0], spec[1]));
+    let frame = frameOf(t, spec[0], spec[1]);
+    if ((pose === 'sit' || !POSE_FPS[pose]) && blinking(look, t)) frame = 2;
+    const img = getSprite(look, POSE_FPS[pose] ? pose : 'sit', frame);
+    const m = bodyMotion(pose, t);
+    const shakeX = pose === 'angry' ? Math.sin((t || 0) * 50) * 1.5 : 0;
     ctx.save();
-    if (pose === 'walk' && facing < 0) {
-      ctx.translate(cx, 0);
-      ctx.scale(-1, 1);
-      ctx.translate(-cx, 0);
-    }
-    blit(ctx, img, cx, baseY);
+    ctx.translate(cx + shakeX, baseY + m[2]);
+    ctx.scale(m[0] * (pose === 'walk' && facing < 0 ? -1 : 1), m[1]);
+    blit(ctx, img, 0, 0);
     ctx.restore();
   }
 
@@ -808,10 +881,26 @@
     gloss(ctx, hw + 14, yTop - 16, 2, 2, 0.6);
   }
 
+  function paintChefRun(ctx, frame) {
+    const hw = 16, yHip = -18, yTop = -48, yBot = yHip;
+    const headY = yTop - 23 + 6;
+    const sw = [12, 4, -12, -4][frame];
+    groundShadow(ctx, -1, 22);
+    ctx.save();
+    ctx.rotate(0.08);
+    paintLeg(ctx, -4, yHip, -sw, { shirt: '#3a4a5a' });
+    paintLeg(ctx, 4, yHip, sw, { shirt: '#3a4a5a' });
+    paintChefArm(ctx, -hw, yTop + 8, -hw + sw * 0.6, yBot - 10 - Math.abs(sw) * 0.3);
+    paintChefBody(ctx, hw, yTop, yBot);
+    paintChefArm(ctx, hw, yTop + 8, hw - sw * 0.6, yBot - 10 - Math.abs(sw) * 0.3);
+    paintChefHead(ctx, 2, headY, 23, 'joy', frame % 2 ? 2 : 0);
+    ctx.restore();
+  }
+
   const CHEF_PAINTERS = {
-    idle: paintChefIdle, chop: paintChefChop, flip: paintChefFlip, cheer: paintChefCheer
+    idle: paintChefIdle, chop: paintChefChop, flip: paintChefFlip, cheer: paintChefCheer, run: paintChefRun
   };
-  const CHEF_FPS = { idle: [2, 2], chop: [8, 4], flip: [6, 4], cheer: [3, 2] };
+  const CHEF_FPS = { idle: [2, 2], chop: [10, 4], flip: [7, 4], cheer: [4, 2], run: [10, 4] };
 
   const chefCache = {};
 
@@ -830,11 +919,38 @@
     return canvas;
   }
 
-  /* drawChef blits the cached frame centred on cx with the feet at baseY. */
-  function drawChef(ctx, cx, baseY, pose, t) {
-    const spec = CHEF_FPS[pose] || CHEF_FPS.idle;
-    const img = getChefSprite(CHEF_PAINTERS[pose] ? pose : 'idle', frameOf(t, spec[0], spec[1]));
-    blit(ctx, img, cx, baseY);
+  /* drawChef blits the cached frame centred on cx with the feet at baseY;
+     facing -1 mirrors him, and every pose has its own bounce. */
+  function drawChef(ctx, cx, baseY, pose, t, facing = 1) {
+    const p = CHEF_PAINTERS[pose] ? pose : 'idle';
+    const spec = CHEF_FPS[p];
+    const img = getChefSprite(p, frameOf(t, spec[0], spec[1]));
+    t = t || 0;
+    let sx = 1, sy = 1, dy = 0;
+    if (p === 'run') {
+      const up = Math.abs(Math.sin(t * 10 * Math.PI / 2));
+      sx = 1 + (1 - up) * 0.05;
+      sy = 1 - (1 - up) * 0.05 + up * 0.03;
+      dy = -up * 6;
+    } else if (p === 'cheer') {
+      const up = Math.abs(Math.sin(t * 8));
+      sx = 1 + (1 - up) * 0.08;
+      sy = 1 - (1 - up) * 0.08 + up * 0.06;
+      dy = -up * 12;
+    } else if (p === 'chop' || p === 'flip') {
+      const k = Math.abs(Math.sin(t * 14));
+      sx = 1 + k * 0.03;
+      sy = 1 - k * 0.03;
+    } else {
+      const br = Math.sin(t * 2.4);
+      sx = 1 - br * 0.015;
+      sy = 1 + br * 0.025;
+    }
+    ctx.save();
+    ctx.translate(cx, baseY + dy);
+    ctx.scale(sx * (facing < 0 ? -1 : 1), sy);
+    blit(ctx, img, 0, 0);
+    ctx.restore();
   }
 
   /* ── mood faces in a speech bubble ── */

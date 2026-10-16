@@ -34,7 +34,7 @@ global.document = { createElement: () => fakeCanvas() };
 require('../food-art.js');
 
 const Art = window.SZ.FoodArt;
-const EXPORTS = ['DISHES', 'getDish', 'drawDish', 'drawStation', 'drawStepIcon'];
+const EXPORTS = ['DISHES', 'getDish', 'drawDish', 'drawStation', 'drawStationFx', 'drawHalo', 'drawStepIcon'];
 const DISH_IDS = ['burger', 'salad', 'tacos', 'pancakes', 'pasta', 'pizza',
   'steak', 'curry', 'sushi', 'ramen', 'cake', 'lobster'];
 const STATIONS = ['grill', 'stove', 'oven', 'board', 'plate'];
@@ -115,6 +115,17 @@ drawCheck('drawStation without contents', c => Art.drawStation(c, 'plate', 0, 0,
 
 for (let s = 0; s < STATIONS.length; ++s)
   drawCheck('drawStepIcon ' + STATIONS[s], c => Art.drawStepIcon(c, STATIONS[s], 30, 30, 24), 1);
+
+/* contents blend raw -> cooked -> charred with progress, within the blit budget */
+for (let s = 0; s < STATIONS.length; ++s)
+  for (const prog of [0, 0.5, 1, 1.2])
+    drawCheck('drawStation ' + STATIONS[s] + ' progress ' + prog, c => Art.drawStation(c, STATIONS[s], 0, 0, 'working', 0.2, DISH_IDS[s], prog), 4);
+
+/* the per-frame station life: a handful of cached sprites */
+for (let s = 0; s < STATIONS.length; ++s)
+  for (let t = 0; t < STATES.length; ++t)
+    drawCheck('drawStationFx ' + STATIONS[s] + ' ' + STATES[t], c => Art.drawStationFx(c, STATIONS[s], 0, 0, STATES[t], 1.3, 0.7), 16);
+drawCheck('drawHalo', c => Art.drawHalo(c, 50, 50, 200, 120, 'green', 0.6), 1);
 
 const src = fs.readFileSync(require.resolve('../food-art.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') === -1, 'shadowBlur found in food-art.js');

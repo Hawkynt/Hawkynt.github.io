@@ -108,6 +108,12 @@ for (let i = 0; i < NAMES.length; ++i) {
     ctx.styles + ' fillStyle assignments, allowed ' + MAX_STYLES);
   check('draw ' + name + ' backdrop covers the whole view', coversView(ctx.imageArgs, WIDE_VIEW),
     JSON.stringify(ctx.imageArgs));
+
+  /* the serving counter over the guests is one more blit, nothing else */
+  const fctx = fakeCtx();
+  scene.drawFront(fctx, WIDE_VIEW);
+  check('drawFront ' + name + ' is one blit', fctx.images === 1 && fctx.gradients === 0,
+    fctx.images + ' images, ' + fctx.gradients + ' gradients');
 }
 
 const fallback = Art.create('x');
