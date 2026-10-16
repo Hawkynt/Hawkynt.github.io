@@ -64,19 +64,20 @@
     }
 
     // Largest font size in [minPx, px] that fits; ellipsizes if minPx is still too wide
-    function layoutLine(text, maxW, px, minPx, weight) {
+    function layoutLine(text, maxW, px, minPx, weight, family) {
       text = String(text);
-      return cachedLayout('L' + text + '|' + Math.round(maxW) + '|' + px + '|' + minPx + '|' + (weight || ''), () => {
+      const fontOf = family ? function(sz, wt) { return (wt ? wt + ' ' : '') + sz + 'px ' + family; } : uiFont;
+      return cachedLayout('L' + text + '|' + Math.round(maxW) + '|' + px + '|' + minPx + '|' + (weight || '') + '|' + (family || ''), () => {
         let size = px;
-        ctx.font = uiFont(size, weight);
+        ctx.font = fontOf(size, weight);
         let w = ctx.measureText(text).width;
         if (w > maxW && size > minPx) {
           size = Math.max(minPx, Math.floor(px * maxW / w));
-          ctx.font = uiFont(size, weight);
+          ctx.font = fontOf(size, weight);
           w = ctx.measureText(text).width;
           while (w > maxW && size > minPx) {
             size -= 0.5;
-            ctx.font = uiFont(size, weight);
+            ctx.font = fontOf(size, weight);
             w = ctx.measureText(text).width;
           }
         }
@@ -88,8 +89,8 @@
     // One line of text that never exceeds maxW; returns the drawn width
     function fitText(text, x, y, maxW, px, opts) {
       opts = opts || {};
-      const l = layoutLine(text, Math.max(1, maxW), px, opts.minPx || Math.max(7, Math.round(px * 0.6)), opts.weight);
-      ctx.font = uiFont(l.size, opts.weight);
+      const l = layoutLine(text, Math.max(1, maxW), px, opts.minPx || Math.max(7, Math.round(px * 0.6)), opts.weight, opts.font);
+      ctx.font = opts.font ? (opts.weight ? opts.weight + ' ' : '') + l.size + 'px ' + opts.font : uiFont(l.size, opts.weight);
       if (opts.color)
         ctx.fillStyle = opts.color;
       if (opts.outline) {
@@ -170,10 +171,10 @@
        ══════════════════════════════════════════════════════════════════ */
 
     const UI = {
-      panelTop: 'rgba(24,32,56,0.95)',
-      panelBottom: 'rgba(10,13,26,0.95)',
+      panelTop: 'rgba(30,24,54,0.94)',
+      panelBottom: 'rgba(10,8,22,0.96)',
       edge: '#05070e',
-      rim: 'rgba(150,180,255,0.16)',
+      rim: 'rgba(232,196,106,0.3)',
       accent: '#5ab8ff',
       gold: '#ffd75a',
       goldDeep: '#c9952a',
@@ -200,8 +201,162 @@
       ctx.closePath();
     }
 
-    // Framed panel: offset shadow, vertical gradient, dark edge, light rim,
-    // gold corner studs, accent strip and an optional title header
+    /* Panels are painted once into an offscreen canvas per size and style and
+       blitted afterwards; without a DOM (tests) they paint straight into ctx. */
+    const canCache = typeof document !== 'undefined' && !!document.createElement;
+    const panelCache = new Map();
+    const TITLE_FONT = "'Cinzel', 'Trajan Pro', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
+
+    function titleFont(px, weight) {
+      return (weight ? weight + ' ' : '') + px + 'px ' + TITLE_FONT;
+    }
+
+    function goldStroke(g, y0, y1) {
+      const gg = g.createLinearGradient(0, y0, 0, y1);
+      gg.addColorStop(0, '#fff3c4');
+      gg.addColorStop(0.25, '#e8c46a');
+      gg.addColorStop(0.6, '#b8862e');
+      gg.addColorStop(1, '#6a4612');
+      return gg;
+    }
+
+    function cornerGem(g, x, y, s, color) {
+      g.beginPath();
+      g.moveTo(x, y - s);
+      g.lineTo(x + s * 0.8, y);
+      g.lineTo(x, y + s);
+      g.lineTo(x - s * 0.8, y);
+      g.closePath();
+      g.fillStyle = '#1a1020';
+      g.fill();
+      g.lineWidth = 1.2;
+      g.strokeStyle = '#e8c46a';
+      g.stroke();
+      g.beginPath();
+      g.moveTo(x, y - s * 0.6);
+      g.lineTo(x + s * 0.45, y);
+      g.lineTo(x, y + s * 0.6);
+      g.lineTo(x - s * 0.45, y);
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.7)';
+      g.fillRect(x - s * 0.2, y - s * 0.35, s * 0.18, s * 0.3);
+    }
+
+    // The panel body: soft drop shadow, arcane glass with a sheen, a gilded
+    // double border, corner gems and filigree brackets
+    function paintPanel(g, x, y, w, h, r, opts, accent) {
+      const glass = !opts.flat;
+      if (glass) {
+        for (let k = 0; k < 5; ++k) {
+          roundRectPathOn(g, x - k + 2, y - k + 6, w + 2 * k, h + 2 * k, r + k);
+          g.fillStyle = 'rgba(0,0,0,0.09)';
+          g.fill();
+        }
+      }
+      const bg = g.createLinearGradient(0, y, 0, y + h);
+      bg.addColorStop(0, opts.top || UI.panelTop);
+      bg.addColorStop(1, opts.bottom || UI.panelBottom);
+      roundRectPathOn(g, x, y, w, h, r);
+      g.fillStyle = bg;
+      g.fill();
+      if (glass) {
+        g.save();
+        roundRectPathOn(g, x, y, w, h, r);
+        g.clip();
+        const sh = g.createRadialGradient(x + w * 0.5, y - h * 0.2, 4, x + w * 0.5, y, Math.max(w, h) * 0.75);
+        sh.addColorStop(0, hexToRgba(accent, 0.2));
+        sh.addColorStop(1, hexToRgba(accent, 0));
+        g.fillStyle = sh;
+        g.fillRect(x, y, w, h);
+        const gl = g.createLinearGradient(0, y, 0, y + Math.min(h, 40));
+        gl.addColorStop(0, 'rgba(255,255,255,0.09)');
+        gl.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gl;
+        g.fillRect(x, y, w, Math.min(h, 40));
+        g.restore();
+      }
+      roundRectPathOn(g, x + 0.5, y + 0.5, w - 1, h - 1, r);
+      g.lineWidth = 2;
+      g.strokeStyle = '#05040a';
+      g.stroke();
+      roundRectPathOn(g, x + 1.5, y + 1.5, w - 3, h - 3, r - 1);
+      g.lineWidth = opts.glow ? 2 : 1.5;
+      g.strokeStyle = opts.glow ? hexToRgba(accent, 0.95) : goldStroke(g, y, y + h);
+      g.stroke();
+      if (w > 60 && h > 36) {
+        roundRectPathOn(g, x + 5, y + 5, w - 10, h - 10, Math.max(2, r - 4));
+        g.lineWidth = 1;
+        g.strokeStyle = 'rgba(232,196,106,0.18)';
+        g.stroke();
+      }
+      if (!opts.noStuds && w > 80 && h > 50) {
+        const b = Math.min(18, w / 6, h / 4);
+        g.strokeStyle = 'rgba(232,196,106,0.7)';
+        g.lineWidth = 1.2;
+        const corners = [[x + 7, y + 7, 1, 1], [x + w - 7, y + 7, -1, 1], [x + 7, y + h - 7, 1, -1], [x + w - 7, y + h - 7, -1, -1]];
+        for (const c of corners) {
+          g.beginPath();
+          g.moveTo(c[0], c[1] + c[3] * b);
+          g.lineTo(c[0], c[1]);
+          g.lineTo(c[0] + c[2] * b, c[1]);
+          g.stroke();
+          g.beginPath();
+          g.arc(c[0] + c[2] * 4, c[1] + c[3] * 4, 2.2, 0, Math.PI * 2);
+          g.stroke();
+        }
+        cornerGem(g, x + w / 2, y + 1.5, 5, accent);
+      }
+      if (opts.title) {
+        const hh = opts.headerH || 30;
+        const hg = g.createLinearGradient(x, 0, x + w, 0);
+        hg.addColorStop(0, 'rgba(232,196,106,0)');
+        hg.addColorStop(0.5, 'rgba(232,196,106,0.55)');
+        hg.addColorStop(1, 'rgba(232,196,106,0)');
+        g.fillStyle = 'rgba(255,255,255,0.035)';
+        g.fillRect(x + 3, y + 3, w - 6, hh - 3);
+        g.fillStyle = hg;
+        g.fillRect(x + 10, y + hh, w - 20, 1);
+      }
+    }
+
+    function roundRectPathOn(g, x, y, w, h, r) {
+      r = Math.max(0, Math.min(r, w / 2, h / 2));
+      g.beginPath();
+      g.moveTo(x + r, y);
+      g.lineTo(x + w - r, y);
+      g.arcTo(x + w, y, x + w, y + r, r);
+      g.lineTo(x + w, y + h - r);
+      g.arcTo(x + w, y + h, x + w - r, y + h, r);
+      g.lineTo(x + r, y + h);
+      g.arcTo(x, y + h, x, y + h - r, r);
+      g.lineTo(x, y + r);
+      g.arcTo(x, y, x + r, y, r);
+      g.closePath();
+    }
+
+    function panelImage(w, h, r, opts, accent) {
+      const key = Math.round(w) + 'x' + Math.round(h) + 'r' + r + accent + (opts.flat ? 'f' : '') + (opts.glow ? 'g' : '') + (opts.noStuds ? 'n' : '')
+        + (opts.title ? 't' + (opts.headerH || 30) : '') + (opts.top || '') + (opts.bottom || '');
+      let c = panelCache.get(key);
+      if (!c) {
+        if (panelCache.size > 200)
+          panelCache.clear();
+        c = document.createElement('canvas');
+        const pad = 12;
+        c.width = Math.ceil(w + pad * 2) * 2;
+        c.height = Math.ceil(h + pad * 2) * 2;
+        const g = c.getContext('2d');
+        g.scale(2, 2);
+        g.translate(pad, pad);
+        paintPanel(g, 0, 0, w, h, r, opts, accent);
+        c.pad = pad;
+        panelCache.set(key, c);
+      }
+      return c;
+    }
+
     function drawPanel(x, y, w, h, opts) {
       opts = opts || {};
       const r = opts.radius !== undefined ? opts.radius : 9;
@@ -209,60 +364,51 @@
       ctx.save();
       if (opts.alpha !== undefined)
         ctx.globalAlpha *= opts.alpha;
-      if (!opts.flat) {
-        roundRectPath(x + 2, y + 4, w, h, r);
-        ctx.fillStyle = 'rgba(0,0,0,0.38)';
-        ctx.fill();
-      }
-      const g = ctx.createLinearGradient(0, y, 0, y + h);
-      g.addColorStop(0, opts.top || UI.panelTop);
-      g.addColorStop(1, opts.bottom || UI.panelBottom);
-      roundRectPath(x, y, w, h, r);
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = UI.edge;
-      ctx.stroke();
-      roundRectPath(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = opts.glow ? hexToRgba(accent, 0.8) : UI.rim;
-      ctx.stroke();
-      // Accent strip along the top edge
-      const sg = ctx.createLinearGradient(x, 0, x + w, 0);
-      sg.addColorStop(0, hexToRgba(accent, 0));
-      sg.addColorStop(0.5, hexToRgba(accent, 0.9));
-      sg.addColorStop(1, hexToRgba(accent, 0));
-      ctx.fillStyle = sg;
-      ctx.fillRect(x + r, y + 1, w - r * 2, 2);
-      // Gold corner studs
-      if (!opts.noStuds && w > 40 && h > 30) {
-        ctx.fillStyle = hexToRgba(accent, 0.75);
-        const s = 3;
-        ctx.fillRect(x + 4, y + h - 4 - s, s, s);
-        ctx.fillRect(x + w - 4 - s, y + h - 4 - s, s, s);
+      if (canCache && w > 0 && h > 0) {
+        const img = panelImage(w, h, r, opts, accent);
+        ctx.drawImage(img, x - img.pad, y - img.pad, img.width / 2, img.height / 2);
+      } else {
+        paintPanel(ctx, x, y, w, h, r, opts, accent);
       }
       let contentY = y + (opts.pad !== undefined ? opts.pad : 8);
       if (opts.title) {
         const hh = opts.headerH || 30;
-        ctx.fillStyle = 'rgba(255,255,255,0.04)';
-        ctx.fillRect(x + 2, y + 3, w - 4, hh - 3);
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.fillRect(x + 8, y + hh, w - 16, 1);
-        ctx.fillStyle = 'rgba(255,255,255,0.06)';
-        ctx.fillRect(x + 8, y + hh + 1, w - 16, 1);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         const rpad = opts.titleRightPad || 0;
         const rightW = opts.titleRight ? Math.min(w * 0.45, 170) : 0;
-        fitText(opts.title, x + 12, y + hh / 2 + 1, w - 24 - rightW - rpad, opts.titlePx || 16, { weight: 'bold', color: accent });
+        fitText(opts.title, x + 14, y + hh / 2 + 2, w - 28 - rightW - rpad, opts.titlePx || 16, { weight: 'bold', color: accent, font: TITLE_FONT });
         if (opts.titleRight) {
           ctx.textAlign = 'right';
-          fitText(opts.titleRight, x + w - 12 - rpad, y + hh / 2 + 1, rightW - 6, 12, { color: opts.titleRightColor || UI.textDim, weight: 'bold' });
+          fitText(opts.titleRight, x + w - 14 - rpad, y + hh / 2 + 2, rightW - 6, 12, { color: opts.titleRightColor || UI.textDim, weight: 'bold' });
         }
         contentY = y + hh + 6;
       }
       ctx.restore();
       return contentY;
+    }
+
+    /* a menu button: glass with a gilded rim; hot buttons light up and a sheen sweeps across */
+    function drawButtonFrame(x, y, w, h, hot, accent, t) {
+      const a = accent || UI.accent;
+      drawPanel(x, y, w, h, {
+        radius: Math.min(12, h / 3), noStuds: true, accent: hot ? UI.gold : a, glow: hot,
+        top: hot ? 'rgba(70,48,104,0.97)' : 'rgba(46,32,72,0.95)', bottom: hot ? 'rgba(26,16,44,0.97)' : 'rgba(16,10,30,0.95)'
+      });
+      if (!hot)
+        return;
+      ctx.save();
+      roundRectPath(x + 2, y + 2, w - 4, h - 4, Math.min(10, h / 3));
+      ctx.clip();
+      const p = ((t || 0) * 0.6) % 1.6 - 0.3;
+      const sx = x + p * w;
+      const sg = ctx.createLinearGradient(sx - 40, 0, sx + 40, 0);
+      sg.addColorStop(0, 'rgba(255,240,200,0)');
+      sg.addColorStop(0.5, 'rgba(255,240,200,0.16)');
+      sg.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = sg;
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
     }
 
     function drawMeter(x, y, w, h, ratio, color, opts) {
@@ -302,13 +448,13 @@
       const w = Math.min(opts.maxW || 1e9, Math.ceil(ctx.measureText(text).width) + h * 0.8);
       const x0 = opts.align === 'right' ? x - w : (opts.align === 'center' ? x - w / 2 : x);
       roundRectPath(x0, y, w, h, h / 2);
-      ctx.fillStyle = opts.bg || 'rgba(255,255,255,0.08)';
+      ctx.fillStyle = opts.bg || 'rgba(12,10,24,0.78)';
       ctx.fill();
-      if (opts.border) {
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = opts.border;
-        ctx.stroke();
-      }
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = opts.border || 'rgba(232,196,106,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(x0 + h / 2, y + 2, w - h, h * 0.3);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       fitText(text, x0 + w / 2, y + h / 2 + 1, w - h * 0.5, px, { weight: opts.weight || 'bold', color: opts.color || UI.text });
@@ -374,32 +520,77 @@
       return w;
     }
 
+    function paintHeadline(g, text, x, y, size, color, glow) {
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = titleFont(size, 'bold');
+      g.lineJoin = 'round';
+      /* a soft halo of the glow colour, built from wide translucent strokes */
+      for (let k = 4; k >= 1; --k) {
+        g.lineWidth = size * 0.1 * k;
+        g.strokeStyle = hexToRgba(glow || color, 0.07);
+        g.strokeText(text, x, y);
+      }
+      g.lineWidth = Math.max(3, size / 7);
+      g.strokeStyle = 'rgba(0,0,0,0.8)';
+      g.strokeText(text, x, y + size * 0.05);
+      g.strokeStyle = shade(glow || color, -0.6);
+      g.lineWidth = Math.max(2, size / 9);
+      g.strokeText(text, x, y);
+      const gr = g.createLinearGradient(0, y - size / 2, 0, y + size / 2);
+      gr.addColorStop(0, '#ffffff');
+      gr.addColorStop(0.42, color);
+      gr.addColorStop(0.58, shade(color, -0.12));
+      gr.addColorStop(1, glow || color);
+      g.fillStyle = gr;
+      g.fillText(text, x, y);
+      /* a thin bright edge along the top of the letters */
+      g.save();
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = 'rgba(255,255,255,0.35)';
+      g.fillRect(x - 4000, y - size * 0.55, 8000, size * 0.12);
+      g.restore();
+    }
+
+    const headlineCache = new Map();
+
     function drawHeadline(text, x, y, maxW, px, color, glow) {
       ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const l = layoutLine(text, maxW, px, Math.round(px * 0.4), 'bold');
-      ctx.font = uiFont(l.size, 'bold');
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(3, l.size / 7);
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-      ctx.strokeText(l.text, x, y + 3);
-      ctx.strokeStyle = shade(glow || color, -0.55);
-      ctx.lineWidth = Math.max(2, l.size / 10);
-      ctx.strokeText(l.text, x, y);
-      const g = ctx.createLinearGradient(0, y - l.size / 2, 0, y + l.size / 2);
-      g.addColorStop(0, '#ffffff');
-      g.addColorStop(0.45, color);
-      g.addColorStop(1, glow || color);
-      ctx.fillStyle = g;
-      ctx.fillText(l.text, x, y);
+      ctx.font = titleFont(px, 'bold');
+      let size = px;
+      let w = ctx.measureText(text).width;
+      if (w > maxW) {
+        size = Math.max(Math.round(px * 0.4), Math.floor(px * maxW / w));
+        ctx.font = titleFont(size, 'bold');
+        w = ctx.measureText(text).width;
+      }
+      if (!canCache) {
+        paintHeadline(ctx, text, x, y, size, color, glow);
+        ctx.restore();
+        return;
+      }
+      const key = text + '|' + size + '|' + color + '|' + glow;
+      let c = headlineCache.get(key);
+      if (!c) {
+        if (headlineCache.size > 60)
+          headlineCache.clear();
+        c = document.createElement('canvas');
+        const pad = Math.ceil(size * 0.5);
+        c.width = Math.ceil(w + pad * 2) * 2;
+        c.height = Math.ceil(size * 1.4 + pad * 2) * 2;
+        const g = c.getContext('2d');
+        g.scale(2, 2);
+        paintHeadline(g, text, c.width / 4, c.height / 4, size, color, glow);
+        headlineCache.set(key, c);
+      }
+      ctx.drawImage(c, x - c.width / 4, y - c.height / 4, c.width / 2, c.height / 2);
       ctx.restore();
     }
 
     return Object.freeze({
-      UI, clamp, parseHex, hexToRgba, shade, uiFont, ellipsize, layoutLine, fitText,
+      UI, clamp, parseHex, hexToRgba, shade, uiFont, titleFont, ellipsize, layoutLine, fitText,
       wrapText, layoutBlock, drawTextBlock, roundRectPath, drawPanel, drawMeter,
-      drawChip, drawKeyHints, drawKeycap, drawHeadline
+      drawChip, drawKeyHints, drawKeycap, drawHeadline, drawButtonFrame, TITLE_FONT
     });
   }
 

@@ -14,9 +14,10 @@
   /* the board is centred inside this area of the view; the strip above it
      between the top bar and the board carries the level hint banner, and the
      area stops short of the element bar at the bottom */
-  const BOARD_X0 = 32, BOARD_Y0 = 170, BOARD_X1 = 872, BOARD_Y1 = 640;
-  const BOARD_W = BOARD_X1 - BOARD_X0;   // 840
-  const BOARD_H = BOARD_Y1 - BOARD_Y0;   // 470
+  const BOARD_X0 = 170, BOARD_Y0 = 160, BOARD_X1 = 1110, BOARD_Y1 = 636;
+  const BOARD_W = BOARD_X1 - BOARD_X0;   // 940
+  const BOARD_H = BOARD_Y1 - BOARD_Y0;   // 476
+  const BOARD_FRAME = 23;                // the ornate frame around the tiles, in tile units of 64
 
   const WALK_STEP_TIME = 0.12;   // one tile step of the mage
   const CAST_TIME = 0.35;        // casting pose before the spell lands
@@ -108,6 +109,12 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+  const Fx = SZ.PuzzleFx;
+  const fxBoard = Fx.create(400);   // board space: spells, footsteps, the realm's air
+  const fxScreen = Fx.create(300);  // view space: fireworks, confetti, star bursts
+  /* dust and rock tints per realm for footsteps and debris */
+  const REALM_DUST = ['#8a7258', '#7a909a', '#e8eef6', '#d8d0c0', '#6a5a80'];
+  const REALM_ROCK = ['#7a5a3a', '#4a6470', '#8a857a', '#cfc8ba', '#4a3a60'];
 
   /* ══════════════════════════════════════════════════════════════════
      GAME STATE
@@ -712,8 +719,12 @@
     blinkSquash = 0;
     gemT = 0;
     particles.clear();
+    fxBoard.clear();
+    fxScreen.clear();
     floatingText.clear();
     hintBanner = { text: level.hint || '', t: level.hint ? HINT_BANNER_TIME : 0 };
+    for (const k in decals)
+      delete decals[k];
     invalidateCaches();
     state = STATE_PLAYING;
     menuCursor = 0;
@@ -817,7 +828,8 @@
   let TS = 64, boardX = 0, boardY = 0;
 
   function computeBoard() {
-    TS = Math.min(64, Math.floor(BOARD_W / puzzle.cols), Math.floor(BOARD_H / puzzle.rows));
+    /* the frame scales with the tiles: n tiles plus two frame bands must fit */
+    TS = Math.min(64, Math.floor(BOARD_W / (puzzle.cols + BOARD_FRAME * 2 / 64)), Math.floor(BOARD_H / (puzzle.rows + BOARD_FRAME * 2 / 64)));
     boardX = BOARD_X0 + (BOARD_W - puzzle.cols * TS) / 2;
     boardY = BOARD_Y0 + (BOARD_H - puzzle.rows * TS) / 2;
   }
@@ -1005,9 +1017,8 @@
         if (winSeq) {
           winSeq.trail.push(next);
           particles.sparkle(toViewX(tileCenterX(next)), toViewY(tileCenterY(next)), 3, { color: '#ffd75a', speed: 1.5 });
-        } else {
-          particles.burst(toViewX(tileCenterX(next)), toViewY(tileCenterY(next)) + 12, 3, { color: '#a89878', speed: 0.9, life: 0.3, size: 2, decay: 0.05 });
         }
+        Fx.step(fxBoard, tileCenterX(next), tileCenterY(next) + 14, REALM_DUST[theme] || '#a89878', puzzle.tiles[next] === T.WATER);
       }
       hero.pose = 'walk';
       if (walk.path.length) {
@@ -1090,7 +1101,10 @@
     elementBounce = { id: elemId, at: time };
     /* the mage briefly breathes out the new element's colour */
     if (!isMenuState(state) && !winSeq)
-      particles.burst(toViewX(hero.x), toViewY(hero.y) - 8, 10, { color: ELEMENT_BY_ID[elemId].color, speed: 2.2, life: 0.5 });
+      for (let k = 0; k < 14; ++k) {
+        const a = k / 14 * Math.PI * 2;
+        fxBoard.spawn({ kind: 'spark', color: ELEMENT_BY_ID[elemId].color, x: hero.x + Math.cos(a) * 18, y: hero.y + 10 + Math.sin(a) * 8, vx: Math.cos(a) * 10, vy: -60 - Math.random() * 40, drag: 1.5, life: 0.7, size: 8, size1: 1 });
+      }
     sfx('select', { pitch: ELEMENT_PITCH[elemId] });
   }
   /* ══════════════════════════════════════════════════════════════════
@@ -1182,15 +1196,14 @@
       const k = Math.min(1, pr.t / pr.dur);
       const x = pr.x0 + (pr.x1 - pr.x0) * k, y = pr.y0 + (pr.y1 - pr.y0) * k;
       /* a short comet tail in the element colour, with a few white sparks */
-      const vx = toViewX(x), vy = toViewY(y);
-      particles.trail(vx, vy, { color: pr.color, size: 3.4, life: 0.55, decay: 0.07, shrink: 0.9 });
-      particles.trail(vx + (Math.random() - 0.5) * 6, vy + (Math.random() - 0.5) * 6, { color: pr.color, size: 2.2, life: 0.45, decay: 0.07, shrink: 0.9 });
-      if (Math.random() < 0.5)
-        particles.trail(vx, vy, { color: '#ffffff', size: 1.4, life: 0.4, decay: 0.08 });
+      fxBoard.spawn({ kind: 'spark', color: pr.color, x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 6, vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 30, life: 0.35, size: 12, size1: 2 });
+      fxBoard.spawn({ kind: 'glow', color: pr.color, x: x, y: y, life: 0.25, size: 22, size1: 6, alpha: 0.6 });
+      if (Math.random() < 0.6)
+        fxBoard.spawn({ kind: 'spark', color: '#ffffff', x: x, y: y, vx: (Math.random() - 0.5) * 80, vy: (Math.random() - 0.5) * 80, drag: 3, life: 0.4, size: 6, size1: 1 });
       if (pr.t >= pr.dur) {
         pushRing(pr.x1, pr.y1, 8, 46, pr.color, 3);
         screenShake.trigger(2 + Math.min(2, (pr.changed / 4) | 0), 140);
-        particles.sparkle(toViewX(pr.x1), toViewY(pr.y1), 4, { color: pr.color, speed: 1.6 });
+        Fx.flash(fxBoard, pr.x1, pr.y1, pr.color, 110, 0.3);
         spawnCastFx(pr.prev, pr.next, pr.action);
       }
     }
@@ -1219,7 +1232,8 @@
       if (!prev.runes.has(idx)) {
         spells.push({ kind: 'runeCollect', x: tileCenterX(idx), y: tileCenterY(idx), t: 0, dur: SPELL_TIME });
         floatingText.add(toViewX(tileCenterX(idx)), toViewY(tileCenterY(idx)) - 14, '+Rune', { color: '#e0a8ff', font: 'bold 15px sans-serif' });
-        particles.sparkle(toViewX(tileCenterX(idx)), toViewY(tileCenterY(idx)), 10, { color: '#e0a8ff', speed: 2 });
+        Fx.rune(fxBoard, tileCenterX(idx), tileCenterY(idx), '#d080ff');
+        pushRing(tileCenterX(idx), tileCenterY(idx), 6, 52, '#e0a8ff', 3, 0.5);
         sfx('pickup', { pitch: 1.3 });
       }
 
@@ -1247,7 +1261,9 @@
       }
       case 'air': {
         spells.push({ kind: 'windGust', x: tileCenterX(target), y: tileCenterY(target), t: 0, dur: SPELL_TIME });
-        particles.sparkle(toViewX(tileCenterX(target)), toViewY(tileCenterY(target)), 6, { color: '#eaf8ff', speed: 1.5 });
+        const gd = DIRS[action.dir] || [0, 1];
+        Fx.gust(fxBoard, tileCenterX(target), tileCenterY(target), gd[1], gd[0], theme === 3 ? '#8ac050' : '#c8b088');
+        screenShake.trigger(3, 160);
         sfx('bounce', { pitch: 0.6 });
         /* where did the boulder end up? */
         let endIdx = -1;
@@ -1298,8 +1314,22 @@
       if (!fx.fired && fx.elapsed >= fx.delay) {
         fx.fired = true;
         spells.push({ kind: fx.kind, x: tileCenterX(fx.index), y: tileCenterY(fx.index), t: 0, dur: SPELL_TIME });
-        particles.burst(toViewX(tileCenterX(fx.index)), toViewY(tileCenterY(fx.index)), 8, { color: fx.color, speed: 2.5, life: 0.5 });
-        particles.sparkle(toViewX(tileCenterX(fx.index)), toViewY(tileCenterY(fx.index)), 4, { color: fx.sparkle, speed: 1.2 });
+        const fxX = tileCenterX(fx.index), fxY = tileCenterY(fx.index);
+        if (fx.kind === 'fireBurst') {
+          Fx.fire(fxBoard, fxX, fxY);
+          if (fx.oldCode === T.WOOD)
+            decals[fx.index] = 'scorch';
+        } else if (fx.kind === 'iceMelt') {
+          Fx.melt(fxBoard, fxX, fxY);
+        } else if (fx.kind === 'waterSplash') {
+          Fx.splash(fxBoard, fxX, fxY);
+          pushRing(fxX, fxY, 6, 40, '#cfefff', 2.5, 0.5);
+        } else {
+          Fx.quake(fxBoard, fxX, fxY, REALM_ROCK[theme] || '#7a5a3a', REALM_DUST[theme] || '#a89878');
+          screenShake.trigger(fx.kind === 'chasmFill' ? 5 : 6, 260);
+          if (fx.kind === 'chasmFill')
+            decals[fx.index] = 'rubble';
+        }
         /* the sound rides the visual: one per tile the blaze/flood reaches,
            pitched up the further out it is; the throttle keeps bursts tame */
         if (fx.kind === 'fireBurst')
@@ -1318,13 +1348,24 @@
     if (!slide)
       return;
     slide.t += dt;
+    {
+      const k = Math.min(1, slide.t / slide.dur);
+      const bx = tileCenterX(slide.fromIdx) + (tileCenterX(slide.toIdx) - tileCenterX(slide.fromIdx)) * k;
+      const by = tileCenterY(slide.fromIdx) + (tileCenterY(slide.toIdx) - tileCenterY(slide.fromIdx)) * k;
+      if (Math.random() < 0.7)
+        Fx.step(fxBoard, bx, by + 20, REALM_DUST[theme] || '#a89878', false);
+    }
     if (slide.t >= slide.dur) {
       if (slide.swallowed && slide.chasmIdx >= 0) {
         spells.push({ kind: 'chasmFill', x: tileCenterX(slide.chasmIdx), y: tileCenterY(slide.chasmIdx), t: 0, dur: SPELL_TIME });
-        particles.burst(toViewX(tileCenterX(slide.chasmIdx)), toViewY(tileCenterY(slide.chasmIdx)), 10, { color: '#8a6a3a', speed: 2, life: 0.5 });
+        Fx.quake(fxBoard, tileCenterX(slide.chasmIdx), tileCenterY(slide.chasmIdx), REALM_ROCK[theme] || '#7a5a3a', REALM_DUST[theme] || '#a89878');
+        decals[slide.chasmIdx] = 'rubble';
+        screenShake.trigger(7, 300);
         sfx('thud', { pitch: 0.7 });
       } else {
-        /* the boulder grinds to a halt */
+        /* the boulder grinds to a halt with a heavy thud */
+        Fx.dustRing(fxBoard, tileCenterX(slide.toIdx), tileCenterY(slide.toIdx) + 16, REALM_DUST[theme] || '#a89878', 12, 1.1);
+        screenShake.trigger(6, 260);
         sfx('thud');
       }
       slide = null;
@@ -1345,14 +1386,14 @@
       winSeq.t = 0;
       spells.push({ kind: 'portalOpen', x: tileCenterX(goal), y: tileCenterY(goal), t: 0, dur: SPELL_TIME });
       pushRing(tileCenterX(goal), tileCenterY(goal), 10, 70, '#ffd75a', 4, 0.6);
-      particles.sparkle(toViewX(tileCenterX(goal)), toViewY(tileCenterY(goal)), 16, { color: realmInfo().color, speed: 2.5 });
+      Fx.portal(fxBoard, tileCenterX(goal), tileCenterY(goal), realmInfo().color);
+      pushRing(tileCenterX(goal), tileCenterY(goal), 20, 130, '#ffffff', 5, 0.7);
+      screenShake.trigger(4, 220);
       /* Grand Entrance: fireworks at the portal */
       if (treeLevel('s_finale') > 0) {
         const gx = toViewX(tileCenterX(goal)), gy = toViewY(tileCenterY(goal));
-        particles.confetti(gx, gy, 40, { speed: 6 });
-        particles.burst(gx, gy, 14, { color: '#ffd75a', speed: 4, life: 0.8 });
-        particles.burst(gx, gy, 14, { color: realmInfo().color, speed: 5, life: 0.9 });
-        particles.sparkle(gx, gy, 20, { color: '#ffffff', speed: 3 });
+        Fx.confetti(fxScreen, gx, gy, 40);
+        Fx.firework(fxScreen, gx, gy + 40);
       }
     });
   }
@@ -1407,7 +1448,11 @@
     addHighScore(level.name, stars);
     panelAnim = { at: time, starPlayed: [false, false, false] };
     screenShake.trigger(5, 250);
-    particles.sparkle(VIEW_W / 2, VIEW_H / 2, 20, { color: '#ffd75a', speed: 3 });
+    Fx.confetti(fxScreen, VIEW_W / 2 - 300, VIEW_H, 36);
+    Fx.confetti(fxScreen, VIEW_W / 2 + 300, VIEW_H, 36);
+    for (let k = 0; k < 3; ++k)
+      Fx.firework(fxScreen, 200 + Math.random() * 880, VIEW_H + 10);
+    celebrate = { t: 0, next: 0.6, left: 4 };
     if (gained > 0)
       floatingText.add(VIEW_W / 2, VIEW_H / 2 - 110, `+${gained} shards`, { color: '#8fd0ff', font: 'bold 20px sans-serif' });
     /* the first full clear of a realm: the whole realm is restored */
@@ -1423,9 +1468,9 @@
       }
       if (cleared && !wasCleared) {
         realmBanner = { realm: realm, t: 0 };
-        particles.confetti(320, 240, 30, { speed: 6 });
-        particles.confetti(960, 240, 30, { speed: 6 });
-        particles.sparkle(VIEW_W / 2, 300, 24, { color: SZ.PuzzleLevels.REALMS[realm].color, speed: 3 });
+        Fx.confetti(fxScreen, 320, 420, 40);
+        Fx.confetti(fxScreen, 960, 420, 40);
+        celebrate.left += 4;
         sfx('levelup');
       }
     }
@@ -1450,6 +1495,7 @@
     updateMotes(dt);
     updateHeroLife(dt);
     updateHoverInvalid(dt);
+    updateBoardFx(dt);
     if (realmBanner) {
       realmBanner.t += dt;
       if (realmBanner.t >= REALM_BANNER_TIME)
@@ -1470,6 +1516,32 @@
     }
     if (hintBanner.t > 0)
       hintBanner.t = Math.max(0, hintBanner.t - dt);
+  }
+
+  /* particles: the realm's air, power gathering at the staff, motes into the portal */
+  let celebrate = null;
+  function updateBoardFx(dt) {
+    fxBoard.update(dt);
+    Fx.ambient(fxBoard, theme, puzzle.cols * 64, puzzle.rows * 64, dt);
+    if (pendingCast && pendingCast.phase === 'cast')
+      Fx.charge(fxBoard, gemX(), gemY(), ELEMENT_BY_ID[pendingCast.action.element].color, dt);
+    const goal = goalIndex();
+    if (goal >= 0 && reach().has(goal))
+      Fx.portalIdle(fxBoard, tileCenterX(goal), tileCenterY(goal), realmInfo().color, dt);
+  }
+
+  function updateCelebration(dt) {
+    if (!celebrate)
+      return;
+    celebrate.t += dt;
+    if (celebrate.left > 0 && celebrate.t >= celebrate.next) {
+      --celebrate.left;
+      celebrate.next = celebrate.t + 0.35 + Math.random() * 0.4;
+      Fx.firework(fxScreen, 160 + Math.random() * 960, VIEW_H + 10);
+      sfx('smallExplode', { volume: 0.18, pitch: 1.4 + Math.random() * 0.4 });
+    }
+    if (celebrate.left <= 0 && celebrate.t > 4)
+      celebrate = null;
   }
 
   /* the mage at rest: he breathes, blinks, watches the pointer and his gem glimmers */
@@ -1499,7 +1571,7 @@
     gemT += dt;
     if (gemT >= 0.6) {
       gemT = 0;
-      particles.sparkle(toViewX(gemX()), toViewY(gemY()), 1, { color: ELEMENT_BY_ID[selectedElement].color, speed: 0.6 });
+      fxBoard.spawn({ kind: 'spark', color: ELEMENT_BY_ID[selectedElement].color, x: gemX() + (Math.random() - 0.5) * 6, y: gemY(), vy: -18, wobble: 20, life: 0.9, size: 6, size1: 1 });
     }
   }
 
@@ -1536,34 +1608,34 @@
   let hoverPoint = null;
   let elementButtons = [];
 
-  function drawTiles() {
-    const fxMap = new Map();
-    for (const fx of tileFx)
-      fxMap.set(fx.index, fx);
-    const waterFrame = Math.floor(time * 4);
-    for (let r = 0; r < puzzle.rows; ++r) {
-      for (let c = 0; c < puzzle.cols; ++c) {
-        const idx = r * puzzle.cols + c;
-        const code = puzzle.tiles[idx];
-        const v = tileVariant(idx);
-        let ox = 0;
-        if (tileShake && tileShake.index === idx)
-          ox = Math.sin(tileShake.t * 42) * 3 * (1 - tileShake.t / 0.3);
-        const x = c * 64 + ox, y = r * 64;
-        if (code === T.WALL) {
-          SZ.PuzzleArt.drawTile(ctx, theme, T.WALL, x, y, v, 0);
-          continue;
-        }
-        /* floor under every non-wall tile, then the tile itself */
-        SZ.PuzzleArt.drawTile(ctx, theme, T.FLOOR, x, y, v, 0);
-        const fx = fxMap.get(idx);
-        let top = fx && fx.elapsed < fx.delay ? fx.oldCode : code;
-        if (slide && !slide.swallowed && idx === slide.toIdx)
-          top = T.FLOOR; // the boulder is in flight, not landed
-        if (top !== T.FLOOR)
-          SZ.PuzzleArt.drawTile(ctx, theme, top, x, y, v, waterFrame);
-      }
+  /* the board as the player sees it this frame: a tile still waiting for its
+     spell keeps its old face, a boulder in flight has not landed yet */
+  let boardArt = null, boardArtTheme = -1, displayTiles = null;
+  const decals = {};
+
+  function boardBakeScale() {
+    const s = viewScale * TS / 64;
+    return Math.max(0.5, Math.min(2, Math.ceil(s * 4) / 4));
+  }
+
+  function prepareBoardArt() {
+    if (!boardArt || boardArtTheme !== theme) {
+      boardArt = SZ.PuzzleBoard.create(theme);
+      boardArtTheme = theme;
     }
+    const n = puzzle.tiles.length;
+    if (!displayTiles || displayTiles.length !== n)
+      displayTiles = new Uint8Array(n);
+    for (let i = 0; i < n; ++i)
+      displayTiles[i] = puzzle.tiles[i];
+    for (const fx of tileFx)
+      if (fx.elapsed < fx.delay)
+        displayTiles[fx.index] = fx.oldCode;
+    if (slide && !slide.swallowed)
+      displayTiles[slide.toIdx] = T.FLOOR;
+    if (slide && slide.swallowed && slide.chasmIdx >= 0)
+      displayTiles[slide.chasmIdx] = T.CHASM;
+    boardArt.update({ cols: puzzle.cols, rows: puzzle.rows, tiles: displayTiles, decals: decals, scale: boardBakeScale() });
   }
 
   function drawSlideBoulder() {
@@ -1572,7 +1644,11 @@
     const k = Math.min(1, slide.t / slide.dur);
     const x = tileCenterX(slide.fromIdx) + (tileCenterX(slide.toIdx) - tileCenterX(slide.fromIdx)) * k;
     const y = tileCenterY(slide.fromIdx) + (tileCenterY(slide.toIdx) - tileCenterY(slide.fromIdx)) * k;
-    SZ.PuzzleArt.drawTile(ctx, theme, T.BOULDER, x - 32, y - 32, tileVariant(slide.toIdx), 0);
+    /* it rolls: the turn follows the distance travelled */
+    const dist = (Math.abs(x - tileCenterX(slide.fromIdx)) + Math.abs(y - tileCenterY(slide.fromIdx))) / 26;
+    const sgn = tileCenterX(slide.toIdx) < tileCenterX(slide.fromIdx) || tileCenterY(slide.toIdx) < tileCenterY(slide.fromIdx) ? -1 : 1;
+    const sink = slide.swallowed ? Math.max(0, (k - 0.7) / 0.3) : 0;
+    SZ.PuzzleBoard.drawProp(ctx, theme, T.BOULDER, x, y + sink * 10, dist * sgn, 64 * (1 - sink * 0.45));
   }
 
   function drawRunes() {
@@ -1609,8 +1685,30 @@
 
   function drawPortalTile() {
     const goal = goalIndex();
-    if (goal >= 0)
-      SZ.PuzzleArt.drawPortal(ctx, theme, tileCenterX(goal), tileCenterY(goal), time, reach().has(goal));
+    if (goal < 0)
+      return;
+    const open = reach().has(goal);
+    const cx = tileCenterX(goal), cy = tileCenterY(goal);
+    const color = realmInfo().color;
+    const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    /* a halo on the dais and, once it can be reached, a column of light */
+    ctx.globalAlpha = open ? 0.55 + 0.25 * pulse : 0.22 + 0.08 * pulse;
+    ctx.drawImage(Fx.sprite('glow', color), cx - 48, cy - 44, 96, 88);
+    if (open) {
+      ctx.globalAlpha = 0.28 + 0.12 * pulse;
+      ctx.drawImage(Fx.sprite('glow', color), cx - 18, cy - 120, 36, 150);
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(Fx.sprite('glow', '#ffffff'), cx - 7, cy - 90, 14, 110);
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, 0.86);
+    ctx.rotate(time * (open ? 1.6 : 0.5));
+    SZ.PuzzleArt.drawPortal(ctx, theme, 0, 0, time, open);
+    ctx.restore();
   }
 
   function drawPushArrow(idx, dir) {
@@ -1648,10 +1746,16 @@
         const el = ELEMENT_BY_ID[selectedElement];
         const pulse = 0.45 + 0.3 * Math.sin(time * 5);
         ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.35 + 0.2 * pulse;
+        ctx.drawImage(Fx.sprite('glow', el.color), colOf(hoverIdx) * 64 - 16, rowOf(hoverIdx) * 64 - 16, 96, 96);
+        ctx.restore();
+        ctx.save();
         ctx.strokeStyle = el.color;
         ctx.lineWidth = 2.5;
-        ctx.globalAlpha = pulse;
-        ctx.strokeRect(colOf(hoverIdx) * 64 + 4, rowOf(hoverIdx) * 64 + 4, 56, 56);
+        ctx.globalAlpha = pulse + 0.2;
+        ui.roundRectPath(colOf(hoverIdx) * 64 + 4, rowOf(hoverIdx) * 64 + 4, 56, 56, 8);
+        ctx.stroke();
         ctx.restore();
         /* the element floats above the tile it would be cast on */
         ctx.save();
@@ -1738,21 +1842,38 @@
     ctx.restore();
   }
 
-  /* soft ring of the selected element's light under the mage, pulsing */
+  /* under the mage: a soft contact shadow and a pool of the selected element's light */
   function drawElementAura() {
     if (hero.alpha <= 0)
       return;
     const el = ELEMENT_BY_ID[selectedElement];
     const pulse = 0.5 + 0.5 * Math.sin(time * 2.4);
+    const s = hero.scale;
     ctx.save();
-    ctx.fillStyle = ui.hexToRgba(el.color, 0.10 + 0.05 * pulse);
-    ctx.beginPath();
-    ctx.ellipse(hero.x, hero.y + 14, 26 + 3 * pulse, 10 + 1.5 * pulse, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = ui.hexToRgba(el.color, 0.16 + 0.08 * pulse);
-    ctx.beginPath();
-    ctx.ellipse(hero.x, hero.y + 14, 16 + 2 * pulse, 6 + pulse, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = 0.55 * hero.alpha;
+    ctx.drawImage(SZ.PuzzleBoard.softDot('#000000', 64), hero.x - 22 * s, hero.y + 8, 44 * s, 18 * s);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = (0.22 + 0.1 * pulse) * hero.alpha;
+    ctx.drawImage(SZ.PuzzleBoard.softDot(el.color, 64), hero.x - 40 * s, hero.y - 6, 80 * s, 40 * s);
+    ctx.restore();
+  }
+
+  /* the staff gem burns in the selected element's colour, brighter while casting */
+  function drawStaffGlow() {
+    if (hero.alpha <= 0 || winSeq)
+      return;
+    const el = ELEMENT_BY_ID[pendingCast && pendingCast.phase === 'cast' ? pendingCast.action.element : selectedElement];
+    const casting = hero.pose === 'cast';
+    const side = hero.dir === 'left' || hero.dir === 'right';
+    const gx = casting ? gemX() : hero.x + (hero.dir === 'left' ? -(side ? 12 : 17) : (side ? 12 : 17));
+    const gy = casting ? gemY() : hero.y - 38 + Math.sin(time * 2.2) * 1.5;
+    const k = casting ? 1.6 + 0.3 * Math.sin(time * 30) : 1 + 0.15 * Math.sin(time * 3.1);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = casting ? 0.95 : 0.6;
+    ctx.drawImage(Fx.sprite('glow', el.color), gx - 20 * k, gy - 20 * k, 40 * k, 40 * k);
+    ctx.globalAlpha = casting ? 0.9 : 0.5;
+    ctx.drawImage(Fx.sprite('spark', '#ffffff'), gx - 6 * k, gy - 6 * k, 12 * k, 12 * k);
     ctx.restore();
   }
 
@@ -1852,27 +1973,26 @@
 
   function drawGame() {
     scene.draw(ctx, time, visibleRect());
-
-    /* soft shadow panel under the board */
-    ctx.save();
-    ui.roundRectPath(boardX - 10, boardY - 10, puzzle.cols * TS + 20, puzzle.rows * TS + 20, 12);
-    ctx.fillStyle = 'rgba(4,6,14,0.5)';
-    ctx.fill();
-    ctx.restore();
+    prepareBoardArt();
 
     ctx.save();
     ctx.translate(boardX, boardY);
     ctx.scale(TS / 64, TS / 64);
-    drawTiles();
+    boardArt.drawGround(ctx);
+    boardArt.drawWater(ctx, time);
     drawWinTrail();
-    drawSlideBoulder();
     drawRunes();
+    boardArt.drawUpper(ctx);
+    boardArt.drawGlow(ctx, time);
+    drawSlideBoulder();
     drawPortalTile();
     drawHighlights();
     drawMotes();
     drawElementAura();
     drawHeroSprite();
+    drawStaffGlow();
     drawSpells();
+    fxBoard.draw(ctx);
     drawProjectiles();
     drawRings();
     ctx.restore();
@@ -1892,8 +2012,16 @@
   }
 
   function drawManaCrystals(cx, cy, total, left) {
-    const s = 5, gap = 11;
+    const gap = Math.min(15, 150 / Math.max(1, total));
+    const s = Math.min(6.5, gap * 0.45);
     const x0 = cx - (total - 1) * gap / 2;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < left; ++i) {
+      ctx.globalAlpha = 0.45 + 0.15 * Math.sin(time * 3 + i * 0.7);
+      ctx.drawImage(Fx.sprite('glow', '#3a9aff'), x0 + i * gap - 12, cy - 12, 24, 24);
+    }
+    ctx.restore();
     for (let i = 0; i < total; ++i) {
       const x = x0 + i * gap;
       ctx.beginPath();
@@ -1903,8 +2031,11 @@
       ctx.lineTo(x - s * 0.7, cy);
       ctx.closePath();
       if (i < left) {
-        ctx.fillStyle = '#5ab8ff';
+        ctx.fillStyle = '#7ac8ff';
         ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#e8f8ff';
+        ctx.stroke();
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.08)';
         ctx.fill();
@@ -1917,12 +2048,12 @@
 
   function drawLock(cx, cy, size) {
     ctx.save();
-    ctx.strokeStyle = '#c8d0e0';
+    ctx.strokeStyle = '#b89858';
     ctx.lineWidth = size * 0.16;
     ctx.beginPath();
     ctx.arc(cx, cy - size * 0.12, size * 0.3, Math.PI, 0);
     ctx.stroke();
-    ctx.fillStyle = '#c8d0e0';
+    ctx.fillStyle = '#e0c070';
     ui.roundRectPath(cx - size * 0.4, cy - size * 0.12, size * 0.8, size * 0.6, size * 0.1);
     ctx.fill();
     ctx.restore();
@@ -1948,6 +2079,7 @@
     /* top-centre: mana and casts; the Oracle reveals the par */
     const oracle = treeLevel('i_oracle') > 0;
     ctx.textBaseline = 'middle';
+    ui.drawPanel(462, 8, 356, 66, { accent: '#5ab8ff', radius: 12 });
     ui.drawChip(`${mana} / ${manaTotal}`, 560, 16, 28, { align: 'center', color: mana > 0 ? '#8fd0ff' : ui.UI.bad, border: 'rgba(90,184,255,0.35)' });
     drawManaCrystals(560, 56, manaTotal, mana);
     ui.drawChip(`Casts ${casts} / ${oracle ? level.par : '?'}`, 730, 16, 28, { align: 'center', color: casts <= level.par ? ui.UI.text : ui.UI.warn });
@@ -1984,12 +2116,17 @@
       ctx.save();
       if (!enabled)
         ctx.globalAlpha = 0.35;
-      ui.roundRectPath(bx, BAR_Y, BAR_BTN, BAR_BTN, 8);
-      ctx.fillStyle = selected ? 'rgba(44,56,88,0.95)' : 'rgba(14,18,32,0.9)';
-      ctx.fill();
-      ctx.lineWidth = selected ? 2 : 1;
-      ctx.strokeStyle = selected ? el.color : ui.UI.rim;
-      ctx.stroke();
+      if (selected) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= 0.55 + 0.15 * Math.sin(time * 3);
+        ctx.drawImage(Fx.sprite('glow', el.color), bx - 34, BAR_Y - 34, BAR_BTN + 68, BAR_BTN + 68);
+        ctx.restore();
+      }
+      ui.drawPanel(bx, BAR_Y, BAR_BTN, BAR_BTN, {
+        radius: 10, noStuds: true, accent: el.color, glow: selected,
+        top: selected ? 'rgba(60,46,96,0.96)' : 'rgba(26,22,44,0.94)', bottom: selected ? 'rgba(20,14,38,0.97)' : 'rgba(10,8,20,0.95)'
+      });
       /* a freshly selected element's icon bounces from 1.25 down to 1 */
       let iconScale = 1;
       if (elementBounce && elementBounce.id === el.id) {
@@ -2009,6 +2146,7 @@
     }
 
     /* bottom: key hints */
+    ui.drawPanel(40, 664, 420, 30, { flat: true, noStuds: true, radius: 15, accent: '#e8c46a', top: 'rgba(12,8,24,0.72)', bottom: 'rgba(8,6,16,0.72)' });
     ui.drawKeyHints([
       { key: '1-4', label: 'element' },
       { key: 'Click', label: 'walk / cast' },
@@ -2070,31 +2208,43 @@
     item.action();
   }
 
+  /* hover glow per button, eased so buttons light up and fade out smoothly */
+  const hoverAnim = {};
+  let frameDt = 0;
+
+  function hoverLevel(id, hot) {
+    const v = hoverAnim[id] || 0;
+    const nv = hot ? Math.min(1, v + frameDt * 8) : Math.max(0, v - frameDt * 5);
+    hoverAnim[id] = nv;
+    return nv;
+  }
+
   function drawButton(id, label, x, y, w, h, opts) {
     opts = opts || {};
     const index = registerHit(id, x, y, w, h, opts.action, opts.disabled);
-    const hot = isHot(index, x, y, w, h);
+    const hot = isHot(index, x, y, w, h) && !opts.disabled;
+    const hv = hoverLevel(id, hot);
     ctx.save();
     if (opts.disabled)
       ctx.globalAlpha *= 0.55;
-    if (hot) {
+    if (hv > 0) {
+      const sc = 1 + 0.035 * hv;
       ctx.translate(x + w / 2, y + h / 2);
-      ctx.scale(1.03, 1.03);
+      ctx.scale(sc, sc);
       ctx.translate(-(x + w / 2), -(y + h / 2));
+      /* a warm glow behind the hot button */
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha *= 0.45 * hv;
+      ctx.drawImage(Fx.sprite('glow', '#ffb84a'), x - 30, y - h * 0.6, w + 60, h * 2.2);
+      ctx.restore();
     }
-    ui.drawPanel(x, y, w, h, {
-      radius: 10,
-      noStuds: true,
-      accent: hot ? ui.UI.gold : (opts.accent || ui.UI.accent),
-      glow: hot,
-      top: hot ? 'rgba(36,46,76,0.96)' : undefined,
-      bottom: hot ? 'rgba(15,19,36,0.96)' : undefined
-    });
+    ui.drawButtonFrame(x, y, w, h, hot, opts.accent, time);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ui.fitText(label, x + w / 2, opts.sub ? y + h / 2 - 8 : y + h / 2 + 1, w - 48, opts.px || 17, { weight: 'bold', color: hot ? '#ffffff' : ui.UI.text });
+    ui.fitText(label, x + w / 2, opts.sub ? y + h / 2 - 8 : y + h / 2 + 1, w - 48, opts.px || 18, { weight: 'bold', color: hot ? '#fff6dc' : '#e8dcc0', font: ui.TITLE_FONT, outline: 'rgba(0,0,0,0.5)' });
     if (opts.sub)
-      ui.fitText(opts.sub, x + w / 2, y + h - 12, w - 24, 11, { color: ui.UI.textDim });
+      ui.fitText(opts.sub, x + w / 2, y + h - 12, w - 24, 11, { color: hot ? '#d8c890' : ui.UI.textDim });
     if (opts.key)
       ui.drawKeycap(opts.key, x + w - 44, y + 6, 10);
     ctx.restore();
@@ -2131,65 +2281,184 @@
     drawButton('p-title', 'Title', px + 40, py + 230, pw - 80, 48, { key: 'T', action: function() { setScreen('title'); } });
   }
 
+  /* cached result-screen art: a gold star (earned or an empty socket) and a ray burst */
+  const resultArt = {};
+
+  function starSprite(earned) {
+    const key = earned ? 'star1' : 'star0';
+    if (resultArt[key])
+      return resultArt[key];
+    const n = 128, c = document.createElement('canvas');
+    c.width = n;
+    c.height = n;
+    const g = c.getContext('2d');
+    g.translate(n / 2, n / 2 + 2);
+    const path = function(r) {
+      g.beginPath();
+      for (let i = 0; i < 10; ++i) {
+        const rad = i % 2 === 0 ? r : r * 0.48;
+        const a = -Math.PI / 2 + i * Math.PI / 5;
+        if (i === 0) g.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        else g.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+      }
+      g.closePath();
+    };
+    g.lineJoin = 'round';
+    if (earned) {
+      path(56);
+      g.fillStyle = '#5a3608';
+      g.fill();
+      path(52);
+      const gr = g.createLinearGradient(0, -52, 0, 52);
+      gr.addColorStop(0, '#fff6c0');
+      gr.addColorStop(0.35, '#ffd75a');
+      gr.addColorStop(0.75, '#e09a20');
+      gr.addColorStop(1, '#a85e10');
+      g.fillStyle = gr;
+      g.fill();
+      /* facets: the left half of every arm a little brighter */
+      g.fillStyle = 'rgba(255,255,255,0.22)';
+      for (let i = 0; i < 5; ++i) {
+        const a = -Math.PI / 2 + i * Math.PI * 2 / 5;
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(Math.cos(a) * 52, Math.sin(a) * 52);
+        g.lineTo(Math.cos(a - Math.PI / 5) * 25, Math.sin(a - Math.PI / 5) * 25);
+        g.closePath();
+        g.fill();
+      }
+      g.lineWidth = 2;
+      g.strokeStyle = '#fff2b0';
+      path(46);
+      g.globalAlpha = 0.5;
+      g.stroke();
+    } else {
+      path(54);
+      g.fillStyle = 'rgba(0,0,0,0.55)';
+      g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = 'rgba(232,196,106,0.35)';
+      g.stroke();
+      path(40);
+      g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(255,255,255,0.08)';
+      g.stroke();
+    }
+    resultArt[key] = c;
+    return c;
+  }
+
+  function raySprite() {
+    if (resultArt.rays)
+      return resultArt.rays;
+    const n = 512, c = document.createElement('canvas');
+    c.width = n;
+    c.height = n;
+    const g = c.getContext('2d');
+    g.translate(n / 2, n / 2);
+    const rg = g.createRadialGradient(0, 0, 10, 0, 0, n / 2);
+    rg.addColorStop(0, 'rgba(255,230,150,0.9)');
+    rg.addColorStop(0.4, 'rgba(255,200,90,0.35)');
+    rg.addColorStop(1, 'rgba(255,200,90,0)');
+    g.fillStyle = rg;
+    for (let i = 0; i < 18; ++i) {
+      const a = i * Math.PI * 2 / 18;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.arc(0, 0, n / 2, a - 0.07, a + 0.07);
+      g.closePath();
+      g.fill();
+    }
+    resultArt.rays = c;
+    return c;
+  }
+
+  function easeOutBack(k) {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
+  }
+
   function drawLevelCompletePanel() {
-    fillVeil('rgba(4,6,14,0.55)');
-    const pw = 560, ph = 330;
-    const px = (VIEW_W - pw) / 2, py = (VIEW_H - ph) / 2 - 12;
-    ui.drawPanel(px, py, pw, ph, { title: 'LEVEL COMPLETE', accent: ui.UI.gold, glow: true });
+    const elapsed = panelAnim ? time - panelAnim.at : 99;
+    const intro = Math.min(1, elapsed / 0.45);
+    fillVeil('rgba(4,4,12,' + (0.62 * Math.min(1, elapsed / 0.3)).toFixed(3) + ')');
+    const pw = 600, ph = 360;
+    const px = (VIEW_W - pw) / 2, py = (VIEW_H - ph) / 2 + 6;
+    const sc = 0.6 + 0.4 * easeOutBack(intro);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, intro * 2);
+    ctx.translate(VIEW_W / 2, py + ph / 2);
+    ctx.scale(sc, sc);
+    ctx.translate(-VIEW_W / 2, -(py + ph / 2));
+
+    /* the ray burst turns slowly behind the stars */
+    const starsY = py + 132;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha *= 0.32 * Math.min(1, elapsed / 0.8);
+    ctx.translate(VIEW_W / 2, starsY);
+    ctx.rotate(time * 0.25);
+    ctx.drawImage(raySprite(), -330, -330, 660, 660);
+    ctx.restore();
+
+    ui.drawPanel(px, py, pw, ph, { accent: ui.UI.gold, top: 'rgba(42,30,70,0.95)', bottom: 'rgba(12,8,26,0.97)' });
+    /* ribbon headline over the top edge */
+    ui.drawHeadline('Level Complete', VIEW_W / 2, py - 2, 520, 46, '#ffd75a', '#c46a10');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ui.fitText(level.name, VIEW_W / 2, py + 66, pw - 60, 22, { weight: 'bold', color: ui.UI.text });
+    ui.fitText(level.name, VIEW_W / 2, py + 48, pw - 60, 20, { weight: 'bold', color: '#e8dcc0', font: ui.TITLE_FONT });
 
     const stars = 1
       + (casts <= level.par ? 1 : 0)
       + (SZ.PuzzleCore.isPerfect(puzzle) ? 1 : 0);
     const reasons = ['Solved', 'Casts ≤ par', 'All runes'];
-    const elapsed = panelAnim ? time - panelAnim.at : 99;
     for (let i = 0; i < 3; ++i) {
-      const cx = VIEW_W / 2 + (i - 1) * 130;
+      const cx = VIEW_W / 2 + (i - 1) * 150;
+      const cy = starsY + (i === 1 ? -10 : 6);
+      const size = i === 1 ? 96 : 80;
       const earned = i < stars;
-      /* the earned stars pop in one after another, each with a rising coin */
-      const appearAt = 0.25 + i * 0.3;
+      /* the earned stars slam in one after another, each with a burst */
+      const appearAt = 0.45 + i * 0.32;
       const popped = !earned || !panelAnim || elapsed >= appearAt;
       if (popped && earned && panelAnim && !panelAnim.starPlayed[i]) {
         panelAnim.starPlayed[i] = true;
         sfx('coin', { pitch: 1 + i * 0.2 });
+        Fx.starBurst(fxScreen, cx, cy);
+        screenShake.trigger(3, 120);
       }
-      let s = 1;
-      if (popped && earned && panelAnim) {
-        const k = Math.min(1, (elapsed - appearAt) / 0.25);
-        s = 1.6 - 0.6 * k;
+      ctx.drawImage(starSprite(false), cx - size / 2, cy - size / 2, size, size);
+      if (earned && popped) {
+        let s = 1;
+        if (panelAnim) {
+          const k = Math.min(1, (elapsed - appearAt) / 0.32);
+          s = k < 1 ? 2.2 - 1.2 * easeOutBack(k) : 1 + 0.04 * Math.sin(time * 3 + i);
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= 0.5 + 0.15 * Math.sin(time * 3 + i);
+        ctx.drawImage(Fx.sprite('glow', '#ffc84a'), cx - size, cy - size, size * 2, size * 2);
+        ctx.restore();
+        ctx.drawImage(starSprite(true), cx - size * s / 2, cy - size * s / 2, size * s, size * s);
       }
-      ctx.save();
-      if (s !== 1) {
-        ctx.translate(cx, py + 122);
-        ctx.scale(s, s);
-        ctx.translate(-cx, -(py + 122));
-      }
-      starPath(cx, py + 122, 26);
-      ctx.fillStyle = earned && popped ? ui.UI.gold : 'rgba(255,255,255,0.08)';
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = earned && popped ? ui.UI.goldDeep : 'rgba(255,255,255,0.15)';
-      ctx.stroke();
-      ctx.restore();
-      ui.fitText(reasons[i], cx, py + 162, 120, 11, { color: earned && popped ? ui.UI.gold : ui.UI.textMute });
+      ui.fitText(reasons[i], cx, py + 196, 140, 13, { weight: 'bold', color: earned && popped ? ui.UI.gold : ui.UI.textMute });
     }
 
-    ui.drawTextBlock(`Casts: ${casts} / par ${level.par}     Runes: ${puzzle.runes.size} / ${SZ.PuzzleCore.totalRunes(puzzle)}`,
-      px + 30, py + 196, pw - 60, 30, 16, { color: ui.UI.textDim, align: 'center', valign: 'middle' });
+    ui.drawTextBlock(`Casts ${casts} / par ${level.par}    ·    Runes ${puzzle.runes.size} / ${SZ.PuzzleCore.totalRunes(puzzle)}`,
+      px + 30, py + 216, pw - 60, 28, 16, { color: '#c8bce0', align: 'center', valign: 'middle' });
     if (lastShardGain > 0) {
       /* the shards count up once the stars have landed */
       const shown = panelAnim
-        ? Math.max(0, Math.min(lastShardGain, Math.round(lastShardGain * (elapsed - 1.1) / 0.6)))
+        ? Math.max(0, Math.min(lastShardGain, Math.round(lastShardGain * (elapsed - 1.5) / 0.6)))
         : lastShardGain;
-      ui.drawTextBlock(`+${shown} arcane shards`, px + 30, py + 228, pw - 60, 24, 15, { color: '#8fd0ff', align: 'center', valign: 'middle' });
+      drawCrystal(VIEW_W / 2 - 92, py + 254, 8, '#8fd0ff');
+      ui.drawTextBlock(`+${shown} arcane shards`, px + 30, py + 242, pw - 60, 24, 16, { color: '#8fd0ff', align: 'center', valign: 'middle', weight: 'bold' });
     }
 
-    const by = py + ph - 62;
-    drawButton('c-next', 'Next', px + 40, by, 140, 42, { key: 'Enter', action: nextLevel });
-    drawButton('c-replay', 'Replay', px + pw / 2 - 70, by, 140, 42, { key: 'R', action: restartLevel });
-    drawButton('c-levels', 'Levels', px + pw - 180, by, 140, 42, { key: 'Esc', action: goLevels });
+    const by = py + ph - 66;
+    drawButton('c-next', 'Next', px + 40, by, 150, 46, { key: 'Enter', action: nextLevel });
+    drawButton('c-replay', 'Replay', px + pw / 2 - 75, by, 150, 46, { key: 'R', action: restartLevel });
+    drawButton('c-levels', 'Levels', px + pw - 190, by, 150, 46, { key: 'Esc', action: goLevels });
+    ctx.restore();
   }
 
   function drawOutOfManaPanel() {
@@ -2250,39 +2519,101 @@
     drawCrystal(x - w - 14, y + 15, 8, '#8fd0ff');
   }
 
+  /* menus share one particle system for the realm's air and the orbiting orbs */
+  const fxMenu = Fx.create(260);
+  let titleBoard = null, titleBoardRealm = -1;
+  const TITLE_ISLAND = [
+    T.WOOD, T.FLOOR, T.BOULDER, T.FLOOR, T.ICE,
+    T.FLOOR, T.FLOOR, T.FLOOR, T.RUNE, T.FLOOR,
+    T.CHANNEL, T.WATER, T.WATER, T.FLOOR, T.GOAL
+  ];
+
+  /* soft light shafts from the top of the screen and a dark vignette */
+  function drawMenuLight(color) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.16 + 0.04 * Math.sin(time * 0.7);
+    ctx.translate(640, -120);
+    ctx.rotate(Math.sin(time * 0.15) * 0.12);
+    ctx.drawImage(raySprite(), -700, -700, 1400, 1400);
+    ctx.restore();
+  }
+
   function drawTitleScreen() {
     const realm = Math.floor(time / 12) % SZ.PuzzleLevels.REALMS.length;
-    drawMenuBackdrop(realm, 'rgba(4,6,14,0.55)');
+    drawMenuBackdrop(realm, 'rgba(4,6,14,0.45)');
+    drawMenuLight();
+    fxMenu.update(frameDt);
+    Fx.ambient(fxMenu, realm, VIEW_W, VIEW_H, frameDt);
+    fxMenu.draw(ctx);
 
-    ui.drawHeadline('FANTASY PUZZLE', 640, 120, 1100, 88, '#ffd23f', '#c04cff');
-    ctx.fillStyle = ui.UI.textDim;
-    ctx.font = ui.uiFont(22);
+    ui.drawHeadline('Fantasy Puzzle', 640, 108, 1100, 96, '#ffd75a', '#b0389a');
+    /* a glint sweeping over the title every few seconds */
+    const sweep = (time % 4.5) / 1.2;
+    if (sweep < 1) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 * Math.sin(sweep * Math.PI);
+      ctx.drawImage(Fx.sprite('glow', '#fff0c0'), 250 + sweep * 780 - 60, 60, 120, 100);
+      ctx.restore();
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Bend the elements. Open the way.', 640, 182);
+    ui.fitText('Bend the elements. Open the way.', 640, 178, 800, 22, { color: '#d8c8a8', font: ui.TITLE_FONT, outline: 'rgba(0,0,0,0.6)' });
 
     drawShardsChip(1256, 20);
 
-    /* the mage on a floating tile island, the four elements orbiting him */
+    /* the mage on a floating island of the realm, the four elements orbiting him */
+    if (!titleBoard || titleBoardRealm !== realm) {
+      titleBoard = SZ.PuzzleBoard.create(realm);
+      titleBoardRealm = realm;
+    }
+    titleBoard.update({ cols: 5, rows: 3, tiles: TITLE_ISLAND, scale: 1.25, id: 'title' });
+    const float = Math.sin(time * 1.2) * 6;
     ctx.save();
-    ctx.translate(300, 470);
-    ctx.scale(1.5, 1.5);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(96, 152, 112, 22, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.translate(0, Math.sin(time * 1.4) * 4);
-    const island = [
-      [0, 0, T.FLOOR], [64, 0, T.FLOOR], [128, 0, T.FLOOR],
-      [0, 64, T.FLOOR], [64, 64, T.FLOOR], [128, 64, T.FLOOR],
-      [0, -64, T.WOOD], [64, -64, T.BOULDER], [128, -64, T.ICE]
-    ];
-    for (const tile of island)
-      SZ.PuzzleArt.drawTile(ctx, realm, tile[2], tile[0], tile[1], 1, Math.floor(time * 4));
-    SZ.PuzzleArt.drawHero(ctx, 96, 32, 'down', 'idle', time, ROBES[save.robe] || ROBES.violet);
+    ctx.translate(150, 330 + float);
+    ctx.scale(1.05, 1.05);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(SZ.PuzzleBoard.softDot('#000000', 64), -20, 230 - float, 360, 60);
+    ctx.restore();
+    titleBoard.drawGround(ctx);
+    titleBoard.drawWater(ctx, time);
+    SZ.PuzzleArt.drawRuneGlow(ctx, realm, 8 * 64 % 320 + 32, 96, time, false);
+    titleBoard.drawUpper(ctx);
+    titleBoard.drawGlow(ctx, time);
+    ctx.save();
+    ctx.translate(4 * 64 + 32, 2 * 64 + 32);
+    ctx.scale(1, 0.86);
+    ctx.rotate(time * 1.6);
+    SZ.PuzzleArt.drawPortal(ctx, realm, 0, 0, time, true);
+    ctx.restore();
+    const hx = 2 * 64 + 32, hy = 64 + 32;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(SZ.PuzzleBoard.softDot('#000000', 64), hx - 22, hy + 8, 44, 18);
+    ctx.restore();
+    SZ.PuzzleArt.drawHero(ctx, hx, hy + Math.sin(time * 2.2) * 1.5, 'down', 'idle', time, ROBES[save.robe] || ROBES.violet);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.6 + 0.2 * Math.sin(time * 3);
+    ctx.drawImage(Fx.sprite('glow', '#8ae0ff'), hx + 17 - 18, hy - 38 - 18, 36, 36);
+    ctx.restore();
     for (let i = 0; i < ELEMENTS.length; ++i) {
-      const a = time * 0.7 + i * Math.PI / 2;
-      SZ.PuzzleScene.drawElementIcon(ctx, ELEMENTS[i].id, 96 + Math.cos(a) * 96, -8 + Math.sin(a) * 48, 26, true);
+      const a = time * 0.8 + i * Math.PI / 2;
+      const ox = hx + Math.cos(a) * 120, oy = hy - 20 + Math.sin(a) * 44;
+      const front = Math.sin(a) > 0;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = front ? 0.8 : 0.45;
+      ctx.drawImage(Fx.sprite('glow', ELEMENTS[i].color), ox - 34, oy - 34, 68, 68);
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = front ? 1 : 0.7;
+      SZ.PuzzleScene.drawElementIcon(ctx, ELEMENTS[i].id, ox, oy, front ? 34 : 26, true);
+      ctx.restore();
+      if (Math.random() < 0.5)
+        fxMenu.spawn({ kind: 'spark', color: ELEMENTS[i].color, x: 150 + ox * 1.05, y: 330 + float + oy * 1.05, vx: -Math.sin(a) * 20, vy: Math.cos(a) * 10, life: 0.6, size: 8, size1: 1 });
     }
     ctx.restore();
 
@@ -2295,7 +2626,7 @@
       { id: 't-help', label: 'Help', action: openHelp }
     ];
     for (let i = 0; i < items.length; ++i)
-      drawButton(items[i].id, items[i].label, 700, 268 + i * 58, 340, 52, { sub: items[i].sub, action: items[i].action });
+      drawButton(items[i].id, items[i].label, 760, 248 + i * 64, 360, 54, { sub: items[i].sub, action: items[i].action });
 
     ui.drawKeyHints([
       { key: '↑↓', label: 'Select' },
@@ -2304,9 +2635,54 @@
     ], 640, 694, 900, 1);
   }
 
+  /* a level node: a gold-rimmed medallion with a gem-coloured heart */
+  const medallionCache = {};
+  function medallion(color) {
+    if (medallionCache[color])
+      return medallionCache[color];
+    const n = 80, c = document.createElement('canvas');
+    c.width = n;
+    c.height = n;
+    const g = c.getContext('2d');
+    const h = n / 2;
+    g.fillStyle = 'rgba(0,0,0,0.5)';
+    g.beginPath();
+    g.arc(h + 1.5, h + 3, h - 3, 0, Math.PI * 2);
+    g.fill();
+    const rim = g.createLinearGradient(0, 0, 0, n);
+    rim.addColorStop(0, '#fff2c0');
+    rim.addColorStop(0.35, '#e0b24e');
+    rim.addColorStop(1, '#5a3a10');
+    g.fillStyle = rim;
+    g.beginPath();
+    g.arc(h, h, h - 4, 0, Math.PI * 2);
+    g.fill();
+    const core = g.createRadialGradient(h - 6, h - 8, 2, h, h, h - 10);
+    core.addColorStop(0, ui.shade(color, 0.35));
+    core.addColorStop(0.5, ui.shade(color, -0.25));
+    core.addColorStop(1, ui.shade(color, -0.7));
+    g.fillStyle = core;
+    g.beginPath();
+    g.arc(h, h, h - 10, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 2;
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    g.beginPath();
+    g.ellipse(h - 7, h - 11, 9, 4, -0.5, 0, Math.PI * 2);
+    g.fill();
+    medallionCache[color] = c;
+    return c;
+  }
+
   function drawRealmsScreen() {
     drawMenuBackdrop(0, 'rgba(4,6,14,0.62)');
-    ui.drawHeadline('Campaign', 640, 46, 600, 40, '#ffd23f', ui.UI.goldDeep);
+    drawMenuLight();
+    fxMenu.update(frameDt);
+    Fx.ambient(fxMenu, 0, VIEW_W, VIEW_H, frameDt);
+    fxMenu.draw(ctx);
+    ui.drawHeadline('Campaign', 640, 50, 600, 48, '#ffd75a', '#c46a10');
     ui.drawChip(campaignStarCount() + ' / 120 stars', 1256, 20, 28, { align: 'right', color: ui.UI.gold });
 
     const REALMS = SZ.PuzzleLevels.REALMS;
@@ -2330,17 +2706,22 @@
       ui.roundRectPath(cx, cy, cw, ch, 9);
       ctx.clip();
       ctx.save();
-      ctx.translate(cx, cy);
-      ctx.scale(cw / 1280, cw / 1280);
+      const ms = ch / 720;
+      ctx.translate(cx + cw / 2 - 640 * ms, cy);
+      ctx.scale(ms, ms);
       getScene(r).draw(ctx, time, null);
       ctx.restore();
-      ctx.fillStyle = unlocked ? 'rgba(6,9,18,0.55)' : 'rgba(4,6,12,0.8)';
+      const vg = ctx.createLinearGradient(0, cy, 0, cy + ch);
+      vg.addColorStop(0, unlocked ? 'rgba(6,4,14,0.05)' : 'rgba(4,4,10,0.6)');
+      vg.addColorStop(0.35, unlocked ? 'rgba(6,4,14,0.45)' : 'rgba(4,4,10,0.75)');
+      vg.addColorStop(1, unlocked ? 'rgba(6,4,14,0.85)' : 'rgba(4,4,10,0.9)');
+      ctx.fillStyle = vg;
       ctx.fillRect(cx, cy, cw, ch);
       ctx.restore();
       ui.drawPanel(cx, cy, cw, ch, {
-        flat: true, noStuds: true,
+        flat: true, noStuds: !unlocked,
         accent: unlocked ? realm.color : ui.UI.textMute,
-        top: 'rgba(10,14,26,0.25)', bottom: 'rgba(6,8,16,0.35)'
+        top: 'rgba(10,14,26,0)', bottom: 'rgba(6,8,16,0)'
       });
       if (unlockFx && unlockFx.realm === r) {
         const f = 1 - (time - unlockFx.at) / 0.8;
@@ -2363,7 +2744,7 @@
 
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ui.fitText(realm.name, cx + 14, cy + 152, 148, 17, { weight: 'bold', color: unlocked ? ui.UI.text : ui.UI.textMute });
+      ui.fitText(realm.name, cx + 14, cy + 152, 148, 19, { weight: 'bold', color: unlocked ? '#f4e6c4' : ui.UI.textMute, font: ui.TITLE_FONT, outline: 'rgba(0,0,0,0.7)' });
       ui.drawChip(stars + ' / 24', cx + cw - 12, cy + 140, 22, { align: 'right', px: 12, color: stars ? ui.UI.gold : ui.UI.textMute, bg: 'rgba(4,6,14,0.8)' });
 
       if (!unlocked) {
@@ -2380,15 +2761,27 @@
         const col = row === 0 ? k % 4 : 3 - (k % 4);
         nodePos.push([cx + 38 + col * 58, cy + 214 + row * 100]);
       }
+      /* the trail between the nodes: glowing dots up to the furthest open level */
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([3, 5]);
-      ctx.beginPath();
-      ctx.moveTo(nodePos[0][0], nodePos[0][1]);
-      for (let k = 1; k < 8; ++k)
-        ctx.lineTo(nodePos[k][0], nodePos[k][1]);
-      ctx.stroke();
+      for (let k = 0; k < 7; ++k) {
+        const lit = campaignUnlocked(r * 8 + k + 1);
+        const ax = nodePos[k][0], ay = nodePos[k][1], bx2 = nodePos[k + 1][0], by2 = nodePos[k + 1][1];
+        const len = Math.hypot(bx2 - ax, by2 - ay), steps = Math.floor(len / 9);
+        for (let d = 2; d < steps - 1; ++d) {
+          const f = d / steps;
+          const px = ax + (bx2 - ax) * f, py = ay + (by2 - ay) * f;
+          if (lit) {
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.5 + 0.4 * Math.sin(time * 4 - (k * steps + d) * 0.5);
+            ctx.drawImage(Fx.sprite('spark', realm.color), px - 5, py - 5, 10, 10);
+          } else {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = '#8a8070';
+            ctx.fillRect(px - 1, py - 1, 2, 2);
+          }
+        }
+      }
       ctx.restore();
 
       for (let k = 0; k < 8; ++k) {
@@ -2398,21 +2791,28 @@
         const got = save.stars[SZ.PuzzleLevels.CAMPAIGN[index].id] || 0;
         const hit = registerHit('lv-' + index, nx - 17, ny - 17, 34, 34, function() { loadPuzzle('campaign', index); }, !open);
         const hot = isHot(hit, nx - 17, ny - 17, 34, 34);
+        const hv = hoverLevel('lv-' + index, hot);
+        const next = open && !got;
         ctx.save();
         if (!open)
-          ctx.globalAlpha *= 0.45;
-        ctx.beginPath();
-        ctx.arc(nx, ny, 16, 0, Math.PI * 2);
-        ctx.fillStyle = hot ? 'rgba(44,56,88,0.98)' : 'rgba(14,18,32,0.92)';
-        ctx.fill();
-        ctx.lineWidth = hot ? 2.5 : 1.5;
-        ctx.strokeStyle = got >= 3 ? ui.UI.good : hot ? ui.UI.gold : realm.color;
-        ctx.stroke();
+          ctx.globalAlpha *= 0.5;
+        if (open && (hv > 0 || next)) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha *= Math.max(hv, next ? 0.5 + 0.4 * Math.sin(time * 4) : 0);
+          ctx.drawImage(Fx.sprite('glow', next ? '#ffd75a' : realm.color), nx - 36, ny - 36, 72, 72);
+          ctx.restore();
+        }
+        const nr = 16 + hv * 2;
+        ctx.drawImage(medallion(open ? realm.color : '#5a5a6a'), nx - nr - 3, ny - nr - 3, (nr + 3) * 2, (nr + 3) * 2);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         if (open) {
-          ctx.fillStyle = ui.UI.text;
-          ctx.font = ui.uiFont(15, 'bold');
+          ctx.font = ui.titleFont(16, 'bold');
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.strokeText(String(k + 1), nx, ny + 1);
+          ctx.fillStyle = hot ? '#ffffff' : '#fff0d0';
           ctx.fillText(String(k + 1), nx, ny + 1);
         } else {
           drawLock(nx, ny, 18);
@@ -2500,9 +2900,23 @@
     }
 
     drawMenuBackdrop(4, 'rgba(4,6,14,0.72)');
+    /* the great inscription circle turning slowly behind the tree */
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.3;
+    ctx.translate(640, 400);
+    ctx.rotate(time * 0.04);
+    ctx.drawImage(arcaneCircle(), -330, -330, 660, 660);
+    ctx.rotate(-time * 0.1);
+    ctx.globalAlpha = 0.18;
+    ctx.drawImage(arcaneCircle(), -200, -200, 400, 400);
+    ctx.restore();
+    fxMenu.update(frameDt);
+    Fx.ambient(fxMenu, 4, VIEW_W, VIEW_H, frameDt);
+    fxMenu.draw(ctx);
 
-    ui.drawPanel(24, 20, 1232, 76);
-    ui.drawHeadline('Grimoire', 130, 58, 220, 40, '#c04cff');
+    ui.drawPanel(24, 20, 1232, 76, { accent: '#c04cff' });
+    ui.drawHeadline('Grimoire', 150, 58, 260, 46, '#e8b0ff', '#7a2ad0');
     drawShardsChip(1236, 44);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -2511,17 +2925,17 @@
 
     for (const tab of layout.tabs) {
       const active = tab.index === treeBranch;
-      ui.roundRectPath(tab.x, tab.y, tab.w, tab.h, 8);
-      ctx.fillStyle = '#0d1020';
-      ctx.fill();
-      ui.roundRectPath(tab.x, tab.y, tab.w, tab.h, 8);
-      ctx.fillStyle = ui.hexToRgba(tab.branch.color, active ? 0.55 : 0.25);
-      ctx.fill();
       if (active) {
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = tab.branch.color;
-        ctx.stroke();
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.45;
+        ctx.drawImage(Fx.sprite('glow', tab.branch.color), tab.x - 20, tab.y - 24, tab.w + 40, tab.h + 48);
+        ctx.restore();
       }
+      ui.drawPanel(tab.x, tab.y, tab.w, tab.h, {
+        radius: 8, noStuds: true, glow: active, accent: tab.branch.color,
+        top: ui.hexToRgba(ui.shade(tab.branch.color, -0.45), active ? 0.95 : 0.6), bottom: ui.hexToRgba(ui.shade(tab.branch.color, -0.8), active ? 0.95 : 0.6)
+      });
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ui.fitText(tab.branch.name + ' ' + tab.maxed + '/' + tab.total, tab.x + tab.w / 2, tab.y + tab.h / 2 + 1, tab.w - 16, 14, { weight: 'bold', color: active ? '#ffffff' : '#c9d1e8' });
@@ -2539,7 +2953,6 @@
         if (!from)
           continue;
         const met = treeLevel(reqId) >= reqLevel;
-        ctx.strokeStyle = met ? ui.hexToRgba(layout.branch.color, 0.8) : '#3a4058';
         const x1 = from.x + from.w, y1 = from.y + from.h / 2;
         const x2 = card.x, y2 = card.y + card.h / 2;
         const midX = (x1 + x2) / 2;
@@ -2548,10 +2961,39 @@
         ctx.lineTo(midX, y1);
         ctx.lineTo(midX, y2);
         ctx.lineTo(x2, y2);
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = met ? ui.hexToRgba(layout.branch.color, 0.25) : 'rgba(0,0,0,0.4)';
         ctx.stroke();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = met ? ui.hexToRgba(layout.branch.color, 0.9) : '#4a4460';
+        ctx.stroke();
+        if (met) {
+          /* motes of power flowing along an inscribed link */
+          const len = (midX - x1) + Math.abs(y2 - y1) + (x2 - midX);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let m = 0; m < 3; ++m) {
+            let d = ((time * 90 + m * len / 3) % len);
+            let px, py;
+            if (d < midX - x1) { px = x1 + d; py = y1; }
+            else if ((d -= midX - x1) < Math.abs(y2 - y1)) { px = midX; py = y1 + Math.sign(y2 - y1) * d; }
+            else { d -= Math.abs(y2 - y1); px = midX + d; py = y2; }
+            ctx.drawImage(Fx.sprite('spark', layout.branch.color), px - 9, py - 9, 18, 18);
+          }
+          ctx.restore();
+        }
       }
     }
 
+    for (const card of layout.cards) {
+      if (card.node.id !== treeSelected)
+        continue;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 + 0.1 * Math.sin(time * 3);
+      ctx.drawImage(Fx.sprite('glow', layout.branch.color), card.x - 60, card.y - 60, card.w + 120, card.h + 120);
+      ctx.restore();
+    }
     for (const card of layout.cards)
       drawTreeNodeCard(card);
 
@@ -2559,8 +3001,8 @@
       if (card.node.id !== treeSelected)
         continue;
       ui.roundRectPath(card.x - 3, card.y - 3, card.w + 6, card.h + 6, 11);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = ui.hexToRgba('#ffd75a', 0.75 + 0.25 * Math.sin(time * 4));
       ctx.stroke();
     }
 
@@ -2571,6 +3013,60 @@
       { key: 'Enter', label: 'Buy' },
       { key: 'Esc', label: 'Back' }
     ], 640, 694, 900, 1);
+  }
+
+  /* the Grimoire's inscription circle: rings, rune ticks and a hexagram, cached */
+  let arcaneCircleCanvas = null;
+  function arcaneCircle() {
+    if (arcaneCircleCanvas)
+      return arcaneCircleCanvas;
+    const n = 660, c = document.createElement('canvas');
+    c.width = n;
+    c.height = n;
+    const g = c.getContext('2d');
+    g.translate(n / 2, n / 2);
+    g.strokeStyle = '#c86aff';
+    const ring = function(r, w) {
+      g.lineWidth = w;
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.stroke();
+    };
+    ring(320, 3);
+    ring(304, 1.5);
+    ring(230, 2);
+    ring(120, 2);
+    g.lineWidth = 2;
+    for (let i = 0; i < 72; ++i) {
+      const a = i * Math.PI * 2 / 72, r0 = i % 6 === 0 ? 278 : 292;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+      g.lineTo(Math.cos(a) * 304, Math.sin(a) * 304);
+      g.stroke();
+    }
+    for (let t = 0; t < 2; ++t) {
+      g.beginPath();
+      for (let i = 0; i <= 3; ++i) {
+        const a = -Math.PI / 2 + t * Math.PI + i * Math.PI * 2 / 3;
+        if (i === 0) g.moveTo(Math.cos(a) * 230, Math.sin(a) * 230);
+        else g.lineTo(Math.cos(a) * 230, Math.sin(a) * 230);
+      }
+      g.stroke();
+    }
+    g.font = 'bold 22px ' + ui.TITLE_FONT;
+    g.fillStyle = '#e0a8ff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    const glyphs = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ';
+    for (let i = 0; i < 24; ++i) {
+      const a = i * Math.PI * 2 / 24;
+      g.save();
+      g.rotate(a);
+      g.fillText(glyphs.charAt(i), 0, -262);
+      g.restore();
+    }
+    arcaneCircleCanvas = c;
+    return c;
   }
 
   function drawTreeNodeCard(card) {
@@ -2594,7 +3090,7 @@
     }
 
     ctx.textBaseline = 'middle';
-    ui.fitText(node.name, card.x + 16, card.y + 26, 268, 20, { weight: 'bold', color: ui.UI.text });
+    ui.fitText(node.name, card.x + 16, card.y + 27, 230, 21, { weight: 'bold', color: '#f4e6c4', font: ui.TITLE_FONT });
     ui.drawChip((level ? romanNumeral(level) : '0') + ' / ' + romanNumeral(max), card.x + card.w - 14, card.y + 14, 20, { align: 'right', px: 12, color: ui.UI.textDim, bg: 'rgba(255,255,255,0.06)' });
     ui.drawTextBlock(node.desc, card.x + 16, card.y + 42, 268, 40, 14, { color: ui.UI.textDim });
 
@@ -2729,6 +3225,7 @@
   }
 
   const HELP_PAGES = ['Goal', 'Elements', 'Tiles', 'Controls'];
+  const helpTiles = [];
 
   function drawHelp() {
     drawMenuBackdrop(1, 'rgba(4,6,14,0.78)');
@@ -2772,7 +3269,21 @@
       ];
       for (let i = 0; i < samples.length; ++i) {
         const x = 252 + (i % 5) * 160, y = 186 + ((i / 5) | 0) * 160;
-        SZ.PuzzleArt.drawTile(ctx, 0, samples[i][0], x, y, 1, Math.floor(time * 4));
+        /* each sample is a framed one-tile board in the in-game art */
+        if (!helpTiles[i]) {
+          helpTiles[i] = SZ.PuzzleBoard.create(0);
+          helpTiles[i].update({ cols: 1, rows: 1, tiles: [samples[i][0]], scale: 2, id: 'help' + i, frame: false });
+        }
+        const hb = helpTiles[i];
+        ctx.save();
+        ctx.translate(x, y);
+        hb.drawGround(ctx);
+        hb.drawWater(ctx, time);
+        if (samples[i][0] === T.RUNE)
+          SZ.PuzzleArt.drawRuneGlow(ctx, 0, 32, 32, time, false);
+        hb.drawUpper(ctx);
+        hb.drawGlow(ctx, time);
+        ctx.restore();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ui.fitText(samples[i][1], x + 32, y + 84, 140, 14, { color: ui.UI.textDim });
@@ -2858,15 +3369,18 @@
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
     const dt = Math.max(0, Math.min(rawDt, MAX_DT));
     lastTimestamp = timestamp;
+    frameDt = dt;
 
     if (isMenuState(state)) {
       time += dt;
       particles.update();
       floatingText.update();
+      fxScreen.update(dt);
       beginFrame();
       hitAreas.length = 0;
       drawMenuScreen();
       particles.draw(ctx);
+      fxScreen.draw(ctx);
       floatingText.draw(ctx);
       drawFade(dt);
       updateStatusBar();
@@ -2878,6 +3392,8 @@
       updateGame(dt);
 
     particles.update();
+    fxScreen.update(dt);
+    updateCelebration(dt);
     screenShake.update(dt * 1000);
     floatingText.update();
 
@@ -2891,6 +3407,7 @@
     ctx.restore();
 
     drawOverlays();
+    fxScreen.draw(ctx);
     drawFade(dt);
     updateStatusBar();
 
@@ -2901,8 +3418,17 @@
   function drawFade(dt) {
     if (fade <= 0)
       return;
-    fillVeil('rgba(0,0,0,' + fade.toFixed(3) + ')');
-    fade = Math.max(0, fade - dt * FADE_RATE);
+    /* an iris opening from the centre with a soft violet edge */
+    const v = visibleRect();
+    const k = 1 - fade;
+    const r = 30 + k * k * 900;
+    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, r * 0.55, VIEW_W / 2, VIEW_H / 2, r);
+    g.addColorStop(0, 'rgba(8,4,18,0)');
+    g.addColorStop(0.7, 'rgba(30,14,50,' + (0.6 * fade).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(4,2,10,' + Math.min(1, fade * 1.4).toFixed(3) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    fade = Math.max(0, fade - dt * FADE_RATE * 0.8);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -3229,6 +3755,26 @@
   });
 
   setupCanvas();
+  /* paint the particle sprites now rather than in the middle of the first spell */
+  {
+    const warm = Fx.create(2000);
+    Fx.fire(warm, 0, 0); Fx.melt(warm, 0, 0); Fx.splash(warm, 0, 0); Fx.rune(warm, 0, 0, '#d080ff');
+    Fx.gust(warm, 0, 0, 1, 0, '#8ac050'); Fx.gust(warm, 0, 0, 1, 0, '#c8b088'); Fx.starBurst(warm, 0, 0); Fx.confetti(warm, 0, 0, 12);
+    for (let r = 0; r < 5; ++r) {
+      Fx.quake(warm, 0, 0, REALM_ROCK[r], REALM_DUST[r]);
+      Fx.step(warm, 0, 0, REALM_DUST[r], false);
+      Fx.portal(warm, 0, 0, SZ.PuzzleLevels.REALMS[r].color);
+      for (let k = 0; k < 40; ++k)
+        Fx.ambient(warm, r, 100, 100, 1);
+    }
+    for (const el of ELEMENTS) {
+      Fx.sprite('glow', el.color);
+      Fx.sprite('spark', el.color);
+    }
+    for (let k = 0; k < 20; ++k)
+      warm.update(0.1);
+    warm.clear();
+  }
   loadSave();
   loadHighScores();
   loadTutorialSeen();
