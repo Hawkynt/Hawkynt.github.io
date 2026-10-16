@@ -2278,7 +2278,8 @@
       enemies,
       grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
       partialHP,
-      droppedResources: droppedResources.map(p => ({ col: p.col, row: p.row, items: Object.assign({}, p.items), age: Math.round(p.age * 10) / 10 })),
+      droppedResources: droppedResources.map(p => ({ col: p.col, row: p.row, items: Object.assign({}, p.items), age: Math.round(p.age * 10) / 10 }))
+        .concat(flyingOre.map(f => ({ col: drillX, row: drillY, items: Object.assign({}, f.items), age: 0 }))),
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
       unlockedTools, activeToolKey, toolState,
       site, relocationCore, landing: landingPending,
@@ -3062,6 +3063,8 @@
     cancelMining();
     SZ.GameAudio.play('whoosh', { pitch: transitionTarget === VIEW_SURFACE ? 1.3 : 0.8 });
 
+    if (transitionTarget === VIEW_SURFACE)
+      landAllFlyingOre();
     if (transitionTarget === VIEW_SURFACE && carried > 0) {
       const total = bagTotal();
       SZ.GameAudio.play('coin');
@@ -3094,16 +3097,7 @@
         cameraY = Math.max(0, Math.min(maxCamY, targetCamY));
 
         // Auto-collect loose resources at or near the player position
-        for (const drop of pilesNear(drillX, drillY, 1)) {
-          const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-          const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-          const got = takePileOre(drop, Infinity, bagFit);
-          for (const t in got.taken) {
-            const label = TILE_LABELS[t];
-            resources[label] += got.taken[t];
-            floatingText.add(tx, ty - 30, `+${got.taken[t]} ${label}`, { color: '#0f0', font: 'bold 22px sans-serif' });
-          }
-        }
+        attractPiles(1);
       }
     } else if (transitionPhase === 'fade-in' && transitionProgress >= 2) {
       // Done
@@ -3856,24 +3850,61 @@
     meteors.push({ x: tx + (fromLeft ? -1 : 1) * (300 + Math.random() * 200), y: -40, tx, ty: DOME_Y + 6, t: 0, dur: 1.1 + Math.random() * 0.5, size: 6 + Math.random() * 6 });
   }
 
-  function meteorImpact(m) {
+  // Where a meteor is now along its streak
+  function meteorPos(m) {
+    return { x: m.x + (m.tx - m.x) * m.t, y: m.y + (m.ty - m.y) * m.t };
+  }
+
+  // Share of the streak at which the meteor's rock first touches the dome's glass
+  // shell (the upper half circle), or 2 when it misses the dome
+  function meteorHitT(m) {
+    if (m.hitT !== undefined) return m.hitT;
+    const R = DOME_RADIUS + m.size * 0.6;
+    const dx = m.tx - m.x, dy = m.ty - m.y, fx = m.x - DOME_X, fy = m.y - DOME_Y;
+    const a = dx * dx + dy * dy, b = 2 * (fx * dx + fy * dy), c = fx * fx + fy * fy - R * R;
+    const disc = b * b - 4 * a * c;
+    m.hitT = 2;
+    if (disc >= 0) {
+      const t = (-b - Math.sqrt(disc)) / (2 * a);
+      if (t >= 0 && t <= 1 && m.y + dy * t <= DOME_Y)
+        m.hitT = t;
+    }
+    return m.hitT;
+  }
+
+  // A meteor lands at (x, y): on the dome shell (domeHit) or on the ground
+  function meteorImpact(m, x, y, domeHit) {
     const dmg = 26 + waveNumber * 2;
     for (const e of enemies)
-      if (!e.hidden && Math.hypot(e.x - m.tx, e.y - m.ty) < 95)
+      if (!e.hidden && Math.hypot(e.x - x, e.y - y) < 95)
         applyDamageToEnemy(e, dmg);
-    if (Math.abs(m.tx - DOME_X) < DOME_RADIUS + 10)
-      damageDome(4, m.tx, DOME_Y - DOME_RADIUS * 0.6, 'Meteor hit the dome!');
+    if (domeHit)
+      damageDome(4, x, y, 'Meteor hit the dome!');
     else if (meteorOre.length < 14) {
       // A chunk of space rock with ore in it
       const pool = ['iron', 'iron', 'cobalt', 'copper', 'silver', 'gold', 'quartz', 'titanium', 'sapphire'];
-      meteorOre.push({ x: m.tx, y: DOME_Y + 10, type: pool[Math.floor(Math.random() * pool.length)], amount: 6 + Math.floor(Math.random() * 10), age: 0 });
+      meteorOre.push({ x, y: DOME_Y + 10, type: pool[Math.floor(Math.random() * pool.length)], amount: 6 + Math.floor(Math.random() * 10), age: 0 });
     }
     if (currentView === VIEW_SURFACE) {
-      particles.burst(m.tx, m.ty, 24, { color: '#ffb060', speed: 4, life: 0.6, gravity: 0.08 });
-      particles.burst(m.tx, m.ty, 10, { color: '#6a5a50', speed: 2.5, life: 0.8, gravity: 0.1 });
+      particles.burst(x, y, 24, { color: '#ffb060', speed: 4, life: 0.6, gravity: 0.08 });
+      particles.burst(x, y, 10, { color: '#6a5a50', speed: 2.5, life: 0.8, gravity: 0.1 });
       screenShake.trigger(6, 220);
       SZ.GameAudio.play('explode', { pitch: 1.3, volume: 0.6 });
     }
+  }
+
+  // A parried meteor shatters on the raised shield and harmlessly sprays sparks
+  function meteorParried(m, x, y, perfect) {
+    parryFeedback(x, y, perfect);
+    if (currentView !== VIEW_SURFACE) return;
+    const nx = (x - DOME_X) / DOME_RADIUS, ny = (y - DOME_Y) / DOME_RADIUS;
+    for (let k = 0; k < 16; ++k) {
+      const a = Math.atan2(ny, nx) + (Math.random() - 0.5) * 1.6, v = 2 + Math.random() * 4;
+      particles.trail(x, y, { vx: Math.cos(a) * v, vy: Math.sin(a) * v, color: k % 3 ? '#ffb060' : '#fff4d0', life: 0.5 + Math.random() * 0.3, size: 2 + Math.random() * 2, gravity: 0.12 });
+    }
+    particles.burst(x, y, 10, { color: '#6a5a50', speed: 3, life: 0.6, gravity: 0.12 });
+    screenShake.trigger(3, 120);
+    SZ.GameAudio.play('explode', { pitch: 1.9, volume: 0.35 });
   }
 
   function collectMeteorOre(o, byDrone) {
@@ -3917,9 +3948,21 @@
     }
     for (let i = meteors.length - 1; i >= 0; --i) {
       const m = meteors[i];
-      m.t += dt / m.dur;
-      if (m.t >= 1) {
-        meteorImpact(m);
+      m.t = Math.min(1, m.t + dt / m.dur);
+      if (m.t >= meteorHitT(m)) {
+        // Hits the glass where the rock touches it - unless the parry shield is up
+        m.t = m.hitT;
+        const p = meteorPos(m);
+        const d = Math.hypot(p.x - DOME_X, p.y - DOME_Y) || 1;
+        const x = DOME_X + (p.x - DOME_X) / d * DOME_RADIUS, y = DOME_Y + (p.y - DOME_Y) / d * DOME_RADIUS;
+        meteors.splice(i, 1);
+        const pc = parryCheck();
+        if (pc)
+          meteorParried(m, x, y, pc === 2);
+        else
+          meteorImpact(m, x, y, true);
+      } else if (m.t >= 1) {
+        meteorImpact(m, m.tx, m.ty, false);
         meteors.splice(i, 1);
       }
     }
@@ -6097,18 +6140,11 @@
       relocationCore.revealed = true;
   }
 
+  // Ore on the keeper's cell hops into the bag
   function pickUpDroppedResources() {
     const drop = pileByCell.get(drillY * GRID_COLS + drillX);
-    if (!drop) return;
-    const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-    const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-    const got = takePileOre(drop, Infinity, bagFit);
-    for (const t in got.taken) {
-      const label = TILE_LABELS[t];
-      resources[label] += got.taken[t];
-      floatingText.add(tx, ty - 30, `+${got.taken[t]} ${label}`, { color: '#0f0', font: 'bold 22px sans-serif' });
-      SZ.GameAudio.play('pickup', { volume: 0.6 });
-    }
+    if (drop)
+      launchPileOre(drop, bagWithFlyingOre(), 0.25, 22);
   }
 
   function grantMineGadget(type, tx, ty) {
@@ -6623,11 +6659,6 @@
     return k;
   }
 
-  // takePileOre filter for the keeper's bag
-  function bagFit(type, amount) {
-    return bagAdd(TILE_LABELS[type], amount);
-  }
-
   function packedName(label, tier) {
     const name = label.charAt(0).toUpperCase() + label.slice(1);
     if (!tier) return name;
@@ -6711,6 +6742,9 @@
 
   function clearPiles() {
     droppedResources = [];
+    flyingOre = [];
+    flyGain = {};
+    flyGainTimer = 0;
     pileByCell.clear();
     ++pileVersion;
   }
@@ -6746,6 +6780,147 @@
       if (p.age > 120)
         removePile(p);
     }
+  }
+
+  /* Loose ore flying into the keeper's bag (pickups, Magnet, Lodestone): it is
+     credited when it arrives, and a pile only gives what will still fit */
+  const MAX_FLYING_ORE = 60;     // ore sprites in the air at once (one per pile, with its count)
+  let flyingOre = [];            // { x0, y0, x, y, t, dur, items: { type: amount }, count, type, hop, side }
+  let flyGain = {}, flyGainTimer = 0;
+
+  // The keeper's bag as it will be once all ore in flight has landed
+  function bagWithFlyingOre() {
+    const b = Object.assign({}, bag);
+    for (const f of flyingOre)
+      for (const t in f.items) {
+        const label = TILE_LABELS[t];
+        b[label] = (b[label] || 0) + f.items[t];
+      }
+    return b;
+  }
+
+  // Send what fits of a pile flying to the keeper (shadow: bagWithFlyingOre(),
+  // kept up to date across several launches); returns the amount launched
+  function launchPileOre(pile, shadow, dur, hop) {
+    if (flyingOre.length >= MAX_FLYING_ORE) return 0;
+    const x = pile.col * TILE_SIZE + TILE_SIZE / 2, y = pile.row * TILE_SIZE + TILE_SIZE / 2;
+    const got = takePileOre(pile, Infinity, (t, want) => bagAdd(TILE_LABELS[t], want, shadow));
+    if (got.count <= 0) return 0;
+    let type = -1, most = 0;
+    for (const t in got.taken)
+      if (got.taken[t] > most) {
+        most = got.taken[t];
+        type = +t;
+      }
+    flyingOre.push({ x0: x, y0: y, x, y, t: 0, dur, items: got.taken, count: got.count, type, hop: hop || 0, side: (pile.col + pile.row) % 2 ? 1 : -1 });
+    return got.count;
+  }
+
+  // Pull the piles around a cell to the keeper (Magnet, Lodestone)
+  function attractPiles(R) {
+    if (!pileByCell.size || flyingOre.length >= MAX_FLYING_ORE || !keeperInMine()) return;
+    const near = pilesNear(drillX, drillY, R);
+    if (!near.length) return;
+    const shadow = bagWithFlyingOre();
+    for (const p of near) {
+      const dist = Math.abs(p.col - drillX) + Math.abs(p.row - drillY);
+      launchPileOre(p, shadow, 0.3 + 0.075 * Math.min(4, dist), dist ? 0 : 18);
+    }
+  }
+
+  // Ease-in flight (it speeds up towards the keeper) with a slight curve, or a hop on the spot
+  function flyingOrePos(f, t, kx, ky) {
+    const e = t * t;
+    const dx = kx - f.x0, dy = ky - f.y0, len = Math.hypot(dx, dy) || 1;
+    const bend = Math.sin(Math.PI * t) * Math.min(18, len * 0.15) * f.side;
+    return { x: f.x0 + dx * e - dy / len * bend, y: f.y0 + dy * e + dx / len * bend - Math.sin(Math.PI * t) * f.hop };
+  }
+
+  function landFlyingOre(f) {
+    for (const t in f.items) {
+      const label = TILE_LABELS[t];
+      const k = bagAdd(label, f.items[t]);
+      resources[label] += k;
+      if (k > 0)
+        flyGain[label] = (flyGain[label] || 0) + k;
+      // No room after all: back onto the floor under the keeper
+      if (f.items[t] > k)
+        addPileOre(drillX, drillY, +t, f.items[t] - k);
+    }
+    if (flyGainTimer <= 0)
+      flyGainTimer = 0.12;
+  }
+
+  // Land everything in flight at once (the keeper leaves the mine)
+  function landAllFlyingOre() {
+    const all = flyingOre;
+    flyingOre = [];
+    for (const f of all)
+      landFlyingOre(f);
+    flyGain = {};
+    flyGainTimer = 0;
+  }
+
+  function updateFlyingOre(dt) {
+    if (flyingOre.length && !keeperInMine())
+      landAllFlyingOre();
+    const kx = drillX * TILE_SIZE + TILE_SIZE / 2, ky = drillY * TILE_SIZE + TILE_SIZE / 2;
+    for (let i = flyingOre.length - 1; i >= 0; --i) {
+      const f = flyingOre[i];
+      f.t += dt / f.dur;
+      if (f.t >= 1) {
+        flyingOre.splice(i, 1);
+        landFlyingOre(f);
+        continue;
+      }
+      const p = flyingOrePos(f, f.t, kx, ky);
+      f.x = p.x;
+      f.y = p.y;
+    }
+    // Arrivals close together share one '+N' per kind and one sound
+    if (flyGainTimer <= 0) return;
+    flyGainTimer -= dt;
+    if (flyGainTimer > 0) return;
+    flyGainTimer = 0;
+    if (currentView === VIEW_UNDERGROUND) {
+      const px = kx - cameraX, py = ky - cameraY;
+      let line = 0;
+      for (const label in flyGain)
+        floatingText.add(px, py - 30 - 24 * line++, `+${flyGain[label]} ${label}`, { color: '#0f0', font: 'bold 22px sans-serif' });
+      if (line)
+        SZ.GameAudio.play('pickup', { volume: 0.6 });
+    }
+    flyGain = {};
+  }
+
+  function drawFlyingOre(ox, oy) {
+    if (!flyingOre.length) return;
+    const kx = drillX * TILE_SIZE + TILE_SIZE / 2, ky = drillY * TILE_SIZE + TILE_SIZE / 2;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const f of flyingOre) {
+      const x = f.x - ox, y = f.y - oy;
+      if (x < -40 || x > CANVAS_W + 40 || y < -40 || y > CANVAS_H + 40) continue;
+      const color = TILE_HIGHLIGHT_COLORS[f.type] || '#fff';
+      const tail = flyingOrePos(f, Math.max(0, f.t - 0.18), kx, ky);
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(tail.x - ox, tail.y - oy);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      drawGlow(color, x, y, 16, 0.5);
+      const img = getSprite(TILE_ICONS[f.type] || 'crate');
+      if (img)
+        ctx.drawImage(img, Math.round(x - 10), Math.round(y - 10), 20, 20);
+      if (f.count > 1) {
+        const b = getPileBadge(pileCountText(f.count));
+        ctx.drawImage(b.canvas, Math.round(x - b.w / 2), Math.round(y - 10 - b.h), b.w, b.h);
+      }
+    }
+    ctx.restore();
   }
 
   // Break open the gadget chamber that owns (r, c)
@@ -7965,19 +8140,8 @@
       else st.aegis = Math.min(aegisMax(), st.aegis + 6 * dt);
     }
     // Lodestone pulls loose ore to the keeper
-    if (hasArtifact('lodestone') && currentView === VIEW_UNDERGROUND) {
-      for (const drop of pilesNear(drillX, drillY, 4)) {
-        const sx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX, sy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-        const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-        const got = takePileOre(drop, Infinity, bagFit);
-        for (const t in got.taken) {
-          resources[TILE_LABELS[t]] += got.taken[t];
-          for (let k = 0; k < 6; ++k)
-            particles.trail(sx, sy, { vx: (px - sx) / 18 + (Math.random() - 0.5), vy: (py - sy) / 18 + (Math.random() - 0.5), color: TILE_HIGHLIGHT_COLORS[t] || '#ffd0d0', life: 0.3, size: 2 });
-          floatingText.add(px, py - 30, `+${got.taken[t]} ${TILE_LABELS[t]}`, { color: '#ff9a9a', font: 'bold 20px sans-serif' });
-        }
-      }
-    }
+    if (hasArtifact('lodestone') && currentView === VIEW_UNDERGROUND)
+      attractPiles(4);
     // Dowsing Rod: chests close by give themselves away
     if (hasArtifact('dowsingRod') && currentView === VIEW_UNDERGROUND)
       revealChestsNear(drillY, drillX, 8, true);
@@ -9382,14 +9546,9 @@
 
     // Energy Shield: absorb a percentage of damage (tracked passively via unlockedTools)
 
-    // Magnet: auto-collect dropped resources within 2 tiles
-    if (unlockedTools.magnet && currentView === VIEW_UNDERGROUND && pileByCell.size) {
-      for (const drop of pilesNear(drillX, drillY, 2 + getEffectiveLevel('magnetRange'))) {
-        const got = takePileOre(drop, Infinity, bagFit);
-        for (const t in got.taken)
-          resources[TILE_LABELS[t]] += got.taken[t];
-      }
-    }
+    // Magnet: dropped resources within 2 tiles fly to the keeper
+    if (unlockedTools.magnet && currentView === VIEW_UNDERGROUND)
+      attractPiles(2 + getEffectiveLevel('magnetRange'));
 
     // Chain Lightning: when turret fires, extra damage arcs to nearby enemies (handled in weapon)
     // Freeze Ray: slows enemies near projectile impacts (handled in weapon)
@@ -9453,6 +9612,7 @@
   let gunDrones = [];            // { angle, x, y, cooldown, flash, tx, ty }
   let repairBots = [];           // { x, y, angle, beam, bx, by }
   const MAX_DRONES_PER_KIND = 10;
+  let keeperPickTimer = 0;       // countdown to the next check which courier serves the keeper
 
   function droneShaftTile() {
     return { col: Math.floor(GRID_COLS / 2), row: 0 };
@@ -9535,13 +9695,15 @@
     return best;
   }
 
-  // A pile a courier is still flying to
+  // A pile a courier is still flying to, or one no courier could reach a moment ago
   function pileClaimed(p) {
+    if (p.noRoute > animTime) return true;
     const o = p.claimedBy;
     return !!o && !!o.job && o.job.kind === 'drop' && o.job.drop === p && drones.indexOf(o) >= 0;
   }
 
-  // Nearest unclaimed pile, searched ring by ring (Manhattan distance) up to 40 tiles
+  // Nearest unclaimed pile: ring by ring (Manhattan distance) up to 40 tiles,
+  // then the nearest of all piles anywhere in the mine
   function nearestDrop(fromCol, fromRow) {
     if (!pileByCell.size) return null;
     for (let dist = 0; dist <= 40; ++dist)
@@ -9557,25 +9719,108 @@
             return p;
         }
       }
-    return null;
+    let best = null, bestD = Infinity;
+    for (const p of droppedResources) {
+      const dist = Math.abs(p.col - fromCol) + Math.abs(p.row - fromRow);
+      if (dist < bestD && !pileClaimed(p)) {
+        best = p;
+        bestD = dist;
+      }
+    }
+    return best;
   }
 
-  // Next errand for a courier with room in its hold
+  // The keeper is (or is about to be) in the mine
+  function keeperInMine() {
+    return (transitionPhase !== 'none' && transitionTarget ? transitionTarget : currentView) === VIEW_UNDERGROUND;
+  }
+
+  // The keeper's bag is worth a courier trip
+  function keeperNeedsCourier() {
+    return keeperInMine() && bagTotal() >= Math.min(10, carryCapacity * 0.25);
+  }
+
+  // Next errand for a courier with room in its hold: loose ore first, then
+  // lasering ore near the keeper's spot - in any view. Serving the keeper is
+  // handed out separately (assignKeeperCourier), to one courier at a time.
   function pickDroneJob(d) {
     const room = droneCargoCap() - d.cargo;
     if (room <= 0) return null;
-    const keeperBelow = currentView === VIEW_UNDERGROUND || transitionTarget === VIEW_UNDERGROUND;
-    if (keeperBelow && bagTotal() >= Math.min(10, carryCapacity * 0.25) && !drones.some(o => o !== d && o.job && o.job.kind === 'keeper'))
-      return { kind: 'keeper' };
-    const here = droneTile(d);
+    const here = d.state === 'dock' ? droneShaftTile() : droneTile(d);
     const drop = nearestDrop(here.col, here.row);
     if (drop) {
       drop.claimedBy = d;
       return { kind: 'drop', drop, col: drop.col, row: drop.row };
     }
-    if (keeperBelow && unlockedTools.droneMiner)
+    if (unlockedTools.droneMiner)
       return findDroneOre(d);
     return null;
+  }
+
+  // Drop a courier's claim on the pile it was flying to
+  function releaseDroneClaim(d) {
+    if (d.job && d.job.kind === 'drop' && d.job.drop.claimedBy === d)
+      d.job.drop.claimedBy = null;
+  }
+
+  // Take up the next errand, or fly home when there is none (or the hold is nearly full)
+  function nextDroneJob(d) {
+    d.job = d.cargo < droneCargoCap() * 0.85 ? pickDroneJob(d) : null;
+    if (d.job) {
+      d.state = 'fly';
+      if (routeDrone(d)) return;
+    }
+    sendDroneHome(d);
+  }
+
+  // A courier that may drop what it is doing to serve the keeper
+  function courierFree(d) {
+    if (d.cargo >= droneCargoCap() * 0.5) return false;
+    if (d.state === 'dock') return true;
+    return d.state === 'fly' && !!d.job && (d.job.kind === 'drop' || d.job.kind === 'mine' || d.job.kind === 'home');
+  }
+
+  // At most one courier serves the keeper: the nearest free one, while the keeper
+  // is in the mine with a bag worth fetching. Any other keeper job is dropped.
+  function assignKeeperCourier() {
+    const want = keeperNeedsCourier();
+    let keeper = null;
+    for (const d of drones) {
+      if (!d.job || d.job.kind !== 'keeper') continue;
+      if (want && !keeper)
+        keeper = d;
+      else
+        nextDroneJob(d);
+    }
+    if (!want || keeper) return;
+    let best = null, bestD = Infinity;
+    for (const d of drones) {
+      if (!courierFree(d)) continue;
+      const t = d.state === 'dock' ? droneShaftTile() : droneTile(d);
+      const dist = Math.abs(t.col - drillX) + Math.abs(t.row - drillY) + (d.state === 'dock' ? 2 : 0);
+      if (dist < bestD) {
+        best = d;
+        bestD = dist;
+      }
+    }
+    if (!best) return;
+    releaseDroneClaim(best);
+    const docked = best.state === 'dock';
+    if (docked) {
+      const sh = droneShaftTile();
+      best.x = sh.col * TILE_SIZE + TILE_SIZE / 2;
+      best.y = TILE_SIZE / 2;
+    }
+    best.job = { kind: 'keeper' };
+    best.state = 'fly';
+    best.repath = 0.4;
+    if (routeDrone(best)) return;
+    if (docked) {
+      best.job = null;
+      best.state = 'dock';
+      best.timer = 1;
+    } else
+      nextDroneJob(best);
   }
 
   function jobTarget(d) {
@@ -9598,6 +9843,11 @@
     d.path = path;
     d.pi = 0;
     d.target = to;
+    if (!path && d.job.kind === 'drop') {
+      // Out of reach (buried or cut off): leave it be for a while
+      d.job.drop.noRoute = animTime + 5;
+      releaseDroneClaim(d);
+    }
     return !!path;
   }
 
@@ -9696,12 +9946,7 @@
       }
     }
     // Look for more work while there is room, otherwise head home
-    d.job = d.cargo < droneCargoCap() * 0.85 ? pickDroneJob(d) : null;
-    if (d.job && d.job.kind !== 'keeper') {
-      d.state = 'fly';
-      if (routeDrone(d)) return;
-    }
-    sendDroneHome(d);
+    nextDroneJob(d);
   }
 
   function updateCourier(d, dt) {
@@ -9744,15 +9989,15 @@
       }
       return;
     }
-    // Flying: chase the keeper if they moved, then follow the path
+    // Flying: chase the keeper if they moved (back to normal work once they surface), then follow the path
     if (d.job && d.job.kind === 'keeper') {
+      if (!keeperInMine()) {
+        nextDroneJob(d);
+        return;
+      }
       d.repath -= dt;
       if (d.repath <= 0 && (d.target.col !== drillX || d.target.row !== drillY)) {
         d.repath = 0.4;
-        if (currentView !== VIEW_UNDERGROUND && transitionTarget !== VIEW_UNDERGROUND) {
-          sendDroneHome(d);
-          return;
-        }
         routeDrone(d);
       }
     }
@@ -9793,6 +10038,12 @@
   }
 
   function updateDrones(dt) {
+    // The couriers work the mine whatever is on screen
+    keeperPickTimer -= dt;
+    if (keeperPickTimer <= 0) {
+      keeperPickTimer = 0.4;
+      assignKeeperCourier();
+    }
     for (const d of drones)
       updateCourier(d, dt);
 
@@ -10118,6 +10369,7 @@
 
     // Age dropped resources; despawn after 120s
     agePiles(dt);
+    updateFlyingOre(dt);
 
     // Center camera on player underground
     if (currentView !== VIEW_SURFACE) {
@@ -12505,6 +12757,7 @@
 
     // Courier drones carry their own lights; the core glows through the dark
     drawUndergroundDrones();
+    drawFlyingOre(ox, oy);
     drawRelocationCoreMarker();
     drawChests();
     drawChestHints(toolState.scannerActive ? scannerRange() : 0);
