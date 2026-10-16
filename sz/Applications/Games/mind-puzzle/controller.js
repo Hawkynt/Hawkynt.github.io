@@ -150,15 +150,17 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function setupCanvas() {
+    // the rooms are laid out on a 700 x 500 floor: scale it to fit the window, letterboxed
     const parent = canvas.parentElement;
-    if (parent) {
-      canvasW = parent.clientWidth || canvasW;
-      canvasH = parent.clientHeight || canvasH;
-    }
+    const fit = parent ? Math.min(parent.clientWidth / canvasW, parent.clientHeight / canvasH) || 1 : 1;
+    const cssW = Math.max(1, Math.floor(canvasW * fit));
+    const cssH = Math.max(1, Math.floor(canvasH * fit));
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = canvasW * dpr;
-    canvas.height = canvasH * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    ctx.setTransform(canvas.width / canvasW, 0, 0, canvas.height / canvasH, 0, 0);
   }
 
   /* ══════════════════════════════════════════════════════════════════

@@ -193,12 +193,17 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function setupCanvas() {
+    // shrink the table to fit a small window (a phone), never grow it past its design size
+    const frame = canvas.parentElement;
+    const fit = frame ? Math.min(1, frame.clientWidth / CANVAS_W, frame.clientHeight / CANVAS_H) || 1 : 1;
+    const cssW = Math.max(1, Math.floor(CANVAS_W * fit));
+    const cssH = Math.max(1, Math.floor(CANVAS_H * fit));
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_W * dpr;
-    canvas.height = CANVAS_H * dpr;
-    canvas.style.width = CANVAS_W + 'px';
-    canvas.style.height = CANVAS_H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    ctx.setTransform(canvas.width / CANVAS_W, 0, 0, canvas.height / CANVAS_H, 0, 0);
   }
 
   /* ══════════════════════════════════════════════════════════════════

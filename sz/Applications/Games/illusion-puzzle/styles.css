@@ -1,12 +1,16 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body { height: 100%; }
 body {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: #1d1640;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
 .game-frame {
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;

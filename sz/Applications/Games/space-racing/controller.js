@@ -4991,7 +4991,8 @@
   /* ── Menu clicks + mouse steering ── */
   canvas.addEventListener('pointerdown', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    // backing pixels per CSS pixel: lower than devicePixelRatio when the render scale drops
+    const dpr = canvas.width / Math.max(1, rect.width);
     mouseX = ((e.clientX - rect.left) * dpr - viewOffX) / viewScale;
     mouseY = ((e.clientY - rect.top) * dpr - viewOffY) / viewScale;
 
@@ -5043,12 +5044,18 @@
   canvas.addEventListener('pointermove', (e) => {
     // keep the logical cursor position for every screen; only racing steers with it
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    // backing pixels per CSS pixel: lower than devicePixelRatio when the render scale drops
+    const dpr = canvas.width / Math.max(1, rect.width);
     mouseX = ((e.clientX - rect.left) * dpr - viewOffX) / viewScale;
     mouseY = ((e.clientY - rect.top) * dpr - viewOffY) / viewScale;
   });
 
   canvas.addEventListener('pointerup', () => {
+    mouseDown = false;
+    mouseControlActive = false;
+  });
+
+  canvas.addEventListener('pointercancel', () => {
     mouseDown = false;
     mouseControlActive = false;
   });

@@ -165,7 +165,7 @@
           launchParams[k] = v;
 
       const win = await appLauncher.launch(autoApp, launchParams);
-      if (win && launchParams.maximized)
+      if (win && launchParams.maximized && win.state !== 'maximized')
         windowManager.maximizeWindow(win.id);
     }
   }
