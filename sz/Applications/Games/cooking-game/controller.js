@@ -221,6 +221,8 @@
   let dayOverT = 0;             // seconds since the day-end panel opened
   let starPopped = 0;           // day-end stars already popped with a coin sound
   let carpet = null;            // { x, t } VIP red-carpet shimmer at a seat
+  let coach = null;             // { step, ticket, t, hideT } first-day coach marks
+  let coachSkip = null;         // { x, y, w, h } the 'Skip tips' button as drawn
 
   function startDay(dayMode, index) {
     mode = dayMode && typeof dayMode === 'object' ? mode : dayMode;
@@ -278,6 +280,8 @@
     dayOverT = 0;
     starPopped = 0;
     carpet = null;
+    coach = mode === 'career' && index === 0 && !save.coached ? { step: 1, ticket: null, t: 0, hideT: 0 } : null;
+    coachSkip = null;
     fade = 1;
     dailyDate = dateKey(new Date());
     rand = mode === 'daily' ? SZ.KitchenData.rng(SZ.KitchenData.dailySeed(new Date())) : Math.random;
@@ -462,6 +466,89 @@
     c.ticket = ticket;
     tickets.push(ticket);
     sfx('select');
+    if (coach && coach.step === 1) coachAdvance(2, ticket);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     COACH MARKS — a guided first order on career day 1-1
+     ══════════════════════════════════════════════════════════════════ */
+
+  function coachAdvance(step, ticket) {
+    coach.step = step;
+    if (ticket) coach.ticket = ticket;
+    coach.t = 0;
+  }
+
+  function endCoach() {
+    coach = null;
+    coachSkip = null;
+    save.coached = true;
+    writeSave();
+  }
+
+  /* the first order stays calm: no second guest until its dish is up */
+  function coachHoldsSpawn() {
+    return !!coach && coach.step < 4 && customers.some(c => c.state === 'walkIn' || c.state === 'waiting');
+  }
+
+  function updateCoach(dt) {
+    if (!coach) return;
+    coach.t += dt;
+    const t = coach.ticket;
+    if (coach.step >= 2 && coach.step <= 4) {
+      /* the coached order walked out or went to the bin: start over */
+      if (tickets.indexOf(t) < 0 && !pass.some(d => d.ticket === t) && !flying.some(f => f.ticket === t)) {
+        coach.step = 1;
+        coach.ticket = null;
+        coach.t = 0;
+        return;
+      }
+      if (coach.step < 4 && pass.some(d => d.ticket === t)) coachAdvance(4, null);
+    } else if (coach.step === 5) {
+      coach.hideT -= dt;
+      if (coach.hideT <= 0) coach.step = 6;
+    }
+  }
+
+  function slotStationOf(t) {
+    for (let i = 0; i < SZ.KitchenData.STATION_ORDER.length; ++i)
+      for (const s of stations[SZ.KitchenData.STATION_ORDER[i]].slots)
+        if (s.ticket === t) return i;
+    return -1;
+  }
+
+  /* What the current hint says and the box it points at (null: nothing). */
+  function coachTarget() {
+    const t = coach.ticket;
+    if (coach.step === 1) {
+      const c = customers.find(g => g.state === 'waiting' && !g.ticket);
+      if (!c) return null;
+      return { text: 'Click the customer to take the order', place: 'side',
+        x: c.x - 48, y: SEAT_Y - BUBBLE_DY - 42, w: 96, h: BUBBLE_DY + 48 };
+    }
+    if (coach.step === 2 || coach.step === 3) {
+      if (!t || t.done) return null;
+      let i = slotStationOf(t);
+      if (i < 0) {
+        if (coach.step === 2) return null;
+        i = SZ.KitchenData.STATION_ORDER.indexOf(t.waitingFor);
+      }
+      const name = SZ.KitchenData.STATIONS[SZ.KitchenData.STATION_ORDER[i]].name;
+      const text = coach.step === 2
+        ? 'Click the ' + name + ' (or press ' + (i + 1) + ') while the needle is in the green zone'
+        : 'Next step: the ' + name.toLowerCase() + ' station (' + (i + 1) + ')';
+      return { text: text, place: 'station',
+        x: stationX(i) - 6, y: RAIL_Y + RAIL_H + 4, w: STATION_W + 12, h: BAR_Y + BAR_H + 19 - RAIL_Y - RAIL_H };
+    }
+    if (coach.step === 4) {
+      const i = pass.findIndex(d => d.ticket === t);
+      if (i < 0) return null;
+      return { text: 'Click the dish to serve it', place: 'side',
+        x: passX(i) - 40, y: PASS_Y - 40, w: 80, h: 80 };
+    }
+    if (coach.step === 5)
+      return { text: 'Perfect dishes build your combo and tips. Keep it up!', place: 'center' };
+    return null;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -538,6 +625,7 @@
       pushPop(cx, STATION_Y - 12, 'Good', '#cfd6e4', 14);
       sfx('blip');
     }
+    if (coach && coach.ticket === t && coach.step === 2 && !t.done) coachAdvance(3, t);
   }
 
   /* a ticket landing on a station: each kind gets its own short call */
@@ -736,6 +824,10 @@
     }
     c.state = 'eating';
     c.eatTimer = EAT_TIME;
+    if (coach && coach.step === 4 && f.ticket === coach.ticket) {
+      coachAdvance(5, null);
+      coach.hideT = 4;
+    }
     updateStatus();
   }
 
@@ -945,6 +1037,10 @@
     dayOverT = 0;
     starPopped = 0;
     fade = 1;
+    if (coach) {
+      coach = null;
+      save.coached = true;
+    }
     saveDayResult();
     saveHighScores();
     /* a career day is won with at least one star; the challenge modes are
@@ -959,7 +1055,8 @@
     return {
       v: 2, coins: 0, stars: {}, tree: {},
       best: { endless: 0, daily: { date: '', earned: 0 } },
-      stats: { days: 0, served: 0, perfect: 0 }
+      stats: { days: 0, served: 0, perfect: 0 },
+      coached: false
     };
   }
 
@@ -987,6 +1084,7 @@
             s.stats.served = o.stats.served || 0;
             s.stats.perfect = o.stats.perfect || 0;
           }
+          if (o.coached === true) s.coached = true;
         }
       }
     } catch { /* file:// may block */ }
@@ -1361,6 +1459,12 @@
   function handleCanvasClick(mx, my) {
     if (state !== STATE_PLAYING) return;
 
+    if (coachSkip && mx >= coachSkip.x && mx <= coachSkip.x + coachSkip.w && my >= coachSkip.y && my <= coachSkip.y + coachSkip.h) {
+      endCoach();
+      sfx('click');
+      return;
+    }
+
     if (treeLevel('p_rush') > 0 && Math.hypot(mx - BELL.x, my - BELL.y) <= BELL.r + 8) {
       activateRush();
       return;
@@ -1721,11 +1825,80 @@
     ctx.fillRect(nx - 2, BAR_Y - 3, 4, BAR_H + 6);
   }
 
-  function drawStationBar(i, id, slot) {
+  /* The station's key number; it pulses green while a step sits in its
+     perfect zone. */
+  function drawStationKey(i, x, ready) {
+    const kx = x + 2, ky = BAR_Y + BAR_H + 4;
+    if (!ready) {
+      ui.drawKeycap(String(i + 1), kx, ky, 12);
+      return;
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(animT * 9);
+    const s = 1 + 0.22 * pulse;
+    ctx.save();
+    ctx.translate(kx + 8, ky + 8.5);
+    ctx.scale(s, s);
+    ctx.translate(-(kx + 8), -(ky + 8.5));
+    ctx.shadowColor = 'rgba(125,255,138,0.95)';
+    ctx.shadowBlur = 8 + 8 * pulse;
+    ui.roundRectPath(kx - 1, ky - 1, 18, 19, 4);
+    ctx.fillStyle = 'rgba(60,170,80,' + (0.55 + 0.35 * pulse).toFixed(3) + ')';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ui.drawKeycap(String(i + 1), kx, ky, 12);
+    ui.roundRectPath(kx, ky, 16, 17, 3);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#7dff8a';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* a red '!' speech bubble bobbing over a station that started to burn */
+  function drawBurnBubble(cx, y) {
+    const by = y + Math.sin(animT * 8) * 2;
+    const r = 13 + (Math.sin(animT * 10) > 0 ? 1.5 : 0);
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,60,40,0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#e03a2e';
+    ctx.beginPath();
+    ctx.arc(cx, by, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, by + r - 3);
+    ctx.lineTo(cx + 5, by + r - 3);
+    ctx.lineTo(cx, by + r + 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, by, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = ui.uiFont(18, 'bold');
+    ctx.fillStyle = '#fff';
+    ctx.fillText('!', cx, by + 1);
+    ctx.restore();
+  }
+
+  /* Burn alerts are drawn after the ticket rail, just under its cards, so
+     no card hides them. */
+  function drawBurnAlerts() {
+    for (let i = 0; i < SZ.KitchenData.STATION_ORDER.length; ++i) {
+      const id = SZ.KitchenData.STATION_ORDER[i];
+      if (stations[id].slots.some(s => s.ticket && !s.ticket.done && s.state === 'burning'))
+        drawBurnBubble(stationCX(id), RAIL_Y + RAIL_H + 16);
+    }
+  }
+
+  function drawStationBar(i, id, slot, ready) {
     const x = stationX(i);
     const t = slot.ticket;
     const step = t && !t.done ? t.recipe.steps[t.stepIndex] : null;
-    ui.drawKeycap(String(i + 1), x + 2, BAR_Y + BAR_H + 4, 12);
+    drawStationKey(i, x, ready);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ui.fitText(step ? step.label : SZ.KitchenData.STATIONS[id].name, x + 26, BAR_Y + BAR_H + 12, STATION_W - 30, 11, { color: 'rgba(255,255,255,0.75)' });
@@ -1756,7 +1929,7 @@
         ctx.translate(jx, jy);
         SZ.FoodArt.drawStation(ctx, id, x, STATION_Y, stationArtState(slots[0]), animT, slots[0].ticket ? slots[0].ticket.recipe.id : null);
         ctx.restore();
-        drawStationBar(i, id, slots[0]);
+        drawStationBar(i, id, slots[0], anyReady);
       } else {
         /* Upgraded station: the art twice side by side at 70% scale, one bar
            per slot under it. */
@@ -1769,7 +1942,7 @@
           ctx.restore();
           drawSlotBar(x + 4 + j * 75, (STATION_W - 8) / 2, slot);
         }
-        ui.drawKeycap(String(i + 1), x + 2, BAR_Y + BAR_H + 4, 12);
+        drawStationKey(i, x, anyReady);
         const step0 = slots[0].ticket && !slots[0].ticket.done ? slots[0].ticket.recipe.steps[slots[0].ticket.stepIndex] : null;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -1783,12 +1956,16 @@
         else for (let j = 0; j < slots.length; ++j)
           ctx.fillRect(x + 8 + j * 120 + 34, STATION_Y + 24 + 36, 38, 21);
       }
-      /* ready: a green ring pulses around the station */
+      /* ready: a bright green outline glows around the station */
       if (anyReady) {
-        ctx.strokeStyle = 'rgba(125,255,138,' + (0.35 + 0.25 * Math.sin(animT * 6)).toFixed(3) + ')';
-        ctx.lineWidth = 3;
+        ctx.save();
+        ctx.shadowColor = 'rgba(125,255,138,0.9)';
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = 'rgba(125,255,138,' + (0.75 + 0.25 * Math.sin(animT * 9)).toFixed(3) + ')';
+        ctx.lineWidth = 4;
         ui.roundRectPath(x - 4, STATION_Y - 4, STATION_W + 8, STATION_H + 8, 10);
         ctx.stroke();
+        ctx.restore();
       }
       /* burning: the frame blinks a red warning */
       if (anyBurning) {
@@ -2016,6 +2193,8 @@
       }
       /* step icons: done steps ticked, current step highlighted with its key */
       const steps = t.recipe.steps;
+      const running = !t.done && ticketInSlot(t);
+      const blocked = !t.done && !running && t.waitingFor !== null && stations[t.waitingFor].slots.every(s => s.ticket);
       for (let j = 0; j < steps.length; ++j) {
         const ix = x + 20 + j * 20;
         if (j === t.stepIndex) {
@@ -2037,14 +2216,43 @@
           ctx.stroke();
         }
         if (j === t.stepIndex) {
+          /* runnable at its station: the key number blinks */
+          const blink = running && Math.sin(animT * 10) > 0;
+          if (blink) {
+            ui.roundRectPath(ix - 6, y + 70, 12, 12, 3);
+            ctx.fillStyle = '#ffd23f';
+            ctx.fill();
+          }
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.font = ui.uiFont(9, 'bold');
-          ctx.fillStyle = '#ffd23f';
-          ctx.fillText(String(SZ.KitchenData.STATION_ORDER.indexOf(steps[j].station) + 1), ix, y + 76);
+          ctx.font = ui.uiFont(running ? 10 : 9, 'bold');
+          ctx.fillStyle = blink ? '#1a1206' : '#ffd23f';
+          ctx.fillText(String(SZ.KitchenData.STATION_ORDER.indexOf(steps[j].station) + 1), ix, y + 76.5);
         }
       }
+      if (blocked) drawRailClock(x + RAIL_W - 15, y + 15);
     }
+  }
+
+  /* the little wait clock on a ticket whose station is busy */
+  function drawRailClock(cx, cy) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,26,42,0.92)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffb648';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    const a = animT * 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - 5);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -2664,12 +2872,126 @@
     if (comboBanner) drawComboBanner();
     if (edgeGlow > 0) drawEdgeGlow();
     drawTicketRail();
+    drawBurnAlerts();
+    coachSkip = null;
+    if (coach && state === STATE_PLAYING) drawCoach();
     if (state === STATE_PAUSED) drawPauseOverlay();
     if (state === STATE_DAY_OVER) drawDayOver();
     if (fade > 0) {
       ctx.fillStyle = 'rgba(0,0,0,' + Math.min(1, fade).toFixed(3) + ')';
       fillVisibleRect();
     }
+  }
+
+  /* ── coach marks: pulsing outline, bobbing arrow and the hint panel ── */
+  const COACH_PW = 340, COACH_PH = 88;
+
+  function drawCoachOutline(tg) {
+    const pulse = 0.5 + 0.5 * Math.sin(animT * 5);
+    const g = 3 + pulse * 4;
+    ctx.save();
+    ui.roundRectPath(tg.x - g, tg.y - g, tg.w + g * 2, tg.h + g * 2, 12);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.shadowColor = 'rgba(255,215,90,0.9)';
+    ctx.shadowBlur = 10 + pulse * 10;
+    ctx.strokeStyle = 'rgba(255,215,90,' + (0.65 + 0.35 * pulse).toFixed(3) + ')';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* a fat gold arrow from (x0, y0) to the tip at (x1, y1), nudging forward */
+  function drawCoachArrow(x0, y0, x1, y1) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 12) return;
+    const bob = (Math.sin(animT * 6) + 1) * 4;
+    ctx.save();
+    ctx.translate(x1, y1);
+    ctx.rotate(Math.atan2(y1 - y0, x1 - x0));
+    ctx.translate(-bob, 0);
+    const l = Math.max(18, len - 8);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-18, -13);
+    ctx.lineTo(-18, -5);
+    ctx.lineTo(-l, -5);
+    ctx.lineTo(-l, 5);
+    ctx.lineTo(-18, 5);
+    ctx.lineTo(-18, 13);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.stroke();
+    const g = ctx.createLinearGradient(0, -13, 0, 13);
+    g.addColorStop(0, '#fff2b8');
+    g.addColorStop(0.5, ui.UI.gold);
+    g.addColorStop(1, ui.UI.goldDeep);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCoach() {
+    const tg = coachTarget();
+    if (!tg) return;
+    const pw = COACH_PW, ph = COACH_PH;
+    let px, py, ax0 = 0, ay0 = 0, ax1 = 0, ay1 = 0;
+    if (tg.place === 'side') {
+      const cy = tg.y + tg.h / 2;
+      py = Math.max(16, Math.min(VIEW_H - 16 - ph, cy - ph / 2));
+      px = tg.x + tg.w + 46;
+      ax0 = px - 4;
+      ax1 = tg.x + tg.w + 8;
+      if (px + pw > VIEW_W - 16) {
+        px = tg.x - 46 - pw;
+        ax0 = px + pw + 4;
+        ax1 = tg.x - 8;
+      }
+      ay0 = ay1 = cy;
+    } else if (tg.place === 'station') {
+      /* level with the ticket rail beside the station, pointing down at it */
+      py = RAIL_Y - 8;
+      px = tg.x + tg.w + 40;
+      ax0 = px - 4;
+      ax1 = tg.x + tg.w + 6;
+      if (px + pw > VIEW_W - 16) {
+        px = tg.x - 40 - pw;
+        ax0 = px + pw + 4;
+        ax1 = tg.x - 6;
+      }
+      ay0 = py + ph / 2;
+      ay1 = tg.y + tg.h * 0.45;
+    } else {
+      px = VIEW_W / 2 - pw / 2;
+      py = 150;
+    }
+    ctx.save();
+    let a = Math.min(1, coach.t / 0.25);
+    if (coach.step === 5) a = Math.min(a, coach.hideT / 0.4);
+    ctx.globalAlpha = Math.max(0, a);
+    if (tg.w) {
+      drawCoachOutline(tg);
+      drawCoachArrow(ax0, ay0, ax1, ay1);
+    }
+    ui.drawPanel(px, py, pw, ph, { title: 'Chef\'s tip  ' + coach.step + ' / 5', accent: ui.UI.gold, glow: true, headerH: 28, titlePx: 14, titleRightPad: 84 });
+    /* the 'Skip tips' button in the header */
+    const bw = 76, bh = 20, bx = px + pw - 8 - bw, by = py + 4;
+    const hot = mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + bh;
+    ui.roundRectPath(bx, by, bw, bh, bh / 2);
+    ctx.fillStyle = hot ? 'rgba(255,215,90,0.28)' : 'rgba(255,255,255,0.07)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hot ? 'rgba(255,215,90,0.9)' : 'rgba(255,215,90,0.45)';
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ui.fitText('Skip tips', bx + bw / 2, by + bh / 2 + 1, bw - 12, 11, { weight: 'bold', color: hot ? '#fff' : ui.UI.textDim });
+    coachSkip = { x: bx, y: by, w: bw, h: bh };
+    ui.drawTextBlock(tg.text, px + 16, py + 34, pw - 32, ph - 42, 16, { color: ui.UI.text, weight: 'bold', valign: 'middle' });
+    ctx.restore();
   }
 
   /* Rush tension: a red vignette pulses at the screen edges while the day
@@ -2749,7 +3071,7 @@
           updateStatus();
         }
       }
-      if (spawned < spawnLimit()) {
+      if (spawned < spawnLimit() && !coachHoldsSpawn()) {
         spawnTimer -= dt;
         if (spawnTimer <= 0 && spawnCustomer())
           spawnTimer = dayInfo.spawnEvery;
@@ -2759,6 +3081,7 @@
       updateFlying(dt);
       updateWaiter(dt);
       updateChef(dt);
+      updateCoach(dt);
       /* rush moments: a rush day or a full counter of waiting guests */
       let waiting = 0;
       for (const c of customers)
@@ -2948,6 +3271,8 @@
     dayOverT = 0;
     starPopped = 0;
     carpet = null;
+    coach = null;
+    coachSkip = null;
     fade = 1;
     save = loadSave();
     particles.clear();
