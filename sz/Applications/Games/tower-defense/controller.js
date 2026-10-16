@@ -727,7 +727,7 @@
   }
 
   function starsForRun() {
-    const ratio = lives / startLives();
+    const ratio = lives / runStartLives;
     return ratio >= 0.9 ? 3 : ratio >= 0.5 ? 2 : 1;
   }
 
@@ -778,14 +778,20 @@
     return state === STATE_PLAYING || state === STATE_BUILD || state === STATE_PAUSED;
   }
 
+  // A map is running: in play, or paused behind the research tree
+  function runIsOpen() {
+    return isInGameState() || (state === STATE_RESEARCH && (treeReturn === STATE_PLAYING || treeReturn === STATE_BUILD || treeReturn === STATE_PAUSED));
+  }
+
   function serializeGame() {
+    const st = state === STATE_RESEARCH ? treeReturn : state;
     return {
       version: SAVE_VERSION,
       map: currentMap,
       cleared,
-      gold, lives,
+      gold, lives, runStartLives,
       wave: currentWave,
-      phase: state === STATE_BUILD || (state === STATE_PAUSED && pausedFrom === STATE_BUILD) ? 'build' : 'wave',
+      phase: st === STATE_BUILD || (st === STATE_PAUSED && pausedFrom === STATE_BUILD) ? 'build' : 'wave',
       gameSpeed, autoWaveMode, autoWaveTimer,
       waveComplete, waveCountdown, spawnTimer, waveSize, lastPaidWave,
       abilities: { strike: abilityCd.strike, freeze: abilityCd.freeze, rush: abilityCd.rush, rushTimer },
@@ -807,7 +813,7 @@
   }
 
   function saveGame() {
-    if (!isInGameState())
+    if (!runIsOpen())
       return;
     try {
       const data = serializeGame();
@@ -933,6 +939,7 @@
     cleared = !!d.cleared || !!d.endless || d.wave > MAPS[d.map].waves;
     gold = Math.max(0, Math.floor(d.gold));
     lives = d.lives;
+    runStartLives = Number.isInteger(d.runStartLives) && d.runStartLives > 0 ? d.runStartLives : startLives();
     currentWave = d.wave;
     gameSpeed = GAME_SPEEDS.indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : 1;
     autoWaveMode = !!d.autoWaveMode;
@@ -1202,7 +1209,7 @@
     const mapDef = MAPS[currentMap];
     cleared = false;
     gold = mapDef.startGold + techLevel('chest') * 25 + (carry || 0);
-    lives = startLives();
+    lives = runStartLives = startLives();
     totalWaves = mapDef.waves;
     currentWave = 0;
     gameSpeed = 1;
@@ -1780,9 +1787,13 @@
   }
 
   function lastStandActive() {
-    return techLevel('laststand') > 0 && lives <= startLives() * 0.3;
+    return techLevel('laststand') > 0 && lives <= runStartLives * 0.3;
   }
 
+  // Lives the running map started with; research bought mid-map does not move it
+  let runStartLives = 20;
+
+  // New maps and previews
   function startLives() {
     return MAPS[currentMap].startLives + techLevel('fortify') * 3 + (hasRelic('scale') ? 5 : 0);
   }
@@ -2604,8 +2615,8 @@
       particles.confetti(e.x, e.y, 30, {});
       showBanner(`${f.name.toUpperCase()} DEFEATED`, `+${bounty} gold`, UI.gold, 2.4);
       rollBossReward(e);
-      if (techLevel('medic') && lives < startLives()) {
-        lives = Math.min(startLives(), lives + 2);
+      if (techLevel('medic') && lives < runStartLives) {
+        lives = Math.min(runStartLives, lives + 2);
         livesPulse = 1;
         floatingText.add(e.x, e.y - 40, '+2 lives', { color: '#6fe08a', font: 'bold 13px sans-serif' });
       }
@@ -4690,7 +4701,7 @@
     ctx.clip();
     ctx.imageSmoothingEnabled = false;
     drawTerrain();
-    const live = state !== STATE_READY && state !== STATE_MAP_SELECT && state !== STATE_RESEARCH;
+    const live = state !== STATE_READY && state !== STATE_MAP_SELECT && (state !== STATE_RESEARCH || runIsOpen());
     if (live) {
       drawRoadHints();
       drawDecals();
@@ -5909,7 +5920,7 @@
   let dangerCanvas = null;
   function drawDanger() {
     if (state !== STATE_PLAYING && state !== STATE_BUILD) return;
-    const ratio = lives / startLives();
+    const ratio = lives / runStartLives;
     const hurt = livesPulse;
     if (ratio > 0.3 && hurt <= 0.01) return;
     if (!dangerCanvas) {
@@ -7090,6 +7101,7 @@
     meta.rp -= n.cost[lvl];
     meta.tree[n.id] = lvl + 1;
     saveMeta();
+    applyResearchToRun();
     treeFlash[n.id] = performance.now();
     audio.play('powerup', { pitch: 1 + lvl * 0.1 });
     return true;
@@ -7199,6 +7211,34 @@
     }
   }
 
+  // Research opened from a running map: the map pauses (and is saved) behind the tree
+  function openResearchFromMap() {
+    if (state === STATE_PLAYING || state === STATE_BUILD) {
+      pausedFrom = state;
+      state = STATE_PAUSED;
+    }
+    if (state !== STATE_PAUSED)
+      return;
+    overlay = null;
+    saveGame();
+    openResearch();
+  }
+
+  // New research reaches the towers already standing; gold and lives of the run stay as they are
+  function applyResearchToRun() {
+    if (!runIsOpen())
+      return;
+    for (const t of towers) {
+      t.stats = null;
+      const newMax = towerMaxHp(t.tier);
+      if (newMax > t.maxHp) {
+        t.hp += newMax - t.maxHp;
+        t.maxHp = newMax;
+      }
+    }
+    ++towerVersion;
+  }
+
   function openResearch() {
     treeReturn = state;
     state = STATE_RESEARCH;
@@ -7211,6 +7251,7 @@
   }
 
   function closeResearch() {
+    applyResearchToRun();
     state = treeReturn === STATE_RESEARCH ? STATE_READY : treeReturn;
     treeDrag = null;
     audio.play('click', { pitch: 0.8 });
@@ -7456,8 +7497,9 @@
     fitText('Research', 26, 32, 200, 24, { weight: 'bold', color: UI.gold });
     const w = drawChip(`[[flask]] ${meta.rp} research`, 150, 20, 26, { px: 14, bg: 'rgba(200,144,255,0.18)', border: 'rgba(200,144,255,0.6)', color: '#ffffff' });
     ctx.textAlign = 'left';
-    fitText('Earn research by clearing waves, winning maps and earning stars.', 160 + w, 33, UW - 170 - w - 130, 12, { color: UI.textDim });
-    uiButton('tree-close', UW - 116, 18, 96, 30, 'Back', { px: 13, key: 'Esc', onClick: closeResearch });
+    const fromMap = runIsOpen();
+    fitText(fromMap ? 'Map paused - research applies when you return' : 'Earn research by clearing waves, winning maps and earning stars.', 160 + w, 33, UW - 170 - w - 150, 12, { weight: fromMap ? 'bold' : undefined, color: fromMap ? UI.warn : UI.textDim });
+    uiButton('tree-close', UW - 136, 18, 116, 30, fromMap ? 'Back to map' : 'Back', { px: 13, key: 'Esc', onClick: closeResearch });
     const tabs = ['all'].concat(treeBranches());
     const tw = Math.min(170, (UW - 48 - (tabs.length - 1) * 8) / tabs.length);
     tabs.forEach((t, i) => {
@@ -7853,7 +7895,7 @@
         meta.relics.push(r.id);
         for (const t of towers) t.stats = null;
         ++towerVersion;
-        if (r.id === 'scale') { lives += 5; livesPulse = 1; }
+        if (r.id === 'scale') { lives += 5; runStartLives += 5; livesPulse = 1; }
         saveMeta();
         queueReward({ kind: 'relic', id: r.id, boss: type });
       } else {
@@ -8513,7 +8555,7 @@
     ctx.textBaseline = 'middle';
     fitText(String(lives), x + 37, y + h / 2 + 1, lw - 44, 21, { weight: 'bold', color: lives <= 5 ? UI.bad : '#ffffff' });
     endHudPanel();
-    addRegion({ id: 'hud-lives', x, y, w: lw, h, tip: () => ['Lives', `${lives} of ${startLives()} left`, 'Every enemy that reaches the exit costs a life (bosses cost more).'] });
+    addRegion({ id: 'hud-lives', x, y, w: lw, h, tip: () => ['Lives', `${lives} of ${runStartLives} left`, 'Every enemy that reaches the exit costs a life (bosses cost more).'] });
     x += lw + 6;
 
     // Gold
@@ -8550,7 +8592,7 @@
 
     // Right group: speed, auto, help, pause
     const bh = h - 8, by = y + 4;
-    const rightW = GAME_SPEEDS.length * 33 - 3 + 6 + 56 + 6 + 34 + 4 + 34;
+    const rightW = GAME_SPEEDS.length * 33 - 3 + 6 + 56 + 6 + 60 + 6 + 34 + 4 + 34;
     let rx = UW - 8 - rightW;
     hudPanel('controls', rx - 6, y, rightW + 12, h, '#6a8ac8');
     rx += speedButtons(rx, by, bh) + 6;
@@ -8560,6 +8602,12 @@
       tip: () => ['Auto-wave ' + (autoWaveMode ? 'on' : 'off'), `Starts the next wave ${AUTO_WAVE_DELAY === 1 ? "one second" : AUTO_WAVE_DELAY + " seconds"} after a wave is cleared.`, '• A toggles']
     });
     rx += 62;
+    uiButton('hud-research', rx, by, 60, bh, String(meta.rp), {
+      style: 'dark', px: 11, icon: 'flask',
+      onClick: openResearchFromMap,
+      tip: () => ['Research', `${meta.rp} research to spend`, 'Pauses the map and opens the research tree.', '• Shift+R opens research']
+    });
+    rx += 66;
     uiButton('help', rx, by, 34, bh, '', { icon: 'help', px: 14, onClick: () => openHelp(), tip: () => ['Help', 'How to play, towers, enemies and controls', '• H opens the help'] });
     rx += 38;
     uiButton('pause', rx, by, 34, bh, '', { icon: 'pause', px: 14, onClick: togglePause, tip: () => ['Pause', 'Pause menu', '• Esc pauses'] });
@@ -9641,7 +9689,7 @@
 
   function drawPauseScreen() {
     drawScrim(0.6);
-    const pw = Math.min(320, UW - 40), ph = 306;
+    const pw = Math.min(320, UW - 40), ph = 350;
     const px = UW / 2 - pw / 2, py = UH / 2 - ph / 2;
     drawPanel(px, py, pw, ph, { title: 'Paused', titleRight: `${MAPS[currentMap].name} · wave ${currentWave}/${waveTotalText()}`, accent: UI.gold, radius: 12 });
     let y = py + 44;
@@ -9651,6 +9699,8 @@
     uiButton('p-help', px + 20, y, bw, 36, 'Help', { style: 'blue', icon: 'help', key: 'H', onClick: () => openHelp() });
     y += 44;
     uiButton('p-relics', px + 20, y, bw, 36, `Relics · ${(meta.relics || []).length}/${RELICS.length}`, { style: 'dark', icon: 'r_seal', key: 'K', onClick: openRelics });
+    y += 44;
+    uiButton('p-research', px + 20, y, bw, 36, `Research · ${meta.rp}`, { style: 'dark', icon: 'flask', key: 'R', onClick: openResearchFromMap, tip: () => ['Research', 'Spend research now; the map stays paused and the new research applies when you return.'] });
     y += 44;
     uiButton('p-restart', px + 20, y, bw, 36, 'Restart map', { style: 'dark', key: 'F2', onClick: () => requestNewGame(), tip: () => ['Restart', 'Starts this map again from wave 1.'] });
     y += 44;
@@ -9680,7 +9730,7 @@
       ['flag', 'Waves held', `${Math.max(0, currentWave - 1)} (goal ${totalWaves})`],
       ['skull', 'Enemies defeated', String(runStats.kills)],
       ['coin', 'Gold earned', String(runStats.gold)],
-      ['heart', 'Lives left', `${lives} / ${startLives()}`]
+      ['heart', 'Lives left', `${lives} / ${runStartLives}`]
     ];
     for (const [icon, label, value] of stats) {
       drawIcon(icon, px + 30, y + 9, 16);
@@ -10364,6 +10414,9 @@
         togglePause();
       } else if (code === 'KeyM') {
         quitToTitle();
+      } else if (code === 'KeyR') {
+        e.preventDefault();
+        openResearchFromMap();
       }
       return;
     }
@@ -10474,6 +10527,13 @@
       return;
     }
 
+    // Shift+R, or R with no tower selected, opens research over the paused map
+    if (code === 'KeyR' && (e.shiftKey || !selectedTower)) {
+      e.preventDefault();
+      openResearchFromMap();
+      return;
+    }
+
     if (code === 'KeyR' && selectedTower) {
       if (!repairTower(selectedTower))
         audio.play('error');
@@ -10489,12 +10549,17 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function handleAction(action) {
+    // Run-changing actions first close a research tree opened from a map
+    const treeOverRun = state === STATE_RESEARCH && runIsOpen();
+    if (treeOverRun && (action === 'new' || action === 'pause' || action === 'auto-wave' || action === 'campaign'))
+      closeResearch();
     switch (action) {
       case 'new':
         requestNewGame();
         break;
       case 'pause':
-        togglePause();
+        if (!treeOverRun)
+          togglePause();
         break;
       case 'auto-wave':
         toggleAutoWave();
@@ -10504,8 +10569,10 @@
         openMapSelect();
         break;
       case 'research':
-        if (isInGameState()) quitToTitle();
-        if (state !== STATE_RESEARCH) openResearch();
+        if (state === STATE_RESEARCH)
+          break;
+        if (isInGameState()) openResearchFromMap();
+        else openResearch();
         break;
       case 'howto':
         openHelp();
