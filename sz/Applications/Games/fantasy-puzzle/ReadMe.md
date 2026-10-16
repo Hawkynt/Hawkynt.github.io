@@ -30,9 +30,11 @@ Everything renders into a fixed 1280 x 720 logical view, letterboxed and scaled 
 - `tools/generate-levels.js` — the deterministic generator (`node sz/Applications/Games/fantasy-puzzle/tools/generate-levels.js`): builds chamber-and-barrier maps and keeps only solver-verified candidates.
 - `puzzle-ui.js` — the shared drawing kit: one panel frame, text that always fits its box, chips, keycaps, meters and headlines.
 - `tile-art.js` — cached tile and mage art: five realm themes, eleven tile kinds with four seeded variants each, and the mage in 4 directions x (idle, walk, cast) frames per robe color.
+- `board-art.js` — the board renderer: per-realm noise textures (flagstones, leaf litter, wet rock, snow, turf, obsidian veins) computed once, the board baked into ground/upper/glow layers with walls as one raised mass, soft shadows, an ornate frame and animated caustic water; a changed tile only repaints the cells around it.
+- `fx.js` — cached sprite particles (capped at 400) with presets for every element, runes, the portal, footsteps, fireworks, confetti and each realm's ambient air.
 - `scene-art.js` — cached realm backdrops (one seeded 1280 x 720 painting each), the four element icons and eight spell-effect strips.
 - `controller.js` — the game itself: loop, input, walking and casting animation, HUD, the title/realms/trials/grimoire/wardrobe/help screens, overlays, persistence and window integration.
-- `tests/` — node test suites: `puzzle-core.test.js` (rules and solver), `levels-data.test.js` (re-solves all 100 levels at their par), `puzzle-ui.test.js`, `tile-art.test.js` and `scene-art.test.js` (drawing-call budgets against a recording fake canvas).
+- `tests/` — node test suites: `puzzle-core.test.js` (rules and solver), `levels-data.test.js` (re-solves all 100 levels at their par), `puzzle-ui.test.js`, `tile-art.test.js`, `scene-art.test.js`, `board-art.test.js` and `fx.test.js` (drawing-call budgets against a recording fake canvas).
 
 The page also uses the shared desktop libraries `../../shared/game-effects.js` (particles, screen shake, floating text), `game-audio.js` (synthesized sound effects), `menu.js` and `dialog.js`.
 

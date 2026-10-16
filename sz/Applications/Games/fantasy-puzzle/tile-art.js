@@ -997,17 +997,18 @@
   const FEET_DROP = 16;
   const DEFAULT_ROBE = '#5a4ae0';
   const DIR_NAMES = ['down', 'up', 'left', 'right'];
-  const HERO_POSES = { idle: 2, walk: 4, cast: 2 };
-  const HERO_FPS = { idle: 2, walk: 10, cast: 8 };
+  const HERO_POSES = { idle: 8, walk: 4, cast: 2 };
+  const HERO_FPS = { idle: 5, walk: 10, cast: 8 };
   const WALK_BOB = [0, -1, 0, -1];
   const WALK_STEP = [0, 4, 0, -4];
 
-  function robePath(ctx, hw, sh, hem, flareW) {
+  function robePath(ctx, hw, sh, hem, flareW, sway) {
+    const sw = sway || 0;
     ctx.beginPath();
     ctx.moveTo(-hw * 0.72, sh);
-    ctx.quadraticCurveTo(-hw - flareW, (sh + hem) / 2, -hw - flareW, hem);
-    ctx.quadraticCurveTo(0, hem + 3 + flareW, hw + flareW, hem);
-    ctx.quadraticCurveTo(hw + flareW, (sh + hem) / 2, hw * 0.72, sh);
+    ctx.quadraticCurveTo(-hw - flareW + sw * 0.5, (sh + hem) / 2, -hw - flareW + sw, hem);
+    ctx.quadraticCurveTo(sw, hem + 3 + flareW, hw + flareW + sw, hem);
+    ctx.quadraticCurveTo(hw + flareW + sw * 0.5, (sh + hem) / 2, hw * 0.72, sh);
     ctx.closePath();
   }
 
@@ -1021,9 +1022,12 @@
     const gem = '#5ad8ff', gemGlow = '#c8f2ff';
     const side = dir === 'left' || dir === 'right';
     const back = dir === 'up';
-    const bob = pose === 'walk' ? WALK_BOB[frame] : (pose === 'idle' && frame === 1 ? -1 : 0);
+    /* idle: he breathes and the cloak hem sways in a slow loop */
+    const ph = pose === 'idle' ? frame / HERO_POSES.idle * TWO_PI : 0;
+    const sway = pose === 'idle' ? Math.sin(ph) * 1.6 : pose === 'walk' ? -WALK_STEP[frame] * 0.35 : 0;
+    const bob = pose === 'walk' ? WALK_BOB[frame] : 0;
     const step = pose === 'walk' ? WALK_STEP[frame] : 0;
-    const flare = pose === 'cast' ? (frame === 1 ? 1 : 0.5) : 0;
+    const flare = pose === 'cast' ? (frame === 1 ? 1 : 0.5) : pose === 'idle' ? 0.15 + 0.15 * Math.sin(ph + 0.8) : 0;
     const hw = side ? 9 : 13;
     const hem = -3 - (pose === 'cast' ? 1 : 0);
     const sh = -40;
@@ -1045,7 +1049,7 @@
       ctx.fill();
     }
 
-    robePath(ctx, hw, sh, hem, flareW);
+    robePath(ctx, hw, sh, hem, flareW, sway);
     const rg = ctx.createLinearGradient(-hw, sh, hw * 0.8, hem);
     rg.addColorStop(0, light);
     rg.addColorStop(0.45, robe);
@@ -1057,7 +1061,7 @@
     ctx.stroke();
 
     ctx.save();
-    robePath(ctx, hw, sh, hem, flareW);
+    robePath(ctx, hw, sh, hem, flareW, sway);
     ctx.clip();
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = hexToRgba(dark, 0.55);
@@ -1253,7 +1257,7 @@
     }
 
     const brimY = -50;
-    const tipX = side ? 5 : 3, tipY = -66 + (pose === 'cast' ? -2 : 0);
+    const tipX = (side ? 5 : 3) - sway * 1.2, tipY = -66 + (pose === 'cast' ? -2 : 0) + (pose === 'idle' ? Math.sin(ph * 2) * 0.5 : 0);
     ctx.beginPath();
     ctx.ellipse(0, brimY, hw + 4, 2.6, 0, 0, TWO_PI);
     ctx.fillStyle = shade(robe, -0.55);
