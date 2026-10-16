@@ -79,8 +79,18 @@
 
 /* -- Scroll arrows for oversized menus ----------------------------------- */
 
+/* scrollable by finger and wheel; the arrows stand in for a scrollbar */
 .sz-ctx-scroll-container {
   overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sz-ctx-scroll-container::-webkit-scrollbar {
+  display: none;
 }
 
 .sz-ctx-scroll-arrow {

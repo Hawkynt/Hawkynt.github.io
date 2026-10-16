@@ -70,7 +70,7 @@
       btn.dataset.windowId = windowId;
       if (appId)
         btn.dataset.appId = appId;
-      btn.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#onButtonClick(windowId); });
+      btn.addEventListener('pointerup', (e) => { if (!SZ.Tap.isTap(e)) return; e.stopPropagation(); this.#onButtonClick(windowId); });
       // Enter or Space on a focused button (a pointer click came as pointerup)
       btn.addEventListener('click', (e) => { if (e.detail === 0) this.#onButtonClick(windowId); });
       btn.addEventListener('contextmenu', (e) => {
@@ -145,10 +145,14 @@
       // (outside start menu to avoid overflow:hidden clipping)
       this.#flyout = document.createElement('div');
       this.#flyout.className = 'sz-start-flyout';
-      this.#flyout.addEventListener('pointerenter', () => {
-        this.#flyout.classList.add('visible');
+      this.#flyout.addEventListener('pointerenter', (e) => {
+        if (SZ.Tap.isHover(e))
+          this.#flyout.classList.add('visible');
       });
-      this.#flyout.addEventListener('pointerleave', () => {
+      // a finger leaves the flyout when it lifts or starts scrolling: only the mouse hides it
+      this.#flyout.addEventListener('pointerleave', (e) => {
+        if (!SZ.Tap.isHover(e))
+          return;
         this.#flyout.classList.remove('visible');
         for (const c of this.#leftCol.querySelectorAll('.sz-menu-category'))
           c.classList.remove('active');
@@ -163,6 +167,7 @@
       footer.innerHTML = '<button class="sz-start-logoff">Log Off</button><button class="sz-start-shutdown">Turn Off Computer</button>';
 
       footer.querySelector('.sz-start-logoff').addEventListener('pointerup', (e) => {
+        if (!SZ.Tap.isTap(e)) return;
         e.stopPropagation();
         this.#closeStartMenu();
         if (confirm('Are you sure you want to log off?'))
@@ -170,6 +175,7 @@
       });
 
       footer.querySelector('.sz-start-shutdown').addEventListener('pointerup', (e) => {
+        if (!SZ.Tap.isTap(e)) return;
         e.stopPropagation();
         this.#closeStartMenu();
         if (confirm('Are you sure you want to shut down?')) {
@@ -251,7 +257,7 @@
       const allProg = document.createElement('div');
       allProg.className = 'sz-menu-item sz-all-programs';
       allProg.innerHTML = '<span>All Programs</span><span class="sz-menu-arrow">\u25B6</span>';
-      allProg.addEventListener('pointerup', (e) => { if (e.button !== 0) return; e.stopPropagation(); this.#showAllProgramsView(); });
+      allProg.addEventListener('pointerup', (e) => { if (e.button !== 0 || !SZ.Tap.isTap(e)) return; e.stopPropagation(); this.#showAllProgramsView(); });
       this.#leftCol.appendChild(allProg);
     }
 
@@ -279,8 +285,10 @@
             catEl.classList.add('active');
             this.#showCategoryFlyout(folder, catEl);
           };
-          catEl.addEventListener('pointerenter', showFlyout);
-          catEl.addEventListener('pointerup', (e) => { if (e.button !== 0) return; e.stopPropagation(); showFlyout(); });
+          // hover opens the programs for the mouse; touch opens them on tap,
+          // so a finger scrolling the category list does not pop them up
+          catEl.addEventListener('pointerenter', (e) => { if (SZ.Tap.isHover(e)) showFlyout(); });
+          catEl.addEventListener('pointerup', (e) => { if (e.button !== 0 || !SZ.Tap.isTap(e)) return; e.stopPropagation(); showFlyout(); });
 
           this.#leftCol.appendChild(catEl);
         }
@@ -296,7 +304,7 @@
       backItem.className = 'sz-menu-item sz-menu-back';
       backItem.innerHTML = '<span class="sz-menu-arrow">\u25C4</span><span>Back</span>';
       backItem.addEventListener('pointerup', (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || !SZ.Tap.isTap(e)) return;
         e.stopPropagation();
         this.#flyout.classList.remove('visible');
         const mru = SZ.system?.settings?.get('mru') || [];
@@ -393,7 +401,7 @@
             si.action();
         };
         el.addEventListener('pointerup', (e) => {
-          if (e.button !== 0) return;
+          if (e.button !== 0 || !SZ.Tap.isTap(e)) return;
           e.stopPropagation();
           launch();
         });
@@ -422,7 +430,7 @@
       }
       el.append(_span(name));
       el.addEventListener('pointerup', (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || !SZ.Tap.isTap(e)) return;
         e.stopPropagation();
         onClick();
       });
@@ -681,6 +689,7 @@
       this.#element.appendChild(this.#startMenu);
 
       this.#startButton.addEventListener('pointerup', (e) => {
+        if (!SZ.Tap.isTap(e)) return;
         e.stopPropagation();
         this.#toggleStartMenu();
       });
@@ -695,12 +704,19 @@
       this.#startMenu.setAttribute('aria-label', 'Start menu');
       document.addEventListener('keydown', (e) => this.#onStartMenuKey(e));
 
-      document.addEventListener('pointerdown', (e) => {
+      SZ.Tap.onDismiss((e) => {
         if (this.#startMenu.classList.contains('open') &&
             !this.#startMenu.contains(e.target) &&
             !this.#startButton.contains(e.target) &&
             !this.#flyout?.contains(e.target))
           this.#closeStartMenu();
+        // without hover, a tap elsewhere in the start menu folds the programs flyout away
+        else if (!SZ.Tap.isHover(e) && this.#flyout?.classList.contains('visible') &&
+            this.#startMenu.contains(e.target) && !e.target.closest('.sz-menu-category')) {
+          this.#flyout.classList.remove('visible');
+          for (const c of this.#leftCol.querySelectorAll('.sz-menu-category'))
+            c.classList.remove('active');
+        }
       });
     }
 
@@ -820,6 +836,7 @@
       this.#element.classList.toggle('sz-taskbar-peek', isOpen);
       this.#startButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       if (isOpen) {
+        SZ.Tap.claimFocus();
         this.#startButton.style.backgroundPosition = `${this.#startButtonPressedPos} 0%`;
         // Reset to MRU view when opening
         if (this.#showingAllPrograms) {

@@ -533,4 +533,89 @@
   }
 
   SZ.setupPointerHandlers = setupPointerHandlers;
+
+  // Tap tracking for menus on touch screens: a finger that moves more than
+  // TAP_SLOP px (or long-presses into a context menu) is scrolling, not
+  // tapping, so it must neither activate an entry nor dismiss the menu.
+  // Mouse input keeps its classic press/release semantics.
+  const TAP_SLOP = 10;
+  const _taps = new Map();
+
+  document.addEventListener('pointerdown', (e) => {
+    _taps.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: false });
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    const t = _taps.get(e.pointerId);
+    if (t && !t.moved && (Math.abs(e.clientX - t.x) > TAP_SLOP || Math.abs(e.clientY - t.y) > TAP_SLOP))
+      t.moved = true;
+  }, true);
+  document.addEventListener('pointercancel', (e) => {
+    const t = _taps.get(e.pointerId);
+    if (t)
+      t.moved = true;
+  }, true);
+  document.addEventListener('contextmenu', () => {
+    for (const t of _taps.values())
+      t.moved = true;
+  }, true);
+  // forget the pointer once every pointerup listener has seen it
+  let _tapTarget = null;
+  document.addEventListener('pointerup', (e) => {
+    _tapTarget = e.pointerType === 'touch' ? e.target : null;
+    setTimeout(() => _taps.delete(e.pointerId), 0);
+  }, true);
+  // a menu entry that closed its menu on release must not pass the
+  // browser's follow-up click on to whatever lay beneath it
+  document.addEventListener('touchend', (e) => {
+    const t = _tapTarget;
+    _tapTarget = null;
+    if (t && e.cancelable && (!t.isConnected || !t.getClientRects().length))
+      e.preventDefault();
+  }, { capture: true, passive: false });
+
+  SZ.Tap = {
+    /** True for pointers that hover (mouse, or synthesized events without a type). */
+    isHover(e) {
+      return !e.pointerType || e.pointerType === 'mouse';
+    },
+    /** False when a touch/pen pointer scrolled or long-pressed instead of tapping. */
+    isTap(e) {
+      if (!e.isTrusted || this.isHover(e))
+        return true;
+      const t = _taps.get(e.pointerId);
+      return !t || !t.moved;
+    },
+    /**
+     * Pull the focus out of an app window when a shell menu opens, so the
+     * next press inside that window is noticed (see onDismiss).
+     */
+    claimFocus() {
+      const frame = document.activeElement;
+      if (frame && frame.tagName === 'IFRAME')
+        frame.blur();
+    },
+    /**
+     * Call handler(e) for presses that may dismiss a menu: mouse closes on
+     * press as before, touch and pen only on a real tap (released in place).
+     */
+    onDismiss(handler) {
+      document.addEventListener('pointerdown', (e) => {
+        if (this.isHover(e))
+          handler(e);
+      });
+      document.addEventListener('pointerup', (e) => {
+        if (!this.isHover(e) && this.isTap(e))
+          handler(e);
+      }, true);
+      // presses inside an app window never reach this document: the shell
+      // only sees its focus moving into the window's frame
+      window.addEventListener('blur', () => {
+        setTimeout(() => {
+          const frame = document.activeElement;
+          if (frame && frame.tagName === 'IFRAME')
+            handler({ type: 'blur', target: frame });
+        }, 0);
+      });
+    },
+  };
 })();

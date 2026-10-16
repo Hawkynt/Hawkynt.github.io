@@ -34,6 +34,8 @@
   box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 1000;
   padding: 2px 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .menu-item.open > .menu-dropdown {

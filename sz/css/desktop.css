@@ -20,6 +20,8 @@ html, body {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  /* not even focus moving into a tall window may scroll it */
+  overflow: clip;
 }
 
 /* Background image fills desktop */
