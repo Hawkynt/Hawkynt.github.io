@@ -91,6 +91,7 @@ The page also uses the shared desktop libraries `../../shared/game-effects.js` (
 
 ### Grimoire
 - [x] As a user, I can spend arcane shards in a four-branch tech tree — Arcana, Insight, Chronos and Style — switched by tabs, keys 1-4 or Tab
+- [x] As a user, I can open the Grimoire during a level (Grimoire button, G key, pause menu or the out-of-mana panel); upgrades I buy there - more mana, hints or undos - apply to the running puzzle when I return
 - [x] As a user, I can inscribe Mana Well (6 shards) for +1 mana in every puzzle
 - [x] As a user, I can inscribe Deep Well (18) for +1 more mana
 - [x] As a user, I can inscribe Focus (30) so the first cast of each puzzle costs nothing

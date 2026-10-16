@@ -381,6 +381,39 @@
     return 'available';
   }
 
+  /* The Grimoire can be opened from a running level; whatever is bought there
+     applies to that level as soon as the player returns to it. */
+  let grimoireSnapshot = null;
+  let grimoireChip = null;
+
+  function openGrimoireFromLevel() {
+    if (state !== STATE_PLAYING && state !== STATE_PAUSED && state !== STATE_OUT_OF_MANA)
+      return;
+    grimoireSnapshot = { a_well: treeLevel('a_well'), a_deep: treeLevel('a_deep'), i_hint: treeLevel('i_hint'), c_undo: treeLevel('c_undo'), c_free: treeLevel('c_free') };
+    prevScreen = STATE_PAUSED;
+    treeLayout = buildTreeLayout();
+    selectFirstInBranch();
+    setScreen('grimoire');
+  }
+
+  function closeGrimoire() {
+    if (prevScreen === STATE_PAUSED && grimoireSnapshot && puzzle) {
+      const was = grimoireSnapshot;
+      const moreMana = (treeLevel('a_well') - was.a_well) + (treeLevel('a_deep') - was.a_deep);
+      manaTotal += moreMana;
+      mana += moreMana;
+      hintsLeft += treeLevel('i_hint') - was.i_hint;
+      if (treeLevel('c_free'))
+        undosLeft = Infinity;
+      else
+        undosLeft += 5 * (treeLevel('c_undo') - was.c_undo);
+      if (moreMana > 0)
+        floatingText.add(VIEW_W / 2, 150, '+' + moreMana + ' mana', { color: '#7ad0ff', font: 'bold 22px sans-serif' });
+    }
+    grimoireSnapshot = null;
+    setScreen(prevScreen);
+  }
+
   function buyNode(id) {
     if (nodeState(id) !== 'available') {
       sfx('error', { volume: 0.4 });
@@ -2155,6 +2188,15 @@
       { key: 'H', label: 'hint' }
     ], 250, 678, 420, 1);
 
+    /* Grimoire button: the tech tree is one click away during a level */
+    grimoireChip = { x: 1060, y: 652, w: 190, h: 46 };
+    const chipHot = mouseX >= grimoireChip.x && mouseX <= grimoireChip.x + grimoireChip.w && mouseY >= grimoireChip.y && mouseY <= grimoireChip.y + grimoireChip.h;
+    ui.drawPanel(grimoireChip.x, grimoireChip.y, grimoireChip.w, grimoireChip.h, { radius: 12, noStuds: true, accent: chipHot ? ui.UI.gold : '#c04cff', glow: chipHot });
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ui.fitText('Grimoire  ' + save.shards + ' \u2666', grimoireChip.x + grimoireChip.w / 2 - 10, grimoireChip.y + grimoireChip.h / 2 + 1, grimoireChip.w - 44, 17, { weight: 'bold', color: chipHot ? '#ffffff' : '#e0b8ff' });
+    ui.drawKeycap('G', grimoireChip.x + grimoireChip.w - 28, grimoireChip.y + 13, 11);
+
     /* level hint banner: a slim strip above the board that fades out */
     if (hintBanner.t > 0 && hintBanner.text) {
       const alpha = Math.min(1, hintBanner.t / 0.8);
@@ -2272,13 +2314,14 @@
 
   function drawPauseOverlay() {
     fillVeil('rgba(4,6,14,0.6)');
-    const pw = 420, ph = 330;
+    const pw = 420, ph = 386;
     const px = (VIEW_W - pw) / 2, py = (VIEW_H - ph) / 2 - 10;
     ui.drawPanel(px, py, pw, ph, { title: 'PAUSED', accent: ui.UI.gold, glow: true });
     drawButton('p-resume', 'Resume', px + 40, py + 62, pw - 80, 48, { key: 'Esc', action: function() { state = STATE_PLAYING; } });
-    drawButton('p-restart', 'Restart', px + 40, py + 118, pw - 80, 48, { key: 'R', action: restartLevel });
-    drawButton('p-levels', 'Levels', px + 40, py + 174, pw - 80, 48, { key: 'L', action: goLevels });
-    drawButton('p-title', 'Title', px + 40, py + 230, pw - 80, 48, { key: 'T', action: function() { setScreen('title'); } });
+    drawButton('p-grimoire', 'Grimoire (' + save.shards + ' shards)', px + 40, py + 118, pw - 80, 48, { key: 'G', action: openGrimoireFromLevel });
+    drawButton('p-restart', 'Restart', px + 40, py + 174, pw - 80, 48, { key: 'R', action: restartLevel });
+    drawButton('p-levels', 'Levels', px + 40, py + 230, pw - 80, 48, { key: 'L', action: goLevels });
+    drawButton('p-title', 'Title', px + 40, py + 286, pw - 80, 48, { key: 'T', action: function() { setScreen('title'); } });
   }
 
   /* cached result-screen art: a gold star (earned or an empty socket) and a ray burst */
@@ -2466,7 +2509,7 @@
     const pw = 520, ph = 210;
     const px = (VIEW_W - pw) / 2, py = (VIEW_H - ph) / 2 - 12;
     ui.drawPanel(px, py, pw, ph, { title: 'OUT OF MANA', accent: ui.UI.bad });
-    ui.drawTextBlock('The well is dry. Undo a cast to win some mana back, or start the puzzle over.',
+    ui.drawTextBlock('The well is dry. Undo a cast to win some mana back, deepen your well in the Grimoire (G), or start the puzzle over.',
       px + 26, py + 48, pw - 52, 70, 15, { color: ui.UI.textDim, align: 'center', valign: 'middle' });
     const by = py + ph - 62;
     drawButton('m-undo', 'Undo', px + 26, by, 140, 42, { key: 'Z', action: undoCast });
@@ -3488,7 +3531,7 @@
     if (state === 'grimoire') {
       e.preventDefault();
       if (e.code === 'Escape') {
-        setScreen(prevScreen);
+        closeGrimoire();
       } else if (e.code === 'Tab') {
         treeBranch = (treeBranch + 1) % TREE_BRANCH_LIST.length;
         treeLayout = buildTreeLayout();
@@ -3551,6 +3594,8 @@
         goLevels();
       else if (e.code === 'KeyT' && !isMenuState(state))
         setScreen('title');
+      else if (e.code === 'KeyG' && (state === STATE_PAUSED || state === STATE_OUT_OF_MANA))
+        openGrimoireFromLevel();
       else if (e.code === 'Escape') {
         if (state === STATE_PAUSED)
           state = STATE_PLAYING;
@@ -3585,6 +3630,10 @@
       showHint();
       return;
     }
+    if (e.code === 'KeyG') {
+      openGrimoireFromLevel();
+      return;
+    }
 
     if (e.key === '1') selectElement('fire');
     if (e.key === '2') selectElement('water');
@@ -3602,6 +3651,11 @@
     const p = pointerToView(e);
     mouseX = p.x;
     mouseY = p.y;
+
+    if (state === STATE_PLAYING && grimoireChip && inRect(p, grimoireChip)) {
+      openGrimoireFromLevel();
+      return;
+    }
 
     if (isMenuState(state) || state === STATE_PAUSED || state === STATE_LEVEL_COMPLETE || state === STATE_OUT_OF_MANA) {
       if (state === 'grimoire' && treeLayout) {
