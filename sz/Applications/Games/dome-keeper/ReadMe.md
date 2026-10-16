@@ -147,6 +147,7 @@ The player must immediately understand:
 - [x] As a player, I can research the Compressor (5 levels) so that 9 ore pack into a Block, 9 Blocks into a Compressed Block and so on up to Quadruple Compressed Blocks, in my bag and in drone cargo; every stack takes one slot (20 iron = 2 Iron Blocks + 2 ore = 4 slots)
 - [x] As a player, I see my packed stacks with tier frames in the cargo panel and their full names when hovering it
 - [x] As a player, I can pick up dropped resources by walking over them so that nothing is permanently lost
+- [x] As a player, I see picked-up ore and ore pulled in by the Magnet or the Lodestone fly into the keeper (speeding up, following him as he moves, the pile's amount on the sprite) and only count once it arrives; a pile only gives what still fits in the bag, the rest stays on the floor
 - [x] As a player, I can see mining debris particles, dust clouds, and floating text on tile destruction so that mining has visual feedback
 - [x] As a player, I can see an animated miner with pickaxe swing, idle bob, and directional facing so that the character feels alive
 
@@ -204,12 +205,15 @@ The player must immediately understand:
 - [x] As a player, I can add gun drones that guard the dome and repair drones that weld it
 - [x] As a player, I can level up Courier Drones, Gun Drones and Repair Drones to field up to 10 drones of each kind; the Droneyard gadget gives a free courier and makes drones 50% faster
 - [x] As a player, the mine HUD groups my drones by kind (one status cell per courier) so that a full fleet still fits in a small panel
+- [x] As a player, my couriers keep collecting loose ore anywhere in the mine, laser-mining and bringing cargo home while I fight on the surface
+- [x] As a player, exactly one courier at a time (the nearest free one) comes to take my bag, while the others keep collecting and mining; once it has the bag or I surface it goes back to normal work
 
 ### World, Biomes and Weather
 - [x] As a player, every run and every relocation lands on a seeded biome (Rocky Badlands, Dune Sea, Frozen Shelf, Alien Jungle, Ashen Caldera, Crystal Fields) with its own sky, mountains, ground, plants, weather odds and ore mix
 - [x] As a player, I see the sun cross the sky by day and the moon by night through eight phases, with a day counter in the HUD
 - [x] As a player, I live through four-day seasons: spring blossoms (more but weaker monsters), long summer days (faster monsters), autumn leaves and storms, and winter snow (short days, few but tough monsters)
 - [x] As a player, I see rain, snowfall, blizzards (poor sight, slow monsters, a stiff turret), thunderstorms whose lightning hits monsters and sometimes the dome, and meteor showers that blast monsters and leave ore to collect
+- [x] As a player, a meteor damages the dome the moment it visibly hits the glass, and I can parry it (E, right click, tap the dome) right before the impact so that it shatters harmlessly on the shield
 - [x] As a player, I get every change of season and weather announced and shown in the HUD
 
 ### Sites and Relocation
@@ -389,6 +393,7 @@ The underground is a tile grid of **165 columns x 224 rows** (40 px tiles): sixt
 * Ore is credited when mined; the bag only limits how much the keeper carries and is emptied when the keeper (or a courier drone) brings it home. Overflow drops on the ground.
 * The bag counts slots: without the Compressor one ore is one slot; with it, every packed stack of any tier is one slot (Compressor level L packs up to 9^L ore into one stack).
 * Loose ore lies in one pile per tile holding every kind dropped there; piles vanish after 120 s.
+* Ore the keeper picks up, the Magnet (2 tiles, +1 per Magnet Range level) or the Lodestone (4 tiles) pulls in flies to the keeper in 0.25-0.6 s and is credited on arrival; at most 60 piles fly at once, ore in flight counts against the bag, and ore still in the air when the keeper surfaces lands at once.
 
 ### Acceptance Criteria
 
@@ -414,6 +419,7 @@ Twenty resources, each with its own pixel-art icon, colour and HUD counter:
 * Each resource has a distinct colour, icon and pickup visual.
 * Rarity is visible in map distribution and upgrade requirements: the top tiers of the upgrade chains and the late drone nodes cost deep ores.
 * Meteor showers drop chunks of ore on the surface (iron to sapphire) that are collected with a click or by a docked courier drone.
+* A meteor whose path crosses the dome hits its glass shell (impact, shake and damage at the contact point); one that misses lands on the ground and leaves ore. A parry up at the moment of contact shatters it without damage.
 
 ### Acceptance Criteria
 
@@ -452,7 +458,7 @@ The dome weapon uses manual aiming with assisted targeting.
 * **Weak points**: every monster type has a weak spot (head, eye, sac, core, crystal...). Hovering a monster shows it as a pulsing gold reticle; a shot aimed into it deals **2x** damage and shows **CRIT!** with a short hitstop and flash. Random crits (Critical Hit node, Hunter's Eye) stack on top (**DOUBLE CRIT!**).
 * **Combo**: every body or weak-point hit adds 1 to the combo, worth +3% damage per hit up to +60% at x20; a graze, a miss or 3 s without a hit ends it. Every fifth hit is announced. The combo chip and its timer sit right of the dome bar.
 * **Charged shot**: holding the fire button (or **F**) charges the turret. A ring closes in on a gold circle around the cursor; releasing while they meet (82-100% charge) fires a **PERFECT** shot: 3x damage that pierces up to four more monsters on the line, with hitstop, flash and shake. Releasing outside the window gives 1.8x from half a charge on (1.25x below); holding past 120% overheats and the charge restarts. A quick tap is a normal shot.
-* **Parry**: **E**, a right click or a tap on the dome raises a shield for 0.3 s (0.9 s cooldown, shown left of the dome bar). Pressed in time it sends acid back at the spitter (3x its damage plus a shot), bounces a diving monster off stunned and hurt, stops a Behemoth shockwave and returns the Hive Queen's venom lance. Pressing in the first 0.12 s of the window is a **PERFECT PARRY** (1.5x).
+* **Parry**: **E**, a right click or a tap on the dome raises a shield for 0.3 s (0.9 s cooldown, shown left of the dome bar). Pressed in time it sends acid back at the spitter (3x its damage plus a shot), bounces a diving monster off stunned and hurt, stops a Behemoth shockwave, shatters a meteor about to hit the dome and returns the Hive Queen's venom lance. Pressing in the first 0.12 s of the window is a **PERFECT PARRY** (1.5x).
 * **Tells**: the Behemoth's ground glows and a **!** appears before a stomp; the Hive Queen aims her venom lance with a pulsing dashed line for 1.1 s before it strikes; diving monsters show a **!** while they dive.
 
 ### Player Input on Surface
@@ -781,7 +787,7 @@ Weather (weighted by season and biome, 30-60 s each, announced on change):
 * **Snowfall**: snow piles up on the ground and dome and slows walkers
 * **Blizzard**: white-out fog, monsters 30% slower, turret turns 40% slower and fires 25% slower
 * **Thunderstorm**: lightning every few seconds strikes monsters (damage and stun), occasionally the dome
-* **Meteor shower**: meteors blast monsters near the impact, sometimes hit the dome and leave ore chunks to collect
+* **Meteor shower**: meteors blast monsters near the impact, sometimes hit the dome (parry them) and leave ore chunks to collect
 
 ## 8.17 Sites and Relocation
 
@@ -808,7 +814,7 @@ Weather (weighted by season and biome, 30-60 s each, announced on change):
 
 Level-up upgrades are single cards in the tree: they show the level (Lv n / max), the effect now and after the next level, the next level's cost and a progress bar, and can be bought again and again. Their costs rise per level and move from common to rare ores. Older saves keep their progress: Carry Capacity, Drone Cargo, Drone Swarm and the third Gun Drone and Repair Drone levels turn into levels of the new upgrades.
 
-Couriers follow BFS paths through the tunnels, carry their own lights and show their cargo; idle couriers hover beside the dome. The mine HUD groups the fleet by kind: couriers with one status cell per drone, then gun and repair drones.
+Couriers follow BFS paths through the tunnels, carry their own lights and show their cargo; idle couriers hover beside the dome. They work in any view: they fetch the nearest unclaimed pile (each pile is claimed by one courier; a pile no courier can reach is skipped for a few seconds), laser ore around the keeper's last spot and deliver home. One courier at a time - the nearest free one - serves the keeper while the keeper is in the mine with a bag worth fetching. The mine HUD groups the fleet by kind: couriers with one status cell per drone, then gun and repair drones.
 
 ## 8.19 Bombs
 
