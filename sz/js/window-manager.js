@@ -5,6 +5,10 @@
   const WM_CLOSE = 0x0010;
   // how long an app gets to say it handles the close itself
   const CLOSE_REPLY_TIMEOUT_MS = 2000;
+  // below this work area a window opens over the whole work area
+  const NARROW_SCREEN_PX = 700, LOW_SCREEN_PX = 500;
+  // part of a title bar that must stay reachable when the screen shrinks
+  const TITLE_GRIP_PX = 60, TITLE_BAR_PX = 30;
 
   class WindowManager {
     #container;
@@ -23,6 +27,62 @@
 
     constructor(containerElement) {
       this.#container = containerElement;
+      // rotating a phone or shrinking the browser keeps every window reachable
+      let pending = 0;
+      const refit = () => {
+        clearTimeout(pending);
+        pending = setTimeout(() => this.fitAllWindows(), 100);
+      };
+      window.addEventListener('resize', refit);
+      window.addEventListener('orientationchange', refit);
+    }
+
+    /** Phone-sized work area (upright or on its side) or a touch-only screen. */
+    get isSmallScreen() {
+      const w = this.#container.clientWidth, h = this.#container.clientHeight;
+      if (!w || !h)
+        return false;
+      if (w < NARROW_SCREEN_PX || h < LOW_SCREEN_PX)
+        return true;
+      return !!(window.matchMedia && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches);
+    }
+
+    /**
+     * Keep a normal window inside the work area. On small screens it is
+     * shrunk and moved fully into view; otherwise (loose) it only moves when
+     * its title bar could no longer be grabbed.
+     */
+    fitWindow(id, loose) {
+      const win = this.#windows.get(id);
+      if (!win || win.state !== 'normal')
+        return;
+      const areaW = this.#container.clientWidth, areaH = this.#container.clientHeight;
+      if (!areaW || !areaH)
+        return;
+      const el = win.element;
+      let w = el.offsetWidth, h = el.offsetHeight;
+      const pos = win.getPosition();
+      let x = pos.x, y = pos.y;
+      if (loose) {
+        x = Math.min(Math.max(x, TITLE_GRIP_PX - w), areaW - TITLE_GRIP_PX);
+        y = Math.min(Math.max(y, 0), areaH - TITLE_BAR_PX);
+      } else {
+        if (w > areaW || (h > areaH && !win.isRolledUp)) {
+          w = Math.min(w, areaW);
+          h = win.isRolledUp ? h : Math.min(h, areaH);
+          win.resizeTo(w, h);
+        }
+        x = Math.min(Math.max(0, x), Math.max(0, areaW - w));
+        y = Math.min(Math.max(0, y), Math.max(0, areaH - h));
+      }
+      if (x !== pos.x || y !== pos.y)
+        win.moveTo(x, y);
+    }
+
+    fitAllWindows() {
+      const loose = !this.isSmallScreen;
+      for (const id of this.#windows.keys())
+        this.fitWindow(id, loose);
     }
 
     async setSkin(skin) {
@@ -66,16 +126,16 @@
       this.focusWindow(id);
 
       // On a phone-sized screen (upright or on its side) a window opens over
-      // the whole work area;
-      // one that cannot be maximized is at least kept on screen.
-      const NARROW_SCREEN_PX = 700, LOW_SCREEN_PX = 500;
+      // the whole work area; one that cannot be maximized is centered and
+      // shrunk to fit.
       const areaW = this.#container.clientWidth, areaH = this.#container.clientHeight;
-      if (areaW && (areaW < NARROW_SCREEN_PX || areaH < LOW_SCREEN_PX)) {
+      if (this.isSmallScreen) {
         if (win.maximizable !== false && win.resizable !== false)
           this.maximizeWindow(id);
         else {
           const el = win.element;
           win.moveTo(Math.max(0, Math.floor((areaW - el.offsetWidth) / 2)), Math.max(0, Math.min(40, areaH - el.offsetHeight)));
+          this.fitWindow(id);
         }
       }
 
@@ -218,6 +278,7 @@
         } else {
           win.restore();
         }
+        this.fitWindow(id, !this.isSmallScreen);
       } else {
         // Maximize
         if (this.#animationsEnabled()) {

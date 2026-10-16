@@ -24,6 +24,9 @@
     "sw sw s  se se";
   min-width: 200px;
   min-height: 100px;
+  /* never larger than the work area of a tiny screen */
+  min-width: min(200px, 100%);
+  min-height: min(100px, 100%);
 }
 
 /* --------------------------------------------------------------------------
@@ -220,6 +223,7 @@
   grid-area: c;
   position: relative;
   overflow: hidden;
+  overflow: clip;
   background: var(--sz-color-window, white);
 }
 

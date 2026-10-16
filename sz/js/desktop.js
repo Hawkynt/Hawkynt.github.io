@@ -14,6 +14,19 @@
   const SS_CACHE_IDX = 'sz-ss-idx';     // last-shown image index
   const SS_CACHE_FOLDER = 'sz-ss-dir';  // folder for cache validation
 
+  // The desktop, its windows and their frames clip instead of scrolling.
+  // Browsers without overflow: clip still scroll such boxes to reveal a
+  // focused element (e.g. a button low in a window taller than a phone
+  // screen), which pushes title bars off the top; undo that at once.
+  const NO_SCROLL = '#sz-desktop, #sz-window-area, .sz-window, .sz-window-content';
+  document.addEventListener('scroll', (e) => {
+    const el = e.target;
+    if (el && el.matches && el.matches(NO_SCROLL) && (el.scrollTop || el.scrollLeft)) {
+      el.scrollTop = 0;
+      el.scrollLeft = 0;
+    }
+  }, true);
+
   class Desktop {
     #element;
     #bgElement;

@@ -3,6 +3,9 @@
 
   const SZ = window.SZ || (window.SZ = {});
 
+  /** Pixels a finger may move and still count as a tap. */
+  const TAP_SLOP = 10;
+
   // Menu bar with pointer and keyboard control, as in Windows:
   //   Alt or F10 activates the bar, Alt+letter opens the menu with that
   //   initial; Left/Right walk the menus, Up/Down the entries, Enter or
@@ -93,45 +96,110 @@
 
     // ── pointer ───────────────────────────────────────────────────
 
+    // The mouse acts on press as in Windows. Touch and pen act on release,
+    // and only for a tap: a finger that moved more than TAP_SLOP px (or was
+    // taken over by the browser for scrolling) neither runs an entry nor
+    // closes the menu, so long menus can be scrolled with the finger.
     #wire() {
+      const isHover = (e) => !e.pointerType || e.pointerType === 'mouse';
+      let tap = null;
+      let swallow = false;
+
       this.#menuBar.addEventListener('pointerdown', (e) => {
-        const entry = e.target.closest('.menu-entry') || e.target.closest('[data-action]');
-        if (entry) {
-          if (entry.classList.contains('disabled'))
-            return;
-          if (entry.classList.contains('has-submenu') && !entry.dataset.action)
-            return;
-          this.#run(entry);
-          return;
-        }
-
-        const item = e.target.closest('.menu-item');
-        if (!item) return;
-
-        if (this.#openMenu === item) {
-          this.closeMenus();
-          return;
-        }
-
-        this.#keyboard = false;
-        this.#open(item, false);
+        if (isHover(e))
+          this.#press(e.target);
       });
+
+      document.addEventListener('pointerdown', (e) => {
+        if (isHover(e) && this.#openMenu && !e.target.closest('.menu-bar'))
+          this.closeMenus();
+      });
+
+      document.addEventListener('pointerdown', (e) => {
+        swallow = false;
+        tap = isHover(e) ? null : { id: e.pointerId, x: e.clientX, y: e.clientY, target: e.target };
+      }, true);
+
+      document.addEventListener('pointermove', (e) => {
+        if (tap && tap.id === e.pointerId && (Math.abs(e.clientX - tap.x) > TAP_SLOP || Math.abs(e.clientY - tap.y) > TAP_SLOP))
+          tap = null;
+      }, true);
+
+      const cancel = () => { tap = null; };
+      document.addEventListener('pointercancel', cancel, true);
+      document.addEventListener('contextmenu', cancel, true);
+
+      document.addEventListener('pointerup', (e) => {
+        if (!tap || tap.id !== e.pointerId)
+          return;
+        const target = tap.target;
+        tap = null;
+        if (this.#menuBar.contains(target)) {
+          // the tapped dropdown may vanish: keep the follow-up click off what lies beneath
+          swallow = e.pointerType === 'touch' && !!this.#openMenu;
+          this.#press(target, true);
+        } else if (this.#openMenu && !target.closest('.menu-bar'))
+          this.closeMenus();
+      }, true);
+
+      document.addEventListener('touchend', (e) => {
+        if (swallow && e.cancelable)
+          e.preventDefault();
+        swallow = false;
+      }, { capture: true, passive: false });
 
       this.#menuBar.addEventListener('pointerenter', (e) => {
         if (!this.#openMenu) return;
+        // a submenu shown on hover inside a scrolling dropdown must not be clipped
+        const parent = e.target.closest && e.target.closest('.has-submenu');
+        if (parent && this.#menuBar.contains(parent))
+          this.#placeSubmenu(parent);
+        if (!isHover(e)) return;
         const item = e.target.closest('.menu-item');
         if (item && item !== this.#openMenu && this.#menuBar.contains(item))
           this.#open(item, false);
       }, true);
 
-      document.addEventListener('pointerdown', (e) => {
-        if (this.#openMenu && !e.target.closest('.menu-bar'))
-          this.closeMenus();
-      });
-
       document.addEventListener('keydown', (e) => this.#onKeyDown(e), true);
       document.addEventListener('keyup', (e) => this.#onKeyUp(e), true);
       window.addEventListener('blur', () => { if (this.#keyboard) this.#leave(); });
+    }
+
+    #press(target, touch) {
+      const entry = target.closest('.menu-entry') || target.closest('[data-action]');
+      if (entry) {
+        if (entry.classList.contains('disabled'))
+          return;
+        if (entry.classList.contains('has-submenu') && !entry.dataset.action) {
+          // without hover a tap opens or folds the submenu
+          if (touch) {
+            if (entry.classList.contains('open'))
+              this.#closeSubmenu(entry);
+            else {
+              for (const s of entry.parentElement.querySelectorAll(':scope > .has-submenu.open'))
+                this.#closeSubmenu(s);
+              this.#openSubmenu(entry);
+            }
+          }
+          return;
+        }
+        this.#run(entry);
+        return;
+      }
+
+      const item = target.closest('.menu-item');
+      if (!item) return;
+      // a tap on the empty part of an open dropdown keeps it open
+      if (touch && target.closest('.menu-dropdown'))
+        return;
+
+      if (this.#openMenu === item) {
+        this.closeMenus();
+        return;
+      }
+
+      this.#keyboard = false;
+      this.#open(item, false);
     }
 
     // ── keyboard ──────────────────────────────────────────────────
@@ -311,6 +379,15 @@
         f.classList.remove('focused');
       el.classList.add('focused');
       el.focus({ preventScroll: true });
+      // a dropdown limited to the window scrolls along with the keyboard
+      const box = el.parentElement && el.parentElement.closest('.menu-dropdown, .menu-submenu');
+      if (box && box.style.overflowY === 'auto') {
+        const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+        if (r.top < b.top)
+          box.scrollTop -= b.top - r.top;
+        else if (r.bottom > b.bottom)
+          box.scrollTop += r.bottom - b.bottom;
+      }
     }
 
     #moveItem(items, current, dir) {
@@ -337,6 +414,7 @@
       item.classList.add('open');
       item.setAttribute('aria-expanded', 'true');
       this.#openMenu = item;
+      this.#fit(item.querySelector(':scope > .menu-dropdown'));
       // apps enable, disable and check entries at any time
       this.#refreshEntryStates();
       if (focusEntry) {
@@ -347,12 +425,85 @@
       }
     }
 
+    // A dropdown taller or wider than the window (phones, small windows)
+    // is limited to the visible area and scrolls inside itself.
+    #fit(menu) {
+      if (!menu)
+        return;
+      menu.style.maxHeight = '';
+      menu.style.overflowY = '';
+      if (!menu.dataset.szFixed)
+        menu.style.left = '';
+      for (const sub of menu.querySelectorAll('.menu-submenu'))
+        if (sub.dataset.szFixed && sub !== menu)
+          this.#unfix(sub);
+      let r = menu.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      // a submenu placed against the window moves up before it gets cut
+      if (menu.dataset.szFixed && r.bottom > vh - 2) {
+        menu.style.top = Math.max(2, vh - 2 - r.height) + 'px';
+        r = menu.getBoundingClientRect();
+      }
+      const room = vh - r.top - 2;
+      if (r.height > room && room > 48) {
+        menu.style.maxHeight = room + 'px';
+        menu.style.overflowY = 'auto';
+        if (!menu.dataset.szScrollWired) {
+          menu.dataset.szScrollWired = '1';
+          menu.addEventListener('scroll', () => {
+            for (const sub of menu.querySelectorAll('.menu-submenu'))
+              if (sub.dataset.szFixed && sub.parentElement.parentElement === menu)
+                this.#placeSubmenu(sub.parentElement);
+          });
+        }
+      }
+      if (r.right > vw - 2 && r.width < vw) {
+        const shift = Math.max(2 - r.left, vw - 2 - r.right);
+        if (shift < 0)
+          menu.style.left = ((parseFloat(getComputedStyle(menu).left) || 0) + shift) + 'px';
+      }
+    }
+
+    // Inside a dropdown that scrolls, a submenu would be clipped by it: it is
+    // then placed against the window next to its entry instead.
+    #placeSubmenu(entry) {
+      const sub = entry.querySelector(':scope > .menu-submenu');
+      if (!sub)
+        return;
+      let box = entry.parentElement && entry.parentElement.closest('.menu-dropdown, .menu-submenu');
+      while (box && box.style.overflowY !== 'auto')
+        box = box.parentElement && box.parentElement.closest('.menu-dropdown, .menu-submenu');
+      if (!box) {
+        if (sub.dataset.szFixed)
+          this.#unfix(sub);
+        return;
+      }
+      const r = entry.getBoundingClientRect();
+      sub.dataset.szFixed = '1';
+      sub.style.position = 'fixed';
+      sub.style.left = r.right + 'px';
+      sub.style.top = r.top + 'px';
+      this.#fit(sub);
+    }
+
+    #unfix(sub) {
+      delete sub.dataset.szFixed;
+      sub.style.position = '';
+      sub.style.left = '';
+      sub.style.top = '';
+      sub.style.maxHeight = '';
+      sub.style.overflowY = '';
+    }
+
     #openSubmenu(entry) {
       const sub = entry.querySelector(':scope > .menu-submenu');
       if (!sub)
         return;
       entry.classList.add('open');
       entry.setAttribute('aria-expanded', 'true');
+      if (!sub.dataset.szFixed)
+        this.#fit(sub);
+      this.#placeSubmenu(entry);
       this.#focus(this.#entries(sub)[0]);
     }
 

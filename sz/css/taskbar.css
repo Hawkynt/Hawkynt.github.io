@@ -179,6 +179,7 @@
   left: 0;
   width: min(380px, calc(100vw - 10px));
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   background: var(--sz-color-button-face, #eeeddd);
   border: 2px solid var(--sz-color-highlight, #316ac5);
   border-radius: 6px 6px 0 0;
@@ -234,6 +235,8 @@
   background: white;
   padding: 4px 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   position: relative;
   scrollbar-width: thin;
 }
@@ -243,6 +246,8 @@
   padding: 4px 0;
   background: var(--sz-color-button-face, #eeeddd);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   position: relative;
   scrollbar-width: thin;
 }
@@ -367,7 +372,10 @@
   position: fixed;
   width: min(200px, calc(100vw - 20px));
   max-height: calc(100vh - 60px);
+  max-height: calc(100dvh - 60px);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: white;
   border: 1px solid var(--sz-color-button-shadow, #cac6af);
   box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);

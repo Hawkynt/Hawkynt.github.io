@@ -84,6 +84,7 @@
      */
     showAt(items, x, y, { fromBottom = false } = {}) {
       this.#close();
+      SZ.Tap.claimFocus();
       this.#renderMenu(this.#menuEl, items, x, y, fromBottom);
     }
 
@@ -96,8 +97,10 @@
       this.#subMenuEl.className = 'sz-context-menu sz-context-submenu';
       document.body.appendChild(this.#subMenuEl);
 
-      this.#subMenuEl.addEventListener('pointerleave', () => {
-        this.#subMenuEl.style.display = 'none';
+      // a finger leaves when it lifts or starts scrolling: only the mouse hides it
+      this.#subMenuEl.addEventListener('pointerleave', (e) => {
+        if (SZ.Tap.isHover(e))
+          this.#subMenuEl.style.display = 'none';
       });
 
       // Desktop right-click
@@ -119,8 +122,8 @@
         });
       }
 
-      // Close on click outside
-      document.addEventListener('pointerdown', (e) => {
+      // Close on click outside (on touch only on a tap, not a scroll)
+      SZ.Tap.onDismiss((e) => {
         if (!this.#menuEl.contains(e.target) && !this.#subMenuEl.contains(e.target))
           this.#close();
       });
@@ -327,7 +330,7 @@
           arrow.textContent = '\u25B6';
           el.appendChild(arrow);
 
-          el.addEventListener('pointerenter', () => {
+          const openSubmenu = () => {
             const rect = el.getBoundingClientRect();
             const menuRect = menuEl.getBoundingClientRect();
             // Decide which side: if parent opened to the left, prefer left again
@@ -348,9 +351,14 @@
               false,
               subSide,
             );
-          });
+          };
+          // hover opens it for the mouse, a tap on touch screens
+          el.addEventListener('pointerenter', (e) => { if (SZ.Tap.isHover(e)) openSubmenu(); });
+          el.addEventListener('click', openSubmenu);
         } else {
-          el.addEventListener('pointerenter', () => {
+          el.addEventListener('pointerenter', (e) => {
+            if (!SZ.Tap.isHover(e))
+              return;
             setTimeout(() => {
               if (!this.#subMenuEl.matches(':hover'))
                 this.#subMenuEl.style.display = 'none';
@@ -442,6 +450,10 @@
         // Height budget for the scroll container: total available minus arrows
         const arrowH = 20; // matches CSS .sz-ctx-scroll-arrow min-height
         scrollContainer.style.maxHeight = `${maxAvail - arrowH * 2}px`;
+        // borders, padding and skinned arrows may be taller than assumed
+        const overshoot = menuEl.offsetHeight - maxAvail;
+        if (overshoot > 0)
+          scrollContainer.style.maxHeight = `${maxAvail - arrowH * 2 - overshoot}px`;
 
         // Pointer-driven auto-scroll on hover
         upArrow.addEventListener('pointerenter', () => startScroll(-1));
