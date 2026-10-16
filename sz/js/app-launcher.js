@@ -66,16 +66,7 @@
         datasource = await this.#createHostedDatasource(app, urlParams);
       } else {
         datasource = 'Applications/' + app.entry;
-        const params = Object.assign({}, urlParams);
-        const versions = SZ.appVersions;
-        if (versions) {
-          if (versions.apps?.[appId])
-            params._szVersion = versions.apps[appId];
-          if (versions.gitHash)
-            params._szGitHash = versions.gitHash;
-          if (versions.osVersion)
-            params._szOsVersion = versions.osVersion;
-        }
+        const params = Object.assign({}, urlParams, this.#versionParams(appId));
         const qs = new URLSearchParams(params).toString();
         if (qs) datasource += '?' + qs;
       }
@@ -133,6 +124,23 @@
       return null;
     }
 
+    // The app's version, the commit and the OS version go into the address an
+    // app is loaded from, so a newer app is fetched anew instead of coming
+    // from the browser cache.
+    #versionParams(appId) {
+      const params = {};
+      const versions = SZ.appVersions;
+      if (versions) {
+        if (versions.apps?.[appId])
+          params._szVersion = versions.apps[appId];
+        if (versions.gitHash)
+          params._szGitHash = versions.gitHash;
+        if (versions.osVersion)
+          params._szOsVersion = versions.osVersion;
+      }
+      return params;
+    }
+
     resolveIconPath(app) {
       return 'Applications/' + (app.icon || app.id + '/icon.png');
     }
@@ -142,7 +150,8 @@
      * The app.js must register: SZ.Apps['appId'] = { Application: class { ... } }
      */
     async #createHostedDatasource(app, urlParams) {
-      const scriptPath = 'Applications/' + app.entry;
+      const qs = new URLSearchParams(this.#versionParams(app.id)).toString();
+      const scriptPath = 'Applications/' + app.entry + (qs ? '?' + qs : '');
 
       SZ.Apps = SZ.Apps || {};
 
