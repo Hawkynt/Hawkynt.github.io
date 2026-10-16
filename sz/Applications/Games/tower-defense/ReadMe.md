@@ -35,6 +35,7 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twenty-four campaign ma
 ### Research (persistent)
 - [x] As a player, I earn research points for every wave cleared, every map won and every new star
 - [x] As a player, I can spend research in a zoomable tree with four branches: Arsenal (unlock towers, drill each family, unlock tier V mastery), Economy (starting gold, kill gold, interest, Gold Mine, salvage), Defense (lives, sturdier self-repairing towers, last stand, field medics, scouts) and Abilities
+- [x] As a player, I can open the research tree from the pause menu, the HUD or Shift+R during a map, buy research and continue the paused map with the new research applied
 
 ### Abilities
 - [x] As a player, I can call an Airstrike on a spot I choose, freeze every enemy with Deep Freeze and earn double gold with Gold Rush, each with its own cooldown
