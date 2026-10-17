@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online side-scrolling platformer game -- run, jump, collect coins, defeat enemies and bosses in your browser">
+<meta name="description" content="Free online platformer game -- run, jump, wall-kick and dash through five worlds and 30 levels with bosses, hidden gems, a tech tree, time trials with ghosts, an endless mode and a daily run">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Platformer -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online side-scrolling platformer game -- run, jump, collect coins, defeat enemies and bosses in your browser">
+<meta property="og:description" content="Free online platformer game -- run, jump, wall-kick and dash through five worlds and 30 levels with bosses, hidden gems, a tech tree, time trials with ghosts, an endless mode and a daily run">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/platformer/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Platformer",
   "url": "https://hawkynt.github.io/sz/Applications/platformer/index.html",
-  "description": "Free online side-scrolling platformer game -- run, jump, collect coins, defeat enemies and bosses in your browser",
+  "description": "Free online platformer game -- run, jump, wall-kick and dash through five worlds and 30 levels with bosses, hidden gems, a tech tree, time trials with ghosts, an endless mode and a daily run",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,10 +26,10 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=e08825bb">
+<link rel="stylesheet" href="styles.css?v=2e8593ce">
 </head>
 <body>
-<noscript><p>Free online Platformer game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Platformer - run, jump and dash through five worlds of hand-built levels. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
@@ -37,6 +37,7 @@
     <div class="menu-dropdown">
       <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="tech-tree">Tech Tree<span class="shortcut">T</span></div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
@@ -59,9 +60,9 @@
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-section" id="statusScore">Score: 0</div>
-  <div class="status-section" id="statusLevel">Level: 1</div>
-  <div class="status-section" id="statusLives">Lives: 3</div>
+  <div class="status-section" id="statusScore">Coins: 0</div>
+  <div class="status-section" id="statusLevel">Level: --</div>
+  <div class="status-section" id="statusLives">Hearts: --</div>
   <div class="status-section" id="statusState">Ready</div>
 </div>
 
@@ -72,7 +73,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Score</th><th>Level</th></tr>
+          <tr><th>#</th><th>Score</th><th>Run</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -90,14 +91,22 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Arrow Left / A</td><td>Move left</td></tr>
-        <tr><td>Arrow Right / D</td><td>Move right</td></tr>
-        <tr><td>Arrow Up / W / Space</td><td>Jump</td></tr>
-        <tr><td>Z</td><td>Fireball (with power-up)</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Arrow Left / A</td><td>Run left</td></tr>
+        <tr><td>Arrow Right / D</td><td>Run right</td></tr>
+        <tr><td>Space / Up / W / Z</td><td>Jump (hold for higher); wall kick with the upgrade</td></tr>
+        <tr><td>Down / S + Jump</td><td>Drop through a ledge</td></tr>
+        <tr><td>Shift / X</td><td>Dash (Tech Tree upgrade)</td></tr>
+        <tr><td>C / F</td><td>Fireball (power block or Ember Heart)</td></tr>
+        <tr><td>Escape / P</td><td>Pause menu / back</td></tr>
+        <tr><td>R</td><td>Restart the level</td></tr>
+        <tr><td>T</td><td>Tech Tree (also mid-level)</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
+        <tr><td>F2</td><td>Title screen</td></tr>
+        <tr><td>Arrows, Enter</td><td>Menus; Q / E change world on the map</td></tr>
       </table>
+      <p style="margin-top:8px;font-size:12px;color:#666">
+        Touch screens get an on-screen stick with Jump, Dash and Fire buttons; menus work with taps and the mouse.
+      </p>
     </div>
     <div class="dialog-buttons">
       <button data-result="ok" data-default type="button">OK</button>
@@ -111,7 +120,10 @@
     <div class="dialog-title">About Platformer</div>
     <div class="dialog-body">
       <strong>Platformer</strong><br><br>
-      A side-scrolling platformer with running, jumping, coin collecting, enemy stomping, power-ups, and boss fights. Features scrolling camera, multiple enemy types (walkers, flyers, shooters), and increasing difficulty across levels.<br><br>
+      Run, jump, wall-kick and dash through five worlds - Sunleaf Meadows, Glimmer Caverns, Frostfang Peaks, Cinder Forge and Skyspire Citadel -
+      thirty levels in all, each world ending in a boss with three phases. Find three hidden gems per level, beat the par time and earn three stars.<br><br>
+      Spend coins and gems in a five-branch Tech Tree, dress up in the Wardrobe, race your own ghost in Time Trial,
+      see how far you get in Endless and take on a fresh course every day in the Daily Run.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -121,30 +133,37 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Platformer - Free Online Side-Scrolling Jump and Run Game</h1>
-<p>Run, jump, collect coins, stomp enemies, grab power-ups, and defeat bosses in this side-scrolling platformer with parallax scrolling, six hand-designed levels, and increasing difficulty.</p>
+<h1>Platformer - Free Online Jump and Run Game</h1>
+<p>Free online platformer game -- run, jump, wall-kick and dash through five worlds and 30 levels with bosses, hidden gems, a tech tree, time trials with ghosts, an endless mode and a daily run.</p>
 <h2>Features</h2>
 <ul>
-<li>Side-scrolling platformer with running, jumping, and gravity physics</li>
-<li>Multiple enemy types: walkers, flyers, and shooters with AI behaviors</li>
-<li>Stomp enemies by jumping on them with particle burst effects</li>
-<li>Coin collecting with sparkle particles and floating score text</li>
-<li>Power-ups: double jump, invincibility with glow aura, and fireball shooting</li>
-<li>Boss fights every 5 levels with health bars and screen shake</li>
-<li>Smooth camera scrolling with parallax background layers</li>
-<li>Six hand-designed levels with gaps, steps, platform bridges and a boss arena</li>
-<li>Lives system with invincibility on respawn</li>
-<li>Persistent high scores via localStorage</li>
+<li>Responsive controls: coyote time, jump buffering, variable jump height, corner correction, wall slides and one-way ledges</li>
+<li>Five worlds of six levels - meadows, crystal caverns, frozen peaks, a volcanic forge and a sky citadel - each ending in a three-phase boss fight</li>
+<li>Every level checked reachable by a bot that drives the game's own physics with the starting move set</li>
+<li>Three hidden gems per level, secret walls, checkpoints, springs, moving platforms, crumbling blocks, crates and coin blocks</li>
+<li>Seven kinds of foes: walkers, chargers, hoppers, spiky foes, flyers, divers and turrets, each reskinned per world</li>
+<li>A five-branch Tech Tree: wall kick, dash, double jump, hearts, shield, coin magnet, gem radar, fireballs, stomp shockwave, skins and trails</li>
+<li>Time Trial against the ghost of your best run, an Endless mode of procedurally chained stages and a seeded Daily Run</li>
+<li>Painted parallax worlds, textured terrain, animated hero and foes, particles, screen shake and synthesized sound</li>
+<li>Keyboard, mouse and touch controls; progress saved in the browser</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
 <script src="../../shared/touch-controls.js?v=e8d87d1b"></script>
-<script src="controller.js?v=e2417397"></script>
+<script src="platformer-ui.js?v=faa9a59f"></script>
+<script src="physics.js?v=4dd859c7"></script>
+<script src="levels-data.js?v=1609d8e3"></script>
+<script src="progression.js?v=6f1aff15"></script>
+<script src="entities.js?v=75d80223"></script>
+<script src="sprite-art.js?v=8bdf77f4"></script>
+<script src="tile-art.js?v=ab2b3546"></script>
+<script src="scene-art.js?v=e5421345"></script>
+<script src="fx.js?v=4b8fc6b9"></script>
+<script src="controller.js?v=ff1dd563"></script>
 </body>
 </html>

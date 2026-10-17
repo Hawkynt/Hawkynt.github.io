@@ -14,22 +14,21 @@ body {
   flex-direction: column;
 }
 
-/* ---- Game Frame ---- */
+/* ---- Game Frame: the canvas fills the window, the game letterboxes inside ---- */
 .game-frame {
-  border: 3px solid;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  margin: 4px;
-  background: #1a2a5a;
+  background: #0a0e1c;
   position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .game-frame canvas {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  background: #0a0e1c;
+  touch-action: none;
 }
 
 /* ---- Status Bar ---- */
