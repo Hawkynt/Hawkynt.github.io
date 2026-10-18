@@ -151,6 +151,7 @@
     G.tileShake = null;
     G.hintFx = null;
     G.hoverIdx = -1;
+    G.holdPress = null;
     G.projectiles = [];
     G.rings = [];
     G.motes = [];

@@ -44,6 +44,8 @@
     gemT: 0, // the staff gem's idle sparkle timer
     /* hover */
     hoverIdx: -1,
+    /* a press on a raise-stone tile waiting for release (cast) or hold (walk): { idx, p, timer } */
+    holdPress: null,
     /* ── Menu navigation ── */
     hitAreas: [], menuCursor: 0, mouseX: -1, mouseY: -1,
     prevScreen: 'title', helpFrom: 'title', helpPage: 0,
