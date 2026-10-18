@@ -1,6 +1,6 @@
 /*
- * Pure helpers: 60 Hz frame scaling of per-frame rates, time / ordinal / roman
- * number formatting. Owns no state, reads nothing.
+ * Pure helpers: 60 Hz frame scaling of per-frame rates and spawn counts, time /
+ * ordinal / roman number formatting. Owns no state, reads nothing.
  */
 ;(function() {
   'use strict';
@@ -30,6 +30,13 @@
     return frames === 1 ? rate : 1 - Math.pow(1 - rate, frames);
   }
 
+  /* Whole number of spawns for a per-frame count over dt; the fraction is rolled */
+  function frameCount(perFrame, dt) {
+    const n = perFrame * frameScale(dt);
+    const whole = Math.floor(n);
+    return whole + (Math.random() < n - whole ? 1 : 0);
+  }
+
   function getOrdinal(n) {
     if (n === 1) return '1st';
     if (n === 2) return '2nd';
@@ -38,6 +45,6 @@
   }
 
   Object.assign(NS.module('util'), {
-    romanNumeral, formatTime, frameScale, frameRate, getOrdinal
+    romanNumeral, formatTime, frameScale, frameRate, frameCount, getOrdinal
   });
 })();

@@ -8,7 +8,7 @@
   const SZ = window.SZ;
   const NS = SZ.SpaceRacing;
   const G = NS.state;
-  const { frameScale } = NS.util;
+  const { frameScale, frameRate } = NS.util;
   const { particles, screenShake } = NS.runtime;
   const { treeLevel } = NS.progress;
 
@@ -41,7 +41,7 @@
     const c = G.geo.sampleAt(st.s);
     const dx = racer.x - c.x, dy = racer.y - c.y;
     const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-    if (isPlayer && Math.random() < 0.4)
+    if (isPlayer && Math.random() < frameRate(0.4, dt))
       particles.trail(racer.x, racer.y, { color: '#8a7a6a', speed: 0.6, life: 0.5, count: 1 });
     const wall = half + 40;
     if (d > wall) {

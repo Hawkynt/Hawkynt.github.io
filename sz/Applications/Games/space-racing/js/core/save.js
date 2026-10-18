@@ -15,8 +15,6 @@
   const { formatTime } = NS.util;
   const { highScoresBody } = NS.runtime;
 
-  let shipUpgrades = {};
-
   function loadHighScores() {
     try {
       const raw = localStorage.getItem(STORAGE_HIGHSCORES);
@@ -118,11 +116,6 @@
     try {
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(G.save));
     } catch (_) {}
-  }
-
-  function getUpgradeLevel(shipId, upgradeId) {
-    const key = shipId + ':' + upgradeId;
-    return shipUpgrades[key] || 0;
   }
 
   function getUpgradeCost(upgradeDef, currentLevel) {

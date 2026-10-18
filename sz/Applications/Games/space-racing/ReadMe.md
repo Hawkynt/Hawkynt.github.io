@@ -12,7 +12,7 @@ Top-down spaceship racing with drifting, boost, item combat, a four-cup career a
 
 ### Racing & Physics
 - [x] As a player, I can accelerate with Up/W, brake with Down/S and steer with Left/Right or A/D so that controls feel intuitive
-- [x] As a player, I can hold the mouse button to steer toward the cursor while the throttle stays on so that mouse-only play is supported
+- [x] As a player, I can hold the mouse button to steer toward the cursor while the throttle stays on, with the same engine flame and exhaust as keyboard throttle, so that mouse-only play is supported
 - [x] As a player, I can hold Space while steering to drift, with a blue mini-turbo after a short slide and an orange mega turbo after a long one so that corners pay off
 - [x] As a player, I can watch the boost meter fill from drifting and from the slipstream behind an opponent, and spend it on a Shift boost so that speed management matters
 - [x] As a player, I can nail a perfect start by accelerating right at GO, or stall the launch by holding the throttle too early so that the start is a real moment
@@ -110,7 +110,7 @@ Plain browser scripts, no build step. Every game module is an IIFE that adds one
 | `js/ui/racing-ui.js` | `SZ.RacingUI`: panel, text fitting, chips, keycaps, meters and headlines |
 | `js/core/constants.js` | Canvas size, screen states, storage keys and every tuning number; defines `SZ.SpaceRacing.module` |
 | `js/core/defs.js` | Ships, Workshop tree, AI personalities, cups, tutorial pages, theme colors, reverse-track variants |
-| `js/core/util.js` | 60 Hz frame scaling of per-frame rates, time / ordinal / roman-number formatting |
+| `js/core/util.js` | 60 Hz frame scaling of per-frame rates and spawn counts, time / ordinal / roman-number formatting |
 | `js/core/runtime.js` | Canvas, 2D context, UI kit, status-bar elements, OS window API, particle / shake / text effects |
 | `js/core/state.js` | The shared state object `G` |
 | `js/core/save.js` | High scores, versioned career save, old-save migration |
