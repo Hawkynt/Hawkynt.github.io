@@ -21,7 +21,6 @@
     drawTrackPreview, drawStars } = NS.menuKit;
 
   let quickReverse = false;    // reverse toggle on the quick race screen
-  let garageCursor = 0;        // ship previewed in the garage
   let titleShips = [];         // decorative ships looping across the title screen
 
   /* Three random ships looping across the title screen */
@@ -265,8 +264,7 @@
 
   function drawGarageScreen() {
     menuBackground();
-    garageCursor = G.menuCursor;
-    const def = SHIP_DEFS[garageCursor];
+    const def = SHIP_DEFS[G.menuCursor];
     const unlocked = isShipUnlocked(def);
 
     // glowing platform under the big preview

@@ -144,7 +144,7 @@
       // Exhaust particles for AI
       if (ai.speed > 80) {
         const exhaustRate = ai.speed > 200 ? 0.3 : 0.1;
-        if (Math.random() < exhaustRate)
+        if (Math.random() < frameRate(exhaustRate, dt))
           particles.trail(
             ai.x - Math.cos(ai.angle) * 12,
             ai.y - Math.sin(ai.angle) * 12,

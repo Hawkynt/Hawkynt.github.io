@@ -17,7 +17,7 @@
   const { loadHighScores, saveHighScores, loadSave, renderHighScores } = NS.save;
   const { getPlayerShipDef } = NS.progress;
   const { prepareTrack } = NS.raceSetup;
-  const { updateShip, updateSlipstream, updateRaceStart } = NS.player;
+  const { updateShip, updateSlipstream, updateRaceStart, isThrottleHeld } = NS.player;
   const { updateAI } = NS.ai;
   const { checkBoostPads, checkHazards, applyGravity, checkWormholes } = NS.features;
   const { updateItems } = NS.items;
@@ -67,7 +67,7 @@
     checkHazards();
     checkWormholes(dt);
     updateItems(dt);
-    emitThrustParticles();
+    emitThrustParticles(dt);
     updateRace(dt);
     updateRaceAudio(dt);
     updateCamera(dt);
@@ -129,7 +129,7 @@
 
     // Draw player ship
     const pd = getPlayerShipDef();
-    drawShip(G.ship.x, G.ship.y, G.ship.angle, pd.color, pd.accentColor, pd.exhaustColor, pd.shape, true, G.keys['ArrowUp'] || G.keys['KeyW'], G.ship.bank, G.ship.shieldTime > 0);
+    drawShip(G.ship.x, G.ship.y, G.ship.angle, pd.color, pd.accentColor, pd.exhaustColor, pd.shape, true, isThrottleHeld(), G.ship.bank, G.ship.shieldTime > 0);
     drawShockwaves();
     particles.draw(ctx);
     floatingText.draw(ctx);

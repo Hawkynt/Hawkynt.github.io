@@ -32,7 +32,7 @@
     // Launch: accelerating right at GO pays off, holding the throttle before it stalls the engine
     if (G.stallTimer > 0)
       G.stallTimer -= dt;
-    const throttleHeld = G.keys['ArrowUp'] || G.keys['KeyW'] || (G.mouseControlActive && G.mouseDown);
+    const throttleHeld = isThrottleHeld();
     if (G.launchWindow > 0) {
       G.launchWindow -= dt;
       if (throttleHeld && G.stallTimer <= 0) {
@@ -227,13 +227,18 @@
     }
   }
 
+  /* Up / W, or the mouse button held in mouse steering mode */
+  function isThrottleHeld() {
+    return !!(G.keys['ArrowUp'] || G.keys['KeyW'] || (G.mouseControlActive && G.mouseDown));
+  }
+
   /* Countdown to GO: accelerating right at the green light pays off, holding the
      throttle just before it stalls the engine */
   function updateRaceStart(dt) {
     if (G.state !== STATE_PLAYING || G.raceFinished || G.raceStarted) return;
 
     G.countdown -= dt;
-    const throttleHeld = G.keys['ArrowUp'] || G.keys['KeyW'] || (G.mouseControlActive && G.mouseDown);
+    const throttleHeld = isThrottleHeld();
     if (throttleHeld && G.countdown <= EARLY_THROTTLE_WINDOW)
       G.earlyThrottle = true;
     if (G.countdown > 0) return;
@@ -251,6 +256,6 @@
   }
 
   Object.assign(NS.module('player'), {
-    updateShip, updateSlipstream, updateRaceStart
+    updateShip, updateSlipstream, updateRaceStart, isThrottleHeld
   });
 })();

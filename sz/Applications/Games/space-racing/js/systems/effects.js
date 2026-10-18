@@ -11,18 +11,19 @@
   const G = NS.state;
   const { CANVAS_W, CANVAS_H, TWO_PI, STATE_PLAYING, BASE_MAX_SPEED, DRIFT_TIER1, DRIFT_TIER2,
     AMBIENCE_MAX } = NS.constants;
-  const { frameScale } = NS.util;
+  const { frameScale, frameRate, frameCount } = NS.util;
   const { particles } = NS.runtime;
   const { getPlayerShipDef } = NS.progress;
+  const { isThrottleHeld } = NS.player;
 
   let stormTimer = 0;
 
   let pulsarTimer = 0;
 
-  function emitThrustParticles() {
+  function emitThrustParticles(dt) {
     if (G.state !== STATE_PLAYING) return;
 
-    const isThrusting = G.keys['ArrowUp'] || G.keys['KeyW'];
+    const isThrusting = isThrottleHeld();
     const pd = getPlayerShipDef();
 
     // Thrust exhaust particles when accelerating
@@ -31,7 +32,8 @@
       const ey = G.ship.y - Math.sin(G.ship.angle) * 12;
       const spread = 0.4;
       const baseAngle = G.ship.angle + Math.PI;
-      for (let i = 0; i < 2; ++i) {
+      const count = frameCount(2, dt);
+      for (let i = 0; i < count; ++i) {
         const a = baseAngle + (Math.random() - 0.5) * spread;
         const spd = 1.5 + Math.random() * 2;
         particles.trail(ex + (Math.random() - 0.5) * 4, ey + (Math.random() - 0.5) * 4, {
@@ -50,7 +52,7 @@
     const speedRatio = G.ship.speed / BASE_MAX_SPEED;
     if (speedRatio > 0.6) {
       const trailRate = (speedRatio - 0.6) * 5;
-      if (Math.random() < trailRate * 0.3) {
+      if (Math.random() < frameRate(Math.min(1, trailRate * 0.3), dt)) {
         const side = (Math.random() > 0.5 ? 1 : -1);
         const perpAngle = G.ship.angle + Math.PI / 2 * side;
         const ox = Math.cos(perpAngle) * (3 + Math.random() * 5);
@@ -77,7 +79,7 @@
     if (G.state === STATE_PLAYING) {
       const maxSpeed = BASE_MAX_SPEED * (G.ship.stats ? G.ship.stats.speed : 1);
       if (G.ship.speed > 0.7 * maxSpeed || G.boostActive) {
-        const count = 1 + Math.floor((G.ship.speed / maxSpeed) * 3);
+        const count = frameCount(1 + Math.floor((G.ship.speed / maxSpeed) * 3), dt);
         for (let i = 0; i < count && G.speedLines.length < 60; ++i) {
           const side = Math.floor(Math.random() * 4);
           let x, y;
