@@ -98,6 +98,16 @@
     treeSelected = first ? first.node.id : null;
   }
 
+  /* Shared by tab clicks, Tab, 1-5 and arrow wrap: rebuild the layout for the
+     new branch before selecting its first card */
+  function switchBranch(index) {
+    const n = TREE_BRANCH_LIST.length;
+    treeBranch = ((index % n) + n) % n;
+    treeLayout = buildTreeLayout();
+    selectFirstInBranch();
+    playSfx('click', { volume: 0.4 });
+  }
+
   /* Up/Down within a column, Left/Right between columns; past an edge the
      selection wraps into the previous/next branch */
   function moveTreeSelection(dc, dr) {
@@ -119,10 +129,7 @@
     const ci = colIdx.indexOf(cur.col) + dc;
     let ri = cols[cur.col].indexOf(cur) + dr;
     if (ci < 0 || ci >= colIdx.length) {
-      treeBranch = (treeBranch + (ci < 0 ? -1 : 1) + TREE_BRANCH_LIST.length) % TREE_BRANCH_LIST.length;
-      treeLayout = buildTreeLayout();
-      selectFirstInBranch();
-      playSfx('click', { volume: 0.4 });
+      switchBranch(treeBranch + (ci < 0 ? -1 : 1));
       return;
     }
     const col = cols[colIdx[ci]];
@@ -295,18 +302,11 @@
     if (e.code === 'Escape') {
       setScreen(G.prevScreen);
     } else if (e.code === 'Tab') {
-      treeBranch = (treeBranch + 1) % TREE_BRANCH_LIST.length;
-      treeLayout = buildTreeLayout();
-      selectFirstInBranch();
-      playSfx('click', { volume: 0.4 });
+      switchBranch(treeBranch + 1);
     } else if (e.code >= 'Digit1' && e.code <= 'Digit5') {
       const b = Number(e.code.slice(5)) - 1;
-      if (b < TREE_BRANCH_LIST.length) {
-        treeBranch = b;
-        treeLayout = buildTreeLayout();
-        selectFirstInBranch();
-        playSfx('click', { volume: 0.4 });
-      }
+      if (b < TREE_BRANCH_LIST.length)
+        switchBranch(b);
     } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
       moveTreeSelection(-1, 0);
     } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
@@ -329,9 +329,7 @@
     if (!treeLayout) treeLayout = buildTreeLayout();
     for (const tab of treeLayout.tabs) {
       if (G.mouseX >= tab.x && G.mouseX <= tab.x + tab.w && G.mouseY >= tab.y && G.mouseY <= tab.y + tab.h) {
-        treeBranch = tab.index;
-        selectFirstInBranch();
-        playSfx('click', { volume: 0.4 });
+        switchBranch(tab.index);
         return;
       }
     }

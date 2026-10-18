@@ -16,7 +16,7 @@
   const { onArmoryKey, onArmoryPointer } = NS.armory;
   const { onHelpKey } = NS.help;
 
-  /* Pause when the window is hidden or loses focus */
+  /* Pause when the tab is hidden */
   SZ.GameAutoPause.attach({
     isRunning: () => G.gameState === 'playing',
     pause: () => {
