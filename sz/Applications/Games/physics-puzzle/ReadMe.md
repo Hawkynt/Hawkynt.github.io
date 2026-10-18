@@ -34,6 +34,7 @@ The page also uses the shared desktop libraries `../../shared/game-audio.js` (sy
 ## User Stories
 
 ### Aiming & Firing
+- [x] As a user, I don't wait for a missed ball to roll out: once a shot can no longer change much it fast-forwards (6x, hold F to fast-forward any shot), and pulling back to aim ends the roll-out at once so I can fire the next shot
 - [x] As a user, I can press anywhere on the field and pull back like a slingshot to set the angle and power, and let go to fire
 - [x] As a user, I can aim with the arrow keys and fire with Space or Enter
 - [x] As a user, I can see the predicted flight as dots, a longer guide with Long Sight and bounces with Ricochet Sight
