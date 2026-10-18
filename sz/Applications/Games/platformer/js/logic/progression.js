@@ -6,7 +6,7 @@
    * Progression for the Platformer: the v2 save, coins and gems, the
    * five-branch tech tree and the stats it grants, stars and rewards,
    * hero skins and trails, and the compact ghost encoding used by Time Trial.
-   * Pure data and math; the controller stores the save.
+   * Pure data and math; js/core/storage.js stores the save.
    */
 
   const SAVE_VERSION = 2;

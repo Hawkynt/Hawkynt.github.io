@@ -16,17 +16,47 @@ The game renders into a 1280 x 720 logical view, letterboxed to the window with 
 
 ## Architecture
 
-- `physics.js` — tile codes, AABB sweeps against solids, one-way tiles and moving platforms, hazards (oriented spikes, liquids, falling out) and the player controller (coyote time, buffering, variable jump, apex hang, corner correction, wall slide and kick, double jump, dash, springs, ice, drop-through). Pure logic, shared by the game, the tests and the bot.
+Plain scripts, no build step: `index.html` loads them in dependency order, each one an IIFE that registers itself on `window.SZ`. The code sits in three groups under `js/`: the rules, the art and the game itself.
+
+**Rules** (`js/logic/`, pure, no DOM, shared with the tests and the bot)
+- `physics.js` — tile codes, AABB sweeps against solids, one-way tiles and moving platforms, hazards (oriented spikes, liquids, falling out) and the player controller (coyote time, buffering, variable jump, apex hang, corner correction, wall slide and kick, double jump, dash, springs, ice, drop-through).
 - `levels-data.js` — the five worlds, 46 hand-made chunks (28 shared, 15 world-specific, start/goal/arena), the seeded level builder with world transforms, gem and checkpoint placement and par times, and the campaign, Endless and Daily specs.
-- `entities.js` — foes with seven behaviours (walker, charger, hopper, spiky, flyer, diver, turret), five bosses with three phases each (King Gloop, Crystal Golem, Old Rimeback, Magma Drake, The Storm Regent), projectiles (fireballs, shots, lobbed and homing boss attacks, ground waves, falling rocks and icicles, lightning) and moving platforms. Pure logic; it reports events to the controller.
 - `progression.js` — the v2 save and its migration, coins and gems, the 22-node Tech Tree (Movement, Survival, Fortune, Arsenal, Style) and the stats it grants, stars and rewards, unlocks, skins and trails, and the compact ghost encoding for Time Trial.
+- `entities.js` — foes with seven behaviours (walker, charger, hopper, spiky, flyer, diver, turret), five bosses with three phases each (King Gloop, Crystal Golem, Old Rimeback, Magma Drake, The Storm Regent), projectiles (fireballs, shots, lobbed and homing boss attacks, ground waves, falling rocks and icicles, lightning) and moving platforms. It reports events to the game.
+
+**Art** (`js/art/`, self-contained drawing libraries that know nothing of the game state)
 - `platformer-ui.js` — the drawing kit: cached glass panels with a gilded rim, text that always fits its box, chips, keycaps, meters and glossy headlines.
-- `sprite-art.js` — cached procedural sprites at 2x resolution: the hero in nine animated poses for six skins, the seven foe types reskinned for each world, five bosses, items, blocks, platforms, projectiles and UI icons.
-- `tile-art.js` — per-world seamless textures and terrain baked into 16-tile chunk canvases (LRU cached, baked ahead of the camera): rounded outer corners, grass/moss/snow/ash/gilded caps, rim shading, occlusion in pockets, seeded decorations and hanging growth, ledges, oriented spikes, liquids with animated surfaces and fading secret walls.
-- `scene-art.js` — layered parallax backdrops for the five worlds (one cached sky plus tileable strips) with animated light, aurora, lava glow and cloud seas, a foreground atmosphere band and a panning menu variant.
+- `sprites/` — cached procedural sprites at 2x resolution, published as `SZ.PlatformerSprites`: `kit.js` (frame tables, the sprite cache, paint helpers and expressive eyes), `hero.js` (nine animated poses for six skins), `foes.js` (seven foe types reskinned per world), `bosses.js` (five bosses), `items.js` (pickups, blocks, props, platforms, projectiles) and `icons.js` (UI icons and the public API).
+- `tiles/` — terrain, published as `SZ.PlatformerTiles`: `kit.js` (world themes, helpers and the seamless textures), `cells.js` (bake-time cell painters: rounded outer corners, grass/moss/snow/ash/gilded caps, rim shading, occlusion in pockets, seeded decorations and hanging growth, ledges, oriented spikes, liquids) and `tiles.js` (16-tile chunk canvases, LRU cached and baked ahead of the camera, animated liquid surfaces, fading secret walls, menu previews).
+- `scene/` — layered parallax backdrops, published as `SZ.PlatformerScene`: `kit.js` (noise, gradients, ridges, clouds, stars), `strips.js` (tileable ranges, hills, trees, cloud seas, light shafts), `worlds.js` (the five world builders and atmosphere bands) and `scene.js` (the cached sky, animated light, aurora, lava glow, the foreground band and the panning menu variant).
 - `fx.js` — pooled sprite particles (capped, culled off-screen, additive pass for glows), presets for dust, landings, jumps, dashes, coins, gems, stomps, defeats, splashes, checkpoints, explosions, debris, shockwaves, trails and each world's air, plus trauma screen shake, hit-stop, screen flashes and floating texts.
-- `controller.js` — the game: state machine and screens (title diorama, world map, level intro card, HUD, pause, help, results, Tech Tree, wardrobe), fixed-step loop, input (keyboard, mouse, touch), camera, pickups, combat, bosses, modes, persistence and window integration.
-- `tests/` — node suites: `physics.test.js` (movement rules), `levels-data.test.js` (chunk and level validation plus the completability proof), `solver.js` (the reachability bot), `entities.test.js` (foe behaviours, boss phases and defeat), `progression.test.js` (tree, rewards, save migration, ghosts), and `platformer-ui`, `sprite-art`, `tile-art`, `scene-art` and `fx` tests that hold the drawing budgets against a recording fake canvas (`fakecanvas.js`).
+
+**The game** (namespace `SZ.Platformer`). All shared, mutable state lives in one object, `SZ.Platformer.state` (called `G` in every file); each module fills `SZ.Platformer.module('<name>')` with the functions other modules call, and its header comment names the state it owns and reads.
+- `js/core/config.js` — the namespace, the module registry and the tuning constants (view size, zoom, step limits, timings, storage keys, gem and boss-shot colours).
+- `js/core/context.js` — the shared state `G`: canvas and drawing kit, particle pools, shake/hit-stop/flash, input sets, current screen, the running level, results, toasts, menu cursor and per-screen state.
+- `js/core/view.js` — the 1280 x 720 logical view, letterboxed with devicePixelRatio awareness, the world zoom and pointer mapping.
+- `js/core/sound.js` — sound effects through the shared synthesizer, throttled per effect.
+- `js/core/util.js` — the local date key and the time format.
+- `js/core/storage.js` — the save and the high scores in localStorage, and the High Scores dialog table.
+- `js/core/input.js` — the key map and the per-step input snapshot.
+- `js/core/session.js` — screen switching, toasts, applying Tech Tree stats at once, and starting levels in Adventure, Time Trial, Endless and Daily modes.
+- `js/play/events.js` — the world the entity logic sees and the sound, particles and shakes its events trigger.
+- `js/play/step.js` — the fixed 120 Hz step: accumulator, system order, safe respawn ground and the hero's movement effects.
+- `js/play/camera.js` — look-ahead, vertical follow, arena lock and zoom.
+- `js/play/blocks.js` — coin and power blocks, crates, foes bonked from below and crumbling floors.
+- `js/play/combat.js` — fireballs, hurting, pits, knock-outs and respawns, stomps and shockwaves, shots.
+- `js/play/boss.js` — the arena gate, hitting the boss, its death and rewards.
+- `js/play/pickups.js` — coins and the magnet, gems, power-ups, checkpoints, the goal trigger and ghost recording.
+- `js/play/finish.js` — level clear, Daily Run and Endless results and rewards.
+- `js/render/kit.js` — sprite, glow and icon drawing shared by every screen.
+- `js/render/world.js` — the level picture: backdrop, terrain, dynamic tiles, pickups, foes, boss, ghost, hero with squash, trails and afterimages, shots and the gem radar.
+- `js/render/hud.js` — the HUD, boss bar, toasts, level intro card, knock-out veil and screen fade.
+- `js/ui/menu-kit.js` — hit areas, keyboard cursor, animated buttons, veils, the menu backdrop and currency chips.
+- `js/ui/title.js`, `map.js`, `tree.js`, `wardrobe.js`, `help.js`, `pause.js`, `results.js` — the title diorama, the world map, the Tech Tree, the Wardrobe, How to Play, the pause menu and the results panel.
+- `js/ui/controls.js` — keyboard, mouse and touch input for play and every menu.
+- `js/app.js` — the frame loop and screen dispatch, the status bar, the menu bar, window integration and start-up.
+
+**Tests** (`tests/`) — node suites: `physics.test.js` (movement rules), `levels-data.test.js` (chunk and level validation plus the completability proof), `solver.js` (the reachability bot), `entities.test.js` (foe behaviours, boss phases and defeat), `progression.test.js` (tree, rewards, save migration, ghosts), and `platformer-ui`, `sprite-art`, `tile-art`, `scene-art` and `fx` tests that hold the drawing budgets against a recording fake canvas (`fakecanvas.js`).
 
 The page also uses the shared desktop libraries `../../shared/game-audio.js` (synthesized sound), `game-autopause.js`, `touch-controls.js`, `menu.js` and `dialog.js`.
 

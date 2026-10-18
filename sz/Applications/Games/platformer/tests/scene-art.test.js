@@ -24,7 +24,9 @@ function fakeCtx() {
 let canvasCount = 0;
 global.document = { createElement: () => { ++canvasCount; const cv = { width: 0, height: 0 }; cv.getContext = () => { const g = fakeCtx(); g.canvas = cv; return g; }; return cv; } };
 
-require('../scene-art.js');
+const PARTS = ['kit', 'strips', 'worlds', 'scene'].map(n => '../js/art/scene/' + n + '.js');
+for (const part of PARTS)
+  require(part);
 
 const Art = window.SZ.PlatformerScene;
 let failures = 0;
@@ -59,7 +61,7 @@ function coversView(args, v) {
 
 check('module registered', !!Art && typeof Art.create === 'function' && Art.WORLD_COUNT === 5, 'SZ.PlatformerScene missing');
 check('export frozen', Object.isFrozen(Art), 'not frozen');
-const src = fs.readFileSync(require.resolve('../scene-art.js'), 'utf8');
+const src = PARTS.map(part => fs.readFileSync(require.resolve(part), 'utf8')).join('\n');
 check('no shadowBlur in source', src.indexOf('shadowBlur') < 0, 'shadowBlur found');
 check('no getImageData per frame', !/function draw(Back|Front|Menu|Layer|Sky|Glows)[\s\S]*?getImageData/.test(src.slice(src.indexOf('function drawSky'))), 'getImageData in a draw function');
 

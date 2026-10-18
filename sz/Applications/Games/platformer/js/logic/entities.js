@@ -6,8 +6,9 @@
    * Everything that moves besides the hero: seven foe behaviours, five
    * bosses with three phases each, projectiles (fireballs, enemy shots, boss
    * attacks, falling rocks and icicles, lightning, ground waves) and moving
-   * platforms. Pure logic on top of SZ.PlatformerPhysics; the controller
-   * draws them and turns the events they emit into sound and particles.
+   * platforms. Pure logic on top of SZ.PlatformerPhysics; the game draws
+   * them (js/render/world.js) and turns the events they emit into sound and
+   * particles (js/play/events.js).
    *
    * Every update gets a `game` object:
    *   { level, player, t, emit(type, data), shots: [], enemies: [] }

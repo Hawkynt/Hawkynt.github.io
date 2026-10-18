@@ -2,7 +2,7 @@
 
 global.window = {};
 const fs = require('fs');
-require('../physics.js');
+require('../js/logic/physics.js');
 
 const Ph = window.SZ.PlatformerPhysics;
 const T = Ph.T, TS = Ph.TS, STEP = Ph.STEP;
@@ -71,7 +71,7 @@ const FLAT = levelOf([
 /* module */
 check('module registered', !!Ph && typeof Ph.stepPlayer === 'function', 'SZ.PlatformerPhysics missing');
 check('export frozen', Object.isFrozen(Ph), 'not frozen');
-check('no DOM use', fs.readFileSync(require.resolve('../physics.js'), 'utf8').indexOf('document') < 0, 'physics touches the DOM');
+check('no DOM use', fs.readFileSync(require.resolve('../js/logic/physics.js'), 'utf8').indexOf('document') < 0, 'physics touches the DOM');
 
 /* standing settles on the floor */
 {

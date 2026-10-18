@@ -3,7 +3,7 @@
 const fs = require('fs');
 const F = require('./fakecanvas.js');
 F.install();
-require('../fx.js');
+require('../js/art/fx.js');
 
 const Fx = window.SZ.PlatformerFx;
 let failures = 0;
@@ -18,7 +18,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!Fx && Object.isFrozen(Fx), 'SZ.PlatformerFx missing or not frozen');
-check('no shadowBlur in source', fs.readFileSync(require.resolve('../fx.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur found');
+check('no shadowBlur in source', fs.readFileSync(require.resolve('../js/art/fx.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 const sys = Fx.create(500);
 const img = { c: {}, w: 40, h: 60, ax: 20, ay: 60 };

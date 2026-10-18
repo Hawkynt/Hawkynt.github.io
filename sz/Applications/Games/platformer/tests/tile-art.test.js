@@ -3,9 +3,11 @@
 const fs = require('fs');
 const F = require('./fakecanvas.js');
 F.install();
-require('../physics.js');
-require('../levels-data.js');
-require('../tile-art.js');
+require('../js/logic/physics.js');
+require('../js/logic/levels-data.js');
+const PARTS = ['kit', 'cells', 'tiles'].map(n => '../js/art/tiles/' + n + '.js');
+for (const part of PARTS)
+  require(part);
 
 const Tiles = window.SZ.PlatformerTiles;
 const L = window.SZ.PlatformerLevels;
@@ -21,7 +23,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!Tiles && Object.isFrozen(Tiles), 'SZ.PlatformerTiles missing or not frozen');
-check('no shadowBlur in source', fs.readFileSync(require.resolve('../tile-art.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur found');
+check('no shadowBlur in source', PARTS.map(part => fs.readFileSync(require.resolve(part), 'utf8')).join('\n').indexOf('shadowBlur') < 0, 'shadowBlur found');
 check('five themes', Tiles.THEMES.length === 5, Tiles.THEMES.length);
 
 const VIEW = { x0: 1000, y0: 100, x1: 2280, y1: 820 };

@@ -11,9 +11,9 @@
  */
 
 global.window = {};
-require('../physics.js');
-require('../levels-data.js');
-require('../entities.js');
+require('../js/logic/physics.js');
+require('../js/logic/levels-data.js');
+require('../js/logic/entities.js');
 const solver = require('./solver.js');
 
 const Ph = window.SZ.PlatformerPhysics;
