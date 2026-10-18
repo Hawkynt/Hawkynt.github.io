@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../racing-ui.js');
+require('../js/ui/racing-ui.js');
 
 let failures = 0;
 

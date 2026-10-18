@@ -1,8 +1,8 @@
 'use strict';
 
 global.window = {};
-require('../track-geometry.js');
-require('../tracks-data.js');
+require('../js/core/track-geometry.js');
+require('../js/core/tracks-data.js');
 
 const TRACKS = window.SZ.RacingTracks;
 const KEYS = ['name', 'theme', 'width', 'smooth', 'laps', 'controlPoints', 'boost',
