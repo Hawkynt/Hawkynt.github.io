@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online space combat game -- pilot your ship, destroy enemies, upgrade weapons in your browser">
+<meta name="description" content="Free online top-down space combat game -- free-flight dogfights across a 30-mission campaign in five sectors, five multi-part bosses, five ships, ten weapons, a 36-node tech tree, Endless, Daily and Boss Rush modes">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Space Combat -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online space combat game -- pilot your ship, destroy enemies, upgrade weapons in your browser">
+<meta property="og:description" content="Free online top-down space combat game -- free-flight dogfights across a 30-mission campaign in five sectors, five multi-part bosses, five ships, ten weapons, a 36-node tech tree, Endless, Daily and Boss Rush modes">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/space-combat/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Space Combat",
   "url": "https://hawkynt.github.io/sz/Applications/Games/space-combat/index.html",
-  "description": "Free online space combat game -- pilot your ship, destroy enemies, upgrade weapons in your browser",
+  "description": "Free online top-down space combat game -- free-flight dogfights across a 30-mission campaign in five sectors, five multi-part bosses, five ships, ten weapons, a 36-node tech tree, Endless, Daily and Boss Rush modes",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,17 +26,18 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=7d6b5dea">
+<link rel="stylesheet" href="styles.css?v=e4ce556b">
 </head>
 <body>
-<noscript><p>Free online space combat game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online top-down space combat game: free-flight dogfights across a 30-mission campaign, five bosses, five ships, a tech tree and four game modes. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
@@ -59,10 +60,10 @@
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-section" id="statusScore">Score: 0</div>
-  <div class="status-section" id="statusWave">Wave: 1</div>
-  <div class="status-section" id="statusLives">Lives: 3</div>
-  <div class="status-section" id="statusState">Ready</div>
+  <div class="status-section" id="statusScore">Scrap: 0</div>
+  <div class="status-section" id="statusStage">Stars: 0 / 90</div>
+  <div class="status-section" id="statusHull"></div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- High Scores Dialog -->
@@ -72,7 +73,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Score</th><th>Wave</th></tr>
+          <tr><th>#</th><th>Score</th><th>Wave</th><th>Mode</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -86,15 +87,23 @@
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 380px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Arrow Keys / WASD</td><td>Move ship (8 directions)</td></tr>
-        <tr><td>Space / Z</td><td>Fire weapon</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
-        <tr><td>H</td><td>How to Play</td></tr>
+        <tr><td>WASD / Arrow keys</td><td>Thrust and strafe (inertia)</td></tr>
+        <tr><td>Mouse</td><td>Aim</td></tr>
+        <tr><td>Left mouse</td><td>Fire primary weapon</td></tr>
+        <tr><td>Right mouse / X / C</td><td>Fire secondary weapon</td></tr>
+        <tr><td>I J K L</td><td>Keyboard turret: aim and fire</td></tr>
+        <tr><td>Shift</td><td>Boost (builds heat)</td></tr>
+        <tr><td>Space</td><td>Dodge roll (brief invulnerability)</td></tr>
+        <tr><td>E / Q</td><td>Ship special ability</td></tr>
+        <tr><td>Esc / P</td><td>Pause (tech tree from the pause menu)</td></tr>
+        <tr><td>B</td><td>Buy the selected tech tree node</td></tr>
+        <tr><td>Tab</td><td>Switch hangar tab</td></tr>
+        <tr><td>F2</td><td>Title screen</td></tr>
+        <tr><td>Touch</td><td>Left stick flies, right stick aims and fires</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -105,12 +114,12 @@
 
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
-  <div class="dialog">
+  <div class="dialog" style="width: 380px;">
     <div class="dialog-title">About Space Combat</div>
     <div class="dialog-body">
       <strong>Space Combat</strong><br><br>
-      Pilot your ship through waves of enemies in intense top-down dogfights. Collect weapon pickups and persistent upgrades to power up your ship. Build kill streaks for massive score multipliers.<br><br>
-      Features 8-directional movement, 5 weapon types (spread, laser, missile, plasma, beam), 5 persistent upgrade categories (extra shots, damage, speed, fire rate, shield capacity), 7 enemy types with distinct AI (scouts, fighters, darts, bombers, snipers, carriers that spawn minions, and juggernauts), wave-based progression, shield system, and explosive visual effects.<br><br>
+      Free-flight arcade dogfighting in large scrolling sectors. Fly a 30-mission campaign through five sectors - survival, assault, escort, defense and salvage missions, each sector closed by a multi-part boss - or play Endless Survival, the seeded Daily Challenge and Boss Rush.<br><br>
+      Five ships with their own specials, six primary and four secondary weapons, ten enemy types, asteroids, minefields, nebulae, black holes and solar flares. Scrap from every mode buys ships and weapons in the hangar and 36 upgrades in the tech tree.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -120,31 +129,81 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Space Combat - Free Online Top-Down Space Shooter Browser Game</h1>
-<p>Pilot your ship in intense top-down dogfights against waves of enemies, collect weapon upgrades, and build kill streaks for massive score multipliers in this free HTML5 space combat arcade game.</p>
+<h1>Space Combat - Free Online Top-Down Space Dogfighting Game with Campaign, Bosses and Tech Tree</h1>
+<p>Fly free-flight twin-stick dogfights in large scrolling sectors: a 30-mission campaign across five sectors with five multi-part bosses, plus Endless Survival, a seeded Daily Challenge and Boss Rush, in this free HTML5 browser game.</p>
 <h2>Features</h2>
 <ul>
-<li>8-directional movement with WASD or Arrow keys and thruster trail particles</li>
-<li>3 weapon types: Spread Shot, Laser beam, and homing Missiles</li>
-<li>11 enemy types including Scouts, Fighters, Bombers, and Swarm enemies</li>
-<li>Boss fights every 5 waves with escalating difficulty</li>
-<li>Shield system with shimmer visual effects</li>
-<li>Score multiplier for kill streaks up to 8x</li>
-<li>Weapon upgrade pickups dropped by destroyed enemies</li>
-<li>Particle effects: explosions, thruster trails, shield shimmer, laser glow</li>
-<li>Screen shake on hits and floating score text</li>
-<li>Touch controls for mobile play</li>
-<li>High score persistence via localStorage</li>
-<li>Tutorial overlay for new players</li>
+<li>4 game modes: Campaign, Endless Survival, Daily Challenge and Boss Rush</li>
+<li>30 campaign missions in 5 sectors with up to 90 stars</li>
+<li>6 mission types: survival, assault, escort, defense, salvage and boss fights</li>
+<li>5 multi-part bosses with weak points, core shields and three phases each</li>
+<li>10 enemy types: raiders, interceptors, bombers, kamikaze swarmers, sentries, outposts, shielded frigates, cloakers, carriers and lancers</li>
+<li>5 ships with their own special ability: Overdrive, Phase Blink, Aegis, Nova Burst and Time Warp</li>
+<li>6 primary weapons (blaster, scatter, beam, rail, flak, ion arcs) and 4 secondaries (homing missiles, mines, EMP, drones)</li>
+<li>36-node tech tree in Weapons, Defense, Engines, Systems and Style (skins, trails, engine colours)</li>
+<li>Hazards: breakable asteroids, minefields, nebulae, black holes and solar flares</li>
+<li>Inertia flight with boost heat, dodge roll, radar and off-screen indicators</li>
+<li>Explosions with debris, shockwaves, shield flares, screen shake, hit-stop and slow motion</li>
+<li>Touch controls with virtual sticks</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="controller.js?v=611edbf2"></script>
+<script src="js/core/namespace.js?v=5475341f"></script>
+<script src="js/core/constants.js?v=78b356d4"></script>
+<script src="js/core/rng.js?v=db616fef"></script>
+<script src="js/core/data-ships.js?v=2a8678b0"></script>
+<script src="js/core/data-enemies.js?v=001e782d"></script>
+<script src="js/core/data-campaign.js?v=843a96ef"></script>
+<script src="js/core/data-tree.js?v=0340ceed"></script>
+<script src="js/core/rules.js?v=0694d544"></script>
+<script src="js/core/state.js?v=f529bc45"></script>
+<script src="js/core/save.js?v=415fd6c0"></script>
+<script src="js/core/audio.js?v=044a5705"></script>
+<script src="js/systems/grid.js?v=5dce176c"></script>
+<script src="js/systems/waves.js?v=dba54c65"></script>
+<script src="js/systems/fx.js?v=c9c5b381"></script>
+<script src="js/systems/camera.js?v=f15f553c"></script>
+<script src="js/systems/player.js?v=2e55c5ed"></script>
+<script src="js/systems/weapons.js?v=8fa4b766"></script>
+<script src="js/systems/projectiles.js?v=4f9fe823"></script>
+<script src="js/systems/enemies.js?v=fa4cda4e"></script>
+<script src="js/systems/bosses.js?v=893c08ad"></script>
+<script src="js/systems/hazards.js?v=367bbb42"></script>
+<script src="js/systems/pickups.js?v=a09931ba"></script>
+<script src="js/systems/combat.js?v=ffe2833c"></script>
+<script src="js/systems/missions.js?v=1d3be21c"></script>
+<script src="js/systems/sim.js?v=2db2661d"></script>
+<script src="js/render/art-kit.js?v=2ba1d6d5"></script>
+<script src="js/render/ship-art.js?v=9698947f"></script>
+<script src="js/render/enemy-art.js?v=6ea8604c"></script>
+<script src="js/render/prop-art.js?v=911a2e3a"></script>
+<script src="js/render/backdrop-art.js?v=daf7b96c"></script>
+<script src="js/render/view.js?v=7183b179"></script>
+<script src="js/render/backdrop.js?v=9fba35f8"></script>
+<script src="js/render/actors.js?v=9889c210"></script>
+<script src="js/render/fx-render.js?v=9dcb5140"></script>
+<script src="js/render/world.js?v=2fcb200f"></script>
+<script src="js/ui/kit.js?v=18c85f95"></script>
+<script src="js/ui/widgets.js?v=1af37500"></script>
+<script src="js/ui/screens.js?v=bde7db24"></script>
+<script src="js/ui/status-bar.js?v=86d70a43"></script>
+<script src="js/ui/touch.js?v=6c9c8524"></script>
+<script src="js/render/hud.js?v=3389ecca"></script>
+<script src="js/ui/title.js?v=0093ca7e"></script>
+<script src="js/ui/map.js?v=739c4a5e"></script>
+<script src="js/ui/briefing.js?v=da62e13c"></script>
+<script src="js/ui/hangar.js?v=5ab8dc01"></script>
+<script src="js/ui/tree.js?v=cad62b59"></script>
+<script src="js/ui/results.js?v=47f0a21e"></script>
+<script src="js/ui/pause.js?v=ae3b5820"></script>
+<script src="js/ui/help.js?v=c66a1d33"></script>
+<script src="js/render/frame.js?v=dbf8ac44"></script>
+<script src="js/ui/input.js?v=874009f8"></script>
+<script src="js/app.js?v=1f517ace"></script>
 </body>
 </html>
