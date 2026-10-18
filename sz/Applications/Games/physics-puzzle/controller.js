@@ -23,6 +23,8 @@
   const BAR_Y = 640;
   const MAX_DT = 0.05;
   const MAX_STEPS = 24;
+  const FAST_RATE = 6;           // fast-forward once a shot can no longer change much
+  const DEAD_SPEED = 140;        // balls slower than this are only rolling out
   const FADE_RATE = 3.2;
   const AIM_MAX_DRAG = 220;
   const WIN_TIME = 1.7;
@@ -390,9 +392,15 @@
       run.bulletLeft = Math.max(0, run.bulletLeft - dt);
       rate = Math.min(rate, 0.3);
     }
-    stepWorld(dt * rate);
+    run.fastForward = shotIsDead() || held.has('KeyF');
+    stepWorld(dt * rate, run.fastForward);
+    resolveShot();
+  }
+
+  function resolveShot() {
     const shot = run.att.shot;
-    if (shot && shot.done) {
+    if (run.phase === 'flight' && shot && shot.done) {
+      run.fastForward = false;
       if (shot.done === 'win' && run.mode === 'sandbox') {
         /* the Sandbox never ends: celebrate and keep building */
         winBurst();
@@ -426,10 +434,41 @@
     }
   }
 
-  function stepWorld(dt) {
-    stepAcc += Math.min(dt, MAX_DT);
+  /* the shot is only rolling out: its balls are gone, resting or crawling */
+  function shotIsDead() {
+    const shot = run && run.att.shot;
+    if (!shot || shot.done)
+      return false;
+    if (shot.phase === 'settle')
+      return true;
+    if (shot.time < 0.6)
+      return false;
+    for (const b of shot.balls)
+      if (b.alive && !b.sleeping && b.vx * b.vx + b.vy * b.vy > DEAD_SPEED * DEAD_SPEED)
+        return false;
+    return true;
+  }
+
+  /* run the rest of a rolling-out shot at once so the next shot can be fired */
+  function finishShotNow() {
+    const shot = run.att.shot;
+    let guard = 0;
+    while (shot && !shot.done && guard++ < 40000) {
+      Sim.stepAttempt(run.att);
+      for (const ev of shot.events)
+        if (ev.type === 'target' || ev.type === 'star')
+          handleEvents([ev]);
+      shot.events.length = 0;
+    }
+    stepAcc = 0;
+    resolveShot();
+  }
+
+  function stepWorld(dt, fast) {
+    stepAcc += Math.min(dt, MAX_DT) * (fast ? FAST_RATE : 1);
     let n = 0;
-    while (stepAcc >= Ph.STEP && n < MAX_STEPS) {
+    const cap = fast ? MAX_STEPS * FAST_RATE : MAX_STEPS;
+    while (stepAcc >= Ph.STEP && n < cap) {
       stepAcc -= Ph.STEP;
       ++n;
       if (run.att.shot && !run.att.shot.done) {
@@ -443,7 +482,7 @@
         Ph.takeEvents(run.att.world);
       }
     }
-    if (n >= MAX_STEPS)
+    if (n >= cap)
       stepAcc = 0;
   }
 
@@ -1246,6 +1285,11 @@
       ctx.textAlign = 'center';
       ui.fitText('Hold Space: slow motion', VIEW_W / 2, 80, 220, 11, { color: '#bfffe8', outline: 'rgba(0,0,0,0.6)' });
     }
+    /* fast-forward while a shot rolls out; aiming fires the next one right away */
+    if (run.phase === 'flight' && run.fastForward) {
+      ctx.textAlign = 'center';
+      ui.drawChip('\u25B6\u25B6 ' + FAST_RATE + 'x  -  aim to fire again', VIEW_W / 2, 104, 30, { align: 'center', px: 14, color: '#bfe8ff' });
+    }
     /* handles of the selected part */
     for (const h of selectionHandles()) {
       registerHit(h.id, h.x - h.r, h.y - h.r, h.r * 2, h.r * 2, h.action);
@@ -1673,6 +1717,7 @@
         if (run.phase === 'aim') nudgeAim(0, fine ? -0.002 : -0.02);
         break;
       case 'Space': case 'Enter':
+        if (!e.repeat && run.phase === 'flight' && shotIsDead()) finishShotNow();
         if (!e.repeat && run.phase === 'aim') fire();
         break;
       case 'KeyQ':
@@ -1861,6 +1906,9 @@
   });
 
   function playPointerDown(p, e) {
+    /* aiming the next shot skips the roll-out of the last one */
+    if (run.phase === 'flight' && shotIsDead() && p.y < BAR_Y && !hitAt(p))
+      finishShotNow();
     if (run.phase === 'intro') {
       run.phase = 'aim';
       return;
