@@ -2,7 +2,7 @@
 
 global.window = {};
 const fs = require('fs');
-require('../physics.js');
+require('../js/engine/physics.js');
 
 const P = window.SZ.PhysicsPuzzlePhysics;
 let failures = 0;
@@ -29,7 +29,7 @@ function floorWorld(g) {
 }
 
 check('module registered', !!P && Object.isFrozen(P), 'SZ.PhysicsPuzzlePhysics missing or not frozen');
-check('no DOM or storage use', !/document|localStorage|Math\.random/.test(fs.readFileSync(require.resolve('../physics.js'), 'utf8')), 'touches DOM, storage or randomness');
+check('no DOM or storage use', !/document|localStorage|Math\.random/.test(fs.readFileSync(require.resolve('../js/engine/physics.js'), 'utf8')), 'touches DOM, storage or randomness');
 
 /* shapes */
 const sq = P.polyShape(P.boxPoints(40, 40));

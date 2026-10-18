@@ -2,11 +2,11 @@
 
 global.window = {};
 const fs = require('fs');
-require('../progression.js');
-require('../physics.js');
-require('../parts.js');
-require('../sim.js');
-require('../levels-data.js');
+require('../js/core/progression.js');
+require('../js/engine/physics.js');
+require('../js/engine/parts.js');
+require('../js/engine/sim.js');
+require('../js/data/levels-data.js');
 
 const P = window.SZ.PhysicsPuzzleProgress;
 const Lv = window.SZ.PhysicsPuzzleLevels;
@@ -22,7 +22,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!P && Object.isFrozen(P), 'SZ.PhysicsPuzzleProgress missing or not frozen');
-check('no DOM or storage use', !/document|localStorage/.test(fs.readFileSync(require.resolve('../progression.js'), 'utf8')), 'touches DOM/storage');
+check('no DOM or storage use', !/document|localStorage/.test(fs.readFileSync(require.resolve('../js/core/progression.js'), 'utf8')), 'touches DOM/storage');
 
 /* tree data */
 const ids = new Set(P.TREE.map(n => n.id));

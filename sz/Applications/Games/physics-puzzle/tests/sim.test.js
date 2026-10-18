@@ -4,9 +4,9 @@
    and part placement. */
 
 global.window = {};
-require('../physics.js');
-require('../parts.js');
-require('../sim.js');
+require('../js/engine/physics.js');
+require('../js/engine/parts.js');
+require('../js/engine/sim.js');
 
 const SZ = window.SZ;
 const Sim = SZ.PhysicsPuzzleSim, Parts = SZ.PhysicsPuzzleParts, Ph = SZ.PhysicsPuzzlePhysics;

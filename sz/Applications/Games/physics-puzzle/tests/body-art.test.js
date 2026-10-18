@@ -8,12 +8,13 @@
 const fs = require('fs');
 const F = require('./fakecanvas.js');
 F.install();
-require('../physics.js');
-require('../parts.js');
-require('../sim.js');
-require('../levels-data.js');
-require('../progression.js');
-require('../body-art.js');
+require('../js/engine/physics.js');
+require('../js/engine/parts.js');
+require('../js/engine/sim.js');
+require('../js/data/levels-data.js');
+require('../js/core/progression.js');
+const ART = ['art-kit.js', 'materials.js', 'body-sprites.js', 'actors.js', 'bodies.js'].map(f => '../js/render/art/' + f);
+ART.forEach(f => require(f));
 
 const SZ = window.SZ;
 const Art = SZ.PhysicsPuzzleArt, Sim = SZ.PhysicsPuzzleSim, Lv = SZ.PhysicsPuzzleLevels, Prog = SZ.PhysicsPuzzleProgress, Parts = SZ.PhysicsPuzzleParts;
@@ -29,7 +30,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!Art && Object.isFrozen(Art), 'missing');
-check('no shadowBlur in source', fs.readFileSync(require.resolve('../body-art.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur');
+check('no shadowBlur in source', ART.every(f => fs.readFileSync(require.resolve(f), 'utf8').indexOf('shadowBlur') < 0), 'shadowBlur');
 
 const theme = { gravity: 1200 };
 const items = [['ground', 0, 1280], ['wall', 100, 100, 50, 20], ['wall', 300, 300, 20, 200, 0, 'stone'], ['wall', 300, 100, 120, 20, 0, 'metal'], ['ice', 200, 100, 80, 14, 10],

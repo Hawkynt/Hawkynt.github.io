@@ -3,7 +3,7 @@
 const fs = require('fs');
 const F = require('./fakecanvas.js');
 F.install();
-require('../fx.js');
+require('../js/render/fx.js');
 
 const Fx = window.SZ.PhysicsPuzzleFx;
 let failures = 0;
@@ -18,7 +18,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!Fx && Object.isFrozen(Fx), 'SZ.PhysicsPuzzleFx missing or not frozen');
-check('no shadowBlur in source', fs.readFileSync(require.resolve('../fx.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur found');
+check('no shadowBlur in source', fs.readFileSync(require.resolve('../js/render/fx.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 const sys = Fx.create(420);
 let err = null;
