@@ -55,6 +55,7 @@
     updateShuffleCache(dt);
     updateGoals(dt);
     updateOrders(dt);
+    NS.checkFarmEnd(dt);
   }
 
   Object.assign(NS, { updateGame });

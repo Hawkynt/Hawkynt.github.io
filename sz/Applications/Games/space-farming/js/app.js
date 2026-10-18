@@ -124,6 +124,10 @@
      MENU ACTIONS
      ══════════════════════════════════════════════════════════════════ */
 
+  function showHighScores() {
+    handleAction('high-scores');
+  }
+
   function handleAction(action) {
     switch (action) {
       case 'new':
@@ -190,6 +194,7 @@
      INIT
      ══════════════════════════════════════════════════════════════════ */
 
+  NS.showHighScores = showHighScores;
   SZ.Dialog.wireAll();
 
   const menu = new SZ.MenuBar({

@@ -1,13 +1,14 @@
-/* Space Farming - building inspector, pause screen and title screen.
+/* Space Farming - building inspector, pause screen, Season Over screen and title screen.
    Owns: G.inspect
-   Reads: G.uiS, G.UW, G.UH, G.credits, G.buildings, G.savedGameAvailable, G.saveNotice, G.uiTime */
+   Reads: G.uiS, G.UW, G.UH, G.credits, G.buildings, G.savedGameAvailable, G.saveNotice, G.farmResult,
+     G.uiTime */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceFarming || (SZ.SpaceFarming = {});
   const G = NS.state;
-  const { TWO_PI, CROPS, BUILDINGS, BUILDING_MAX_LEVEL, ctx, drawSprite, fitText, UI, drawPanel, drawChip,
+  const { TWO_PI, CROPS, BUILDINGS, BUILDING_MAX_LEVEL, SEASONS, SEASON_SPRITES, GOALS, ctx, drawSprite, fitText, UI, drawPanel, drawChip,
     drawHeadline, drawScrim, addRegion, drawButton, continueSavedGame, requestNewGame,
     getBuildingUpgradeCost, canUpgradeBuilding, upgradeBuilding, resetGame, gridToScreen, removeBuilding,
     dockHeight, openHelp, buildingStatLines, togglePause } = NS;
@@ -61,6 +62,60 @@
     drawButton({ id: 'pause-resume', x: x + 30, y: y + 84, w: bw, h: 40 }, { label: 'Resume', key: 'Esc', primary: true, color: UI.leaf, px: 15, onClick: togglePause });
     drawButton({ id: 'pause-help', x: x + 30, y: y + 134, w: bw, h: 36 }, { label: 'How to play', icon: 'book', key: 'H', px: 14, onClick: () => openHelp(0) });
     drawButton({ id: 'pause-new', x: x + 30, y: y + 180, w: bw, h: 36 }, { label: 'New farm', icon: 'seedbag', key: 'F2', px: 14, onClick: requestNewGame });
+  }
+
+  /* The farm can no longer earn anything: its results, its place in the high scores, a new start */
+  function drawGameOverScreen() {
+    const R = G.farmResult;
+    if (!R) return;
+    const t = Math.min(1, (G.uiTime - R.t0) * 2.5);
+    const e = 1 - Math.pow(1 - t, 3);
+    ctx.save();
+    ctx.globalAlpha *= e;
+    drawScrim(0.6);
+    addRegion({ id: 'over-scrim', x: 0, y: 0, w: G.UW, h: G.UH, modal: true });
+    const w = Math.min(460, G.UW - 24), h = Math.min(372, G.UH - 16);
+    const x = G.UW / 2 - w / 2, y = Math.max(8, G.UH / 2 - h / 2 + (1 - e) * 24);
+    addRegion({ id: 'over-panel', x, y, w, h, modal: true });
+    drawPanel(x, y, w, h, { accent: '#ff9a5a', radius: 14 });
+    drawHeadline('Season Over', G.UW / 2, y + 42, w - 40, 36, '#ffb070', '#e0503a');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText('No credits for seeds, nothing growing and nothing left to sell.', G.UW / 2, y + 78, w - 40, 13, { color: UI.textDim });
+
+    const stats = [
+      [SEASON_SPRITES[R.season], 'Reached', `${SEASONS[R.season]}, year ${R.year}`],
+      ['sun', 'Days farmed', R.days],
+      ['coin', 'Credits earned', R.earned],
+      ['basket', 'Crops harvested', R.harvested],
+      ['seedbag', 'Crops planted', R.planted],
+      ['order', 'Orders delivered', R.orders],
+      ['star', 'Goals reached', `${R.goals} / ${GOALS.length}`],
+      ['techtree', 'Upgrades bought', R.upgrades]
+    ];
+    const gx = x + 18, gy = y + 98, gap = 8;
+    const cw = (w - 36 - gap) / 2, ch = 34;
+    stats.forEach(([icon, label, value], i) => {
+      const cx = gx + (i % 2) * (cw + gap), cy = gy + Math.floor(i / 2) * (ch + 6);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(cx, cy, cw, ch);
+      drawSprite(icon, cx + 17, cy + ch / 2, 20);
+      ctx.textAlign = 'right';
+      const vw = fitText(typeof value === 'number' ? Math.round(value).toLocaleString('en-US') : value, cx + cw - 10, cy + ch / 2, cw * 0.5, 14, { weight: 'bold', color: icon === 'coin' ? UI.gold : UI.text });
+      ctx.textAlign = 'left';
+      fitText(label, cx + 32, cy + ch / 2, cw - 32 - 10 - vw - 8, 12, { color: UI.textDim });
+    });
+
+    const chipY = gy + 4 * (ch + 6) + 6;
+    if (R.rank === 0)
+      drawChip('New best farm in the high scores!', G.UW / 2, chipY, 24, { align: 'center', px: 12, bg: 'rgba(255,215,90,0.16)', border: 'rgba(255,215,90,0.65)', color: UI.gold, maxW: w - 40 });
+    else if (R.rank > 0)
+      drawChip(`Place ${R.rank + 1} in the high scores`, G.UW / 2, chipY, 24, { align: 'center', px: 12, bg: 'rgba(90,184,255,0.14)', border: 'rgba(90,184,255,0.55)', color: UI.accent, maxW: w - 40 });
+
+    const by = y + h - 56, bw = (w - 36 - gap) / 2;
+    drawButton({ id: 'over-new', x: x + 18, y: by, w: bw, h: 40 }, { label: 'New farm', icon: 'seedbag', key: 'Enter', primary: true, color: UI.leaf, px: 15, onClick: requestNewGame });
+    drawButton({ id: 'over-scores', x: x + 18 + bw + gap, y: by, w: bw, h: 40 }, { label: 'High scores', icon: 'star', px: 15, onClick: () => NS.showHighScores() });
+    ctx.restore();
   }
 
   const titleStars = [];
@@ -144,6 +199,6 @@
       drawChip(G.saveNotice, cx, y + 4, 24, { align: 'center', px: 12, weight: '', bg: 'rgba(80,20,10,0.75)', border: 'rgba(255,140,90,0.6)', color: '#ffb48a', maxW: G.UW - 40 });
   }
 
-  Object.assign(NS, { drawInspector, drawPauseScreen, drawTitleScreen });
+  Object.assign(NS, { drawInspector, drawPauseScreen, drawGameOverScreen, drawTitleScreen });
 
 })();

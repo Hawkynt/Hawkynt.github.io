@@ -10,14 +10,14 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceFarming || (SZ.SpaceFarming = {});
   const G = NS.state;
-  const { TILE_ROCK, TILE_WATER, STATE_READY, STATE_PLAYING, STATE_PAUSED, CROPS, TOOL_HOE, BUILDINGS,
+  const { TILE_ROCK, TILE_WATER, STATE_READY, STATE_PLAYING, STATE_PAUSED, STATE_GAME_OVER, CROPS, TOOL_HOE, BUILDINGS,
     TOOL_BUILD, SEASONS, ctx, statusCredits, statusTool, statusWeather, statusDay, screenShake, drawSprite,
     UI, hexToRgba, roundRectPath, drawChip, hitRegion, getSeedCost, getBuildingCost, isAdjacentToWater,
     gridToScreen, ROCK_CLEAR_COST, drawExpandChip, drawWorldScene, drawWeatherOverlay, drawDragSelection,
     uiParticles, drawFlyers, drawTreeDialog, drawQuickPanel, drawGoalPanel, drawMarketDialog, hudLayout,
     drawFarmPanel, drawStoragePanel, weatherInfo, drawClockPanel, drawDock, drawSoilLegend, drawZoomChip,
     drawBanner, drawPops, drawToasts, drawLivestockDialog, drawHelpDialog, drawInspector, drawPauseScreen,
-    drawTitleScreen, drawTooltip, kbCursor, canvasToGrid, isInsideGrid } = NS;
+    drawGameOverScreen, drawTitleScreen, drawTooltip, kbCursor, canvasToGrid, isInsideGrid } = NS;
 
   function drawHUD() {
     const L = hudLayout();
@@ -74,7 +74,8 @@
     const covered = G.dialog === 'tree' && G.dialogT >= 1;
     ctx.save();
     screenShake.apply(ctx);
-    if (playing && !covered)
+    // a finished farm stays in view behind the Season Over panel
+    if ((playing && !covered) || G.state === STATE_GAME_OVER)
       drawWorld();
     screenShake.restore(ctx);
     ctx.restore();
@@ -84,6 +85,8 @@
     G.spriteScale = G.uiS * (window.devicePixelRatio || 1);
     if (G.state === STATE_READY)
       drawTitleScreen();
+    else if (G.state === STATE_GAME_OVER)
+      drawGameOverScreen();
     else if (playing && !covered) {
       drawHUD();
       if (G.dialog === 'livestock')

@@ -8,7 +8,7 @@
   const NS = SZ.SpaceFarming || (SZ.SpaceFarming = {});
   const G = NS.state;
   const { STATE_PLAYING, BUILDINGS, ANIMAL_SPAWN_MIN, ANIMAL_SPAWN_MAX, particles, UI, getBuildingRange,
-    getScarecrowRadius, tileCenter, squeak, techChainCount, popText, toast } = NS;
+    getScarecrowRadius, tileCenter, squeak, techChainCount, farmHasCrops, popText, toast } = NS;
 
   /* ── Wild Animals (Feature 8) ── */
   function updateAnimals(dt) {
@@ -18,7 +18,9 @@
     G.nextAnimalSpawn -= dt;
     if (G.nextAnimalSpawn <= 0) {
       G.nextAnimalSpawn = (ANIMAL_SPAWN_MIN + Math.random() * (ANIMAL_SPAWN_MAX - ANIMAL_SPAWN_MIN)) * Math.pow(1.4, techChainCount('sci_repel'));
-      spawnAnimal();
+      // mice come for the crops, so an empty field draws none
+      if (farmHasCrops())
+        spawnAnimal();
     }
 
     // Update each animal

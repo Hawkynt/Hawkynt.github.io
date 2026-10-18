@@ -91,8 +91,6 @@
 
   /* ── Shop modes ── */
   const TOOL_PLANT = 'plant';
-  const TOOL_HARVEST = 'harvest';
-  const TOOL_FEED = 'feed';
   const TOOL_HOE = 'hoe';
 
   /* ── Building Definitions ── */

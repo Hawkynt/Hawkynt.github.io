@@ -1,7 +1,8 @@
 /* Space Farming - persistence and the session: high scores, autosave, validating and restoring
-   saves (including old ones), continue, new game and resetting a fresh farm.
+   saves (including old ones), continue, new game, resetting a fresh farm and ending a farm that
+   can no longer earn anything.
    Owns: G.tutorialSeen, G.state, G.highScores, G.savedGameAvailable, G.autosaveTimer, G.saveNotice,
-     G.newGameConfirmOpen
+     G.newGameConfirmOpen, G.farmResult
    Reads: the whole farm state (it saves, restores and resets it) */
 ;(function() {
   'use strict';
@@ -10,13 +11,14 @@
   const NS = SZ.SpaceFarming || (SZ.SpaceFarming = {});
   const G = NS.state;
   const { GRID_COLS, BASE_GRID_ROWS, TILE_FARMLAND, TILE_ROCK, TILE_WATER, TILE_SAND, SOIL_QUALITY_TIERS,
-    STATE_PLAYING, STATE_PAUSED, STORAGE_HIGHSCORES, STORAGE_SAVE, STORAGE_SAVE_V1, SAVE_VERSION,
+    STATE_PLAYING, STATE_PAUSED, STATE_GAME_OVER, STORAGE_HIGHSCORES, STORAGE_SAVE, STORAGE_SAVE_V1, SAVE_VERSION,
     MAX_HIGH_SCORES, CROPS, LIVESTOCK, WEATHER_NONE, WEATHER_SOLAR_FLARE, WEATHER_METEOR_SHOWER,
     WEATHER_RAIN, WEATHER_THUNDERSTORM, WEATHER_SNOW, WEATHER_DUST, WEATHER_MIN_INTERVAL,
     WEATHER_MAX_INTERVAL, TOOL_PLANT, BUILDINGS, BUILDING_MAX_LEVEL, PRICE_CHANGE_INTERVAL, SEASONS,
-    ANIMAL_SPAWN_MIN, ANIMAL_SPAWN_MAX, highScoresBody, ENERGY_BASE_MAX, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX,
+    SEASON_DURATION, ANIMAL_SPAWN_MIN, ANIMAL_SPAWN_MAX, highScoresBody, ENERGY_BASE_MAX, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX,
     getTileSoilQuality, resetWeatherVisuals, invalidateField, TECH, TECH_BY_ID, LEGACY_CHAINS,
-    techChainCount, isCropUnlocked, itemSprite, newStats, GOALS, closeAllDialogs, resetView, updateWindowTitle } = NS;
+    techChainCount, isCropUnlocked, itemSprite, newStats, GOALS, closeAllDialogs, resetView, updateWindowTitle,
+    getSeedCost, techOwned, goalNeed, farmHasCrops, UI, toast } = NS;
 
   /* ══════════════════════════════════════════════════════════════════
      PERSISTENCE
@@ -38,12 +40,15 @@
     } catch (_) {}
   }
 
+  /* Returns the place the score took in the table, or -1 when it did not make it */
   function addHighScore(earned, days) {
-    G.highScores.push({ credits: earned, days });
+    const entry = { credits: earned, days };
+    G.highScores.push(entry);
     G.highScores.sort((a, b) => b.credits - a.credits);
     if (G.highScores.length > MAX_HIGH_SCORES)
       G.highScores.length = MAX_HIGH_SCORES;
     saveHighScores();
+    return G.highScores.indexOf(entry);
   }
 
   function renderHighScores() {
@@ -306,6 +311,10 @@
     G.cachedPlantOrder = [];
     G.autosaveTimer = 0;
     G.saveNotice = '';
+    G.farmResult = null;
+    endCheckTimer = 0;
+    deadChecks = 0;
+    lowWarned = false;
     invalidateField();
     return true;
   }
@@ -482,6 +491,10 @@
 
     G.autosaveTimer = 0;
     G.saveNotice = '';
+    G.farmResult = null;
+    endCheckTimer = 0;
+    deadChecks = 0;
+    lowWarned = false;
     invalidateField();
     G.lastCredits = null;
     G.creditsShown = G.credits;
@@ -490,7 +503,96 @@
     updateWindowTitle();
   }
 
+  /* ── End of the farm ──
+     A farm is over once it cannot earn anything again: too few credits for the cheapest seed,
+     nothing in storage to sell or deliver, no crop on the field, and no income that pays out
+     without spending: animals, solar panels and wind turbines, meteor stardust, a mouse to
+     chase off, or a goal that is reached or comes by itself with the days. */
+  const END_CHECK_INTERVAL = 1; // seconds of play between checks
+  let endCheckTimer = 0;
+  let deadChecks = 0;
+  let lowWarned = false;
+
+  function cheapestSeedCost() {
+    let best = Infinity;
+    for (let i = 0; i < CROPS.length; ++i)
+      if (isCropUnlocked(i))
+        best = Math.min(best, getSeedCost(CROPS[i]));
+    return best;
+  }
+
+  function hasStock() {
+    for (const k in G.inventory)
+      if (G.inventory[k] > 0)
+        return true;
+    return false;
+  }
+
+  function hasFreeIncome() {
+    if (G.livestockPens.length || G.wildAnimals.length || techOwned('sci_meteor'))
+      return true;
+    for (let r = 0; r < G.gridRows; ++r)
+      for (let c = 0; c < G.gridCols; ++c) {
+        const bld = G.buildings[r]?.[c];
+        if (!bld) continue;
+        const name = BUILDINGS[bld.typeIndex].name;
+        if (name === 'Solar Panel' || name === 'Wind Turbine')
+          return true;
+      }
+    const g = GOALS[G.goalIndex];
+    return !!g && (g.passive || g.value() >= goalNeed(g));
+  }
+
+  function isFarmDead() {
+    return G.credits < cheapestSeedCost() && !hasStock() && !farmHasCrops() && !hasFreeIncome();
+  }
+
+  /* Runs from the simulation step; looks at the farm once a second, warns once when the credits
+     run short, and ends the farm when two checks in a row find it dead */
+  function checkFarmEnd(dt) {
+    if (G.state !== STATE_PLAYING) return;
+    endCheckTimer += dt;
+    if (endCheckTimer < END_CHECK_INTERVAL) return;
+    endCheckTimer = 0;
+    if (!isFarmDead()) {
+      deadChecks = 0;
+      const low = G.credits < cheapestSeedCost() && !hasStock();
+      if (low && !lowWarned)
+        toast('Credits are running out: harvest and sell to buy seeds again', UI.warn, 'coin');
+      lowWarned = low;
+      return;
+    }
+    if (++deadChecks >= 2)
+      endFarm();
+  }
+
+  function endFarm() {
+    const rank = addHighScore(G.stats.earned, G.dayCount);
+    G.farmResult = {
+      days: G.dayCount,
+      season: G.currentSeason,
+      year: Math.floor((G.dayCount - 1) / (SEASON_DURATION * SEASONS.length)) + 1,
+      earned: G.stats.earned,
+      harvested: G.stats.harvested,
+      planted: G.stats.planted,
+      orders: G.stats.orders,
+      goals: G.goalIndex,
+      upgrades: G.techBoughtTotal,
+      rank,
+      t0: G.uiTime
+    };
+    G.state = STATE_GAME_OVER;
+    // a finished farm is not offered again on the title screen
+    clearSavedGame();
+    closeAllDialogs();
+    G.isDragging = false;
+    G.isPanning = false;
+    G.panButton = -1;
+    SZ.GameAudio.play('lose');
+    updateWindowTitle();
+  }
+
   Object.assign(NS, { loadHighScores, saveHighScores, renderHighScores, saveGame, checkSavedGame,
-    continueSavedGame, requestNewGame, resetGame });
+    continueSavedGame, requestNewGame, resetGame, isFarmDead, checkFarmEnd });
 
 })();

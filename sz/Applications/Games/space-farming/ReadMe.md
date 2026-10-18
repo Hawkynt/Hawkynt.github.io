@@ -12,7 +12,7 @@ Plain browser scripts without a build step. Every file is an IIFE that adds its 
 - `js/core/dom.js` — canvas, context and status bar handles, canvas sizing for the window and pixel ratio, the window title.
 - `js/core/tech.js` — the tech tree: five branches of nodes and chains, levels, prerequisites, costs, unlocks and buying.
 - `js/core/rules.js` — values derived from upgrades and buildings: prices, growth and yield multipliers, storage, energy, building levels, ranges and bonuses, and the per-tile cache of building effects.
-- `js/core/save.js` — high scores, autosave, save validation, restore and migration of old saves, continue, new game and resetting a fresh farm.
+- `js/core/save.js` — high scores, autosave, save validation, restore and migration of old saves, continue, new game, resetting a fresh farm and ending a farm that can no longer earn anything.
 
 **World and systems**
 - `js/world/farm.js` — actions on a tile: plant, harvest, clear rocks, the hoe.
@@ -60,7 +60,7 @@ Plain browser scripts without a build step. Every file is an IIFE that adds its 
 - `js/ui/dialogs.js` — the dialog frame and the livestock dialog.
 - `js/ui/goal-market.js` — the goals and orders panel and the market dialog.
 - `js/ui/help.js` — the How to play pages.
-- `js/ui/screens.js` — building inspector, pause and title screens.
+- `js/ui/screens.js` — building inspector, pause, Season Over and title screens.
 - `js/ui/input.js` — keyboard, pointer, touch and wheel input.
 - `js/app.js` — the game loop with the frame-time monitor, menu actions, window messages and start-up.
 
@@ -133,7 +133,7 @@ The page also uses the shared desktop libraries `../../shared/menu.js`, `dialog.
 - [x] As a player, I can open the market (M) to sell single crops, compare prices and deliver orders
 
 ### Wild Animals
-- [x] As a player, I can encounter wild space mice that sneak in from the edges and eat crops
+- [x] As a player, I can encounter wild space mice that sneak in from the edges and eat crops (they only come while crops stand on the field)
 - [x] As a player, I can click a mouse to chase it off for 10 credits
 - [x] As a player, I can see a red "!" over mice that are about to eat a crop
 
@@ -168,6 +168,9 @@ The page also uses the shared desktop libraries `../../shared/menu.js`, `dialog.
 - [x] As a player, I can read an illustrated How to play guide (H) on first launch and anytime
 - [x] As a player, I can continue my autosaved farm from the title screen, with a confirmation before a new farm replaces it
 - [x] As a player, I can pause with Escape and the game pauses itself when its window is hidden
+- [x] As a player, I get a warning when my credits no longer buy the cheapest seed and nothing is left to sell
+- [x] As a player, my farm ends with a Season Over screen once it can never earn again (no credits for the cheapest seed, nothing in storage, no crop on the field, and no animals, solar or wind income, stardust, mouse to chase or goal that pays by itself); it shows my days, season, earnings, harvests, orders, goals and upgrades, records the farm in the high scores, and offers New farm and High scores
+- [x] As a player, a finished farm is not offered to continue after a reload
 - [x] As a player, I can maximize or resize the window and every panel and label still fits
 
 ### Tooltips & UI
