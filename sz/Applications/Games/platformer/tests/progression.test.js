@@ -2,7 +2,7 @@
 
 global.window = {};
 const fs = require('fs');
-require('../progression.js');
+require('../js/logic/progression.js');
 
 const P = window.SZ.PlatformerProgress;
 let failures = 0;
@@ -17,7 +17,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!P && Object.isFrozen(P), 'SZ.PlatformerProgress missing or not frozen');
-check('no DOM or storage use', !/document|localStorage/.test(fs.readFileSync(require.resolve('../progression.js'), 'utf8')), 'touches DOM/storage');
+check('no DOM or storage use', !/document|localStorage/.test(fs.readFileSync(require.resolve('../js/logic/progression.js'), 'utf8')), 'touches DOM/storage');
 
 /* tree data */
 const ids = new Set(P.TREE.map(n => n.id));

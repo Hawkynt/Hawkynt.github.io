@@ -1,9 +1,9 @@
 'use strict';
 
 global.window = {};
-require('../physics.js');
-require('../levels-data.js');
-require('../entities.js');
+require('../js/logic/physics.js');
+require('../js/logic/levels-data.js');
+require('../js/logic/entities.js');
 
 const Ph = window.SZ.PlatformerPhysics;
 const L = window.SZ.PlatformerLevels;

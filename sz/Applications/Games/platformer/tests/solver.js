@@ -18,7 +18,7 @@
  */
 
 global.window = global.window || {};
-require('../physics.js');
+require('../js/logic/physics.js');
 const Ph = window.SZ.PlatformerPhysics;
 const TS = Ph.TS;
 const HOLD = 12;

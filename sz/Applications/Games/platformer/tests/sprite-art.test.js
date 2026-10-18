@@ -31,8 +31,10 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../progression.js');
-require('../sprite-art.js');
+require('../js/logic/progression.js');
+const PARTS = ['kit', 'hero', 'foes', 'bosses', 'items', 'icons'].map(n => '../js/art/sprites/' + n + '.js');
+for (const part of PARTS)
+  require(part);
 
 const Art = window.SZ.PlatformerSprites;
 const SKINS = window.SZ.PlatformerProgress.SKINS;
@@ -54,7 +56,7 @@ function validSprite(s) {
 
 check('module registered', !!Art && typeof Art.hero === 'function', 'SZ.PlatformerSprites missing');
 check('export frozen', Object.isFrozen(Art), 'SZ.PlatformerSprites is not frozen');
-const src = fs.readFileSync(require.resolve('../sprite-art.js'), 'utf8');
+const src = PARTS.map(part => fs.readFileSync(require.resolve(part), 'utf8')).join('\n');
 check('no shadowBlur in source', src.indexOf('shadowBlur') < 0, 'shadowBlur found');
 check('frame tables', Art.HERO_FRAMES.run === 8 && Art.ENEMY_FRAMES.turret === 2 && Art.BOSS_FRAMES.idle === 4 && Art.ITEM_FRAMES.coin === 8, 'unexpected frame counts');
 

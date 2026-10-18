@@ -2,7 +2,7 @@
 
 const F = require('./fakecanvas.js');
 F.install();
-require('../platformer-ui.js');
+require('../js/art/platformer-ui.js');
 
 let failures = 0;
 function check(name, ok, details) {
