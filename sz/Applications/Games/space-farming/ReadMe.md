@@ -2,6 +2,70 @@
 
 Casual pixel-art farm simulation on an alien planet for the SynthelicZ Desktop. Grow crops through their growth stages and favourite seasons, raise space critters, research a five-branch tech tree, fill trader orders, keep pests and storms away, and turn produce into credits.
 
+## Architecture
+
+Plain browser scripts without a build step. Every file is an IIFE that adds its functions and constants to `SZ.SpaceFarming`; `index.html` loads them in dependency order, and a file takes what it needs from earlier files at load time (`const { ... } = NS`) while the few calls into later files go through `NS.name(...)`. Everything more than one file reads or writes lives in one long-lived state object, `SZ.SpaceFarming.state` (`G` in every file), grouped by the file that owns it; state only one file uses stays private in that file. Each file starts with a comment naming what it does, the state it owns and the shared state it reads.
+
+**Core**
+- `js/core/constants.js` — grid, tile, state and storage constants; crop, livestock and building definitions; weather kinds, tools, seasons and timings.
+- `js/core/state.js` — the shared game state object.
+- `js/core/dom.js` — canvas, context and status bar handles, canvas sizing for the window and pixel ratio, the window title.
+- `js/core/tech.js` — the tech tree: five branches of nodes and chains, levels, prerequisites, costs, unlocks and buying.
+- `js/core/rules.js` — values derived from upgrades and buildings: prices, growth and yield multipliers, storage, energy, building levels, ranges and bonuses, and the per-tile cache of building effects.
+- `js/core/save.js` — high scores, autosave, save validation, restore and migration of old saves, continue, new game and resetting a fresh farm.
+
+**World and systems**
+- `js/world/farm.js` — actions on a tile: plant, harvest, clear rocks, the hoe.
+- `js/world/expansion.js` — new land: tile generation for a new strip, adding it on the next side, buying it from the field or the tree.
+- `js/systems/crops.js` — crop growth and automatic harvesting by drones and harvesters.
+- `js/systems/livestock.js` — pen production, collecting produce, buying animals, pen placement on the field perimeter.
+- `js/systems/economy.js` — selling, seeds, placing and removing buildings, price drift, solar and wind income.
+- `js/systems/weather.js` — seasonal weather events, forecast and rain maker, meteors and lightning, the eased visual weather state.
+- `js/systems/automation.js` — auto-collectors, auto-planters, their shuffled work orders, energy regeneration.
+- `js/systems/mice.js` — wild space mice, scarecrows, fences and pest zappers.
+- `js/systems/goals.js` — goals, statistics and trader orders.
+- `js/systems/simulation.js` — the day cycle and the per-frame simulation step that runs every system.
+
+**Rendering**
+- `js/render/particles.js` — pooled particles and the screen shake.
+- `js/render/pixel-art.js` — the 16x16 pixel painter, palette and sprite baker.
+- `js/render/sprite-painters.js` — the painters of every sprite.
+- `js/render/sprites.js` — the sprite cache and sprite drawing.
+- `js/render/text.js` — fonts, icon text and cached text layouts that fit their boxes.
+- `js/render/world-common.js` — hashes, easing, colour mixing, light by time of day, tile textures, meadow decorations, glow sprites.
+- `js/render/lighting.js` — the night light mask and the seasonal ambience particles.
+- `js/render/sky.js` — sky gradient, stars, planets, sun, moon and mountains.
+- `js/render/ground.js` — the cached meadow, its decorations and the field fence.
+- `js/render/field.js` — tiles, soil nutrients, crops, rocks and the expansion strip.
+- `js/render/buildings.js` — animated buildings and joined fences.
+- `js/render/pens.js` — pens with wandering animals, zapper arcs and mice.
+- `js/render/weather-fx.js` — craters, scorch marks, meteors, aurora, dust and the screen-space weather.
+- `js/render/scene.js` — the world pass and the drag selection.
+- `js/render/juice.js` — produce and coins flying to their counters, building drop-in, confetti, animal voices, chimes.
+- `js/render/frame.js` — composes a frame (world, HUD, dialogs, screens, tooltip, cursor preview) and updates the status bar.
+
+**Interface**
+- `js/ui/widgets.js` — panels, meters, chips, key hints, headlines and the scrim.
+- `js/ui/regions.js` — clickable regions registered while drawing, buttons and the tooltip state.
+- `js/ui/dialog-state.js` — the open dialog and pausing.
+- `js/ui/view.js` — camera and pointer: world and screen conversion, zoom, pan, fitting the farm, the keyboard cursor.
+- `js/ui/hud-layout.js` — HUD panel layout for every width, the farm area between the panels, panel fading, banners, storage and weather info.
+- `js/ui/feedback.js` — banner, pop texts and toasts.
+- `js/ui/tooltip.js` — hover tracking, tooltip drawing and all tooltip texts.
+- `js/ui/tech-tree.js` — tech tree layout, camera, tabs, focus, buying and keyboard control.
+- `js/ui/tree-draw.js` — tech tree drawing.
+- `js/ui/quick-panel.js` — the Next upgrades panel.
+- `js/ui/hud-panels.js` — farm, storage and clock panels.
+- `js/ui/dock.js` — the tool dock, selection, action hint, soil legend and zoom chip.
+- `js/ui/dialogs.js` — the dialog frame and the livestock dialog.
+- `js/ui/goal-market.js` — the goals and orders panel and the market dialog.
+- `js/ui/help.js` — the How to play pages.
+- `js/ui/screens.js` — building inspector, pause and title screens.
+- `js/ui/input.js` — keyboard, pointer, touch and wheel input.
+- `js/app.js` — the game loop with the frame-time monitor, menu actions, window messages and start-up.
+
+The page also uses the shared desktop libraries `../../shared/menu.js`, `dialog.js`, `game-effects.js`, `game-autopause.js` and `game-audio.js`.
+
 ## User Stories
 
 ### Farm Management
