@@ -6,11 +6,11 @@
 
 global.window = {};
 const fs = require('fs');
-require('../physics.js');
-require('../parts.js');
-require('../sim.js');
-require('../levels-data.js');
-require('../solutions.js');
+require('../js/engine/physics.js');
+require('../js/engine/parts.js');
+require('../js/engine/sim.js');
+require('../js/data/levels-data.js');
+require('../js/data/solutions.js');
 
 const SZ = window.SZ;
 const Lv = SZ.PhysicsPuzzleLevels, Sim = SZ.PhysicsPuzzleSim, Parts = SZ.PhysicsPuzzleParts;
@@ -27,7 +27,7 @@ function check(name, ok, details) {
 }
 
 check('modules registered', !!Lv && !!SOL && Object.isFrozen(Lv) && Object.isFrozen(SOL), 'missing');
-check('no DOM or storage use', ['levels-data.js', 'sim.js', 'parts.js', 'solutions.js'].every(f => !/document|localStorage/.test(fs.readFileSync(require.resolve('../' + f), 'utf8'))), 'touches DOM');
+check('no DOM or storage use', ['js/data/levels-data.js', 'js/engine/sim.js', 'js/engine/parts.js', 'js/data/solutions.js'].every(f => !/document|localStorage/.test(fs.readFileSync(require.resolve('../' + f), 'utf8'))), 'touches DOM');
 
 /* structure */
 check('five worlds', Lv.WORLDS.length === 5, Lv.WORLDS.length);

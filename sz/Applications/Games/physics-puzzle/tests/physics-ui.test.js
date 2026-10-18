@@ -2,7 +2,7 @@
 
 const F = require('./fakecanvas.js');
 F.install();
-require('../physics-ui.js');
+require('../js/render/physics-ui.js');
 
 let failures = 0;
 function check(name, ok, details) {

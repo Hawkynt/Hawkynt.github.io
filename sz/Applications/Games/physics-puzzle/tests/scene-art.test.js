@@ -7,7 +7,7 @@
 const fs = require('fs');
 const F = require('./fakecanvas.js');
 F.install();
-require('../scene-art.js');
+require('../js/render/scene-art.js');
 
 const Scene = window.SZ.PhysicsPuzzleScene;
 let failures = 0;
@@ -22,7 +22,7 @@ function check(name, ok, details) {
 }
 
 check('module registered', !!Scene && Object.isFrozen(Scene) && Scene.WORLD_COUNT === 5, 'missing');
-check('no shadowBlur in source', fs.readFileSync(require.resolve('../scene-art.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur');
+check('no shadowBlur in source', fs.readFileSync(require.resolve('../js/render/scene-art.js'), 'utf8').indexOf('shadowBlur') < 0, 'shadowBlur');
 
 const VIEWS = {
   normal: { x0: 0, y0: 0, x1: 1280, y1: 720 },

@@ -14,18 +14,53 @@ The game draws into a 1280 x 720 logical view, letterboxed with the backdrop ble
 
 ## Architecture
 
-- `physics.js` — the rigid-body engine: shapes and mass properties, SAT and circle collision with manifolds, the impulse solver, sleeping, springs and bumpers, conveyors, breakable glass, TNT blasts, kinematic motors, rope joints, fan, water, magnet and portal zones, raycasts for the aiming guide, energy and state hashes for the tests. Pure logic.
-- `parts.js` — the ten placeable parts (seven for the campaign tray, crates, glass and TNT for the Sandbox), the 21 fixture kinds levels are built from, and the placement rules (grid snap, 15° turns, field bounds, launcher clearance, no overlaps). Pure logic.
-- `sim.js` — the puzzle rules on the physics: attempts that persist across shots, firing (with Twin Shot spreads), targets, stars, lava, the shot end and settle phases, Trick Shot rules (one shot, minimum ricochets), solution replays and the seeded Daily Challenge builder. Pure logic.
+Plain scripts loaded in dependency order by `index.html`, no build step. The pure modules publish `SZ.PhysicsPuzzle<Name>` (Physics, Parts, Sim, Levels, Solutions, Progress, UI, Art, Scene, Fx, Screens); the controller modules share one context object, `SZ.PhysicsPuzzle.G`, which owns the live state (screen, run, results, save, stats, pointer, menu cursor, toast, view transform, baked layer) and is also the context the menu screens draw with. Each module states at its top what it owns and what it reads.
+
+`js/engine/` — the simulation, pure logic, also run by the tests and the solver in node:
+
+- `physics.js` — the rigid-body engine: shapes and mass properties, SAT and circle collision with manifolds, the impulse solver, sleeping, springs and bumpers, conveyors, breakable glass, TNT blasts, kinematic motors, rope joints, fan, water, magnet and portal zones, raycasts for the aiming guide, energy and state hashes for the tests.
+- `parts.js` — the ten placeable parts (seven for the campaign tray, crates, glass and TNT for the Sandbox), the 21 fixture kinds levels are built from, and the placement rules (grid snap, 15° turns, field bounds, launcher clearance, no overlaps).
+- `sim.js` — the puzzle rules on the physics: attempts that persist across shots, firing (with Twin Shot spreads), targets, stars, lava, the shot end and settle phases, Trick Shot rules (one shot, minimum ricochets), solution replays and the seeded Daily Challenge builder.
+
+`js/data/`:
+
 - `levels-data.js` — the five worlds (gravity, materials, colours), the forty levels and the ten Trick Shots.
 - `solutions.js` — a known solution for every level and Trick Shot (parts and shots), written by the solver tool; also used for the Blueprint hint and the Daily stars.
-- `progression.js` — the v2 save and its migration, coins and rewards, the three stars, world and level unlocks with star gates, the 24-node Tech Tree (Launcher, Parts, Physics, Fortune, Style) and the stats it grants, ball skins and trails.
+
+`js/core/`:
+
+- `progression.js` — the v2 save and its migration, coins and rewards, the three stars, world and level unlocks with star gates, the 24-node Tech Tree (Launcher, Parts, Physics, Fortune, Style) and the stats it grants, ball skins and trails. Pure logic.
+- `context.js` — the constants and the shared context `G`: canvas, drawing kit, module references, the effect systems (field, view and menu particles, shake, slow motion, flash, floating texts) and the live state.
+- `save.js` — loading and writing the save in localStorage, refreshing the Tech Tree stats, the equipped skin and the local date.
+- `sound.js` — synthesized sound effects, throttled per effect.
+
+`js/play/` — one level being played:
+
+- `run.js` — starting, resetting and leaving a run in each mode (campaign, trick, daily, sandbox), the tray inventory, the Daily level, and results with rewards when a level is won.
+- `shot.js` — firing, the fixed-step loop of the live attempt with slow motion, Bullet Time and fast-forward, ball trails and the end of a shot.
+- `events.js` — physics events turned into particles, sound, shake, flashes, slow motion and floating texts, near misses and the win burst.
+- `build.js` — dragging parts from the tray, snapping and validating, selecting, turning and removing parts, and the selection handles.
+- `aim.js` — slingshot and keyboard aiming within the barrel arc and the predicted flight with Ricochet Sight.
+
+`js/render/`:
+
 - `physics-ui.js` — the drawing kit: cached smoked-glass panels in a brass frame, text that always fits its box, chips, keycaps, meters and glossy headlines.
-- `body-art.js` — procedural textures and cached sprites for every body: wood boards with grain and knots, stone blocks, riveted steel, frosted ice, glass, per-world ground, crates, TNT, springs, bumpers, conveyors with moving treads, fans with spinning blades and air columns, magnets, gears, pendulums, portals, water and lava, the launcher, five ball skins, targets, stars and the tray icons.
+- `art/` — procedural textures and cached sprites for every body (`SZ.PhysicsPuzzleArt`), in five files loaded in order: `art-kit.js` (colour helpers, seeded random, the sprite cache at the device scale, blits and glows), `materials.js` (wood with grain and knots, stone, riveted steel, frosted ice, bevels and per-world ground), `body-sprites.js` (fixtures, crates, steel, glass, TNT, boulders, springs, bumpers, conveyors and treads, paddles, fans, magnets, planks, blocks and bobs), `actors.js` (five ball skins, targets, stars and the launcher) and `bodies.js` (drawing every body and zone with its animated details — fan blades, belt treads, portal swirls, water and lava surfaces, air columns — the tray icons and part previews; publishes the module).
 - `scene-art.js` — the five painted backdrops (workshop with window, pegboard and lamps; greenhouse with hanging plants and sunbeams; cryo lab with a blizzard window, frosted pipes, monitors and tanks; forge with lava falls, chains and a crucible; orbit station with a nebula and a ringed planet), cached per window shape, plus their animated lights.
 - `fx.js` — pooled sprite particles (additive glow pass, culled, capped) with presets for impacts by material, glass shards, explosions with shockwaves, splinters, dust, springs, bumpers, portals, splashes, lava, target hits, star pickups, muzzle blasts, ball trails, confetti, fireworks and each world's air, plus screen shake, eased slow motion, flashes and floating texts.
+- `view.js` — the 1280 x 720 logical view letterboxed into the canvas, devicePixelRatio aware, and pointer mapping.
+- `field.js` — the playing field: the baked static layer with shadows and blast scorches, live bodies, zones, targets and stars, the selection outline, launcher, aim guide, arc and pull band, ball trails, the Blueprint hint, the drag ghost and field particles; warms every sprite cache before a level starts.
+- `hud.js` — the tray with its part cards, the launcher readout, Reset and Menu buttons, level, shot, star and target chips, the Bullet Time meter, the fast-forward chip, selection handles, the first-shot hint, the intro card and toasts.
+
+`js/ui/`:
+
 - `screens.js` — the menu screens: the title with a live physics contraption, the world map, the Trick Shot board, the Tech Tree, five illustrated How to Play pages, the pause menu and the results with the star reveal.
-- `controller.js` — the game: state machine, fixed-step loop with slow motion, building (drag, snap, rotate and remove handles), slingshot and keyboard aiming with the predicted flight, event-driven effects and sound, HUD and tray, modes, persistence and window integration.
+- `menu-kit.js` — hit areas registered while drawing, the hover and keyboard cursor, animated buttons, activation and the dimming veil.
+- `flow.js` — switching screens, the screens instance with the actions it may call, opening and closing the map, Trick Shots, Tech Tree and How to Play, pause and resume, and the Escape chain.
+- `input.js` — keyboard, mouse and touch: aiming, firing, building, toggles and Bullet Time in a level, cursor and activation in menus.
+- `os.js` — the menu bar actions, the Progress, Controls and About dialogs with the save reset, the window title and resizing.
+
+- `js/app.js` — the bootstrap and the frame loop: wiring, loading the save, then each frame the level or the current screen, view particles, flashes, the screen fade and the status bar.
 - `tools/solve-levels.js` — the solution finder (worker-thread grid search over layouts and shots, star hanging).
 - `tests/` — node suites: `physics.test.js` (free fall, bounces, energy, stacking, determinism, gadgets, zones, joints, raycasts, tunnelling, speed), `sim.test.js` (attempts, persistence, rules, lava, Twin Shot, parts, placement, fixtures, frozen machines), `levels-data.test.js` (validation and the replay of all 40 solutions, the Trick Shots and 30 Daily Challenges), `progression.test.js` (tree, stats, rewards, economy, unlocks, daily, migration), and `physics-ui`, `body-art`, `scene-art` and `fx` tests that hold the drawing budgets against a recording fake canvas (`fakecanvas.js`).
 

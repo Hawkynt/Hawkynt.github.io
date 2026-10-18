@@ -32,10 +32,10 @@ const ROOT = path.join(__dirname, '..');
 
 function load() {
   global.window = {};
-  require(path.join(ROOT, 'physics.js'));
-  require(path.join(ROOT, 'parts.js'));
-  require(path.join(ROOT, 'sim.js'));
-  require(path.join(ROOT, 'levels-data.js'));
+  require(path.join(ROOT, 'js', 'engine', 'physics.js'));
+  require(path.join(ROOT, 'js', 'engine', 'parts.js'));
+  require(path.join(ROOT, 'js', 'engine', 'sim.js'));
+  require(path.join(ROOT, 'js', 'data', 'levels-data.js'));
   return window.SZ;
 }
 
@@ -310,7 +310,7 @@ function hangStars(level, sol) {
 }
 
 function writeStars(id, stars) {
-  const file = path.join(ROOT, 'levels-data.js');
+  const file = path.join(ROOT, 'js', 'data', 'levels-data.js');
   let src = fs.readFileSync(file, 'utf8');
   const at = src.indexOf("id: '" + id + "'");
   const sAt = src.indexOf('stars: [', at);
@@ -336,14 +336,14 @@ function writeSolutions(all) {
     '   * by tests/solutions.test.js. parts: [type, x, y, angleDeg]; shots: [angleDeg, speed].\n' +
     '   * The game uses them for the Blueprint hint and to hang the Daily stars.\n   */\n' +
     '  SZ.PhysicsPuzzleSolutions = Object.freeze({\n' + lines.join(',\n') + '\n  });\n})();\n';
-  fs.writeFileSync(path.join(ROOT, 'solutions.js'), src);
+  fs.writeFileSync(path.join(ROOT, 'js', 'data', 'solutions.js'), src);
 }
 
 function readSolutions() {
   try {
     global.window.SZ.PhysicsPuzzleSolutions = undefined;
-    delete require.cache[require.resolve(path.join(ROOT, 'solutions.js'))];
-    require(path.join(ROOT, 'solutions.js'));
+    delete require.cache[require.resolve(path.join(ROOT, 'js', 'data', 'solutions.js'))];
+    require(path.join(ROOT, 'js', 'data', 'solutions.js'));
     return Object.assign({}, window.SZ.PhysicsPuzzleSolutions || {});
   } catch (_) {
     return {};
