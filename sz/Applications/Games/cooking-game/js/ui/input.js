@@ -15,11 +15,11 @@
   const { sfx } = NS.juice;
   const { treeLevel, buyNode } = NS.persist;
   const { stationX, isMenuState } = NS.rules;
-  const { updateWindowTitle, updateStatus } = NS.status;
   const { endCoach } = NS.coach;
   const { takeOrder } = NS.customers;
   const { clickStation, activateRush } = NS.stations;
   const { clickPass, clickTrash } = NS.serving;
+  const { pauseDay, resumeDay } = NS.day;
   const { setScreen, openHelp, moveMenuCursor, activateMenuItem } = NS.menu;
   const { buildTreeLayout, celebrateBuy, treeCardById, selectFirstInBranch, moveTreeSelection } = NS.treeScreen;
 
@@ -125,12 +125,7 @@
     /* Pause when the window is hidden or loses focus */
     SZ.GameAutoPause.attach({
       isRunning: () => G.state === STATE_PLAYING,
-      pause: () => {
-        G.state = STATE_PAUSED;
-        G.menuCursor = 0;
-        updateWindowTitle();
-        updateStatus();
-      }
+      pause: pauseDay
     });
 
     window.addEventListener('keydown', (e) => {
@@ -205,11 +200,9 @@
         else if ((e.key === 'h' || e.key === 'H') && isMenuState(G.state))
           openHelp();
         else if (e.key === 'Escape') {
-          if (G.state === STATE_PAUSED) {
-            G.state = STATE_PLAYING;
-            updateWindowTitle();
-            updateStatus();
-          } else if (G.state !== STATE_TITLE)
+          if (G.state === STATE_PAUSED)
+            resumeDay();
+          else if (G.state !== STATE_TITLE)
             setScreen(STATE_TITLE);
         }
         return;
@@ -217,12 +210,7 @@
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (G.state === STATE_PLAYING) {
-          G.state = STATE_PAUSED;
-          G.menuCursor = 0;
-          updateWindowTitle();
-          updateStatus();
-        }
+        pauseDay();
         return;
       }
       if (G.state !== STATE_PLAYING) return;

@@ -7,11 +7,10 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.CookingGame || (SZ.CookingGame = {});
   const G = NS.state;
-  const { VIEW_W, VIEW_H, STATE_TITLE, STATE_PLAYING } = NS.C;
+  const { VIEW_W, VIEW_H, STATE_TITLE } = NS.C;
   const { ctx, ui, fillVisibleRect } = NS.view;
   const { careerUnlocked, bestForMode } = NS.persist;
-  const { updateWindowTitle, updateStatus } = NS.status;
-  const { startDay } = NS.day;
+  const { startDay, resumeDay } = NS.day;
   const { drawRibbon } = NS.sprites;
   const { setScreen, drawButton } = NS.menu;
 
@@ -27,7 +26,7 @@
     const btnW = (pw - 2 * 28 - 2 * 16) / 3;
     const btnY = py + ph - 24 - 56;
     drawButton('pause-resume', 'Resume', px + 28, btnY, btnW, 56,
-      { px: 17, color: 'green', action: () => { G.state = STATE_PLAYING; updateWindowTitle(); updateStatus(); } });
+      { px: 17, color: 'green', action: resumeDay });
     drawButton('pause-restart', 'Restart Day', px + 28 + btnW + 16, btnY, btnW, 56,
       { px: 15, color: 'orange', action: () => startDay(G.mode, G.mode === 'career' ? G.dayIndex : 0) });
     drawButton('pause-menu', 'Menu', px + 28 + 2 * (btnW + 16), btnY, btnW, 56,
@@ -39,7 +38,7 @@
     ctx.fillStyle = 'rgba(10,4,0,' + (0.68 * appear).toFixed(3) + ')';
     fillVisibleRect();
     const px = 390, py = 96, pw = 500, ph = 470;
-    const won = G.mode === 'career' ? G.dayResult.stars > 0 : G.dayResult.newBest;
+    const won = G.dayResult.won;
     /* the panel drops in with a little overshoot */
     const e = appear < 1 ? 1 - Math.pow(1 - appear, 3) * Math.cos(appear * 7) : 1;
     ctx.save();

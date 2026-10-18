@@ -38,7 +38,7 @@ The career runs thirty days across five venues, six days each: every day is busi
   - `js/systems/stations.js` — Tickets in station slots, progress, zones and burning, finishing steps, the pass hand-off, the Rush Hour Bell
   - `js/systems/serving.js` — Pass and bin clicks, flying dishes, tips, combo, goal and combo celebrations, tip coins
   - `js/systems/staff.js` — The chef walking to his station and the hired waiter
-  - `js/systems/day.js` — Starting a day, the per-frame day simulation, the day-end check, results and star pops
+  - `js/systems/day.js` — Starting a day, pausing and resuming, the per-frame day simulation, the day-end check, results and star pops
   - `js/render/sprites.js` — Cached 2x sprites (bubble, check, shadow, bin, lock, ribbon) and shared drawing helpers
   - `js/render/guests.js` — Guests, order bubbles with patience rings, eating, goodbyes, the critic's card, the VIP spotlight
   - `js/render/kitchen.js` — The pass and bin, station art, gauges, keys, labels and burn alerts
@@ -170,7 +170,7 @@ The career runs thirty days across five venues, six days each: every day is busi
 ### Menus & Controls
 - [x] As a player, I can start from a title screen offering Career, Endless Rush, Daily Special, Kitchen, Recipe Book and Help so that every mode is one click away
 - [x] As a player, I can navigate every screen with mouse hover or the arrow keys and Enter so that the game is fully playable without a mouse
-- [x] As a player, I can press Escape to pause and resume, and F2 to return to the title for a new game so that the flow is always controllable
+- [x] As a player, I can press Escape or use Game > Pause to pause and resume — every way into the pause panel opens it with Resume selected — and F2 to return to the title for a new game so that the flow is always controllable
 - [x] As a player, I can press 1-5 during a day to stop the matching station and B to ring the Rush Hour Bell so that the hands never leave the keys
 - [x] As a player, I can press H on any menu for a four-page help book — orders, cooking, serving, modes & upgrades — and page through it with the arrows so that the rules are in-game
 - [x] As a player, I can browse the Recipe Book, where recipes from venues I have not reached yet show as silhouettes with a question mark so that the full menu teases the career
@@ -181,6 +181,7 @@ The career runs thirty days across five venues, six days each: every day is busi
 - [x] As a player, I can bank coins from every day — won or lost — into a save that carries into every mode so that the upgrade tree always grows
 - [x] As a player, I can keep my best star rating and best earnings for each career day so that the map reflects my best run
 - [x] As a player, I can keep a best score for Endless Rush and a best per date for the Daily Special so that the challenge modes have records
+- [x] As a player, I hear the win fanfare and see the golden results panel in Endless Rush and the Daily Special exactly when I set a new best, so that sound and panel always agree
 - [x] As a player, I can accumulate lifetime stats — days played, dishes served, perfect dishes — so that long-term progress is tracked
 - [x] As a player, I can open the top 10 high scores by tips from the Game menu so that personal records are reviewable
 - [x] As a player, I can have the save — coins, stars, upgrades, bests and stats — kept in localStorage so that the empire survives a reload
