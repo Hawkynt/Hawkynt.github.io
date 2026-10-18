@@ -95,6 +95,48 @@ Top-down spaceship racing with drifting, boost, item combat, a four-cup career a
 | H | Toggle help overlay |
 | F2 | New quick race |
 
+## Architecture
+
+Plain browser scripts, no build step. Every game module is an IIFE that adds one object to `SZ.SpaceRacing`; `index.html` loads them in dependency order (each file only uses names of files above it at load time, later modules are reached through `SZ.SpaceRacing.module(name)` at call time). All shared mutable values live in one long-lived object, `SZ.SpaceRacing.state` (named `G` in every module); systems read and write it with plain property access.
+
+| File | Responsibility |
+|------|----------------|
+| `index.html` | Page, menu bar, dialogs and the ordered script list |
+| `styles.css` | Page layout |
+| `js/core/track-geometry.js` | `SZ.RacingTrack.build`: Catmull-Rom track geometry, sampling and locating |
+| `js/core/tracks-data.js` | `SZ.RacingTracks`: the 8 track definitions and their features |
+| `js/render/track-art.js` | `SZ.RacingTrackArt`: themed road and background art with cached sprites |
+| `js/render/ship-art.js` | `SZ.RacingShipArt`: cached, shaded ship sprites for the five hull shapes |
+| `js/ui/racing-ui.js` | `SZ.RacingUI`: panel, text fitting, chips, keycaps, meters and headlines |
+| `js/core/constants.js` | Canvas size, screen states, storage keys and every tuning number; defines `SZ.SpaceRacing.module` |
+| `js/core/defs.js` | Ships, Workshop tree, AI personalities, cups, tutorial pages, theme colors, reverse-track variants |
+| `js/core/util.js` | 60 Hz frame scaling of per-frame rates, time / ordinal / roman-number formatting |
+| `js/core/runtime.js` | Canvas, 2D context, UI kit, status-bar elements, OS window API, particle / shake / text effects |
+| `js/core/state.js` | The shared state object `G` |
+| `js/core/save.js` | High scores, versioned career save, old-save migration |
+| `js/core/progress.js` | Workshop tree rules and purchases, tree bonuses on ship stats, ship unlocks |
+| `js/systems/career.js` | Cup flow, standings, cup points and trophies, best laps, race rewards |
+| `js/systems/track.js` | A racer's track progress, off-road drag and the barrier |
+| `js/systems/race-setup.js` | Builds the track and its features, start grid, per-race reset |
+| `js/systems/player.js` | Player ship: launch, steering, drifting, boost, mouse steering, slipstream |
+| `js/systems/ai.js` | AI opponents: racing line, mistakes, braking, rubber band, finish |
+| `js/systems/features.js` | Boost pads, hazards, gravity wells and wormholes |
+| `js/systems/items.js` | Item boxes, item use by player and AI, missiles, mines, EMP, shields, hits |
+| `js/systems/race.js` | Laps and splits, live place, wrong way, race finish |
+| `js/systems/race-audio.js` | Engine hum, drift hiss and barrier scrape |
+| `js/systems/effects.js` | Particles, speed streaks, trails, skids, themed ambience, lap flashes, confetti |
+| `js/render/view.js` | Canvas sizing and letterbox, camera follow and zoom, world/screen transforms |
+| `js/render/world.js` | Drawing of the race world: road, features, items, ships, trails and effects |
+| `js/render/hud.js` | Race HUD: place, laps, speedometer, boost meter, minimap, standings, item slots |
+| `js/ui/flow.js` | Screen changes, pause, Workshop entry and exit, window title |
+| `js/ui/menu-kit.js` | Menu hit areas, cursor, buttons, trophies, locks, track previews |
+| `js/ui/screens.js` | Title, career, cup intro, quick race and garage screens |
+| `js/ui/results.js` | Results, cup standings, pause panel and help overlay |
+| `js/ui/tree-screen.js` | Workshop tech-tree screen and its keyboard selection |
+| `js/ui/input.js` | Keyboard, pointer and auto-pause listeners |
+| `js/app.js` | Update and draw order, status bar, game loop, menu actions, OS integration, startup |
+| `tests/*.test.js` | Node tests for geometry, track data, reverse variants, track art, ship art and the UI kit |
+
 ## SEO Keywords
 
 space racing game, browser racing game, top-down racing, spaceship racing, HTML5 racing game, canvas racing game, drifting, mini-turbo, boost, slipstream, item combat, career mode, cups, tech tree, reverse tracks, AI opponents, space race, SynthelicZ Desktop game, web OS game, online racing game

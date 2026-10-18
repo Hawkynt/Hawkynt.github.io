@@ -26,9 +26,9 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../track-geometry.js');
-require('../tracks-data.js');
-require('../track-art.js');
+require('../js/core/track-geometry.js');
+require('../js/core/tracks-data.js');
+require('../js/render/track-art.js');
 
 const TRACKS = window.SZ.RacingTracks;
 const Art = window.SZ.RacingTrackArt;

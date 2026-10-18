@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../track-geometry.js');
+require('../js/core/track-geometry.js');
 
 const RacingTrack = window.SZ.RacingTrack;
 const CIRCUMFERENCE = 2 * Math.PI * 1000;

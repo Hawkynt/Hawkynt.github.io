@@ -29,7 +29,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../ship-art.js');
+require('../js/render/ship-art.js');
 
 const Art = window.SZ.RacingShipArt;
 const SHAPES = ['arrow', 'dart', 'wing', 'heavy', 'stealth'];
