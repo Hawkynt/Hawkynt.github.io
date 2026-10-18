@@ -2,6 +2,9 @@
  * Drawing the level: backdrop, terrain, dynamic tiles, checkpoints, the goal, pickups, foes, the boss,
  * the ghost, the hero with trails, shots, world particles and the gem radar.
  * Reads G.run; advances purely visual timers in it (bumps, springs, squash, run frames, radar chime).
+ * Every animation runs on the level clock G.run.clock, which only moves by the dt passed to drawWorld:
+ * drawWorld(0) behind the pause, Tech Tree, Wardrobe, How to Play and results screens draws a frozen
+ * world that resumes exactly where it stopped.
  */
 ;(function() {
   'use strict';
@@ -23,6 +26,8 @@
   const fxWorld = G.fxWorld;
   const shake = G.shake;
   const texts = G.texts;
+  /* the level clock and the step of the current drawWorld call */
+  let clock = 0, wdt = 0;
 
   function heroPose(r) {
     const p = r.player;
@@ -48,7 +53,7 @@
     if (pose === 'jump' || pose === 'fall')
       return Math.abs(p.vy) < 200 ? 1 : 0;
     if (pose === 'dash')
-      return Math.floor(G.time * 20);
+      return Math.floor(clock * 20);
     return 0;
   }
 
@@ -59,10 +64,13 @@
 
   function drawWorld(dt) {
     const r = G.run, level = r.level, p = r.player;
+    wdt = dt;
+    r.clock += dt;
+    clock = r.clock;
     const v = visibleRect();
     const sh = shake.update(dt);
     const camX = r.cam.x + sh.x, camY = r.cam.y + sh.y;
-    r.scene.drawBack(ctx, v, camX, camY, G.time);
+    r.scene.drawBack(ctx, v, camX, camY, clock);
     const z = r.zoom;
     const rect = { x0: camX + v.x0 / z, y0: camY + v.y0 / z, x1: camX + v.x1 / z, y1: camY + v.y1 / z };
     ctx.save();
@@ -80,7 +88,7 @@
     /* secret walls fade while the hero is inside or next to them */
     const inFake = fakeNear(p);
     r.fakeAlpha += ((inFake ? 0.25 : 1) - r.fakeAlpha) * Math.min(1, dt * 6);
-    r.tiles.drawLive(ctx, rect, G.time, r.fakeAlpha);
+    r.tiles.drawLive(ctx, rect, clock, r.fakeAlpha);
 
     drawDynamicTiles(rect);
     for (const pl of r.platforms)
@@ -98,7 +106,7 @@
     texts.draw(ctx);
     drawRadar();
     ctx.restore();
-    r.scene.drawFront(ctx, v, camX, camY, G.time);
+    r.scene.drawFront(ctx, v, camX, camY, clock);
   }
 
   function fakeNear(p) {
@@ -127,11 +135,11 @@
       const bump = r.bumps[idx];
       if (bump > 0) {
         y -= Math.sin((1 - bump / 0.2) * Math.PI) * 10;
-        r.bumps[idx] = bump - G.frameDt;
+        r.bumps[idx] = bump - wdt;
       }
       let s = null;
       if (code === T.QBLOCK)
-        s = Spr.item('qblock', Math.floor(G.time * 6 + c) % 4, r.world);
+        s = Spr.item('qblock', Math.floor(clock * 6 + c) % 4, r.world);
       else if (code === T.USED)
         s = Spr.item('used', 0, r.world);
       else if (code === T.CRATE)
@@ -140,17 +148,17 @@
         const k = r.crumbles.get(idx);
         const stage = k && k.t > 0 ? Math.min(2, Math.floor(k.t / 0.18)) : 0;
         if (stage > 0)
-          y += (Math.random() - 0.5) * 3;
+          y += Math.sin(clock * 97 + idx) * 1.5;
         s = Spr.item('crumble', stage, r.world);
       } else if (code === T.SPRING) {
         const sq = r.springs[idx] || 0;
         if (sq > 0)
-          r.springs[idx] = sq - G.frameDt;
+          r.springs[idx] = sq - wdt;
         s = Spr.item('spring', 0, sq > 0.1 ? 1 : 0);
       }
       if (s) {
         if (code === T.QBLOCK)
-          drawGlow(x, y, 90, '#ffd75a', 0.18 + 0.08 * Math.sin(G.time * 3 + c));
+          drawGlow(x, y, 90, '#ffd75a', 0.18 + 0.08 * Math.sin(clock * 3 + c));
         drawSprite(s, x, y);
       }
     }
@@ -167,10 +175,10 @@
     for (const cp of G.run.checkpoints) {
       if (cp.x < rect.x0 - 80 || cp.x > rect.x1 + 80)
         continue;
-      cp.t += G.frameDt;
+      cp.t += wdt;
       if (cp.on)
-        drawGlow(cp.x, cp.y - 60, 160, WORLDS[G.run.world].color, 0.25 + 0.08 * Math.sin(G.time * 3));
-      drawSprite(Spr.item('checkpoint', Math.floor(G.time * 6) % 4, cp.on ? 1 : 0), cp.x, cp.y);
+        drawGlow(cp.x, cp.y - 60, 160, WORLDS[G.run.world].color, 0.25 + 0.08 * Math.sin(clock * 3));
+      drawSprite(Spr.item('checkpoint', Math.floor(clock * 6) % 4, cp.on ? 1 : 0), cp.x, cp.y);
     }
   }
 
@@ -180,37 +188,37 @@
       return;
     if (r.boss && !r.bossDone)
       return;
-    drawGlow(r.goal.x, r.goal.y - 70, 260, '#ffe9a0', 0.35 + 0.1 * Math.sin(G.time * 2.4));
-    drawSprite(Spr.item('goal', Math.floor(G.time * 8) % 6, r.world), r.goal.x, r.goal.y);
-    if (Math.random() < 0.3)
+    drawGlow(r.goal.x, r.goal.y - 70, 260, '#ffe9a0', 0.35 + 0.1 * Math.sin(clock * 2.4));
+    drawSprite(Spr.item('goal', Math.floor(clock * 8) % 6, r.world), r.goal.x, r.goal.y);
+    if (wdt > 0 && Math.random() < 0.3)
       fxWorld.spawn({ kind: 'spark', color: '#ffe9a0', x: r.goal.x + (Math.random() - 0.5) * 70, y: r.goal.y - Math.random() * 120, vy: -40, life: 0.8, size: 6, size1: 1, ambient: true });
   }
 
   function drawItems(rect) {
     const r = G.run;
-    const cf = Math.floor(G.time * 12);
+    const cf = Math.floor(clock * 12);
     for (const c of r.coins) {
       if (c.taken || c.x < rect.x0 - 30 || c.x > rect.x1 + 30 || c.y < rect.y0 - 30 || c.y > rect.y1 + 30)
         continue;
-      const bob = c.pop > 0 || c.pull ? 0 : Math.sin(G.time * 3 + c.x * 0.05) * 2;
+      const bob = c.pop > 0 || c.pull ? 0 : Math.sin(clock * 3 + c.x * 0.05) * 2;
       drawSprite(Spr.item('coin', (cf + ((c.x / TS) | 0)) % 8), c.x, c.y + bob);
     }
     for (const g of r.gems) {
       if (g.taken || g.x < rect.x0 - 40 || g.x > rect.x1 + 40)
         continue;
-      const bob = Math.sin(G.time * 2.5 + g.i) * 4;
+      const bob = Math.sin(clock * 2.5 + g.i) * 4;
       ctx.save();
       if (g.old)
         ctx.globalAlpha = 0.55;
-      drawGlow(g.x, g.y + bob, 110, GEM_COLORS[g.i], 0.45 + 0.15 * Math.sin(G.time * 4));
-      drawSprite(Spr.item('gem', Math.floor(G.time * 8) % 6, g.i), g.x, g.y + bob);
+      drawGlow(g.x, g.y + bob, 110, GEM_COLORS[g.i], 0.45 + 0.15 * Math.sin(clock * 4));
+      drawSprite(Spr.item('gem', Math.floor(clock * 8) % 6, g.i), g.x, g.y + bob);
       ctx.restore();
     }
     for (const it of r.items) {
       if (it.taken)
         continue;
       const rising = it.t < Ent.ITEM_RISE;
-      const bob = rising ? 0 : Math.sin(G.time * 4) * 3;
+      const bob = rising ? 0 : Math.sin(clock * 4) * 3;
       ctx.save();
       if (rising) {
         /* it climbs out of the block: hide the part still inside */
@@ -219,7 +227,7 @@
         ctx.clip();
       }
       drawGlow(it.x, it.y + bob, 90, it.kind === 'fire' ? '#ff8a3a' : it.kind === 'star' ? '#ffe14a' : '#ff6a86', 0.4);
-      drawSprite(Spr.item(it.kind, Math.floor(G.time * 8) % 4), it.x, it.y + bob);
+      drawSprite(Spr.item(it.kind, Math.floor(clock * 8) % 4), it.x, it.y + bob);
       ctx.restore();
     }
   }
@@ -323,18 +331,18 @@
     const sy = 1 - r.squash * 0.2 + r.stretch * 0.14;
     /* trails */
     r.afterT += dt;
-    if (p.dashT > 0 && r.afterT > 0.025) {
+    if (dt > 0 && p.dashT > 0 && r.afterT > 0.025) {
       r.afterT = 0;
       fxWorld.spawn({ kind: 'image', img: s, flipX: p.facing < 0, x: x, y: y, life: 0.28, alpha: 0.5, add: true });
-    } else if (G.save.trail === 'shadow' && Math.abs(p.vx) > 150 && r.afterT > 0.06) {
+    } else if (dt > 0 && G.save.trail === 'shadow' && Math.abs(p.vx) > 150 && r.afterT > 0.06) {
       r.afterT = 0;
       fxWorld.spawn({ kind: 'image', img: s, flipX: p.facing < 0, x: x, y: y, life: 0.35, alpha: 0.35 });
     }
     if (G.save.trail !== 'none' && G.save.trail !== 'shadow' && (Math.abs(p.vx) > 60 || !p.onGround))
-      Fx.trail(fxWorld, G.save.trail, x, y - 10, dt, G.time);
+      Fx.trail(fxWorld, G.save.trail, x, y - 10, dt, clock);
     if (r.star > 0) {
-      drawGlow(x, y - 24, 120, ['#ff5a5a', '#ffe14a', '#6ae06a', '#4ab8ff'][Math.floor(G.time * 10) % 4], 0.5);
-      if (Math.random() < 0.5)
+      drawGlow(x, y - 24, 120, ['#ff5a5a', '#ffe14a', '#6ae06a', '#4ab8ff'][Math.floor(clock * 10) % 4], 0.5);
+      if (dt > 0 && Math.random() < 0.5)
         fxWorld.spawn({ kind: 'star', color: '#ffe14a', x: x + (Math.random() - 0.5) * 30, y: y - Math.random() * 44, vy: -40, life: 0.4, size: 10, size1: 2 });
     }
     ctx.save();
@@ -343,8 +351,8 @@
     drawSprite(s, x, y, p.facing < 0, sx, sy);
     ctx.restore();
     if (r.shield)
-      drawSprite(Spr.item('shield', 0), x, y - 22, false, 1 + Math.sin(G.time * 4) * 0.03, 1 + Math.cos(G.time * 4) * 0.03);
-    if (r.fire && Math.random() < 0.15)
+      drawSprite(Spr.item('shield', 0), x, y - 22, false, 1 + Math.sin(clock * 4) * 0.03, 1 + Math.cos(clock * 4) * 0.03);
+    if (dt > 0 && r.fire && Math.random() < 0.15)
       Fx.emberTrail(fxWorld, x + p.facing * 10, y - 26, '#ff8a2a');
   }
 
@@ -356,7 +364,7 @@
       if (s.kind === 'bolt') {
         if (s.delay > 0) {
           ctx.save();
-          ctx.globalAlpha = 0.25 + 0.25 * Math.sin(G.time * 30);
+          ctx.globalAlpha = 0.25 + 0.25 * Math.sin(clock * 30);
           ctx.fillStyle = '#ffe08a';
           ctx.fillRect(s.x - 18, rect.y0, 36, s.ground - rect.y0);
           ctx.restore();
@@ -370,14 +378,14 @@
           ctx.moveTo(x, y);
           while (y < s.ground) {
             y += 36;
-            x = s.x + (Math.random() - 0.5) * 26;
+            x = s.x + Math.sin(Math.floor(clock * 30) * 7.3 + y * 0.37) * 13;
             ctx.lineTo(x, Math.min(y, s.ground));
           }
           ctx.lineWidth = 5;
           ctx.strokeStyle = '#fff6c0';
           ctx.stroke();
           ctx.restore();
-          if (Math.random() < 0.5)
+          if (wdt > 0 && Math.random() < 0.5)
             shake.add(0.05);
         }
         continue;
@@ -396,18 +404,18 @@
       }
       if (s.kind === 'wave') {
         drawGlow(s.x, s.ground - 14, 90, '#9aff6a', 0.6);
-        drawSprite(Spr.item('bossShot', Math.floor(G.time * 12) % 4, 0), s.x, s.ground - 16, s.vx < 0, 1.4, 0.8);
+        drawSprite(Spr.item('bossShot', Math.floor(clock * 12) % 4, 0), s.x, s.ground - 16, s.vx < 0, 1.4, 0.8);
         continue;
       }
       if (s.owner === 'player') {
         drawGlow(s.x, s.y, s.r * 7, '#ff8a2a', 0.6);
-        drawSprite(Spr.item('fireball', Math.floor(G.time * 16) % 4), s.x, s.y, s.vx < 0, s.r / 10, s.r / 10);
+        drawSprite(Spr.item('fireball', Math.floor(clock * 16) % 4), s.x, s.y, s.vx < 0, s.r / 10, s.r / 10);
       } else if (s.owner === 'boss') {
         drawGlow(s.x, s.y, 80, BOSS_SHOT_COLORS[s.boss], 0.5);
-        drawSprite(Spr.item('bossShot', Math.floor(G.time * 12) % 4, s.boss), s.x, s.y);
+        drawSprite(Spr.item('bossShot', Math.floor(clock * 12) % 4, s.boss), s.x, s.y);
       } else {
         drawGlow(s.x, s.y, 60, '#ff6a6a', 0.4);
-        drawSprite(Spr.item('shot', Math.floor(G.time * 12) % 4, s.world), s.x, s.y);
+        drawSprite(Spr.item('shot', Math.floor(clock * 12) % 4, s.world), s.x, s.y);
       }
     }
   }
@@ -429,13 +437,13 @@
     const a = Math.atan2(best.y - (p.y + p.h / 2), best.x - (p.x + p.w / 2));
     const x = p.x + p.w / 2 + Math.cos(a) * 52, y = p.y + p.h / 2 + Math.sin(a) * 52;
     ctx.save();
-    ctx.globalAlpha = 0.55 + 0.3 * Math.sin(G.time * 5);
+    ctx.globalAlpha = 0.55 + 0.3 * Math.sin(clock * 5);
     ctx.translate(x, y);
     ctx.rotate(a);
     const s = Spr.item('arrow', 0);
     ctx.drawImage(s.c, -s.ax, -s.ay, s.w, s.h);
     ctx.restore();
-    r.radarT -= G.frameDt;
+    r.radarT -= wdt;
     if (r.radarT <= 0 && bd < 8 * TS) {
       r.radarT = Math.max(0.35, bd / TS * 0.18);
       sfx('blip', { pitch: 2 - Math.min(1, bd / (8 * TS)), volume: 0.25 });

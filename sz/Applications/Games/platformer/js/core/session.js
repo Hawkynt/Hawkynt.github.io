@@ -89,7 +89,7 @@
       koT: 0, fallT: 0, safeT: 0, landT: 0, squash: 0, stretch: 0, runFrame: 0, idleT: 0, trailT: 0, afterT: 0,
       cam: { x: 0, y: 0, look: 0 }, zoom: ZOOM,
       ghostRec: [], ghostT: 0, ghost: null, ghostPos: {},
-      radarT: 0, prevBottom: 0, fakeAlpha: 1
+      radarT: 0, prevBottom: 0, fakeAlpha: 1, clock: 0
     };
     r.player = Ph.createPlayer(level.start.c * TS + (TS - Ph.P.w) / 2, (level.start.r + 1) * TS - Ph.P.h);
     r.respawn = { x: r.player.x, y: r.player.y };

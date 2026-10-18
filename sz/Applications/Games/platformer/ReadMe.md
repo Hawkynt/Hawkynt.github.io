@@ -49,7 +49,7 @@ Plain scripts, no build step: `index.html` loads them in dependency order, each 
 - `js/play/pickups.js` — coins and the magnet, gems, power-ups, checkpoints, the goal trigger and ghost recording.
 - `js/play/finish.js` — level clear, Daily Run and Endless results and rewards.
 - `js/render/kit.js` — sprite, glow and icon drawing shared by every screen.
-- `js/render/world.js` — the level picture: backdrop, terrain, dynamic tiles, pickups, foes, boss, ghost, hero with squash, trails and afterimages, shots and the gem radar.
+- `js/render/world.js` — the level picture: backdrop, terrain, dynamic tiles, pickups, foes, boss, ghost, hero with squash, trails and afterimages, shots and the gem radar, all animated on a level clock that only runs during play.
 - `js/render/hud.js` — the HUD, boss bar, toasts, level intro card, knock-out veil and screen fade.
 - `js/ui/menu-kit.js` — hit areas, keyboard cursor, animated buttons, veils, the menu backdrop and currency chips.
 - `js/ui/title.js`, `map.js`, `tree.js`, `wardrobe.js`, `help.js`, `pause.js`, `results.js` — the title diorama, the world map, the Tech Tree, the Wardrobe, How to Play, the pause menu and the results panel.
@@ -123,6 +123,7 @@ The page also uses the shared desktop libraries `../../shared/game-audio.js` (sy
 - [x] As a user, I can use the keyboard, the mouse or touch everywhere; touch screens get a stick and Jump, Dash, Fire and pause buttons during play
 - [x] As a user, I can read a five-page How to Play screen (Basics, Moves, Things, Foes, Modes) that opens by itself on the first visit
 - [x] As a user, I can pause with Escape or P, restart with R, open the Tech Tree with T and help with H; F2 returns to the title
+- [x] As a user, I see the level fully frozen behind the pause menu, the Tech Tree, the Wardrobe and How to Play (no radar chimes, sparkles or running animations), and resuming carries on exactly where it stopped
 - [x] As a user, I can resize or maximize the window at any aspect ratio: the view letterboxes with the scenery in the bars, the HUD sticks to the corners and clicks land where I point
 - [x] As a user, I can see coins, level, hearts and state in the status bar and the level name in the window title, and the game pauses when the tab is hidden
 
