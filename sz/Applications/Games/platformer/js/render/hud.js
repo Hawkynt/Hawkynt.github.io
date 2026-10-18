@@ -1,7 +1,7 @@
 /*
  * The play HUD (hearts, coins, gems, timer, powers, boss bar, toasts), the level intro card, the
  * knock-out veil, menu toasts and the screen fade.
- * Reads G.run; ages G.toast and G.fade.
+ * Reads G.run (its pulses run on the level clock G.run.clock, frozen while paused); ages G.toast and G.fade.
  */
 ;(function() {
   'use strict';
@@ -27,7 +27,7 @@
     ui.drawPanel(left, top, hw + (r.shield ? 34 : 0), 52, { radius: 14, noStuds: true, alpha: 0.92 });
     for (let k = 0; k < r.maxHearts; ++k) {
       const full = k < r.hearts;
-      const pulse = full && r.hearts === 1 ? 1 + 0.12 * Math.sin(G.time * 9) : 1;
+      const pulse = full && r.hearts === 1 ? 1 + 0.12 * Math.sin(r.clock * 9) : 1;
       drawIcon(full ? 'heart' : 'heartEmpty', '#ff4a6a', left + 30 + k * 34, top + 26, 30 * pulse);
     }
     if (r.shield)
@@ -46,7 +46,7 @@
       const have = r.gemsRun[k];
       ctx.save();
       ctx.globalAlpha = have ? 1 : g && g.old ? 0.45 : 0.22;
-      drawSprite(Spr.item('gem', have ? Math.floor(G.time * 6) % 6 : 0, k), cx + 186 + k * 34, cy + 20, false, 0.75, 0.75);
+      drawSprite(Spr.item('gem', have ? Math.floor(r.clock * 6) % 6 : 0, k), cx + 186 + k * 34, cy + 20, false, 0.75, 0.75);
       ctx.restore();
     }
     /* timer and mode */
@@ -64,12 +64,12 @@
     const py = top + 60;
     if (r.fire) {
       ui.drawPanel(px, py, 46, 40, { radius: 12, noStuds: true, alpha: 0.92 });
-      drawSprite(Spr.item('fire', Math.floor(G.time * 8) % 4), px + 23, py + 20, false, 0.8, 0.8);
+      drawSprite(Spr.item('fire', Math.floor(r.clock * 8) % 4), px + 23, py + 20, false, 0.8, 0.8);
       px += 52;
     }
     if (r.star > 0) {
-      ui.drawPanel(px, py, 46, 40, { radius: 12, noStuds: true, alpha: 0.92, glow: r.star < 2 && Math.floor(G.time * 6) % 2 === 0 });
-      drawSprite(Spr.item('star', Math.floor(G.time * 8) % 4), px + 23, py + 18, false, 0.7, 0.7);
+      ui.drawPanel(px, py, 46, 40, { radius: 12, noStuds: true, alpha: 0.92, glow: r.star < 2 && Math.floor(r.clock * 6) % 2 === 0 });
+      drawSprite(Spr.item('star', Math.floor(r.clock * 8) % 4), px + 23, py + 18, false, 0.7, 0.7);
       ui.drawMeter(px + 6, py + 32, 34, 5, r.star / STAR_TIME, '#ffe14a');
       px += 52;
     }
