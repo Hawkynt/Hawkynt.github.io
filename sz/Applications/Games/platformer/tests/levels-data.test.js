@@ -4,17 +4,21 @@
  * Validates every chunk and level, then proves completability: the
  * reachability bot (tests/solver.js, driving the game's own physics) must
  * reach every campaign goal with the base move set - no tree upgrades - and
- * every gem with at most the full move set. Procedural Endless stages and
+ * every gem with at most the full move set. Every item block must be
+ * bumpable from below and climbable with the base move set, and the power-up
+ * from a power block must be collectable. Procedural Endless stages and
  * Daily runs are sampled the same way. Set QUICK=1 to skip the bot.
  */
 
 global.window = {};
 require('../physics.js');
 require('../levels-data.js');
+require('../entities.js');
 const solver = require('./solver.js');
 
 const Ph = window.SZ.PlatformerPhysics;
 const L = window.SZ.PlatformerLevels;
+const E = window.SZ.PlatformerEntities;
 const T = Ph.T, TS = Ph.TS;
 let failures = 0;
 
@@ -132,6 +136,30 @@ if (!process.env.QUICK) {
     const r = solver.reach(it.level, solver.goalBox(it.level), solver.BASE, {});
     check(it.label + ' goal reachable with the base move set', r.ok, 'stuck at column ' + Math.floor(r.maxX / TS));
   }
+  /* item blocks: bump from below, stand on top, grab the power-up */
+  let blocks = 0;
+  for (const it of levels.concat(procedural)) {
+    const lv = it.level;
+    for (let r = 0; r < lv.rows; ++r) {
+      for (let c = 0; c < lv.cols; ++c) {
+        if (Ph.tileAt(lv, c, r) !== T.QBLOCK)
+          continue;
+        ++blocks;
+        const at = ' item block ' + c + ',' + r;
+        const opts = { maxNodes: 150000 };
+        check(it.label + at + ' bumped from below with the base move set', solver.reach(lv, solver.bumpBox(c, r), solver.BASE, opts).ok, 'the base jump cannot hit its underside');
+        const stand = solver.standBox(c, r);
+        check(it.label + at + ' can be stood on with the base move set', solver.reach(lv, stand, solver.BASE, opts).ok, 'the base jump cannot land on it');
+        if (lv.powerBlocks[r * lv.cols + c]) {
+          const item = E.createBlockItem('fire', c, r);
+          E.updateBlockItem(item, 1);
+          const grab = Object.assign({}, stand, { test: (p, ev) => stand.test(p, ev) && E.itemTouches(item, p) });
+          check(it.label + at + ' power-up collectable', solver.reach(lv, grab, solver.BASE, opts).ok, 'the released item is out of reach');
+        }
+      }
+    }
+  }
+  check('levels have item blocks to test', blocks > 20, blocks + ' blocks');
   console.log('INFO bot time ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
 }
 
