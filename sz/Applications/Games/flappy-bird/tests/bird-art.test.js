@@ -40,7 +40,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../bird-art.js');
+require('../js/art/bird-art.js');
 
 const Art = window.SZ.FlappyBirdArt;
 const IDS = ['sunny', 'ruby', 'jay', 'pip', 'snowy', 'phoenix'];
@@ -124,7 +124,7 @@ check('drawBird with defaults', !bareErr && bare.images === 1,
 check('no blur used while painting', blurAssignments === 0,
   'the blur knob was assigned a non-zero value ' + blurAssignments + ' times');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'bird-art.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'art', 'bird-art.js'), 'utf8');
 check('source free of the blur knob', source.indexOf('shadowBlur') === -1,
   'bird-art.js mentions shadowBlur');
 

@@ -37,6 +37,50 @@ Adventure stars unlock the next stage, and clearing certain stages unlocks
 birds. Everything -- coins, stars, per-mode bests, upgrades, birds and
 lifetime stats -- persists in localStorage.
 
+## Architecture
+
+Plain scripts, no build step: every file is an IIFE that fills one slot of the
+`SZ.FlappyBird` namespace, and `index.html` loads them in dependency order. All
+mutable game state lives in one long-lived object, `SZ.FlappyBird.state` (`G`),
+that the modules read and write in place; constants come from `NS.C`, the canvas,
+drawing kit, effect systems and sound from `NS.services`.
+
+- `js/core/course.js` - biomes, the 24 adventure stages and the seeded generation of gates, coins, bubbles and hazards (`SZ.FlappyCourse`). Pure data.
+- `js/core/namespace.js` - the `SZ.FlappyBird` namespace, its module slots and the load order.
+- `js/core/constants.js` - canvas size, physics, bird and course numbers, power-ups, medals, the Stage Clear panel, the Nest tree, the Aviary birds and the state names.
+- `js/core/state.js` - `G`, the one mutable state object: view, run, power-ups and combo, scenery, juice timers, menu cursors.
+- `js/core/services.js` - canvas and 2D context, the drawing kit, status-bar cells, particles, screen shake, floating text and the rate-limited `sfx`.
+- `js/core/save.js` - the Classic high-score table and the v2 save: load, migration, write.
+- `js/core/progress.js` - tech-tree levels and purchases, Aviary birds, stage unlocks, stars and per-mode bests.
+- `js/core/rules.js` - rules derived from upgrades, bird and run: gravity, glide, radii, magnet range, coin value, combo multiplier, medals.
+- `js/systems/run.js` - run lifecycle: start, flap, hits, shield, revive, death and the result settled into the save.
+- `js/systems/effects.js` - simulation of feathers, biome weather, coin rings and the Stage Clear star reveal.
+- `js/systems/flight.js` - the per-frame update: state dispatch, hit-stop, bird physics, timers, ground bounce and biome changes.
+- `js/systems/contact.js` - the bird against the course: gate collision and scoring (perfect combo, Combo Keeper, near miss), coins with magnet and streak, bubbles, moving hazards.
+- `js/art/bird-art.js` - the six birds as cached sprites (`SZ.FlappyBirdArt`).
+- `js/art/scene-kit.js` - scenery sizes, biome themes, gate styles, colour helpers, the seeded RNG and seamless strip painting.
+- `js/art/scene-backdrop.js` - sky, far / mid / near silhouette strips, clouds and the ground tile, painted once per biome.
+- `js/art/scene-sprites.js` - gate body and cap per biome, shared icicle, bat, laser emitter, fireball, coin and bubble sprites.
+- `js/art/scene-art.js` - `SZ.FlappySceneArt.create(biome)`: builds a biome's caches and returns its cheap draw functions.
+- `js/render/flappy-ui.js` - the drawing kit: panels, text that fits its box, chips, meters, headlines and key hints (`SZ.FlappyUI`).
+- `js/render/view.js` - canvas sizing and letterboxing, the visible rect, pointer mapping, the scene cache and `draw()`, which composes one frame.
+- `js/render/shapes.js` - hearts, stars, locks, the coin chip and the dim backdrop.
+- `js/render/effects.js` - drawing of feathers, weather, coin rings and the full-screen flash and fade.
+- `js/render/world.js` - the running world: scenery, gates, hazards, coins, bubbles, afterimages, the bird and its shield.
+- `js/render/hud.js` - score, combo, coins and hearts, the Time Attack clock, power-up chips, the biome banner and the READY panel.
+- `js/ui/menu.js` - hit areas, the shared keyboard / mouse cursor, buttons and the cycling menu backdrop.
+- `js/ui/navigation.js` - screen changes, pause, the window title and the status bar.
+- `js/ui/title.js` - the title screen and the Adventure world map.
+- `js/ui/nest.js` - the Nest tech-tree screen: layout, selection and cards.
+- `js/ui/aviary.js` - the Aviary screen.
+- `js/ui/help.js` - the help pages.
+- `js/ui/results.js` - pause menu, Game Over and Stage Clear panels.
+- `js/ui/input.js` - keyboard and pointer input for every screen, auto-pause and resize.
+- `js/app.js` - the game loop, menu bar, dialogs, OS integration and start-up.
+- `tests/` - node suites for the course generator, the drawing kit and the bird and scene art budgets.
+
+The page also uses the shared desktop libraries `../../shared/game-effects.js`, `game-audio.js`, `game-autopause.js`, `menu.js` and `dialog.js`.
+
 ## User Stories
 
 ### Core Flight
@@ -193,7 +237,7 @@ lifetime stats -- persists in localStorage.
 
 - Canvas rendering in a logical 1280 x 720 space, letterboxed with devicePixelRatio scaling capped near 1.5 backing pixels per logical pixel
 - IIFE pattern with `window.SZ` namespace; no build step required
-- Course generation is pure data in `course.js` (seeded, testable); scenery and sprites are prebuilt offscreen canvases in `scene-art.js` and `bird-art.js`
+- Course generation is pure data in `js/core/course.js` (seeded, testable); scenery and sprites are prebuilt offscreen canvases in `js/art/`
 - requestAnimationFrame game loop with delta-time capped at 50 ms and physics normalized to 60 fps via a `dt * 60` step multiplier
 - Circular 14 px bird hitbox against the four rectangles of each gate (two columns, two caps)
 - Gate openings placed with a 72 px margin from sky and ground, and a bounded jump from the previous opening
