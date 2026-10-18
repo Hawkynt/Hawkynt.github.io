@@ -197,6 +197,15 @@
     hoeFertilizeTile(row, col);
   }
 
+  /** True while any crop stands on the field */
+  function farmHasCrops() {
+    for (let r = 0; r < G.gridRows; ++r)
+      for (let c = 0; c < G.gridCols; ++c)
+        if (G.farmGrid[r]?.[c])
+          return true;
+    return false;
+  }
+
   /** Hoe right-click: uproot/remove a plant, returning partial seed cost. */
   function hoeUproot(row, col) {
     if (G.state !== STATE_PLAYING) return;
@@ -214,6 +223,6 @@
     SZ.GameAudio.play('whoosh', { pitch: 0.8, volume: 0.7 });
   }
 
-  Object.assign(NS, { plantCrop, harvestCrop, ROCK_CLEAR_COST, hoeFertilize, hoeUproot });
+  Object.assign(NS, { plantCrop, harvestCrop, ROCK_CLEAR_COST, hoeFertilize, hoeUproot, farmHasCrops });
 
 })();

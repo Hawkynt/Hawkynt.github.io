@@ -170,6 +170,7 @@
     autosaveTimer: 0,
     saveNotice: '',
     newGameConfirmOpen: false,
+    farmResult: null, // stats of a finished farm for the Season Over panel
 
     /* ── render/world-common.js ── */
     animT: 0, // world animation clock (stops while paused)

@@ -39,11 +39,6 @@
     ctx.restore();
   }
 
-  /* ── Upgrade shop (permanent farm upgrades) ── */
-
-
-
-
   /* ── Livestock shop ── */
 
   function drawLivestockDialog() {

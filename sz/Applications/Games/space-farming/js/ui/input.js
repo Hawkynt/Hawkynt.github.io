@@ -13,7 +13,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceFarming || (SZ.SpaceFarming = {});
   const G = NS.state;
-  const { TILE_FARMLAND, TILE_WATER, STATE_READY, STATE_PLAYING, STATE_PAUSED, CROPS, TOOL_HOE, BUILDINGS,
+  const { TILE_FARMLAND, TILE_WATER, STATE_READY, STATE_PLAYING, STATE_PAUSED, STATE_GAME_OVER, CROPS, TOOL_HOE, BUILDINGS,
     TOOL_BUILD, canvas, particles, screenShake, hitRegion, saveGame, continueSavedGame, requestNewGame,
     upgradeBuilding, resetGame, tileCenter, plantCrop, harvestCrop, hoeFertilize, hoeUproot, feedAndCollect,
     sellAllProduce, placeBuilding, removeBuilding, expansionAt, expandField, worldToUI, flyCoins,
@@ -110,6 +110,14 @@
       } else if (!G.savedGameAvailable && (e.code === 'Enter' || e.code === 'Space')) {
         e.preventDefault();
         resetGame();
+      }
+      return;
+    }
+
+    if (G.state === STATE_GAME_OVER) {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        requestNewGame();
       }
       return;
     }

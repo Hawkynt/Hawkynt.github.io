@@ -18,10 +18,6 @@
     flyCoins, techOwned, announce, popText } = NS;
 
   /* ══════════════════════════════════════════════════════════════════
-     WEATHER EVENTS
-     ══════════════════════════════════════════════════════════════════ */
-
-  /* ══════════════════════════════════════════════════════════════════
      WEATHER EVENTS — chosen per season; meteors and lightning strike
      real tiles, rain wets the soil, snow and dust slow the crops
      ══════════════════════════════════════════════════════════════════ */
