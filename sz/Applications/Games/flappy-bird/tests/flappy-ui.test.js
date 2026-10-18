@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../flappy-ui.js');
+require('../js/render/flappy-ui.js');
 
 let failures = 0;
 

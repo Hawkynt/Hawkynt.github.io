@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../course.js');
+require('../js/core/course.js');
 
 const C = window.SZ.FlappyCourse;
 const GROUND_Y = 640, GATE_W = 72, MARGIN = 72, MIN_GAP = 110;

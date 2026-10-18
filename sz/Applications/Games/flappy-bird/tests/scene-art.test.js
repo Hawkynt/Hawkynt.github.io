@@ -32,7 +32,10 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../scene-art.js');
+const SCENE_FILES = ['scene-kit.js', 'scene-backdrop.js', 'scene-sprites.js', 'scene-art.js']
+  .map(f => path.join(__dirname, '..', 'js', 'art', f));
+for (const f of SCENE_FILES)
+  require(f);
 
 const Art = window.SZ.FlappySceneArt;
 const BIOMES = ['meadow', 'desert', 'frost', 'forest', 'city', 'volcano'];
@@ -197,7 +200,7 @@ for (let i = 0; i < BUBBLE_KINDS.length; ++i) {
   check('drawBubble ' + kind + ' no gradients', bub.gradients === 0, bub.gradients + ' gradients created');
 }
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'scene-art.js'), 'utf8');
+const src = SCENE_FILES.map(f => fs.readFileSync(f, 'utf8')).join('\n');
 check('no shadowBlur in the source', src.indexOf('shadowBlur') === -1, 'shadowBlur found');
 
 console.log(failures === 0 ? 'ALL PASS (' + canvasCount + ' caches built)' : failures + ' FAILURES');
