@@ -33,7 +33,30 @@ Everything renders into a fixed 1280 x 720 logical view, letterboxed and scaled 
 - `board-art.js` — the board renderer: per-realm noise textures (flagstones, leaf litter, wet rock, snow, turf, obsidian veins) computed once, the board baked into ground/upper/glow layers with walls as one raised mass, soft shadows, an ornate frame and animated caustic water; a changed tile only repaints the cells around it.
 - `fx.js` — cached sprite particles (capped at 400) with presets for every element, runes, the portal, footsteps, fireworks, confetti and each realm's ambient air.
 - `scene-art.js` — cached realm backdrops (one seeded 1280 x 720 painting each), the four element icons and eight spell-effect strips.
-- `controller.js` — the game itself: loop, input, walking and casting animation, HUD, the title/realms/trials/grimoire/wardrobe/help screens, overlays, persistence and window integration.
+- `js/` — the game itself, split by concern into plain script modules loaded in dependency order by `index.html`. Every module is an IIFE that adds one object to the `SZ.FantasyPuzzle` namespace; all mutable game state lives in the single shared object `SZ.FantasyPuzzle.state` (`G` inside the modules), which systems read and write by plain property access. A module takes what it needs from earlier modules once at load time; the few calls back into later modules (systems switching screens, a cast starting the win sequence) go through the namespace at call time.
+  - `js/core/constants.js` — view and board geometry, timings, elements, screen states, tile codes, realm tints, the Grimoire tree and robe tables.
+  - `js/core/context.js` — long-lived page objects: canvas and 2D context, the drawing kit, status-bar elements, particle systems and the throttled sound gate.
+  - `js/core/state.js` — the shared state object: screen state, puzzle session, the mage, running effects, menu cursors, save and view geometry.
+  - `js/core/view.js` — canvas sizing, the letterboxed 1280 x 720 view, pointer mapping and board-space geometry.
+  - `js/core/persistence.js` — the v2 save, high scores and the tutorial flag in localStorage.
+  - `js/systems/rules.js` — cached reach and valid actions, walking paths, stand tiles and pointer-to-action mapping.
+  - `js/systems/grimoire.js` — node ranks and states, buying, robes, the tree layout and its selection, opening the Grimoire from a level.
+  - `js/systems/session.js` — modes and unlock rules, the daily puzzle, loading, restarting and advancing levels.
+  - `js/systems/world.js` — the mage walking and idling, ambient motes, the invalid-hover cross and board particles.
+  - `js/systems/casting.js` — undo, hints, element selection, the cast pose, spell orbs, impact rings and the tile-by-tile reaction.
+  - `js/systems/win.js` — the win sequence, star rating, shard payout, realm restoration and celebration fireworks.
+  - `js/systems/update.js` — one simulation step of a running level, advancing every system in a fixed order.
+  - `js/render/sprites.js` — cached art painted once: result stars, ray burst, level medallions, the inscription circle.
+  - `js/render/widgets.js` — small shared painters: locks, crystals, stars, veils, the shards chip, menu backdrops and light shafts.
+  - `js/render/actors.js` — the mage, his aura and staff glow, motes, the win trail, spell orbs, rings and spell strips.
+  - `js/render/board.js` — the board as seen this frame (baked tiles, runes, portal, highlights, sliding boulder) and the board layer composition.
+  - `js/render/hud.js` — the in-level HUD: level panel, mana and casts, chips, element bar, key hints, Grimoire button and hint banner.
+  - `js/ui/menu-kit.js` — menu hit areas, keyboard cursor, hover easing and the shared button.
+  - `js/ui/overlays.js` — pause, level complete, out of mana and the realm-restored banner.
+  - `js/ui/screens.js` — screen switching, help entry and exit, the status bar and the window title.
+  - `js/ui/title.js`, `js/ui/campaign.js` (realm map and trials grid), `js/ui/grimoire-screen.js`, `js/ui/wardrobe.js`, `js/ui/help.js` — the menu screens.
+  - `js/ui/input.js` — keyboard and pointer input, tile clicks and the menu-bar actions.
+  - `js/app.js` — bootstrap: the game loop, the menu-screen dispatcher, the screen fade, resize and OS integration, the public API and start-up.
 - `tests/` — node test suites: `puzzle-core.test.js` (rules and solver), `levels-data.test.js` (re-solves all 100 levels at their par), `puzzle-ui.test.js`, `tile-art.test.js`, `scene-art.test.js`, `board-art.test.js` and `fx.test.js` (drawing-call budgets against a recording fake canvas).
 
 The page also uses the shared desktop libraries `../../shared/game-effects.js` (particles, screen shake, floating text), `game-audio.js` (synthesized sound effects), `menu.js` and `dialog.js`.
