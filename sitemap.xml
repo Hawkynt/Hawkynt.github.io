@@ -9,23 +9,23 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/calculator/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/calculator/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/paint/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/paint/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/notepad/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/notepad/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/minesweeper/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/minesweeper/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/tetris/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/tetris/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
@@ -41,167 +41,167 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/media-player/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Entertainment/media-player/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/image-viewer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/image-viewer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/terminal/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System%20Tools/terminal/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/explorer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System/explorer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/web-browser/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Internet/web-browser/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/wordpad/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/wordpad/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/spreadsheet/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/spreadsheet/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/hex-editor/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/hex-editor/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/json-viewer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/json-viewer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/regex-tester/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/regex-tester/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/diff-viewer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/diff-viewer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/markdown-editor/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/markdown-editor/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/font-viewer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/font-viewer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/color-picker/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/color-picker/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/qr-generator/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Accessories/qr-generator/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/encryptor/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Accessories/encryptor/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/gradient-generator/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/gradient-generator/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/svg-editor/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/svg-editor/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/icon-editor/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/icon-editor/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/function-plotter/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/function-plotter/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/cron-visualizer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/cron-visualizer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/subnet-calculator/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/subnet-calculator/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/skin-tester/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System%20Tools/skin-tester/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/readme-generator/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/readme-generator/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/about/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Accessories/about/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/clock/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Accessories/clock/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/task-manager/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System/task-manager/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/control-panel/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System/control-panel/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/cookie-banner/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/cookie-banner/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/display-tester/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System%20Tools/display-tester/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/resume-builder/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/resume-builder/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/archiver/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/System%20Tools/archiver/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/metadata-viewer/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/metadata-viewer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/font-pairing/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Graphics/font-pairing/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/mock-data/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Development/mock-data/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/email-signature/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Office/email-signature/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/snake/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/snake/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/breakout/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/breakout/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/space-invaders/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/space-invaders/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/asteroids/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/asteroids/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://hawkynt.github.io/sz/Applications/pacman/index.html</loc>
+    <loc>https://hawkynt.github.io/sz/Applications/Games/pacman/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
