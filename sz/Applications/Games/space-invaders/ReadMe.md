@@ -8,8 +8,43 @@ Canvas-based game with proper aspect-ratio scaling. All game logic runs in a vir
 
 ## Architecture
 
-- **`index.html`** -- Menu bar (Game/Help), canvas, status bar, dialogs (High Scores, Controls & Power-Ups, About)
-- **`controller.js`** -- IIFE with the game loop, five play modes, campaign stage flow, wave formations, power-up system, boss AI, combo scoring, ship specials and dash, hangar/armory/campaign-map/help screens, save and high scores, collision detection, game states
+The game code lives in `js/` as small modules on the `SZ.SpaceInvaders` namespace, loaded in dependency order by plain `<script>` tags (no build step, works from `file://`). All shared game state sits in one object, `SZ.SpaceInvaders.state` (`G` in every module); each module states at its top what it owns and what it reads.
+
+- **`index.html`** -- Menu bar (Game/Help), canvas, status bar, dialogs (High Scores, Controls & Power-Ups, About); loads the modules below in order
+- **`js/core/namespace.js`** -- The `SZ.SpaceInvaders` namespace with one object per module, so modules can call modules that load after them
+- **`js/core/constants.js`** -- Field, sprite and bullet sizes, speeds, timings, combo table, sector theme order, bunker shape and colours
+- **`js/core/data.js`** -- Static data and pure lookups: alien species, power-ups, the twelve wave formations, boss escorts, play modes, hangar ships, the armory tech tree, box overlap test
+- **`js/core/state.js`** -- The shared game state object: screen and run, campaign run, fleet, player, specials, power-ups, combo, boss, effects, menu cursor, input
+- **`js/core/save.js`** -- The v2 save (credits, stars, bests, armory, ships, stats, carried charges), high-score list, local day key
+- **`js/core/audio.js`** -- Sound effects through the shared audio module, one per name every 40 ms
+- **`js/core/progress.js`** -- Rules on the save: owning, unlocking and buying ships and armory levels, the flown ship, star and upgrade counts, upgrade-derived values
+- **`js/render/view.js`** -- Canvas, context and UI kit; fits the 1280 x 720 game plane into the window, the visible rectangle, pointer mapping
+- **`js/render/backdrop.js`** -- Cached sector backdrops, the current one, the theme of a level
+- **`js/systems/fx.js`** -- Particles, screen shake, floating text, flares, debris, shockwave rings, engine trails, screen flash, the ship death spectacle
+- **`js/systems/special.js`** -- Special meter and charges, the five ship specials (Overdrive, Railgun, Barrier, Phase, Nova), dash, escort drone
+- **`js/systems/powerups.js`** -- Weighted power-up drops, falling capsules and pickups, the bomb, active power-up timers
+- **`js/systems/boss.js`** -- Boss entrance, movement, enrage, attack patterns, damage and defeat
+- **`js/systems/combat.js`** -- Combo scoring, the common alien death with drops and charge, the player being hit
+- **`js/systems/fleet.js`** -- Alien march and speed-up, divers, alien fire and bullets, the bonus UFO
+- **`js/systems/waves.js`** -- Building waves and bunkers, new runs, next level, survival waves, boss levels
+- **`js/systems/stages.js`** -- Campaign stage start and finish with stars, credits and carried charges; run end payout and per-mode bests
+- **`js/systems/player.js`** -- Ship movement by keys and mouse, tilt, engine trail, shooting, player bullets
+- **`js/systems/collisions.js`** -- All hit tests of one simulation step in a fixed order, the fleet reaching the ship row
+- **`js/systems/sim.js`** -- The fixed-step update: hit-stop, menus, boss intro and victory, dying, level clear and the order of all systems in a battle step
+- **`js/ui/widgets.js`** -- Clickable hit areas with the shared keyboard cursor, buttons, locks, stars, ticks and crosses
+- **`js/ui/screens.js`** -- Switching screens, restart, quit to menu, opening help
+- **`js/render/world.js`** -- Draws bunkers, aliens, boss, ship, drone, special visuals, bullets, UFO, capsules and effect layers
+- **`js/render/overlays.js`** -- Wave banner, pause, game over and stage clear panels, level clear, light sweep, combo pop, boss warning, screen flash, fade
+- **`js/render/hud.js`** -- Score and combo, mode chip or boss health, lives, power-up timers, special meter
+- **`js/ui/title.js`** -- Title screen
+- **`js/ui/campaign-map.js`** -- Campaign map with sector cards, stage buttons and stars
+- **`js/ui/hangar.js`** -- Hangar screen and its keys
+- **`js/ui/armory.js`** -- Armory tech tree screen: tabs, card layout, connectors, keys and clicks
+- **`js/ui/help.js`** -- Four-page help screen and its keys
+- **`js/render/frame.js`** -- One rendered frame: backdrop, menu screen or world, HUD, overlays, flash, fade
+- **`js/ui/status-bar.js`** -- Window status bar and the High Scores dialog
+- **`js/ui/input.js`** -- Keyboard and pointer input, playing keys, menu navigation and clicks, auto-pause
+- **`js/app.js`** -- The fixed 60 Hz game loop, menu bar actions and start-up
 - **`campaign.js`** -- Pure campaign data and rules: six sectors, 30 stages with per-stage difficulty, star and unlock rules, credit rewards, seeded RNG and daily seeds (no DOM, unit-tested in node)
 - **`sprite-art.js`** -- Pre-painted sprite kit: six alien species (two frames + hit flash), five ships (thrust steps), drone, UFO, six bosses (normal + damaged), player/alien/laser/orb bullets, power-up capsules, explosion flares
 - **`backdrop-art.js`** -- Six sector backdrops painted once per theme into cached 1280 x 720 canvases with a seeded rng; scrolling star layers, drifting asteroids, shooting stars; an optional view covers the whole visible canvas
