@@ -12,7 +12,8 @@
    * Every update gets a `game` object:
    *   { level, player, t, emit(type, data), shots: [], enemies: [] }
    * Events: 'shot', 'windup', 'land', 'quake', 'telegraph', 'teleport',
-   *         'summon', 'phase', 'roar'.
+   *         'summon', 'phase', 'roar', 'muzzle' (a boss projectile leaves
+   *         the boss), 'fizzle' (a shot burns out).
    */
 
   const Ph = SZ.PlatformerPhysics;
@@ -239,6 +240,12 @@
     return Ph.solidAt(level, Math.floor(x / TS), Math.floor(y / TS));
   }
 
+  /* can a ground wave run here? solid ground or a one-way ledge */
+  function floorPoint(level, x, y) {
+    const code = Ph.tileAt(level, Math.floor(x / TS), Math.floor(y / TS));
+    return Ph.isSolid(code) || code === Ph.T.ONEWAY;
+  }
+
   function updateShot(s, game, dt) {
     if (!s.alive)
       return;
@@ -269,7 +276,7 @@
     if (s.kind === 'wave') {
       /* a ground wave hugs the floor and dies at walls or edges */
       s.x = nx;
-      if (solidPoint(level, s.x + sign(s.vx) * s.r, s.ground - 10) || !solidPoint(level, s.x, s.ground + 4))
+      if (solidPoint(level, s.x + sign(s.vx) * s.r, s.ground - 10) || !floorPoint(level, s.x, s.ground + 4))
         s.alive = false;
       return;
     }
@@ -316,6 +323,33 @@
       out.x = s.x - s.r; out.y = s.y - s.r; out.w = s.r * 2; out.h = s.r * 2;
     }
     return out;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     POWER-UPS FROM ITEM BLOCKS
+     ══════════════════════════════════════════════════════════════════ */
+
+  const ITEM_RISE = 0.4;        // seconds to climb out of the block
+  const ITEM_GRAB = 34;         // pickup radius around the hero's centre
+
+  /* a power-up bumped out of the block at column c, row r */
+  function createBlockItem(kind, c, r) {
+    const x = c * TS + TS / 2, y = r * TS + TS / 2;
+    return { kind: kind, x: x, y: y, y0: y - TS, t: 0, taken: false };
+  }
+
+  /* it rises out of the block and comes to rest on top of it */
+  function updateBlockItem(it, dt) {
+    it.t += dt;
+    it.y = it.y0 + TS - TS * Math.min(1, it.t / ITEM_RISE);
+  }
+
+  /* can the hero grab it? not while it is still inside the block */
+  function itemTouches(it, p) {
+    if (it.taken || it.t < ITEM_RISE * 0.75)
+      return false;
+    const dx = p.x + p.w / 2 - it.x, dy = p.y + p.h / 2 - it.y;
+    return dx * dx + dy * dy < ITEM_GRAB * ITEM_GRAB;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -388,8 +422,26 @@
     if (b.hp <= 0) {
       b.dying = 2.2;
       bossSet(b, 'dying');
+      clearBossShots(game);
     }
     return true;
+  }
+
+  /* a beaten boss takes its waves, rocks, bolts and orbs with it */
+  function clearBossShots(game) {
+    for (const s of game.shots) {
+      if (!s.alive || s.owner !== 'boss')
+        continue;
+      s.alive = false;
+      if (s.delay <= 0)
+        game.emit('fizzle', s);
+    }
+  }
+
+  /* a projectile leaves the boss's body: a burst marks where it starts */
+  function bossShot(game, b, s) {
+    game.emit('muzzle', { x: s.x, y: s.kind === 'wave' ? s.ground - 15 : s.y, boss: BOSS_KINDS.indexOf(b.kind) });
+    return spawnShot(game, s);
   }
 
   /* can a stomp hurt the boss right now? */
@@ -404,6 +456,9 @@
   }
 
   function bossGround(b, level, dt) {
+    /* stop at the arena bounds before moving, so it never lands on the gate */
+    if (b.x + b.vx * dt < b.ax0) b.vx = Math.min(0, (b.ax0 - b.x) / dt);
+    if (b.x + b.w + b.vx * dt > b.ax1) b.vx = Math.max(0, (b.ax1 - b.x - b.w) / dt);
     Ph.moveBody(b, level, dt, Ph.P.gravity, moveOut);
     const landed = moveOut.landed && !b.onGround;
     b.onGround = moveOut.landed;
@@ -423,7 +478,7 @@
     const base = Math.atan2(ay, ax);
     for (let k = 0; k < (spread || 1); ++k) {
       const off = spread > 1 ? (k - (spread - 1) / 2) * 0.28 : 0;
-      spawnShot(game, Object.assign({ kind: kind || 'boss', owner: 'boss', x: sx, y: sy, vx: Math.cos(base + off) * speed, vy: Math.sin(base + off) * speed,
+      bossShot(game, b, Object.assign({ kind: kind || 'boss', owner: 'boss', x: sx, y: sy, vx: Math.cos(base + off) * speed, vy: Math.sin(base + off) * speed,
         r: 14, life: 3.5, boss: BOSS_KINDS.indexOf(b.kind) }, extra || {}));
     }
     game.emit('shot', b);
@@ -435,7 +490,7 @@
     const tx = centreX(p) + (Math.random() - 0.5) * 60, ty = p.y + p.h;
     const g = 1300;
     const vx = (tx - sx) / time, vy = (ty - sy - 0.5 * g * time * time) / time;
-    spawnShot(game, { kind: kind || 'boss', owner: 'boss', x: sx, y: sy, vx: vx, vy: vy, gravity: g, r: 15, life: time + 1, boss: BOSS_KINDS.indexOf(b.kind) });
+    bossShot(game, b, { kind: kind || 'boss', owner: 'boss', x: sx, y: sy, vx: vx, vy: vy, gravity: g, r: 15, life: time + 1, boss: BOSS_KINDS.indexOf(b.kind) });
     game.emit('shot', b);
   }
 
@@ -491,10 +546,12 @@
         } else if (b.state === 'hop') {
           if (bossGround(b, level, dt)) {
             b.vx = 0;
-            game.emit('quake', { x: centreX(b), y: b.y + b.h, power: 0.7 });
+            /* the waves start at its feet, on whatever it landed on */
+            const feet = b.y + b.h;
+            game.emit('quake', { x: centreX(b), y: feet, power: 0.7 });
             if (b.phase >= 2) {
               for (const d of [-1, 1])
-                spawnShot(game, { kind: 'wave', owner: 'boss', x: centreX(b) + d * b.w / 2, y: b.floor - 15, vx: d * 330, r: 18, life: 2.5, ground: b.floor, boss: 0 });
+                bossShot(game, b, { kind: 'wave', owner: 'boss', x: centreX(b) + d * b.w * 0.4, y: feet - 15, vx: d * 330, r: 18, life: 2.5, ground: feet, boss: 0 });
             }
             if (b.phase === 3 && b.minions < 3) {
               ++b.minions;
@@ -644,6 +701,8 @@
             }
             if (roll === 1 || b.phase >= 2) {
               const cols = b.phase === 1 ? 1 : b.phase === 2 ? 2 : 3;
+              /* the storm is called from its raised hands */
+              game.emit('muzzle', { x: centreX(b), y: b.y + 10, boss: 4 });
               for (let k = 0; k < cols; ++k) {
                 const x = k === 0 ? centreX(p) : b.ax0 + 60 + Math.random() * (b.ax1 - b.ax0 - 120);
                 spawnShot(game, { kind: 'bolt', owner: 'boss', x: x, y: 0, r: 22, life: 0.35, delay: 0.85, ground: b.floor, boss: 4 });
@@ -681,6 +740,7 @@
   SZ.PlatformerEntities = Object.freeze({
     ENEMY_DEFS, BOSS_DEFS, BOSS_KINDS,
     createEnemy, updateEnemy, spawnShot, updateShot, shotBox,
+    ITEM_RISE, createBlockItem, updateBlockItem, itemTouches,
     createPlatforms, updatePlatforms,
     createBoss, updateBoss, hurtBoss, bossStompable
   });

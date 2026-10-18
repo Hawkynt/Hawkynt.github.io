@@ -12,6 +12,9 @@
  *   const solver = require('./solver.js');
  *   const r = solver.reach(level, { x, y, w, h }, stats, { maxNodes });
  *   r.ok, r.time (seconds of play along the found route), r.nodes
+ *
+ * A target may carry test(player, events) to replace the plain overlap, e.g.
+ * "the head hit this block" or "standing here"; its box still steers the search.
  */
 
 global.window = global.window || {};
@@ -114,7 +117,9 @@ function reach(levelIn, target, stats, opts) {
   }
   const world = { level: level, platforms: plats };
   const tx = target.x + target.w / 2, ty = target.y + target.h / 2;
-  function hits(p) {
+  function hits(p, ev) {
+    if (target.test)
+      return target.test(p, ev);
     return p.x < target.x + target.w && p.x + p.w > target.x && p.y < target.y + target.h && p.y + p.h > target.y;
   }
   function key(p) {
@@ -173,12 +178,12 @@ function reach(levelIn, target, stats, opts) {
         p.t += Ph.STEP;
         if (defs.length)
           placePlatforms(p.t);
-        Ph.stepPlayer(p, inp, world, stats, Ph.STEP);
+        const ev = Ph.stepPlayer(p, inp, world, stats, Ph.STEP);
         if (Ph.hazardAt(p, level)) {
           dead = true;
           break;
         }
-        if (hits(p)) {
+        if (hits(p, ev)) {
           won = true;
           break;
         }
@@ -209,4 +214,15 @@ function gemBox(g) {
   return { x: g.c * TS + 10, y: g.r * TS + 10, w: TS - 20, h: TS - 20 };
 }
 
-module.exports = { reach, BASE, FULL, goalBox, gemBox };
+/* the hero's head bumps the block at c, r from below */
+function bumpBox(c, r) {
+  return { x: c * TS, y: (r + 1) * TS, w: TS, h: TS, test: (p, ev) => !!ev.head && ev.head.c === c && ev.head.r === r };
+}
+
+/* the hero stands on top of the block at c, r */
+function standBox(c, r) {
+  return { x: c * TS, y: r * TS - Ph.P.h, w: TS, h: Ph.P.h,
+    test: p => p.onGround && p.ground === Ph.T.QBLOCK && Math.abs(p.y + p.h - r * TS) < 0.5 && p.x + p.w > c * TS + 4 && p.x < (c + 1) * TS - 4 };
+}
+
+module.exports = { reach, BASE, FULL, goalBox, gemBox, bumpBox, standBox };

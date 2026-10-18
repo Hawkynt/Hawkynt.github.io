@@ -410,6 +410,8 @@
     game.enemies = run.enemies;
   }
 
+  const BOSS_SHOT_COLORS = ['#9aff6a', '#6ae0ff', '#ffffff', '#ff8a2a', '#c8a8ff'];
+
   function onEntityEvent(type, d) {
     const W = WORLDS[run.world];
     switch (type) {
@@ -470,8 +472,20 @@
         if (d.owner === 'player') {
           fxWorld.spawn({ kind: 'smoke', color: '#5a4a48', x: d.x, y: d.y, vy: -30, life: 0.4, size: 10, size1: 26, alpha: 0.6 });
           Fx.emberTrail(fxWorld, d.x, d.y);
+        } else if (d.owner === 'boss') {
+          const y = d.kind === 'wave' ? d.ground - 14 : d.kind === 'bolt' ? d.ground - 30 : d.y;
+          Fx.flash(fxWorld, d.x, y, BOSS_SHOT_COLORS[d.boss] || '#ffffff', 70, 0.25);
+          fxWorld.spawn({ kind: 'smoke', color: '#ffffff', x: d.x, y: y, vy: -40, life: 0.45, size: 12, size1: 30, alpha: 0.5 });
         }
         break;
+      case 'muzzle': {
+        /* a boss projectile bursts out of the boss */
+        const color = BOSS_SHOT_COLORS[d.boss] || '#ffffff';
+        Fx.flash(fxWorld, d.x, d.y, color, 90, 0.22);
+        for (let k = 0; k < 6; ++k)
+          fxWorld.spawn({ kind: 'spark', color: color, x: d.x, y: d.y, vx: (Math.random() - 0.5) * 260, vy: -60 - Math.random() * 160, drag: 3, life: 0.35, size: 6, size1: 1 });
+        break;
+      }
     }
   }
 
@@ -677,7 +691,8 @@
       Ph.setTile(level, c, rr, T.USED);
       if (power) {
         const kind = !r.fire ? 'fire' : r.hearts < r.maxHearts ? 'heart' : 'star';
-        r.items.push({ kind: kind, x: x, y: y, y0: y - TS, t: 0, taken: false });
+        r.items.push(Ent.createBlockItem(kind, c, rr));
+        Fx.flash(fxWorld, x, y - TS / 2, '#fff4c0', 110, 0.3);
         sfx('powerup', { pitch: 0.8, volume: 0.6 });
       } else {
         for (let k = 0; k < stats.blockCoins; ++k)
@@ -1144,11 +1159,8 @@
     for (const it of r.items) {
       if (it.taken)
         continue;
-      it.t += STEP;
-      if (it.t < 0.4)
-        it.y = it.y0 + TS - TS * Math.min(1, it.t / 0.4);
-      const dx = px - it.x, dy = py - it.y;
-      if (it.t > 0.3 && dx * dx + dy * dy < 34 * 34)
+      Ent.updateBlockItem(it, STEP);
+      if (Ent.itemTouches(it, p))
         takeItem(it);
     }
     for (const cp of r.checkpoints) {
@@ -1609,9 +1621,18 @@
     for (const it of r.items) {
       if (it.taken)
         continue;
-      const bob = it.t > 0.4 ? Math.sin(time * 4) * 3 : 0;
+      const rising = it.t < Ent.ITEM_RISE;
+      const bob = rising ? 0 : Math.sin(time * 4) * 3;
+      ctx.save();
+      if (rising) {
+        /* it climbs out of the block: hide the part still inside */
+        ctx.beginPath();
+        ctx.rect(it.x - TS, it.y0 - TS * 2, TS * 2, TS * 2.5);
+        ctx.clip();
+      }
       drawGlow(it.x, it.y + bob, 90, it.kind === 'fire' ? '#ff8a3a' : it.kind === 'star' ? '#ffe14a' : '#ff6a86', 0.4);
       drawSprite(Spr.item(it.kind, Math.floor(time * 8) % 4), it.x, it.y + bob);
+      ctx.restore();
     }
   }
 
@@ -1794,7 +1815,7 @@
         drawGlow(s.x, s.y, s.r * 7, '#ff8a2a', 0.6);
         drawSprite(Spr.item('fireball', Math.floor(time * 16) % 4), s.x, s.y, s.vx < 0, s.r / 10, s.r / 10);
       } else if (s.owner === 'boss') {
-        drawGlow(s.x, s.y, 80, ['#9aff6a', '#6ae0ff', '#ffffff', '#ff8a2a', '#c8a8ff'][s.boss], 0.5);
+        drawGlow(s.x, s.y, 80, BOSS_SHOT_COLORS[s.boss], 0.5);
         drawSprite(Spr.item('bossShot', Math.floor(time * 12) % 4, s.boss), s.x, s.y);
       } else {
         drawGlow(s.x, s.y, 60, '#ff6a6a', 0.4);
