@@ -23,7 +23,38 @@ The career runs thirty days across five venues, six days each: every day is busi
 - `food-art.js` — The twelve glazed dishes, five countertop stations in four animation states with per-frame flames, burners, bubbles, oven glow and heat lamp, ingredients that blend raw → cooked (grill marks) → charred, halos and ticket step icons; painted once into cached 2x canvases, the draw calls only blit
 - `people-art.js` — Chibi customers in six types with blinking, worried and angry faces, the chef with a run cycle, and the mood bubbles; cached per (look, pose, frame) and squashed and stretched per pose at draw time
 - `scene-art.js` — Five restaurant interiors baked once from textured materials (wood grain, bevelled tiles, brick, veined marble, brushed steel) with light pools, ambient occlusion and a vignette, plus a separate serving-counter layer the guests sit behind and ambient life (street traffic and walkers, diner neon and jukebox, breathing bistro lamps, sakura petals and lanterns, chandelier sparkle and a shooting star)
-- `controller.js` — IIFE game engine: menu screens, day loop, customers, stations, serving, waiter, upgrade tree, HUD, effects, persistence and OS integration
+- `js/` — the game engine, split by concern into plain IIFE modules under `SZ.CookingGame` (load order = the `<script>` order in `index.html`; every module states what it owns and reads)
+  - `js/core/constants.js` — Play layout (1280 × 720), screen states, storage keys, timings, help page titles
+  - `js/core/upgrade-tree.js` — The seventeen kitchen upgrades in five branches as data, with costs, requirements and the second-slot upgrades
+  - `js/core/view.js` — Canvas, 2D context and drawing kit, backing-store fit and pointer-to-view mapping
+  - `js/core/juice.js` — The particle system, screen shake and the rate-limited sound gate
+  - `js/core/state.js` — `G`, the one shared state object: screen and menu state, the running day, effect lists and the save
+  - `js/core/save.js` — Save v2 and high scores in localStorage, career unlocking, upgrade levels, buying, bests and counts
+  - `js/core/rules.js` — Seat, station and pass positions, cooking speed, perfect zones, burn threshold, combo multiplier, spawn limit
+  - `js/ui/status.js` — Status bar, window title and the high-score table (loaded before the systems, which update it)
+  - `js/systems/effects.js` — Timers of the short-lived juice: arcs, pops, rings, bumps, flashes, banners
+  - `js/systems/coach.js` — The guided first order on career day 1-1
+  - `js/systems/customers.js` — Guests spawning, walking in, patience and moods, eating, walking out, taking orders
+  - `js/systems/stations.js` — Tickets in station slots, progress, zones and burning, finishing steps, the pass hand-off, the Rush Hour Bell
+  - `js/systems/serving.js` — Pass and bin clicks, flying dishes, tips, combo, goal and combo celebrations, tip coins
+  - `js/systems/staff.js` — The chef walking to his station and the hired waiter
+  - `js/systems/day.js` — Starting a day, the per-frame day simulation, the day-end check, results and star pops
+  - `js/render/sprites.js` — Cached 2x sprites (bubble, check, shadow, bin, lock, ribbon) and shared drawing helpers
+  - `js/render/guests.js` — Guests, order bubbles with patience rings, eating, goodbyes, the critic's card, the VIP spotlight
+  - `js/render/kitchen.js` — The pass and bin, station art, gauges, keys, labels and burn alerts
+  - `js/render/flights.js` — Dishes and coins in flight, rings and step-finish words
+  - `js/render/hud.js` — Earnings panel with goals and combo, the Rush Hour Bell, the ticket rail
+  - `js/render/coach-marks.js` — Coach outline, arrow and hint panel
+  - `js/render/overlays.js` — Rush tension, combo banner, day intro, edge and rush glows, the iris transition
+  - `js/ui/menu.js` — Screen switching, hit areas with keyboard cursor and hover, candy buttons, menu backdrops, coin chip
+  - `js/ui/title.js` — Title screen: logo, chef with orbiting dishes, strolling guests, mode buttons
+  - `js/ui/career.js` — Career map: five venue cards with miniatures, locks and day medals
+  - `js/ui/kitchen-tree.js` — Kitchen screen: tab and card layout of the upgrade tree, keyboard selection, buying, pipes and cards
+  - `js/ui/recipe-book.js` — Recipe book of twelve pinned cards
+  - `js/ui/help.js` — The four illustrated help pages
+  - `js/ui/pause-results.js` — Pause overlay and the day-end results panel
+  - `js/ui/input.js` — Pointer and keyboard mapping per screen and the auto-pause hook
+  - `js/app.js` — Boot: game loop, frame composition, menu-bar actions, desktop window wiring and the initial state
 - `tests/` — Node test scripts: `kitchen-data.test.js` (data shape, quality/tip/star rules, rng), `kitchen-ui.test.js` (text fitting against a fake context), `kitchen-fx.test.js`, `food-art.test.js`, `people-art.test.js` and `scene-art.test.js` (module contracts, no shadowBlur, blit-only draws, particle cap)
 
 ## User Stories

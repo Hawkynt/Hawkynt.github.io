@@ -154,6 +154,42 @@
 <script src="food-art.js?v=64049836"></script>
 <script src="people-art.js?v=2455b588"></script>
 <script src="scene-art.js?v=8b9c412d"></script>
-<script src="controller.js?v=86cbac7b"></script>
+<!-- core: constants, upgrade data, view, juice, shared state, save, rules -->
+<script src="js/core/constants.js?v=aa2b3770"></script>
+<script src="js/core/upgrade-tree.js?v=002ceba3"></script>
+<script src="js/core/view.js?v=ab56e188"></script>
+<script src="js/core/juice.js?v=f547a4c2"></script>
+<script src="js/core/state.js?v=abf38495"></script>
+<script src="js/core/save.js?v=ef671c28"></script>
+<script src="js/core/rules.js?v=e88f027d"></script>
+<!-- status bar and window title (loaded early: the systems update it) -->
+<script src="js/ui/status.js?v=87a015d7"></script>
+<!-- systems: simulation, one concern per file -->
+<script src="js/systems/effects.js?v=b87e8ab6"></script>
+<script src="js/systems/coach.js?v=9a9301f3"></script>
+<script src="js/systems/customers.js?v=3c3f838e"></script>
+<script src="js/systems/stations.js?v=1adbbfbb"></script>
+<script src="js/systems/serving.js?v=1e67eb91"></script>
+<script src="js/systems/staff.js?v=59ab3f8b"></script>
+<script src="js/systems/day.js?v=29c92f65"></script>
+<!-- render: drawing of the play view -->
+<script src="js/render/sprites.js?v=3ade0a9f"></script>
+<script src="js/render/guests.js?v=17669a58"></script>
+<script src="js/render/kitchen.js?v=bcfafdd6"></script>
+<script src="js/render/flights.js?v=5844062f"></script>
+<script src="js/render/hud.js?v=0d7e7db8"></script>
+<script src="js/render/coach-marks.js?v=344b06ec"></script>
+<script src="js/render/overlays.js?v=f19f5757"></script>
+<!-- ui: menu plumbing, screens and input -->
+<script src="js/ui/menu.js?v=c2099ce2"></script>
+<script src="js/ui/title.js?v=0f823937"></script>
+<script src="js/ui/career.js?v=8ad44338"></script>
+<script src="js/ui/kitchen-tree.js?v=5d37f8a5"></script>
+<script src="js/ui/recipe-book.js?v=4efb04bb"></script>
+<script src="js/ui/help.js?v=6b3019c1"></script>
+<script src="js/ui/pause-results.js?v=bbcff37e"></script>
+<script src="js/ui/input.js?v=4e20f294"></script>
+<!-- boot, game loop and frame -->
+<script src="js/app.js?v=bbe95541"></script>
 </body>
 </html>
