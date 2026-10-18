@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Physics Puzzle — build structures, aim and launch projectiles using angle and power to hit targets in the SynthelicZ Desktop.">
+<meta name="description" content="Free online physics puzzle game -- build with planks, springs, fans and magnets, then aim and launch to light every target across five worlds and 40 levels, with trick shots, a daily challenge, a sandbox and a tech tree">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Physics Puzzle -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Build-and-launch physics game with ramps, blocks, springs, 15+ levels, star ratings, collision sparks, glow trails, and confetti effects.">
+<meta property="og:description" content="Free online physics puzzle game -- build with planks, springs, fans and magnets, then aim and launch to light every target across five worlds and 40 levels, with trick shots, a daily challenge, a sandbox and a tech tree">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/physics-puzzle/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Physics Puzzle",
   "url": "https://hawkynt.github.io/sz/Applications/physics-puzzle/index.html",
-  "description": "Build-and-launch physics puzzle game with gravity simulation, angle/power aiming, placeable objects, collision effects, and 15+ levels with star ratings.",
+  "description": "Free online physics puzzle game -- build with planks, springs, fans and magnets, then aim and launch to light every target across five worlds and 40 levels, with trick shots, a daily challenge, a sandbox and a tech tree",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,19 +26,21 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=b90db2ea">
+<link rel="stylesheet" href="styles.css?v=b3988b05">
 </head>
 <body>
-<noscript><p>Physics Puzzle — aim and launch projectiles to hit targets using physics. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Physics Puzzle - build contraptions, aim the launcher and light every target in forty physics levels. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="restart">Reset Level<span class="shortcut">R</span></div>
+      <div class="menu-entry" data-action="tech-tree">Tech Tree<span class="shortcut">T</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-entry" data-action="high-scores">Progress...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
@@ -52,7 +54,7 @@
   </div>
 </div>
 
-<!-- Game Canvas -->
+<!-- Game Area -->
 <div class="game-frame">
   <canvas id="gameCanvas"></canvas>
 </div>
@@ -62,19 +64,21 @@
   <div class="status-section" id="statusLevel">Level: --</div>
   <div class="status-section" id="statusShots">Shots: --</div>
   <div class="status-section" id="statusStars">Stars: --</div>
+  <div class="status-section" id="statusCoins">Coins: 0</div>
 </div>
 
-<!-- High Scores Dialog -->
+<!-- Progress Dialog -->
 <div class="dialog-overlay" id="highScoresBackdrop">
   <div class="dialog">
-    <div class="dialog-title">High Scores</div>
+    <div class="dialog-title">Progress</div>
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Level</th><th>Stars</th></tr>
+          <tr><th>World</th><th>Stars</th><th>Solved</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
+      <p style="margin-top:6px;font-size:11px;color:#666">Reset wipes every record, coin and upgrade.</p>
     </div>
     <div class="dialog-buttons">
       <button data-result="reset" type="button">Reset</button>
@@ -89,15 +93,23 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Click + Drag</td><td>Aim angle &amp; power</td></tr>
-        <tr><td>Release</td><td>Launch projectile</td></tr>
-        <tr><td>1 / R</td><td>Place ramp</td></tr>
-        <tr><td>2 / B</td><td>Place block</td></tr>
-        <tr><td>3 / S</td><td>Place spring</td></tr>
-        <tr><td>F2</td><td>New game / Restart</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>H</td><td>How to Play</td></tr>
+        <tr><td>Drag on the field</td><td>Pull back like a slingshot; release to fire</td></tr>
+        <tr><td>Arrows / A D W</td><td>Turn the barrel and set the power</td></tr>
+        <tr><td>Space / Enter</td><td>Fire; hold Space in flight for Bullet Time</td></tr>
+        <tr><td>Drag from the tray</td><td>Place a part; drag it back to the tray to remove it</td></tr>
+        <tr><td>Tap a part</td><td>Select it; tap again or Q / E to turn it</td></tr>
+        <tr><td>Delete</td><td>Remove the selected part</td></tr>
+        <tr><td>1 - 9 / Tab</td><td>Drop a part mid-field / select the next part</td></tr>
+        <tr><td>R</td><td>Reset the level (parts stay)</td></tr>
+        <tr><td>B / M</td><td>Blueprint hint / Twin Shot on-off (Tech Tree)</td></tr>
+        <tr><td>Escape / P</td><td>Pause menu / back</td></tr>
+        <tr><td>T / H</td><td>Tech Tree / How to Play</td></tr>
+        <tr><td>F2</td><td>Title screen</td></tr>
+        <tr><td>Arrows, Enter</td><td>Menus; Q / E change world on the map</td></tr>
       </table>
+      <p style="margin-top:8px;font-size:12px;color:#666">
+        Everything works with taps too: drag to aim, drag parts out of the tray, tap the round handles to turn or remove a part, and hold a finger down in flight for slow motion.
+      </p>
     </div>
     <div class="dialog-buttons">
       <button data-result="ok" data-default type="button">OK</button>
@@ -111,10 +123,11 @@
     <div class="dialog-title">About Physics Puzzle</div>
     <div class="dialog-body">
       <strong>Physics Puzzle</strong><br><br>
-      Aim and launch projectiles using angle and power control to hit goal targets.
-      Place ramps, blocks, and springs to guide your shots. Gravity and momentum simulation
-      drives realistic physics. Earn 1-3 stars based on shot efficiency across 15+ levels.
-      Features collision spark effects, glow trails, structure collapse dust, and 3-star confetti.<br><br>
+      Build a contraption from planks, steel blocks, springs, bumpers, fans, conveyors and magnets, then pull back the launcher and light every target.
+      Forty levels in five worlds - Tinker Workshop, Greenhouse Garden, Cryo Lab, Volcano Forge and the low-gravity Orbit Station - with glass, TNT, portals,
+      water, lava, gears and pendulums. Earn three stars per level: solve it, beat the par and grab every star.<br><br>
+      Spend coins in a five-branch Tech Tree, take on ten Trick Shots, a new Daily Challenge every day, or build freely in the Sandbox.
+      Every level is proven solvable by replaying a stored solution with the game's own deterministic physics.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -124,28 +137,38 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Physics Puzzle - Free Online Build and Launch Projectile Game</h1>
-<p>Aim and launch projectiles using angle and power control, then place ramps, blocks, and springs to guide your shots to hit targets. Solve 15+ physics-based puzzle levels with gravity simulation, collision effects, and star ratings.</p>
+<h1>Physics Puzzle - Free Online Build and Launch Physics Game</h1>
+<p>Free online physics puzzle game -- build with planks, springs, fans and magnets, then aim and launch to light every target across five worlds and 40 levels, with trick shots, a daily challenge, a sandbox and a tech tree.</p>
 <h2>Features</h2>
 <ul>
-<li>Click-and-drag aiming with angle and power control for projectile launching</li>
-<li>Placeable objects: ramps deflect upward, blocks bounce back, springs launch high</li>
-<li>Drag-to-reposition previously placed objects for strategic adjustments</li>
-<li>Realistic projectile physics with gravity, velocity, and bounce restitution</li>
-<li>15+ puzzle levels with progressively challenging layouts</li>
-<li>1-3 star rating system based on shot efficiency</li>
-<li>Collision spark effects and solution-path glow trails</li>
-<li>Structure collapse dust, debris particles, and 3-star confetti celebration</li>
-<li>Interactive tutorial overlay for new players</li>
-<li>Persistent star ratings via localStorage</li>
+<li>A real rigid-body physics engine: circles and polygons, friction, restitution, stacking, sleeping bodies and a fixed, deterministic time step</li>
+<li>Seven placeable parts: planks, steel blocks, spring pads, bumpers, fans, conveyors and magnets, snapped to a grid and turned in 15 degree steps</li>
+<li>Five worlds of eight levels: Tinker Workshop, Greenhouse Garden, Cryo Lab, Volcano Forge and the low-gravity Orbit Station</li>
+<li>Gadgets: breakable glass, chain-reacting TNT, portals, water, lava, ice, spinning gears, swinging hammers, pendulums, crates and boulders</li>
+<li>Three stars per level - solve it, beat the par, collect every star in the air - and every level verified solvable by a stored solution replay</li>
+<li>Trick Shots, a seeded Daily Challenge and a free-building Sandbox</li>
+<li>A five-branch Tech Tree: launcher power, aiming guides, ricochet preview, multi-ball, spare parts, blueprints, bullet time, coin bonuses, ball skins and trails</li>
+<li>Painted backdrops, textured materials, sparks, glass shards, explosions, slow motion on near misses, confetti and synthesized sound</li>
+<li>Mouse, touch and keyboard controls; progress saved in the browser</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
+<script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="controller.js?v=e840ebbf"></script>
+<script src="physics.js?v=fbf1ebbd"></script>
+<script src="parts.js?v=5a3e7d8e"></script>
+<script src="sim.js?v=6d49831f"></script>
+<script src="levels-data.js?v=ca150089"></script>
+<script src="solutions.js?v=22eeee74"></script>
+<script src="progression.js?v=6d8e4580"></script>
+<script src="physics-ui.js?v=7f1eff24"></script>
+<script src="body-art.js?v=0b1d6cab"></script>
+<script src="scene-art.js?v=fe2c912e"></script>
+<script src="fx.js?v=aa944aa6"></script>
+<script src="screens.js?v=0cdea23c"></script>
+<script src="controller.js?v=eab86ada"></script>
 </body>
 </html>

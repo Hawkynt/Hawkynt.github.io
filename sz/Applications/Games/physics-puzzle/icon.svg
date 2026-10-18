@@ -1,16 +1,40 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a3a48"/>
+      <stop offset="1" stop-color="#121a22"/>
+    </linearGradient>
+    <linearGradient id="brass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff0c0"/>
+      <stop offset="0.4" stop-color="#e0a848"/>
+      <stop offset="1" stop-color="#7a4a10"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.4" stop-color="#c8d0dc"/>
+      <stop offset="1" stop-color="#4a5466"/>
+    </radialGradient>
+  </defs>
   <!-- Background -->
-  <rect x="2" y="2" width="44" height="44" rx="6" fill="#1a1040" stroke="#fa0" stroke-width="1"/>
+  <rect x="2" y="2" width="44" height="44" rx="7" fill="url(#bg)" stroke="#e8c46a" stroke-width="1.2"/>
+  <!-- Floor -->
+  <rect x="3" y="38" width="42" height="7" rx="2" fill="#7a4a24"/>
+  <rect x="3" y="38" width="42" height="1.2" fill="#e8b878"/>
+  <!-- Flight arc -->
+  <path d="M14 30 Q24 4 37 22" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-dasharray="1.5,2.6" stroke-linecap="round" opacity="0.9"/>
+  <!-- Target -->
+  <circle cx="38" cy="30" r="6.5" fill="#ff4a32" stroke="#3a0a04" stroke-width="0.8"/>
+  <circle cx="38" cy="30" r="4.3" fill="#ffffff"/>
+  <circle cx="38" cy="30" r="2.3" fill="#ff4a32"/>
+  <!-- Plank ramp -->
+  <rect x="21" y="33" width="12" height="3" rx="1" fill="#c88a4a" stroke="#3a2410" stroke-width="0.6" transform="rotate(-18 27 34.5)"/>
   <!-- Launcher -->
-  <rect x="6" y="34" width="12" height="4" rx="1" fill="#666"/>
-  <!-- Trajectory arc -->
-  <path d="M12 34 Q24 10 40 28" fill="none" stroke="#fa0" stroke-width="2" stroke-dasharray="3,2" opacity="0.8"/>
-  <!-- Projectile -->
-  <circle cx="40" cy="28" r="4" fill="#f80"/>
-  <!-- Target star -->
-  <text x="40" y="14" text-anchor="middle" font-size="10" fill="#0f0">⭐</text>
-  <!-- Ramp -->
-  <polygon points="20,40 30,40 30,34" fill="#66a" opacity="0.7"/>
-  <!-- Spring -->
-  <rect x="34" y="38" width="8" height="4" rx="1" fill="#0a0" opacity="0.7"/>
+  <g transform="rotate(-45 11 32)">
+    <rect x="9" y="29" width="15" height="6" rx="1.5" fill="url(#brass)" stroke="#2a1404" stroke-width="0.7"/>
+  </g>
+  <rect x="5" y="32" width="12" height="4" rx="1" fill="#8a5a2a" stroke="#2a1404" stroke-width="0.6"/>
+  <circle cx="7.5" cy="37" r="2.6" fill="#5a3a1a" stroke="#2a1404" stroke-width="0.6"/>
+  <circle cx="14.5" cy="37" r="2.6" fill="#5a3a1a" stroke="#2a1404" stroke-width="0.6"/>
+  <!-- Ball -->
+  <circle cx="30" cy="12" r="3.4" fill="url(#ball)" stroke="#1a1a24" stroke-width="0.6"/>
 </svg>
