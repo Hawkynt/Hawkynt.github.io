@@ -138,6 +138,18 @@
     return out;
   }
 
+  /* with Earth selected, a reachable open floor tile is a stone to raise rather than a place to walk to;
+     walking there takes a right-click or a long press */
+  function raisesStone(idx) {
+    return G.selectedElement === 'earth' && G.puzzle.tiles[idx] === T.FLOOR && idx !== G.puzzle.hero &&
+      actionsForTile(idx, 'earth', null).length > 0;
+  }
+
+  /* what a plain click on the tile does: walk there (true) or try a cast (false) */
+  function clickWalks(idx) {
+    return isWalkable(G.puzzle.tiles[idx]) && reach().has(idx) && !raisesStone(idx);
+  }
+
   NS.rules = { reach, invalidateCaches, isWalkable, goalIndex, neighbours4, walkPath, nearestStandTo, dirBetween,
-    actionsForTile };
+    actionsForTile, raisesStone, clickWalks };
 })();

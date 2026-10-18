@@ -9,7 +9,7 @@
   const { T, ELEMENT_BY_ID, STATE_PLAYING, DIRS } = NS.consts;
   const { ctx, ui, Fx, fxBoard } = NS.context;
   const { visibleRect, colOf, rowOf, tileCenterX, tileCenterY } = NS.view;
-  const { reach, isWalkable, goalIndex, actionsForTile } = NS.rules;
+  const { reach, goalIndex, actionsForTile, clickWalks } = NS.rules;
   const { treeLevel } = NS.grimoire;
   const { realmInfo } = NS.session;
   const { drawHeroSprite, drawElementAura, drawStaffGlow, drawMotes, drawWinTrail, drawProjectiles, drawRings,
@@ -145,8 +145,8 @@
     if (G.state !== STATE_PLAYING || G.pendingCast || G.winSeq)
       return;
     if (G.hoverIdx >= 0 && G.hoverPoint) {
-      /* a walkable tile in reach is walked to, never cast on — no hint there */
-      const wouldWalk = isWalkable(G.puzzle.tiles[G.hoverIdx]) && reach().has(G.hoverIdx);
+      /* the highlight shows exactly what a plain click does: walk (footprints) or cast (element border) */
+      const wouldWalk = clickWalks(G.hoverIdx);
       const acts = wouldWalk ? [] : actionsForTile(G.hoverIdx, G.selectedElement, G.hoverPoint);
       if (acts.length) {
         const el = ELEMENT_BY_ID[G.selectedElement];
@@ -170,7 +170,7 @@
         ctx.restore();
         if (G.selectedElement === 'air')
           drawPushArrow(G.hoverIdx, acts[0].dir);
-      } else if (isWalkable(G.puzzle.tiles[G.hoverIdx]) && reach().has(G.hoverIdx)) {
+      } else if (wouldWalk) {
         ctx.save();
         ctx.strokeStyle = '#ffffff';
         ctx.globalAlpha = 0.3;

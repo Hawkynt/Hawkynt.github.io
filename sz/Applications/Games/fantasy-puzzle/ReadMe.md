@@ -4,7 +4,7 @@ An elemental magic puzzle game for the »SynthelicZ« Desktop. Guide a young mag
 
 ## How It Works
 
-Each puzzle is a grid of tiles — floor, wall, wood, channel, water, boulder, stone, chasm, ice, a goal portal and hidden runes — with the mage standing somewhere on it. The mage walks freely over walkable tiles (floor, water, the portal, runes): clicking a reachable tile walks him there along the shortest path, and walking costs nothing. A level is solved the moment the portal becomes reachable.
+Each puzzle is a grid of tiles — floor, wall, wood, channel, water, boulder, stone, chasm, ice, a goal portal and hidden runes — with the mage standing somewhere on it. The mage walks freely over walkable tiles (floor, water, the portal, runes): clicking a reachable tile walks him there along the shortest path, and walking costs nothing. With Earth selected a click on open floor raises stone there instead; a right-click or a held press always walks. A level is solved the moment the portal becomes reachable.
 
 A spell may target any tile the mage can stand on or that touches such a tile. Each element does exactly one thing:
 
@@ -64,7 +64,7 @@ The page also uses the shared desktop libraries `../../shared/game-effects.js` (
 ## User Stories
 
 ### Walking & Casting
-- [x] As a user, I can click any tile the mage can reach to walk him there along the shortest path — walking is free and collects runes on the way
+- [x] As a user, I can click any tile the mage can reach to walk him there along the shortest path — walking is free and collects runes on the way; with Earth selected, open floor needs a right-click or a held press to walk
 - [x] As a user, I can cast on any tile the mage stands on or that touches a reachable tile; the mage first walks to a standing spot and faces the target
 - [x] As a user, I can see the spell as an orb flying from the staff gem to the target, with an expanding impact ring where it lands
 - [x] As a user, I can see a pulsing border and the element's icon over a tile the selected element can affect, and footprints over a tile I can walk to
@@ -76,7 +76,8 @@ The page also uses the shared desktop libraries `../../shared/game-effects.js` (
 - [x] As a user, I can melt a single ice tile into walkable water with fire
 - [x] As a user, I can flood a channel network with water — every connected channel turns to walkable water
 - [x] As a user, I can fill a chasm with earth to bridge the gap
-- [x] As a user, I can raise a stone wall on open ground with earth — but never on the tile the mage stands on
+- [x] As a user, I can raise a stone wall on open ground with earth by clicking an open floor tile while Earth is selected — but never on the tile the mage stands on
+- [x] As a user, I can still walk while Earth is selected by right-clicking a tile or holding the press on it
 - [x] As a user, I can point at the side of a boulder to have the mage stand there and shove it away with air
 - [x] As a user, I can shove a boulder into a chasm — it falls in and the chasm closes
 - [x] As a user, I can only push a boulder from a side I can reach, and a push arrow previews the direction on hover

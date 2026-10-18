@@ -146,7 +146,7 @@
     ui.drawPanel(40, 664, 420, 30, { flat: true, noStuds: true, radius: 15, accent: '#e8c46a', top: 'rgba(12,8,24,0.72)', bottom: 'rgba(8,6,16,0.72)' });
     ui.drawKeyHints([
       { key: '1-4', label: 'element' },
-      { key: 'Click', label: 'walk / cast' },
+      G.selectedElement === 'earth' ? { key: 'Hold', label: 'walk' } : { key: 'Click', label: 'walk / cast' },
       { key: 'Z', label: 'undo' },
       { key: 'R', label: 'restart' },
       { key: 'H', label: 'hint' }

@@ -34,7 +34,7 @@
       const info = [
         ['fire', 'Spreads through connected wood and melts ice into water.'],
         ['water', 'Floods connected channels, so you can walk across.'],
-        ['earth', 'Fills chasms and raises a stone wall on open ground.'],
+        ['earth', 'Fills chasms and raises a stone wall on the open floor you click; right-click or hold the press there to walk instead.'],
         ['air', 'Pushes a boulder from the side you point at; it slides until something stops it, and a boulder that falls into a chasm fills it.']
       ];
       let y = 166;
@@ -77,6 +77,7 @@
       const lines = [
         ['Elements', '1-4 or Q / W / E'],
         ['Walk / cast', 'click or tap a tile'],
+        ['Walk only', 'right-click, or hold the press'],
         ['Undo', 'Z'],
         ['Restart', 'R'],
         ['Hint', 'H'],

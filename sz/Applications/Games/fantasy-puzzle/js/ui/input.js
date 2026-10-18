@@ -9,7 +9,7 @@
   const { sfx, canvas } = NS.context;
   const { pointerToView, colOf, rowOf, pointToTile } = NS.view;
   const { saveHighScores, renderHighScores } = NS.store;
-  const { reach, isWalkable, nearestStandTo, dirBetween, actionsForTile } = NS.rules;
+  const { reach, isWalkable, nearestStandTo, dirBetween, actionsForTile, raisesStone, clickWalks } = NS.rules;
   const { openGrimoireFromLevel, buildTreeLayout, selectFirstInBranch, closeGrimoire, buyNode, moveTreeSelection } = NS.grimoire;
   const { restartLevel, goLevels } = NS.session;
   const { startWalk } = NS.world;
@@ -27,11 +27,41 @@
     sfx('error', { volume: 0.4 });
   }
 
+  /* a press this long on a tile Earth would raise stone on walks there instead */
+  const HOLD_TO_WALK_MS = 450;
+
+  function walkTo(idx) {
+    if (!isWalkable(G.puzzle.tiles[idx]) || !reach().has(idx)) {
+      rejectTile(idx);
+      return;
+    }
+    if (idx !== G.puzzle.hero)
+      startWalk(idx, null);
+  }
+
+  function cancelHold() {
+    if (G.holdPress)
+      clearTimeout(G.holdPress.timer);
+    G.holdPress = null;
+  }
+
+  /* a raise-stone tile is decided on release: a short click casts, a long press walks */
+  function beginHold(idx, p) {
+    cancelHold();
+    const hold = { idx: idx, p: p, timer: 0 };
+    hold.timer = setTimeout(function() {
+      if (G.holdPress !== hold)
+        return;
+      G.holdPress = null;
+      if (G.state === STATE_PLAYING && !G.pendingCast && !G.winSeq)
+        walkTo(idx);
+    }, HOLD_TO_WALK_MS);
+    G.holdPress = hold;
+  }
+
   function handleTileClick(idx, p) {
-    const code = G.puzzle.tiles[idx];
-    if (isWalkable(code) && reach().has(idx)) {
-      if (idx !== G.puzzle.hero)
-        startWalk(idx, null);
+    if (clickWalks(idx)) {
+      walkTo(idx);
       return;
     }
     const acts = actionsForTile(idx, G.selectedElement, p);
@@ -236,8 +266,37 @@
       return;
 
     const idx = pointToTile(p);
-    if (idx >= 0)
+    if (idx < 0)
+      return;
+    /* right-click always walks, whatever element is selected */
+    if (e.button === 2)
+      walkTo(idx);
+    else if (e.button === 0 && raisesStone(idx)) {
+      beginHold(idx, p);
+      /* the release must reach the canvas even when it happens outside it */
+      if (canvas.setPointerCapture)
+        canvas.setPointerCapture(e.pointerId);
+    } else if (e.button === 0) {
       handleTileClick(idx, p);
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    const hold = G.holdPress;
+    if (!hold)
+      return;
+    cancelHold();
+    if (G.state !== STATE_PLAYING || G.pendingCast || G.winSeq)
+      return;
+    /* the release has to stay on the pressed tile, so a press can still be dragged off to abort */
+    if (pointToTile(pointerToView(e)) === hold.idx)
+      handleTileClick(hold.idx, hold.p);
+  });
+
+  canvas.addEventListener('pointercancel', cancelHold);
+
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
   });
 
   canvas.addEventListener('pointermove', (e) => {
