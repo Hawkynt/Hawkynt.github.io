@@ -1013,18 +1013,82 @@ Readable pixel-art or stylized 2D rendering with bright effects over a dark sci-
 
 ## 11.1 Architecture
 
-* JavaScript IIFE pattern under `window.SZ`
-* Modular internal systems for:
+* Plain browser JavaScript, no build step: every file is an IIFE that adds one module to `window.SZ.DomeKeeper` (`NS.<module>`); the `<script>` order in `index.html` is the load order, dependencies first
+* A module imports what it needs from modules loaded before it by destructuring at the top (`const { drawPanel } = NS.panels;`) and calls a module loaded after it through the namespace (`NS.chests.chestAt(...)`)
+* Run state that several modules read or write lives in one shared context object, `NS.state` (`G` in every file): plain properties, each initialised by its owner module at load; state used by one module only stays private to that module
+* Every file starts with a short comment naming what it owns (exports and state fields) and what it reads
 
-  * game state
-  * rendering
-  * input
-  * entity management
-  * wave manager
-  * mine generation
-  * upgrades
-  * persistence
-  * effects
+### Files
+
+* `js/core/namespace.js` -- creates `SZ.DomeKeeper` and the shared state object
+* `js/core/constants.js` -- Fixed numbers and ids: canvas size, views, game states, storage keys, grid geometry, tile types and colours
+* `js/core/util.js` -- Seeded random generator, offscreen canvas factory and colour helpers
+* `js/core/dom.js` -- Canvas and status-bar elements, the OS window API and the shared particle, shake and floating-text effects
+* `js/core/rules.js` -- Tile names, depth tiers, base stats, mining times, tool definitions and level cost ladders
+* `js/core/game-state.js` -- Animation clocks, the run state (dome, bag, weapon, keeper, camera, enemies, grid, tree view), tutorial pages and canvas setup
+* `js/core/persistence.js` -- Saving, validating, migrating and restoring a run; high scores; title-screen buttons
+* `js/core/run.js` -- Starting and resetting a run, the gadget choice and the surface / underground view transition
+
+**Data**
+
+* `js/data/upgrade-tree.js` -- The upgrade tree nodes, their effect texts and the tree layout metrics
+
+**World**
+
+* `js/world/mine-gen.js` -- Generating the underground grid: strata, ore veins, gadget chambers and tile hit points
+* `js/world/pathfinding.js` -- Breadth-first search for walking through the tunnels
+* `js/world/time.js` -- World time: day and night, sun and moon, sky light and the nightly attacks
+* `js/world/weather.js` -- Seasons and weather simulation: rain, snow, storms, lightning, meteors and meteor ore
+* `js/world/biomes.js` -- Biomes and the landing site: every site gets one, picked by its seed
+
+**Systems**
+
+* `js/systems/upgrades.js` -- Upgrade rules: node levels, prerequisites, purchasing, effective levels and stat effects
+* `js/systems/animation.js` -- Per-frame animation updates, crumble and dust spawners and the shield-aware damage helper
+* `js/systems/relocation.js` -- The Relocation Core, packing up, the landing / flight cinematic state and its confirmation
+* `js/systems/waves.js` -- Enemy types, elites, spawning nightly waves, enemy behaviour and damage to the dome
+* `js/systems/weapon.js` -- The dome weapon: aimed shots, weak points, charged shots, combos and parrying
+* `js/systems/mining.js` -- Mining tiles, ore drops, gadget chambers and the tool actions (blast tool, teleporter)
+* `js/systems/bombs.js` -- Bombs: crafting, combining, dropping, throwing, lobbing, fuses and blasts in the mine and on the surface
+* `js/systems/cargo.js` -- The bag and the Compressor, ore piles in the mine and ore flying to the keeper
+* `js/systems/chests.js` -- Secret chests: placement, reveal and the lock, circuit and rune minigames
+* `js/systems/artifacts.js` -- Artifacts: unique finds from secret chests, kept for the whole run, and their effects
+* `js/systems/gadgets.js` -- Primary and mine gadget updates
+* `js/systems/drones.js` -- Drones: couriers in the mine, gun and repair drones at the dome
+* `js/systems/update.js` -- Mouse-path movement underground and the per-frame game update
+
+**Rendering**
+
+* `js/render/sprites.js` -- Pixel-art sprites drawn once into offscreen canvases, and inline icon text
+* `js/render/fx-art.js` -- Site-independent effect art: dome glass, cracks and the glow sprite with its tinted copies
+* `js/render/hud-fade.js` -- HUD fading: panels turn see-through while something is behind them; clicks pass through to monsters
+* `js/render/weather.js` -- Drawing precipitation, lightning, meteors, meteor ore and snow cover
+* `js/render/cinematic.js` -- Drawing the landing and relocation sequence, the relocate button and its confirmation box
+* `js/render/chests.js` -- Drawing the chest minigames, chests in the mine and the chest pointers
+* `js/render/drones.js` -- Drawing drones in the mine and at the dome, and the drone HUD
+* `js/render/surface-art.js` -- Cached surface art of the site (sky, ridges, ground, plants) and drawing the sky and ground
+* `js/render/enemies.js` -- Drawing monsters, their shots, shields, HP bars and the dome weapon projectiles
+* `js/render/dome.js` -- Drawing the dome, its turret and its landing rig
+* `js/render/underground.js` -- Drawing the mine: tiles, cached tile art, ore piles and the keeper
+* `js/render/mine-hud.js` -- Resource HUD, cargo tooltip, stack icons and the underground tool HUD
+* `js/render/gadgets.js` -- Drawing gadgets, the surface HUD, key hints and the Relocation Core marker
+* `js/render/bombs.js` -- Drawing bombs, blasts, the throw preview and the bomb bar
+* `js/render/combat.js` -- Combat overlays: weak points, charge ring, parry, tells and combo
+* `js/render/hud.js` -- The quick upgrade panel and the HUD
+* `js/render/scene.js` -- Composing a frame: the surface scene, the whole game screen and the tutorial overlay
+
+**User interface**
+
+* `js/ui/text-layout.js` -- Text measuring and fitting: every label is measured against the box it lives in
+* `js/ui/panels.js` -- One frame style for every box on screen: panels, meters, chips, buttons, headlines, scrim
+* `js/ui/upgrade-tree.js` -- The full-screen upgrade tree dialog: layout, camera, drawing, keyboard and mouse
+* `js/ui/craft-dialog.js` -- The Bomb Workshop dialog: layout, input and drawing
+* `js/ui/tooltip.js` -- Tooltips for tiles, enemies and upgrade nodes, and the status bar
+* `js/ui/input.js` -- Keyboard, pointer and wheel input, auto-pause and saving when the page is hidden
+
+**Start-up**
+
+* `js/app.js` -- Game loop, menu actions, OS integration and start-up
 
 ### Shared Libraries
 
@@ -1354,7 +1418,7 @@ This is deployment/publishing scope, not core game design scope. Separate it unl
 
 ## 21. Appendix: Implemented Upgrade Tables
 
-The full tree (148 nodes) is defined in `UPGRADE_TREE` in `controller.js`; the in-game tree shows every cost. Highlights:
+The full tree (148 nodes) is defined in `UPGRADE_TREE` in `js/data/upgrade-tree.js`; the in-game tree shows every cost. Highlights:
 
 | Branch   | Chain / node        | Tiers | First cost        | Top tier cost                         |
 | -------- | ------------------- | ----: | ----------------- | ------------------------------------- |
