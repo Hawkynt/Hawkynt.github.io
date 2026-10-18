@@ -1,14 +1,15 @@
 ;(function() {
   'use strict';
 
-  /* A day from start to end: resetting every day field of G, the per-frame
-     simulation step of a running day (venue rotation, spawning, all
-     systems, tension), the day-end check, the result and the star pops. */
+  /* A day from start to end: resetting every day field of G, pausing and
+     resuming, the per-frame simulation step of a running day (venue
+     rotation, spawning, all systems, tension), the day-end check, the
+     result and the star pops. */
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.CookingGame || (SZ.CookingGame = {});
   const G = NS.state;
-  const { VIEW_W, STATE_PLAYING, STATE_DAY_OVER, ENDLESS_PHASE, WAITER_DELAY } = NS.C;
+  const { VIEW_W, STATE_PLAYING, STATE_PAUSED, STATE_DAY_OVER, ENDLESS_PHASE, WAITER_DELAY } = NS.C;
   const { SECOND_SLOT } = NS.Tree;
   const { ctx, ui } = NS.view;
   const { fx, sfx } = NS.juice;
@@ -136,9 +137,14 @@
     const newBest = G.mode === 'endless' ? G.earned > G.save.best.endless
       : G.mode === 'daily' ? (G.save.best.daily.date !== G.dailyDate || G.earned > G.save.best.daily.earned)
       : false;
+    const stars = G.mode === 'career' ? SZ.KitchenData.starsFor(G.dayInfo, G.earned) : 0;
+    /* a career day is won with at least one star; Endless Rush and the
+       Daily Special always end on failures or the last guest, so they are
+       won by setting a new best — the sound and the results panel both
+       read this one flag */
+    const won = G.mode === 'career' ? stars >= 1 : newBest;
     G.dayResult = {
-      earned: G.earned, served: G.served, walkouts: G.walkouts, ruined: G.ruinedServed, newBest,
-      stars: G.mode === 'career' ? SZ.KitchenData.starsFor(G.dayInfo, G.earned) : 0
+      earned: G.earned, served: G.served, walkouts: G.walkouts, ruined: G.ruinedServed, newBest, stars, won
     };
     G.state = STATE_DAY_OVER;
     G.dayOverT = 0;
@@ -150,12 +156,33 @@
     }
     saveDayResult();
     saveHighScores();
-    /* a career day is won with at least one star; the challenge modes are
-       won by lasting out the day instead of failing on walkouts or ruins */
-    const won = G.mode === 'career' ? G.dayResult.stars >= 1 : G.walkouts < 3 && G.ruinedServed < 3;
     sfx(won ? 'win' : 'lose');
     updateWindowTitle();
     updateStatus();
+  }
+
+  /* Pausing and resuming a running day — the one path shared by Escape,
+     the Game > Pause menu entry, the pause panel's Resume button and the
+     auto-pause: the pause panel opens with Resume under the cursor and the
+     title and status bar follow the state. */
+  function pauseDay() {
+    if (G.state !== STATE_PLAYING) return;
+    G.state = STATE_PAUSED;
+    G.menuCursor = 0;
+    updateWindowTitle();
+    updateStatus();
+  }
+
+  function resumeDay() {
+    if (G.state !== STATE_PAUSED) return;
+    G.state = STATE_PLAYING;
+    updateWindowTitle();
+    updateStatus();
+  }
+
+  function togglePause() {
+    if (G.state === STATE_PLAYING) pauseDay();
+    else if (G.state === STATE_PAUSED) resumeDay();
   }
 
   /* One simulated step of a running day: the venue rotation of the
@@ -215,6 +242,6 @@
     }
   }
 
-  NS.day = { startDay, updatePlaying, updateDayOver };
+  NS.day = { startDay, updatePlaying, updateDayOver, pauseDay, resumeDay, togglePause };
 
 })();

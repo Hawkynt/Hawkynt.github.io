@@ -17,7 +17,7 @@
   const { updateWindowTitle, updateStatus, showHighScores } = NS.status;
   const { updateFx } = NS.effects;
   const { updateCoins } = NS.serving;
-  const { updatePlaying, updateDayOver } = NS.day;
+  const { updatePlaying, updateDayOver, togglePause } = NS.day;
   const { drawCustomers, drawCustomerOverlays, drawCarpet } = NS.guestsView;
   const { drawPass, drawBurnAlerts, drawStations, drawStationBars } = NS.kitchenView;
   const { drawCoins, drawFlying, drawArcs, drawRings, drawPops } = NS.flightsView;
@@ -137,11 +137,7 @@
         setScreen(STATE_TITLE);
         break;
       case 'pause':
-        if (G.state === STATE_PLAYING)
-          G.state = STATE_PAUSED;
-        else if (G.state === STATE_PAUSED)
-          G.state = STATE_PLAYING;
-        updateWindowTitle();
+        togglePause();
         break;
       case 'high-scores':
         showHighScores();
