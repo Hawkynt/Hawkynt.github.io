@@ -1274,13 +1274,16 @@
 
   // RFC 7932 Section 8: bit-depth array, giving NWORDS[length] = Shl32(1, NDBITS[length])
   // for length 4..24 (0 for length < 4).
+  /** @type {uint8[]} */
   const NDBITS = [0, 0, 0, 0, 10, 10, 11, 11, 10, 10, 10, 10, 10, 9, 9, 8, 7, 7, 8, 7, 7, 6, 6, 5, 5];
 
+  /** @type {int32[]} */
   const NWORDS = new Array(NDBITS.length);
   for (let length = 0; length < NDBITS.length; ++length)
     NWORDS[length] = NDBITS[length] > 0 ? OpCodes.Shl32(1, NDBITS[length]) : 0;
 
   // DOFFSET[length+1] = DOFFSET[length] + length*NWORDS[length]; DOFFSET[0] = 0.
+  /** @type {int32[]} */
   const DOFFSET = new Array(NDBITS.length + 1).fill(0);
   for (let length = 0; length < NDBITS.length; ++length)
     DOFFSET[length + 1] = DOFFSET[length] + length * NWORDS[length];
@@ -1317,8 +1320,11 @@
   ];
 
   // The three columns of TRANSFORMS, each holding values of one type.
+  /** @type {string[]} */
   const TRANSFORM_PREFIXES = TRANSFORMS.map(t => t[0]);
+  /** @type {int32[]} */
   const TRANSFORM_TYPES = TRANSFORMS.map(t => t[1]);
+  /** @type {string[]} */
   const TRANSFORM_SUFFIXES = TRANSFORMS.map(t => t[2]);
 
   const T_IDENTITY = 0, T_FERMENT_FIRST = 1, T_FERMENT_ALL = 2;
@@ -1326,6 +1332,11 @@
   // RFC 7932 Section 8: single-byte "ferment" (case-flip) step for FermentFirst/
   // FermentAll, covering ASCII, 2-byte and 3-byte UTF-8 sequences. Returns the
   // number of bytes consumed by this step.
+  /**
+   * @param {uint8[]} word - word bytes, modified in place
+   * @param {int32} pos - first byte of the step
+   * @returns {int32} bytes consumed
+   */
   function fermentStep(word, pos) {
     const b = word[pos];
     if (b < 192) {
@@ -1340,10 +1351,18 @@
     }
   }
 
+  /**
+   * @param {uint8[]} word - word bytes, modified in place
+   * @returns {void}
+   */
   function fermentFirst(word) {
     if (word.length > 0) fermentStep(word, 0);
   }
 
+  /**
+   * @param {uint8[]} word - word bytes, modified in place
+   * @returns {void}
+   */
   function fermentAll(word) {
     let i = 0;
     while (i < word.length) i += fermentStep(word, i);
@@ -1352,15 +1371,23 @@
   // Apply word transform `transformId` (0..120) to `baseWord` (a plain byte
   // array), returning a new plain byte array per RFC 7932 Section 8:
   // transform_i(word) = prefix_i + T_i(word) + suffix_i
+  /**
+   * @param {uint8[]} baseWord - dictionary word
+   * @param {int32} transformId - transform 0..120
+   * @returns {uint8[]} transformed word, null for an unknown transform
+   */
   function ApplyTransform(baseWord, transformId) {
     if (transformId < 0 || transformId >= TRANSFORMS.length) return null;
-    const [prefix, tid, suffix] = TRANSFORMS[transformId];
+    const prefix = TRANSFORM_PREFIXES[transformId];
+    const tid = TRANSFORM_TYPES[transformId];
+    const suffix = TRANSFORM_SUFFIXES[transformId];
     let word = baseWord.slice();
     if (tid === T_FERMENT_FIRST) fermentFirst(word);
     else if (tid === T_FERMENT_ALL) fermentAll(word);
     else if (tid >= 3 && tid <= 11) { const k = tid - 2; word = word.slice(Math.min(k, word.length)); }
     else if (tid >= 12 && tid <= 20) { const k = tid - 11; word = word.slice(0, Math.max(0, word.length - k)); }
 
+    /** @type {uint8[]} */
     const result = [];
     for (let i = 0; i < prefix.length; ++i) result.push(prefix.charCodeAt(i));
     for (let i = 0; i < word.length; ++i) result.push(word[i]);
@@ -1370,6 +1397,12 @@
 
   // RFC 7932 Section 8: resolve a <length, distance> pair (once distance exceeds
   // the maximum in-window backward distance) to the transformed dictionary word.
+  /**
+   * @param {int32} length - copy length
+   * @param {int32} distance - copy distance
+   * @param {int32} maxAllowedDistance - largest in-window distance
+   * @returns {uint8[]} transformed word, null when the pair names none
+   */
   function LookupWord(length, distance, maxAllowedDistance) {
     if (length < 4 || length > 24) return null;
     const nwords = NWORDS[length];
@@ -1389,6 +1422,7 @@
   // Signed (Lut2) context modes. Extracted directly from the RFC text and
   // verified against the RFC's stated per-table CRC-32 values (0x8e91efb7,
   // 0xd01a32f4, 0x0dd7a0d6 respectively).
+  /** @type {uint8[]} */
   const CONTEXT_LUT0 = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 0, 0, 4, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 12, 16, 12, 12, 20, 12, 16,
@@ -1404,6 +1438,7 @@
     2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3,
     2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3
   ];
+  /** @type {uint8[]} */
   const CONTEXT_LUT1 = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1,
@@ -1419,6 +1454,7 @@
     0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
   ];
+  /** @type {uint8[]} */
   const CONTEXT_LUT2 = [
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -1435,28 +1471,9 @@
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7
   ];
 
-  // Returns the table of this module with the given property name, so a
-  // consumer can bind it to a local of the element type it documents.
-  function Table(name) {
-    return BrotliDictionary[name];
-  }
-
-  const BrotliDictionary = {
-    DICT: DICT,
-    CONTEXT_LUT0: CONTEXT_LUT0,
-    CONTEXT_LUT1: CONTEXT_LUT1,
-    CONTEXT_LUT2: CONTEXT_LUT2,
-    NDBITS: NDBITS,
-    NWORDS: NWORDS,
-    DOFFSET: DOFFSET,
-    TRANSFORMS: TRANSFORMS,
-    TRANSFORM_PREFIXES: TRANSFORM_PREFIXES,
-    TRANSFORM_TYPES: TRANSFORM_TYPES,
-    TRANSFORM_SUFFIXES: TRANSFORM_SUFFIXES,
-    ApplyTransform: ApplyTransform,
-    LookupWord: LookupWord,
-    Table: Table
+  // Every table keeps the type its declaration states where a consumer reads it.
+  return {
+    DICT, CONTEXT_LUT0, CONTEXT_LUT1, CONTEXT_LUT2, NDBITS, NWORDS, DOFFSET, TRANSFORMS,
+    TRANSFORM_PREFIXES, TRANSFORM_TYPES, TRANSFORM_SUFFIXES, ApplyTransform, LookupWord
   };
-
-  return BrotliDictionary;
 }));

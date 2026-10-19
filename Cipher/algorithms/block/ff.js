@@ -67,8 +67,10 @@
    * @returns {int32[]} [minLength, maxLength]
    */
   function ff3LengthLimits(radix) {
+    /** @type {int32} */
     let minLength = 2;
     while (Math.pow(radix, minLength) < FF3_MIN_DOMAIN_SIZE) minLength++;
+    /** @type {int32} */
     const maxLength = 2 * Math.floor(96 * Math.LN2 / Math.log(radix));
     /** @type {int32[]} */
     const limits = [minLength, maxLength];

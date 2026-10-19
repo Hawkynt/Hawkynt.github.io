@@ -59,7 +59,7 @@
     }
 
     /** @type {uint8[]} */
-    const result = [n];
+    const result = [OpCodes.ToByte(n)];
     for (let i = 1; i <= n; i++) {
       result.push(OpCodes.GetByte(value, n - i));
     }

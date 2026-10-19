@@ -71,7 +71,7 @@
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.complexity = ComplexityType.BASIC;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Algorithm-specific metadata

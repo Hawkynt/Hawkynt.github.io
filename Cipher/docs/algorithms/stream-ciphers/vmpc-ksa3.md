@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Bartosz Zoltak |
 | Year | 2006 |
-| Origin | Not specified |
+| Origin | 🇵🇱 Poland |
 | Source | [`algorithms/stream/vmpcksa3.js`](../../../algorithms/stream/vmpcksa3.js) |
 
 ## Parameters

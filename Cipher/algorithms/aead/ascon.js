@@ -204,7 +204,7 @@
       this.subCategory = "Lightweight Cryptography";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.AUSTRIA;
+      this.country = CountryCode.AT;
 
       this.documentation = [
         new LinkItem(

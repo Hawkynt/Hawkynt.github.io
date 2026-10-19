@@ -329,7 +329,7 @@ __DUMMY_CLASSES__
             }
             catch (TargetInvocationException e) when (e.InnerException != null)
             {
-                throw e.InnerException;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
             }
         }
 
@@ -345,7 +345,7 @@ __DUMMY_CLASSES__
             }
             catch (TargetInvocationException e) when (e.InnerException != null)
             {
-                throw e.InnerException;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
             }
         }
 
@@ -375,6 +375,29 @@ __DUMMY_CLASSES__
                 return list;
             }
             if (under.IsEnum) return Enum.ToObject(under, Convert.ToInt64(value, CultureInfo.InvariantCulture));
+            // A JavaScript BigInt member takes any integral vector value, and the reverse
+            if (under == typeof(System.Numerics.BigInteger))
+            {
+                if (value is string text) return System.Numerics.BigInteger.Parse(text, CultureInfo.InvariantCulture);
+                if (value is ulong unsignedValue) return new System.Numerics.BigInteger(unsignedValue);
+                if (value is IConvertible) return new System.Numerics.BigInteger(Convert.ToDecimal(value, CultureInfo.InvariantCulture));
+            }
+            if (value is System.Numerics.BigInteger big && typeof(IConvertible).IsAssignableFrom(under))
+                return Convert.ChangeType((decimal)big, under, CultureInfo.InvariantCulture);
+            // A record (an anonymous object of the vectors) for a class with a parameterless
+            // constructor: a new instance taking the record's members of the same names
+            if (under.IsClass && !(value is IConvertible) && !(value is IEnumerable) && under.GetConstructor(Type.EmptyTypes) != null)
+            {
+                object instance = Activator.CreateInstance(under);
+                IEnumerable<KeyValuePair<string, object>> members = value is IDictionary<string, object> dictionary ? dictionary
+                    : value.GetType().GetProperties().Where(p => p.GetIndexParameters().Length == 0).Select(p => new KeyValuePair<string, object>(p.Name, p.GetValue(value)));
+                foreach (var member in members)
+                {
+                    MemberInfo destination = FindMember(instance, member.Key);
+                    if (destination != null) Assign(destination, instance, member.Value);
+                }
+                return instance;
+            }
             if (value is IConvertible && typeof(IConvertible).IsAssignableFrom(under))
                 return Convert.ChangeType(value, under, CultureInfo.InvariantCulture);
             throw new InvalidCastException(value.GetType().Name + " cannot be converted to " + target.Name);
@@ -453,11 +476,18 @@ __DUMMY_CLASSES__
                     if (type.ContainsGenericParameters || type == typeof(ValidationHarness)) continue;
                     foreach (FieldInfo field in type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
-                        if (field.IsLiteral || (!IsAlgorithmType(field.FieldType) && field.FieldType != typeof(object))) continue;
+                        // The registry array holds what a registration loop registered
+                        bool registry = field.FieldType.IsArray && IsAlgorithmType(field.FieldType.GetElementType());
+                        if (field.IsLiteral || (!registry && !IsAlgorithmType(field.FieldType) && field.FieldType != typeof(object))) continue;
                         try
                         {
                             object value = field.GetValue(null);
-                            if (value != null && IsAlgorithmType(value.GetType()) && !knownAlgorithms.Contains(value)) knownAlgorithms.Add(value);
+                            if (registry && value is Array registered)
+                            {
+                                foreach (object entry in registered)
+                                    if (entry != null && !knownAlgorithms.Contains(entry)) knownAlgorithms.Add(entry);
+                            }
+                            else if (value != null && IsAlgorithmType(value.GetType()) && !knownAlgorithms.Contains(value)) knownAlgorithms.Add(value);
                         }
                         catch (Exception e)
                         {
@@ -565,7 +595,9 @@ __DUMMY_CLASSES__
         {
             while ((e is TargetInvocationException || e is TypeInitializationException || e is AggregateException) && e.InnerException != null)
                 e = e.InnerException;
-            return e.GetType().Name + ": " + e.Message;
+            // VALIDATION_TRACE=1 in the environment adds where it was thrown, for a manual rerun
+            string trace = Environment.GetEnvironmentVariable("VALIDATION_TRACE") == "1" ? " @ " + e.StackTrace : "";
+            return e.GetType().Name + ": " + e.Message + trace;
         }
 
         private static object CreateDummyCipher()

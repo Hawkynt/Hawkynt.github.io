@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Hongjun Wu, Tao Huang, Phuong Pham, Steven Sim |
 | Year | 2016 |
-| Origin | Not specified |
+| Origin | 🇸🇬 Singapore |
 | Source | [`algorithms/stream/acorn.js`](../../../algorithms/stream/acorn.js) |
 
 ## Parameters

@@ -65,7 +65,7 @@
       this.subCategory = "Key Wrapping";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [

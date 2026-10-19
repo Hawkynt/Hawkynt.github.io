@@ -486,6 +486,98 @@ test('Perl harness: given a wrong vector, a throwing setter and an unapplied fie
   checkProbe(runProbe('perl', PERL_PROBE));
 });
 
+// The Ruby stand-in runs on the real runtime prelude (RubyTransformer.js),
+// whose JSBase gives the probe instance JavaScript's `name in instance`.
+const rbList = list => `[${list.join(', ')}]`;
+const rbVector = (v, extra = '') => `JSObject.new({ "text" => "${v.text}", "input" => ${rbList(v.input)}, "key" => ${rbList(v.key)}, "iv" => ${rbList(v.iv)}, "expected" => ${rbList(v.expected)}${extra} })`;
+const RB_PROBE = () => `${require(path.join(__dirname, '..', 'codingplugins', 'RubyTransformer.js')).RUBY_RUNTIME}
+class ProbeInstance < JSBase
+  def initialize(algorithm, inverse = false)
+    @algorithm = algorithm
+    @data = []
+    @_key = nil
+    @_iv = nil
+  end
+  def key = @_key
+  def key=(v)
+    @_key = v.to_a
+  end
+  def iv = @_iv
+  def iv=(v)
+    raise JSError.new('iv rejected') if @algorithm.name == 'Throwing'
+    @_iv = v.to_a
+  end
+  def Feed(d) = @data.concat(d.to_a)
+  def Result
+    out = @data.each_with_index.map { |b, i| b ^ @_key[i % @_key.length] ^ @_iv[0] }
+    out[0] ^= 1 if @algorithm.name == 'Wrong' && out.length == 2
+    out
+  end
+end
+class ProbeAlgorithm < JSBase
+  attr_accessor :name, :tests
+  def initialize(name, tests)
+    @name = name
+    @tests = tests
+  end
+  def CreateInstance(inverse = false, *_) = ProbeInstance.new(self, inverse)
+end
+${JSON.stringify(PROBES)}.each do |name|
+  extra = name == 'Lacking'
+  tests = extra ? [${PROBE_VECTORS.map(v => rbVector(v, ', "counter" => 7')).join(', ')}] : [${PROBE_VECTORS.map(v => rbVector(v)).join(', ')}]
+  $__js_algorithms.push(ProbeAlgorithm.new(name, tests))
+end
+`;
+
+test('Ruby harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('ruby')) return 'skip';
+  checkProbe(runProbe('ruby', RB_PROBE()));
+});
+
+// The FreeBASIC stand-in is JavaScript transpiled by basic.js, so it runs on
+// the real runtime and its AlgorithmFramework subset.
+const BAS_PROBE_JS = `
+class ProbeInstance extends IAlgorithmInstance {
+  constructor(algorithm, inverse) { super(algorithm); this.data = []; this._key = null; this._iv = null; }
+  set key(k) { this._key = k; }
+  get key() { return this._key; }
+  set iv(v) { if (this.algorithm.name === 'Throwing') throw new Error('iv rejected'); this._iv = v; }
+  get iv() { return this._iv; }
+  Feed(d) { for (let i = 0; i < d.length; ++i) this.data.push(d[i]); }
+  Result() {
+    const out = [];
+    for (let i = 0; i < this.data.length; ++i) out.push(this.data[i] ^ this._key[i % this._key.length] ^ this._iv[0]);
+    if (this.algorithm.name === 'Wrong' && out.length === 2) out[0] ^= 1;
+    return out;
+  }
+}
+class ProbeAlgorithm extends Algorithm {
+  constructor(name, tests) { super(); this.name = name; this.tests = tests; }
+  CreateInstance(isInverse) { return new ProbeInstance(this, isInverse); }
+}
+const names = ${JSON.stringify(PROBES)};
+for (let n = 0; n < names.length; ++n) {
+  const tests = ${JSON.stringify(PROBE_VECTORS)};
+  if (names[n] === 'Lacking') for (let i = 0; i < tests.length; ++i) tests[i].counter = 7;
+  RegisterAlgorithm(new ProbeAlgorithm(names[n], tests));
+}
+`;
+
+test('FreeBASIC harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('basic')) return 'skip';
+  const { TypeAwareJSASTParser } = require(path.join(__dirname, '..', 'type-aware-transpiler.js'));
+  const { FreeBasicTransformer } = require(path.join(__dirname, '..', 'codingplugins', 'BasicTransformer.js'));
+  const log = console.log;
+  console.log = () => {};
+  let generated;
+  try {
+    generated = new FreeBasicTransformer({ className: 'probeGenerated' }).generate(new TypeAwareJSASTParser(BAS_PROBE_JS).parse());
+  } finally {
+    console.log = log;
+  }
+  checkProbe(runProbe('basic', generated));
+});
+
 // The C# stand-in mimics the generated code's shape: framework stub classes
 // named as in AlgorithmFramework.js (the stub instance declares IV and Nonce,
 // as csharp.js's does) and algorithm classes nested in a *Generated class,

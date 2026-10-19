@@ -8,8 +8,8 @@
 | --- | --- |
 | Category | Hash Functions |
 | Sub-category | MD Family |
-| Security status | Not classified |
-| Complexity | Not specified |
+| Security status | ❌ Broken |
+| Complexity | Beginner |
 | Inventor | Ronald Rivest |
 | Year | 1989 |
 | Origin | 🇺🇸 United States |
@@ -23,7 +23,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 No vulnerabilities are recorded for this implementation.
 

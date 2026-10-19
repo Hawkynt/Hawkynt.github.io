@@ -878,7 +878,9 @@
     /** @type {int32[]} */
     const out = new Array(outputLength);
     const radix = Math.pow(2, b);
-    let position = 0, total = 0, bits = 0;
+    let position = 0, bits = 0;
+    /** @type {int32} */
+    let total = 0;
     for (let i = 0; i < outputLength; ++i) {
       while (bits < b) {
         /** @type {int32} */
@@ -1004,6 +1006,7 @@
       const out = new Array(p.k);
       let offset = 0;
       for (let i = 0; i < p.k; ++i) {
+        /** @type {int32} */
         let value = 0;
         for (let j = 0; j < p.a; ++j) {
           const byte = messageDigest[Math.floor(offset / 8)];
@@ -1047,6 +1050,7 @@
     _wotsMessage(message) {
       const p = this.params;
       const digits = BaseTwoB(message, p.lgw, p.len1);
+      /** @type {int32} */
       let checksum = 0;
       for (let i = 0; i < p.len1; ++i) checksum += p.w - 1 - digits[i];
       // csum shifted left by ((8 - ((len2 * lgw) mod 8)) mod 8), left-aligned in its bytes
@@ -1534,6 +1538,7 @@
       for (let i = p.mdBytes; i < treeEnd; ++i) idxTree = idxTree * 256n + BigInt(digest[i]);
       idxTree = idxTree % (2n ** BigInt(p.h - p.hp));
 
+      /** @type {int32} */
       let idxLeaf = 0;
       for (let i = treeEnd; i < treeEnd + p.leafIdxBytes; ++i) {
         /** @type {int32} */
@@ -1713,7 +1718,7 @@
       this.subCategory = "Post-Quantum Signature";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       this.SupportedKeySizes = [
         new KeySize(64, 64, 1),    // n=16 parameter sets: 4n-byte private key

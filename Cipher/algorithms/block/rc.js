@@ -311,7 +311,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
-      /** @type {uint32[]|null} */
+      /** @type {uint16[]|null} 64 working-key words */
       this.expandedKey = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];

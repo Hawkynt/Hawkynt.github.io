@@ -8,7 +8,7 @@
 | --- | --- |
 | Category | Stream Ciphers |
 | Sub-category | Rolling-Array Stream Cipher |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Advanced |
 | Inventor | Eli Biham, Jennifer Seberry |
 | Year | 2006 |
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

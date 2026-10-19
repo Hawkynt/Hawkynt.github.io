@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Joan Daemen, Pedro Maat Costa Massolino, Yann Rotella |
 | Year | 2019 |
-| Origin | Not specified |
+| Origin | 🇳🇱 Netherlands |
 | Source | [`algorithms/aead/subterranean.js`](../../../algorithms/aead/subterranean.js) |
 
 ## Parameters

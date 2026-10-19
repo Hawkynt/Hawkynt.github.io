@@ -237,6 +237,50 @@ test('checkFile: given a probe that keeps its sum in a uint32, when checked, the
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+test('checkFile: given a framework enum member the enum does not declare, on a path no vector reaches, when checked, then it is reported', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
+  try {
+    const file = writeProbe(dir, 'TypeSoundnessProbeE', '      if (this.data.length > 99) this.algorithm.complexity = AlgorithmFramework.ComplexityType.LOW;\n      return [OpCodes.And32(this.data.length, 0xFF)];');
+    const r = await TypeSoundness.checkFile(file);
+    const m = r.mismatches.find(x => x.kind === 'missing-enum-member');
+    if (!m) throw new Error(JSON.stringify(r.mismatches));
+    equal([r.error, m.line, m.expression, m.type, m.observed[0]], [null, 23, 'AlgorithmFramework.ComplexityType.LOW', 'ComplexityType', 'undefined']);
+    equal(TypeSoundness.siteCount(r.mismatches), 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('checkFile: given only declared enum members, when checked, then nothing is reported', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
+  try {
+    const file = writeProbe(dir, 'TypeSoundnessProbeF', '      if (this.data.length > 99) this.algorithm.complexity = AlgorithmFramework.ComplexityType.BEGINNER;\n      return [OpCodes.And32(this.data.length, 0xFF)];');
+    const r = await TypeSoundness.checkFile(file);
+    equal([r.error, r.mismatches.length], [null, 0]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('checker: given a framework enum, when undefined flows, then it is an undefined member; null is no member and fits', () => {
+  global.AlgorithmFramework = global.AlgorithmFramework || require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
+  equal([TypeSoundness.checkerFor('SecurityStatus')(undefined), TypeSoundness.checkerFor('SecurityStatus')(null)], ['undefined-enum-member', null]);
+});
+test('checkFile: given a data module (registers nothing) whose loading builds a uint8[] holding 300, when checked, then the table site is reported', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
+  try {
+    const file = path.join(dir, 'probe.data.js');
+    fs.writeFileSync(file, '(function () {\n  \'use strict\';\n  /** @type {uint8[]} */\n  const T = new Array(2).fill(0);\n  for (let i = 0; i < 2; i++) T[i] = 200 + 100 * i;\n  module.exports = { T };\n})();\n');
+    const r = await TypeSoundness.checkFile(file);
+    equal(r.error, null, 'error ');
+    if (!r.mismatches.some(m => m.line === 5 && m.kind === 'above-range')) throw new Error(JSON.stringify(r.mismatches));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('collectSites: given a generic helper (@template T), when collected, then T and T[] sites are not checked', () => {
+  const parsed = TypeSoundness.parseSource('/**\n * @template T\n * @param {T[]} target\n * @param {T[]} source\n * @returns {T[]} target\n */\nfunction appendAll(target, source) { for (let i = 0; i < source.length; i++) target.push(source[i]); return target; }');
+  const types = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks.map(c => c.type));
+  equal(types.filter(t => /\bT\b/.test(t)).length, 0);
+});
 test('checkFile: given a file the transpiler cannot parse, when checked, then an unparsed error and no mismatches', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soundness-'));
   try {

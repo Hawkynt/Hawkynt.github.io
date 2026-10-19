@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Paul Crowley |
 | Year | 2000 |
-| Origin | Not specified |
+| Origin | 🇬🇧 United Kingdom |
 | Source | [`algorithms/block/mercy.js`](../../../algorithms/block/mercy.js) |
 
 ## Parameters

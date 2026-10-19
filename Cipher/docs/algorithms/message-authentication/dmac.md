@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Erez Petrank, Charles Rackoff |
 | Year | 1997 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/mac/dmac.js`](../../../algorithms/mac/dmac.js) |
 
 ## Parameters

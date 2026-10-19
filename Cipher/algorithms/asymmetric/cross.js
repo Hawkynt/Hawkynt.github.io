@@ -861,7 +861,7 @@
     const x = new Shake(p.rate);
     for (let i = 0; i < parts.length; ++i) ShakeAbsorb(x, parts[i]);
     /** @type {uint8[]} */
-    const separator = [dsc % 256, Math.floor(dsc / 256)];
+    const separator = [OpCodes.GetByte(dsc, 0), OpCodes.GetByte(dsc, 1)];
     ShakeAbsorb(x, separator);
     return ShakeFinalize(x);
   }

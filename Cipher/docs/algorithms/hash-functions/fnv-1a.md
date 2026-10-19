@@ -9,7 +9,7 @@
 | Category | Hash Functions |
 | Sub-category | Fast Hash |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Glenn Fowler, Landon Curt Noll, Phong Vo |
 | Year | 1991 |
 | Origin | 🇺🇸 United States |

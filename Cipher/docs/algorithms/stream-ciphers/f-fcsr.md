@@ -8,11 +8,11 @@
 | --- | --- |
 | Category | Stream Ciphers |
 | Sub-category | FCSR Stream Cipher |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Intermediate |
 | Inventor | François Arnault, Thierry Berger, Cédric Lauradoux |
 | Year | 2005 |
-| Origin | Not specified |
+| Origin | 🇫🇷 France |
 | Source | [`algorithms/stream/f-fcsr.js`](../../../algorithms/stream/f-fcsr.js) |
 
 ## Parameters
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

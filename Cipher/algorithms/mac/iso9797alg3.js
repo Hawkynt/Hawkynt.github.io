@@ -76,7 +76,7 @@
       this.subCategory = "Block Cipher MAC";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.INT;
+      this.country = CountryCode.INTL;
 
       // MAC-specific configuration
       this.SupportedMacSizes = [

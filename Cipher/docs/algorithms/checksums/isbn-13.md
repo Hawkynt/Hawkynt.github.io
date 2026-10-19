@@ -12,7 +12,7 @@
 | Complexity | Beginner |
 | Inventor | International Organization for Standardization (ISO) |
 | Year | 2007 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/checksum/isbn.js`](../../../algorithms/checksum/isbn.js) |
 
 ## Security

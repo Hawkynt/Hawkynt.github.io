@@ -152,7 +152,7 @@
       this.category = CategoryType.CHECKSUM;
       this.subCategory = "Publication Identifier";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
       /** @type {int32} */
       this.checksumSize = 8; // Single check digit (0-9, or 'X'=10 for ISBN-10), fits in a byte
 

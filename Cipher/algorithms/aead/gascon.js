@@ -995,7 +995,7 @@
       this.subCategory = "Lightweight Cryptography";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.FRANCE;
+      this.country = CountryCode.FR;
 
       this.SupportedKeySizes = [new KeySize(16, 16, 1)];
       this.SupportedTagSizes = [new KeySize(16, 16, 1)];

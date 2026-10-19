@@ -861,7 +861,10 @@
   function power2Round(r) {
     const value = modQ(r);
     const r0 = modPlusMinus(value, TWO_POW_D);
-    return [(value - r0) / TWO_POW_D, r0];
+    // value - r0 is a multiple of 2^D: the quotient is exact
+    /** @type {int32} */
+    const r1 = (value - r0) / TWO_POW_D;
+    return [r1, r0];
   }
 
   /**
@@ -1629,7 +1632,7 @@
       throw new Error('ML-DSA context must be at most 255 bytes, got ' + context.length);
 
     /** @type {uint8[]} */
-    const out = [0, context.length];
+    const out = [0, OpCodes.ToByte(context.length)];
     appendAll(out, context);
     appendAll(out, message);
     return out;

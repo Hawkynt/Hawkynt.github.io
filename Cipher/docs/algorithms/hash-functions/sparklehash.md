@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer |
 | Year | 2019 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/hash/sparkle-hash.js`](../../../algorithms/hash/sparkle-hash.js) |
 
 ## Parameters

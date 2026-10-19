@@ -194,6 +194,7 @@
       }
 
       // Add parity bit to make weight even
+      /** @type {uint8} */
       const parityBit = weight % 2;
 
       return [...data, parityBit];

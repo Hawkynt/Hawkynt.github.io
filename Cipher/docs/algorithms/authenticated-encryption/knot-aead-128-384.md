@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Designers from Nanyang Technological University |
 | Year | 2019 |
-| Origin | Not specified |
+| Origin | 🇸🇬 Singapore |
 | Source | [`algorithms/aead/knot-aead.js`](../../../algorithms/aead/knot-aead.js) |
 
 ## Parameters

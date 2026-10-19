@@ -326,9 +326,9 @@
       /** @type {int32} */
       this.rate = rate;
       /** @type {uint32[]} */
-      this.lo = zeros(25);
+      this.lo = OpCodes.CreateArray(25, 0);
       /** @type {uint32[]} */
-      this.hi = zeros(25);
+      this.hi = OpCodes.CreateArray(25, 0);
 
       const padded = input.slice();
       padded.push(0x1F);
@@ -762,9 +762,10 @@
 
   /**
    * Append every element of `source` to `target`.
-   * @param {int32[]} target - target
-   * @param {int32[]} source - source
-   * @returns {int32[]} Result
+   * @template T
+   * @param {T[]} target - target
+   * @param {T[]} source - source
+   * @returns {T[]} Result
    */
   function appendAll(target, source) {
     for (let i = 0; i < source.length; i++) target.push(source[i]);
@@ -797,7 +798,9 @@
   function getBits(bytes, offset, index, bits) {
     let position = index * bits;
     let remaining = bits;
+    /** @type {int32} */
     let value = 0;
+    /** @type {int32} */
     let scale = 1;
 
     while (remaining > 0) {
@@ -1580,7 +1583,7 @@
     }
 
     const publicKey = publicSeed.slice();
-    const packed = zeros(P.publicKeyBytes - P.seedBytes);
+    const packed = OpCodes.CreateArray(P.publicKeyBytes - P.seedBytes, 0);
     for (let i = 0; i < P.m * P.t; i++) {
       putBits(packed, 0, i, PARAM_Q_BITS, y[Math.floor(i / P.m)][i % P.m]);
     }
@@ -1902,7 +1905,7 @@
       for (let j = 0; j < P.treeLevels; j++) appendAll(out, responses[i].z2Seeds[j]);
     }
 
-    const z1 = zeros(P.z1Bytes);
+    const z1 = OpCodes.CreateArray(P.z1Bytes, 0);
     for (let i = 0; i < P.tau * P.n1; i++) {
       putBits(z1, 0, i, PARAM_Q_BITS, responses[Math.floor(i / P.n1)].z1[i % P.n1]);
     }
@@ -1913,7 +1916,7 @@
       return out;
     }
 
-    const z2 = zeros(P.z2Bytes);
+    const z2 = OpCodes.CreateArray(P.z2Bytes, 0);
     for (let i = 0; i < (P.tau * P.n1) / 2; i++) {
       const first = 2 * i;
       const second = 2 * i + 1;
@@ -2653,7 +2656,7 @@
    * Flip one bit of a published hex string, for the rejection cases.
    * @param {string} hex - the published value
    * @param {int32} index - which byte to disturb
-   * @returns {int32[]} the disturbed bytes
+   * @returns {uint8[]} the disturbed bytes
    */
   function disturb(hex, index) {
     const bytes = OpCodes.Hex8ToBytes(hex);

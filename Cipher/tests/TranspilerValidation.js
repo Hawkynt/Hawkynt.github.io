@@ -79,7 +79,11 @@ const resolvedTools = new Map();
  * @returns {{command: string, shell: boolean}|null} null when it is not on PATH
  */
 function resolveTool(name) {
+  // A compiled program is started by its own path
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   if (resolvedTools.has(name)) return resolvedTools.get(name);
+  // A program the validation built itself (a compiled harness) is started as it is
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
     if (process.platform !== 'win32') {
@@ -455,12 +459,15 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust', 'cpp', 'c']);
 // TypeScript is JavaScript with types: it bundles the way JavaScript does
 const JS_BUNDLING = new Set(['javascript', 'typescript']);
 // Languages whose dependencies are transpiled without the runtime prelude and
 // go between the main file's prelude and its code
 const PRELUDE_SPLICING = new Set(['javascript', 'typescript', 'php']);
+// Languages whose dependencies are transpiled as a library: only their own
+// declarations, top-level names prefixed apart, no runtime (the main file has it)
+const LIBRARY_BUNDLE_LANGUAGES = new Set(['go', 'rust']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -512,6 +519,51 @@ function libraryExportNames(source) {
   return { names, single: null };
 }
 
+// Delphi bundles a file with the files it depends on and its .data libraries
+// as Pascal units of their own over one shared runtime unit; the units are
+// joined by this marker and split again by the harness.
+const DELPHI_RUNTIME_UNIT = 'CipherRuntime';
+const DELPHI_UNIT_MARK = '{ ==== next unit ==== }';
+
+/** The .data libraries a file receives as its third factory parameter: [{ param, name, source }]. */
+function delphiLibraries(source, file) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!param) return [];
+  const libs = [];
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(file), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (libPath && !libs.some(l => l.path === libPath))
+      libs.push({ param, path: libPath, name: path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib', source: fs.readFileSync(libPath, 'utf-8') });
+  }
+  return libs;
+}
+
+function transpileDelphiBundle(source, algorithmFile, plugin, dependencies, parserOptions) {
+  const Parser = loadTranspiler();
+  const units = [plugin.GetRuntimeUnit(DELPHI_RUNTIME_UNIT)];
+  const emittedLibraries = new Set();
+  const unitOf = (src, file, name) => {
+    const libraries = delphiLibraries(src, file).map(l => {
+      if (!emittedLibraries.has(l.path)) {
+        emittedLibraries.add(l.path);
+        units.push(transpileOne(l.source, plugin, l.name, { runtimeUnit: DELPHI_RUNTIME_UNIT, library: true }, parserOptions));
+      }
+      return { param: l.param, unit: l.name + 'Generated', ast: new Parser(l.source, parserOptions).parse() };
+    });
+    units.push(transpileOne(src, plugin, name, { runtimeUnit: DELPHI_RUNTIME_UNIT, libraries }, parserOptions));
+  };
+  try {
+    for (const dep of dependencies)
+      unitOf(fs.readFileSync(dep, 'utf-8'), dep, path.basename(dep, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep');
+    unitOf(source, algorithmFile, path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_'));
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+  return { success: true, code: units.join('\n' + DELPHI_UNIT_MARK + '\n') };
+}
+
 /** The Python transpiler's snake_case of a name (all-capitals names are kept). */
 function pythonSnake(name) {
   if (name === name.toUpperCase()) return name;
@@ -542,6 +594,28 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
       libCode = transpileOne(libSrc, plugin, path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib', undefined, parserOptions);
     } catch (e) {
       return { code, error: 'library ' + path.basename(libPath) + ': ' + e.message };
+    }
+    if (language === 'ruby') {
+      code += rubyLibraryBinding(libSrc, libCode, exported, paramName, algorithmFile, libPath);
+      continue;
+    }
+    if (language === 'basic') {
+      code += basicLibraryBinding(libSrc, libCode, exported, paramName, libPath);
+      continue;
+    }
+    // C++: the library records what it exports when it initialises; the
+    // parameter's name is bound to that, for the algorithm to look up
+    if (language === 'cpp') {
+      const bound = exported.single ? `js::lastModuleExports().get(js::String(u"${exported.single}"))` : 'js::lastModuleExports()';
+      code += `${libCode}\nstatic js::ModuleInit __bind_${paramName}([] { js::bindModule(u"${paramName}", ${bound}); });\n\n`;
+      continue;
+    }
+    // C: likewise, a module of its own after the library's binds the name
+    if (language === 'c') {
+      const bound = exported.single ? `js_get(js_last_exports, js_atom_c("${exported.single}"))` : 'js_last_exports';
+      code += `${libCode}\nstatic void js_bind_${paramName}(void) { js_bind_module("${paramName}", ${bound}); }\n` +
+        `static js_module_node js_mod_bind_${paramName} = { js_bind_${paramName}, JS_MODULE_LIST };\n#undef JS_MODULE_LIST\n#define JS_MODULE_LIST (&js_mod_bind_${paramName})\n\n`;
+      continue;
     }
     // A library assigning module.exports from its own IIFE keeps its names
     // local: it gets a module object to assign, and the parameter is bound to that
@@ -587,6 +661,213 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
 }
 
 /**
+ * A .data library bundled for Ruby: its code (module-level names are globals
+ * and class constants, see RubyTransformer.js), then the factory parameter's
+ * global bound to its exports. A library assigning module.exports gets a
+ * module object to assign first.
+ * @returns {string} Ruby code
+ */
+function rubyLibraryBinding(libSrc, libCode, exported, paramName, algorithmFile, libPath) {
+  const { RubyTransformer } = require(path.join(CODINGPLUGINS_DIR, 'RubyTransformer.js'));
+  const libClass = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_libGenerated';
+  const target = RubyTransformer.globalNameFor(path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_') + 'Generated', paramName);
+  if (libraryExports(libSrc) === 'module.exports') {
+    const module = RubyTransformer.globalNameFor(libClass, 'module');
+    return `${RubyTransformer.runtimePrelude()}\n${module} = JSObject.new({ "exports" => JSObject.new })\n${libCode}\n${target} = ${module}["exports"]\n\n`;
+  }
+  const value = exported.single
+    ? RubyTransformer.libraryBinding(libClass, exported.single, libCode)
+    : `JSObject.new({ ${exported.names.map(n => `${JSON.stringify(n)} => ${RubyTransformer.libraryBinding(libClass, n, libCode)}`).join(', ')} })`;
+  return `${libCode}\n${target} = ${value}\n\n`;
+}
+
+/**
+ * A loader parameter for Ruby (`function () { return require('../x/y'); }`):
+ * a lambda handing back the bundled dependency's exports.
+ * @param {Map} deps - resolved lower-case path -> { depName, depCode, depSource }
+ * @returns {string} Ruby code
+ */
+function rubyLoaderBinding(source, algorithmFile, deps) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)/);
+  if (!paramName || !loader) return '';
+  const target = path.resolve(path.dirname(algorithmFile), loader[1].endsWith('.js') ? loader[1] : loader[1] + '.js').toLowerCase();
+  const dep = deps.get(target);
+  if (!dep) return '';
+  const { RubyTransformer } = require(path.join(CODINGPLUGINS_DIR, 'RubyTransformer.js'));
+  const depClass = dep.depName + 'Generated';
+  const exported = libraryExportNames(dep.depSource);
+  const value = !exported ? 'nil' : exported.single
+    ? RubyTransformer.libraryBinding(depClass, exported.single, dep.depCode)
+    : `JSObject.new({ ${exported.names.map(n => `${JSON.stringify(n)} => ${RubyTransformer.libraryBinding(depClass, n, dep.depCode)}`).join(', ')} })`;
+  const variable = RubyTransformer.globalNameFor(path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_') + 'Generated', paramName);
+  return `${variable} = ->(*_) { ${value} }\n\n`;
+}
+
+/**
+ * The FreeBASIC value of a bundled program's exports: the one name it returns,
+ * or an object of every name it exports (see FreeBasicTransformer.libraryBinding).
+ * @returns {{setup: string, value: string}} statements building it, and its expression
+ */
+function basicExportsValue(className, exported, code, variable) {
+  const { FreeBasicTransformer } = require(path.join(CODINGPLUGINS_DIR, 'BasicTransformer.js'));
+  if (exported.single) return { setup: '', value: FreeBasicTransformer.libraryBinding(className, exported.single, code) };
+  const lines = [`Dim Shared ${variable} As JsV`, `${variable} = js_obj_new()`];
+  for (const n of exported.names) lines.push(`js_setp(${variable}, js_sym("${n}"), ${FreeBasicTransformer.libraryBinding(className, n, code)})`);
+  return { setup: lines.join('\n') + '\n', value: variable };
+}
+
+/**
+ * A .data library bundled for FreeBASIC: its code, then the factory
+ * parameter bound as a global to its exports (an undeclared name reads the
+ * runtime's globals, see js_global_get). A library assigning module.exports
+ * gets a module object to assign first.
+ * @returns {string} FreeBASIC code
+ */
+function basicLibraryBinding(libSrc, libCode, exported, paramName, libPath) {
+  const { FreeBasicTransformer } = require(path.join(CODINGPLUGINS_DIR, 'BasicTransformer.js'));
+  const libClass = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_libGenerated';
+  if (libraryExports(libSrc) === 'module.exports') {
+    return `${FreeBasicTransformer.runtimePrelude()}\nDim Shared vh_module_${paramName} As JsV\nvh_module_${paramName} = js_obj_new()\n`
+      + `js_setp(vh_module_${paramName}, js_sym("exports"), js_obj_new())\njs_global_set("module", vh_module_${paramName})\n`
+      + `${libCode}\njs_global_set("${paramName}", js_getp(vh_module_${paramName}, js_sym("exports")))\n\n`;
+  }
+  const { setup, value } = basicExportsValue(libClass, exported, libCode, `vh_library_${paramName}`);
+  return `${libCode}\n${setup}js_global_set("${paramName}", ${value})\n\n`;
+}
+
+/**
+ * A loader parameter for FreeBASIC (`function () { return require('../x/y'); }`):
+ * a function handing back the bundled dependency's exports.
+ * @param {Map} deps - resolved lower-case path -> { depName, depCode, depSource }
+ * @returns {string} FreeBASIC code
+ */
+function basicLoaderBinding(source, algorithmFile, deps) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)/);
+  if (!paramName || !loader) return '';
+  const dep = deps.get(path.resolve(path.dirname(algorithmFile), loader[1].endsWith('.js') ? loader[1] : loader[1] + '.js').toLowerCase());
+  if (!dep) return '';
+  const exported = libraryExportNames(dep.depSource);
+  const { setup, value } = exported
+    ? basicExportsValue(dep.depName + 'Generated', exported, dep.depCode, `vh_exports_${paramName}`)
+    : { setup: '', value: 'js_undefined()' };
+  return `${setup}Function vh_loader_${paramName}(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV\n`
+    + `  Return ${value}\nEnd Function\njs_global_set("${paramName}", js_fn_new(@vh_loader_${paramName}, 0))\n\n`;
+}
+
+/**
+ * C#: every algorithm file the reference loaded is transpiled as a dependency
+ * (no framework stubs, no Main) and appended after the main code, whose stubs
+ * and registry serve them all; each file's classes nest in a class of their
+ * own, so their names cannot collide. Any using directive goes to the top.
+ * @returns {{success: boolean, code?: string, error?: string}}
+ */
+function bundleCSharpDependencies(code, dependencies, plugin, parserOptions, algorithmFile = null) {
+  const usings = new Set();
+  const hoist = text => text.replace(/^using\s+[^;=]+;[ \t]*\r?\n/gm, line => { usings.add(line.trim()); return ''; });
+  let suffix = '';
+  for (const depPath of dependencies) {
+    const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
+    try {
+      const depCode = transpileOne(fs.readFileSync(depPath, 'utf-8'), plugin, depName, { asDependency: true }, parserOptions);
+      suffix += '\n' + hoist(depCode) + '\n';
+    } catch (e) {
+      return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
+    }
+  }
+  // A .data library taken through a third factory parameter, which the C# code
+  // declares as `static dynamic <Param> = null;`: the library's code is bundled
+  // too, and the parameter holds its exports (see CSHARP_LIBRARY_EXPORTS)
+  const source = algorithmFile ? fs.readFileSync(algorithmFile, 'utf-8') : '';
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  const binding = paramName && new RegExp(`(static\\s+dynamic\\s+${paramName}\\s*=\\s*)null;`);
+  // Only where the code reads the parameter: one the stubs stand in for (the
+  // fountain-code foundation classes) is declared but never used
+  const codeLines = paramName ? code.split('\n').filter(line => !/^\s*\/\//.test(line)).join('\n') : '';
+  const used = paramName && (codeLines.match(new RegExp(`\\b${paramName}\\b`, 'g')) || []).length > 1;
+  if (binding && used && binding.test(code)) {
+    for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+      const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+        .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+      if (!libPath) continue;
+      const libName = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib';
+      try {
+        suffix += '\n' + hoist(transpileOne(fs.readFileSync(libPath, 'utf-8'), plugin, libName, { asDependency: true }, parserOptions)) + '\n';
+      } catch (e) {
+        return { success: false, error: `library ${path.basename(libPath)}: ${e.message}` };
+      }
+      code = code.replace(binding, `$1ValidationLibraries.Exports(typeof(${libName}Generated));`);
+      suffix += CSHARP_LIBRARY_EXPORTS;
+      break;
+    }
+  }
+  const missing = [...usings].filter(line => !code.includes(line));
+  return { success: true, code: (missing.length ? missing.join('\n') + '\n' : '') + code + suffix };
+}
+
+// The exports of a bundled .data library as the object its factory returned:
+// the public static fields and properties of the library's class, and its
+// methods, called with each argument converted to the parameter's type (a
+// number array to the element type the library declares), as JavaScript
+// passes any number
+const CSHARP_LIBRARY_EXPORTS = `
+namespace CipherValidation
+{
+    public static class ValidationLibraries
+    {
+        public static dynamic Exports(System.Type type) => new ValidationLibraryExports(type);
+    }
+
+    public sealed class ValidationLibraryExports : System.Dynamic.DynamicObject
+    {
+        private const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly;
+        private readonly System.Type type;
+        public ValidationLibraryExports(System.Type type) { this.type = type; }
+
+        public override bool TryGetMember(System.Dynamic.GetMemberBinder binder, out object result)
+        {
+            var field = type.GetField(binder.Name, Flags);
+            if (field != null) { result = field.GetValue(null); return true; }
+            var property = type.GetProperty(binder.Name, Flags);
+            if (property != null && property.GetIndexParameters().Length == 0) { result = property.GetValue(null); return true; }
+            result = null;
+            return false;
+        }
+
+        public override bool TryInvokeMember(System.Dynamic.InvokeMemberBinder binder, object[] args, out object result)
+        {
+            var method = type.GetMethods(Flags).FirstOrDefault(m => m.Name == binder.Name && !m.IsGenericMethodDefinition
+                && m.GetParameters().Length >= args.Length && m.GetParameters().Skip(args.Length).All(p => p.IsOptional));
+            if (method == null) { result = null; return false; }
+            var parameters = method.GetParameters();
+            var values = new object[parameters.Length];
+            for (int i = 0; i < parameters.Length; ++i)
+                values[i] = i < args.Length ? Convert(args[i], parameters[i].ParameterType) : System.Type.Missing;
+            result = method.Invoke(null, System.Reflection.BindingFlags.OptionalParamBinding, null, values, System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static object Convert(object value, System.Type target)
+        {
+            if (value == null || target.IsInstanceOfType(value)) return value;
+            if (target.IsArray && value is System.Array source)
+            {
+                var element = target.GetElementType();
+                var array = System.Array.CreateInstance(element, source.Length);
+                for (int i = 0; i < source.Length; ++i) array.SetValue(Convert(source.GetValue(i), element), i);
+                return array;
+            }
+            return System.Convert.ChangeType(value, target, System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+}
+`;
+
+/**
  * The .data libraries an algorithm takes through its third factory parameter,
  * for the JVM languages: the plugin merges each library's declarations into
  * the generated class and binds the parameter to what the library exports.
@@ -608,6 +889,30 @@ function jvmLibraries(source, algorithmFile) {
     const libSrc = fs.readFileSync(libPath, 'utf-8');
     const Parser = loadTranspiler();
     libraries.push({ param, ast: new Parser(libSrc).parse(), exports: libraryExportNames(libSrc) });
+  }
+  return libraries;
+}
+
+/**
+ * The .data libraries an algorithm takes through its third factory parameter,
+ * parsed, with the names they export - for the languages whose transpiler
+ * merges them into the program (Go, Rust).
+ * @returns {{param: string, ast: Object, names: string[], single: string|null}[]}
+ */
+function parsedLibraries(source, algorithmFile, parserOptions) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!param) return [];
+  const libraries = [];
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (!libPath) continue;
+    const libSrc = fs.readFileSync(libPath, 'utf-8');
+    const exported = libraryExportNames(libSrc);
+    if (!exported) continue;
+    const Parser = loadTranspiler();
+    libraries.push({ param, ast: new Parser(libSrc, parserOptions).parse(), names: exported.names, single: exported.single });
   }
   return libraries;
 }
@@ -656,16 +961,27 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // require()-using methods (no equivalent in C#/Python/etc). When the target
   // *is* JavaScript, require() is valid runnable code - keep it. PHP keeps
   // them too: its runtime reads require as undefined, and the files they load
-  // are bundled.
-  const parserOptions = PRELUDE_SPLICING.has(language) ? { keepModuleLoaderFunctions: true } : undefined;
+  // are bundled. So do Ruby and FreeBASIC: their runtime is a browser without
+  // require(), so a loader guarded by `typeof require` returns and the bundled
+  // dependencies serve instead. Go and Rust as well: their bundle holds every
+  // file a loader would require(), so a loader is a no-op.
+  const parserOptions = PRELUDE_SPLICING.has(language) || LIBRARY_BUNDLE_LANGUAGES.has(language) || language === 'ruby' || language === 'basic' ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
+  // A Delphi bundle links the files a loader would require(), so a loader
+  // guarded by `typeof require` stays: the target folds it to a no-op.
+  if (language === 'delphi' && (dependencies.length || delphiLibraries(source, algorithmFile).length))
+    return transpileDelphiBundle(source, algorithmFile, plugin, dependencies, { keepModuleLoaderFunctions: true });
   let code;
   try {
-    code = transpileOne(source, plugin, algoName, language === 'java' || language === 'kotlin' ? { libraries: jvmLibraries(source, algorithmFile) } : undefined, parserOptions);
+    // Java, Kotlin, Go and Rust merge the .data libraries the factory takes into the program itself
+    const libraryOptions = language === 'java' || language === 'kotlin' ? { libraries: jvmLibraries(source, algorithmFile) }
+      : LIBRARY_BUNDLE_LANGUAGES.has(language) ? { libraries: parsedLibraries(source, algorithmFile, parserOptions) } : undefined;
+    code = transpileOne(source, plugin, algoName, libraryOptions, parserOptions);
   } catch (e) {
     return { success: false, error: e.message };
   }
+  if (language === 'csharp') return bundleCSharpDependencies(code, dependencies, plugin, parserOptions, algorithmFile);
   if (!BUNDLE_LANGUAGES.has(language)) return { success: true, code };
 
   // JavaScript embeds the real AlgorithmFramework.js/OpCodes.js as a single
@@ -683,7 +999,8 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
     try {
       const depSource = fs.readFileSync(depPath, 'utf-8');
-      const depCode = transpileOne(depSource, plugin, depName, noPreludeOptions, parserOptions);
+      const depOptions = LIBRARY_BUNDLE_LANGUAGES.has(language) ? { library: true, symbolPrefix: (/^[0-9]/.test(depName) ? '_' : '') + depName + '_' } : noPreludeOptions;
+      const depCode = transpileOne(depSource, plugin, depName, depOptions, parserOptions);
       if (JS_BUNDLING.has(language)) {
         const variable = '__validation_' + depName;
         depExports.set(path.resolve(depPath).toLowerCase(), variable);
@@ -692,6 +1009,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
         // PHP: what the file exports is registered under its namespace
         if (language === 'php') depExports.set(path.resolve(depPath).toLowerCase(), phpExportsOf(depName, depSource, depCode));
         prefix += depCode + '\n\n';
+        if (language === 'ruby' || language === 'basic') depExports.set(path.resolve(depPath).toLowerCase(), { depName, depCode, depSource });
       }
     } catch (e) {
       return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
@@ -738,12 +1056,14 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
       if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
       prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
     }
-  } else if (language === 'python' || language === 'perl') {
-    // Python and Perl: the library's code goes ahead of the algorithm, and the
-    // factory parameter is bound to an object holding what it exports
+  } else if (['python', 'perl', 'ruby', 'basic', 'cpp', 'c'].includes(language)) {
+    // Python, Perl, Ruby, FreeBASIC, C++ and C: the library's code goes ahead of the
+    // algorithm, and the factory parameter is bound to an object holding what it exports
     const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
     if (bundled.error) return { success: false, error: bundled.error };
     prefix += bundled.code;
+    if (language === 'ruby') prefix += rubyLoaderBinding(source, algorithmFile, depExports);
+    if (language === 'basic') prefix += basicLoaderBinding(source, algorithmFile, depExports);
   } else if (language === 'php') {
     // PHP: the factory parameter is an external the file reads through
     // \JS\ext(), bound to the library's exports or to a loader of the dependency's
@@ -793,7 +1113,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust', 'delphi', 'cpp', 'c']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -837,9 +1157,9 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'csharp':
       return generateCSharpTestHarness(algorithmCode, spec, algorithmName);
     case 'c':
-      return generateCTestHarness(algorithmCode, vector, algorithmName);
+      return generateCTestHarness(algorithmCode, spec, algorithmName);
     case 'cpp':
-      return generateCppTestHarness(algorithmCode, vector, algorithmName);
+      return generateCppTestHarness(algorithmCode, spec, algorithmName);
     case 'python':
       return generatePythonTestHarness(algorithmCode, spec, algorithmName);
     case 'php':
@@ -849,19 +1169,19 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'java':
       return generateJavaTestHarness(algorithmCode, spec, algorithmName);
     case 'go':
-      return generateGoTestHarness(algorithmCode, vector, algorithmName);
+      return generateGoTestHarness(algorithmCode, spec, algorithmName);
     case 'ruby':
-      return generateRubyTestHarness(algorithmCode, vector, algorithmName);
+      return generateRubyTestHarness(algorithmCode, spec, algorithmName);
     case 'rust':
-      return generateRustTestHarness(algorithmCode, vector, algorithmName);
+      return generateRustTestHarness(algorithmCode, spec, algorithmName);
     case 'javascript':
       return generateJavaScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'typescript':
       return generateTypeScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'basic':
-      return generateBasicTestHarness(algorithmCode, vector, algorithmName);
+      return generateBasicTestHarness(algorithmCode, spec, algorithmName);
     case 'delphi':
-      return generateDelphiTestHarness(algorithmCode, vector, algorithmName);
+      return generateDelphiTestHarness(algorithmCode, spec, algorithmName);
     case 'kotlin':
       return generateKotlinTestHarness(algorithmCode, spec, algorithmName);
     default:
@@ -926,14 +1246,13 @@ const CSHARP_DUMMY_CLASSES = `    // The identity cipher of tests/DummyBlockCiph
     public sealed class ValidationDummyCipherAlgorithm : BlockCipherAlgorithm
     {
         public ValidationDummyCipherAlgorithm() { Name = "DummyBlockCipher"; BlockSize = 16; }
-        public override object CreateInstance(bool isInverse = false) { return new ValidationDummyCipherInstance(this); }
+        public override IBlockCipherInstance CreateInstance(bool isInverse = false) { return new ValidationDummyCipherInstance(this); }
     }
 
     public sealed class ValidationDummyCipherInstance : IBlockCipherInstance
     {
         private readonly System.Collections.Generic.List<byte> buffer = new System.Collections.Generic.List<byte>();
-        public ValidationDummyCipherInstance(Algorithm algorithm) : base(algorithm) { }
-        public int BlockSize { get; set; } = 16;
+        public ValidationDummyCipherInstance(Algorithm algorithm) : base(algorithm) { BlockSize = 16; }
         public override void Feed(byte[] data) { if (data != null) buffer.AddRange(data); }
         public override byte[] Result()
         {
@@ -971,64 +1290,18 @@ function generateCSharpTestHarness(algorithmCode, spec, algorithmName) {
   return { success: true, code: `${cleanedCode}\n${harness}` };
 }
 
-// C Test Harness
-function generateCTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '';
-
-  return {
-    success: true,
-    code: `#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
-
-${algorithmCode}
-
-int main(void) {
-    printf("Testing ${algorithmName}...\\n");
-
-    uint8_t input[${inputLen || 1}] = { ${inputBytes || '0'} };
-    uint8_t expected[${expectedLen || 1}] = { ${expectedBytes || '0'} };
-
-    printf("Input length: %d\\n", ${inputLen});
-    printf("Expected length: %d\\n", ${expectedLen});
-    printf("COMPILE_OK\\n");
-    return 0;
-}`
-  };
+// C vector harness (tests/validation-harness/harness.c): the transpiled code
+// carries the runtime and the framework registry; the spec is a C string literal of JSON.
+function generateCTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.c').replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)));
+  return { success: true, code: `/* Validation of ${algorithmName} */\n${algorithmCode}\n${harness}` };
 }
 
-// C++ Test Harness
-function generateCppTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '';
-
-  return {
-    success: true,
-    code: `#include <iostream>
-#include <cstdint>
-#include <cstring>
-#include <vector>
-
-${algorithmCode}
-
-int main() {
-    std::cout << "Testing ${algorithmName}..." << std::endl;
-
-    std::vector<uint8_t> input = { ${inputBytes || '0'} };
-    std::vector<uint8_t> expected = { ${expectedBytes || '0'} };
-
-    std::cout << "Input length: " << input.size() << std::endl;
-    std::cout << "Expected length: " << expected.size() << std::endl;
-    std::cout << "COMPILE_OK" << std::endl;
-    return 0;
-}`
-  };
+// C++ vector harness (tests/validation-harness/harness.cpp): the transpiled code
+// carries the runtime and its registry; the spec is a C string literal of JSON.
+function generateCppTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.cpp').replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)));
+  return { success: true, code: `// Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
 // Python vector harness (tests/validation-harness/harness.py); the spec is
@@ -1099,94 +1372,52 @@ function generateJavaTestHarness(algorithmCode, spec, algorithmName) {
   return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
-// Go Test Harness
-function generateGoTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'go');
-  const expected = bytesToArrayLiteral(vector.expected, 'go');
-  const cleanedCode = stripMainFunction(algorithmCode, 'go');
-  // Also strip package/import declarations since we add them in the harness
-  const codeWithoutPkg = cleanedCode
-    .replace(/^package\s+\w+\s*\n?/gm, '')  // Remove all package declarations
-    .replace(/^import\s+"[^"]+"\s*\n?/gm, '')  // Remove single-line imports
-    .replace(/^import\s+\([^)]*\)\s*\n?/gms, '');  // Remove multi-line import blocks (use 's' flag for dotAll)
-
-  // The code's own imports, and fmt for the harness. Guessing imports from
-  // the code would hide an import the emitter forgot.
-  const imports = new Set(['"fmt"']);
-  for (const m of cleanedCode.matchAll(/^import\s+("[^"]+")/gm)) imports.add(m[1]);
-  for (const m of cleanedCode.matchAll(/^import\s+\(([^)]*)\)/gm))
-    for (const spec of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(spec);
-  imports.delete('');
-
+// Go vector harness (tests/validation-harness/harness.go), appended to the
+// program. Bundled dependencies come first, so their init() registers first;
+// the package clause and imports (the transpiled ones, and encoding/json for
+// the spec) move to the top of the file.
+function generateGoTestHarness(algorithmCode, spec, algorithmName) {
+  const code = stripMainFunction(algorithmCode, 'go');
+  const imports = new Set(['fmt', 'encoding/json', 'math', 'os', 'reflect', 'regexp', 'runtime/debug', 'strings']);
+  for (const m of code.matchAll(/^import\s+"([^"]+)"/gm)) imports.add(m[1]);
+  for (const m of code.matchAll(/^import\s+\(([^)]*)\)/gm))
+    for (const line of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(line.replace(/^"|"$/g, ''));
+  const body = code
+    .replace(/^package\s+\w+\s*$/gm, '')
+    .replace(/^import\s+"[^"]+"\s*$/gm, '')
+    .replace(/^import\s+\([^)]*\)/gm, '');
+  const harness = readHarness('harness.go').replace('__SPEC_JSON__', () => asciiJson(spec).replace(/`/g, '\\u0060'));
   return {
     success: true,
-    code: `package main
-
-import (
-\t${[...imports].join('\n\t')}
-)
-
-${codeWithoutPkg}
-
-func main() {
-    fmt.Println("Testing ${algorithmName}...")
-
-    input := ${input}
-    expected := ${expected}
-
-    fmt.Printf("Input length: %d\\n", len(input))
-    fmt.Printf("Expected length: %d\\n", len(expected))
-    fmt.Println("COMPILE_OK")
-}`
+    code: `// Validation of ${algorithmName}\npackage main\n\nimport (\n${[...imports].sort().map(i => `\t"${i}"`).join('\n')}\n)\n\n${body}\n${harness}`
   };
 }
 
-// Ruby Test Harness
-function generateRubyTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'ruby');
-  const expected = bytesToArrayLiteral(vector.expected, 'ruby');
-
-  return {
-    success: true,
-    code: `#!/usr/bin/env ruby
-${algorithmCode}
-
-puts "Testing ${algorithmName}..."
-begin
-  input = ${input}
-  expected = ${expected}
-
-  puts "Input length: #{input.length}"
-  puts "Expected length: #{expected.length}"
-  puts "COMPILE_OK"
-rescue => e
-  puts "ERROR: #{e.message}"
-  exit 1
-end`
-  };
+// Ruby vector harness (tests/validation-harness/harness.rb). The transpiled
+// code keeps its registry in $__js_algorithms (see RubyTransformer.js), which
+// the harness searches by name; the spec goes into a literal heredoc.
+function generateRubyTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.rb').replace('__SPEC_JSON__', () => asciiJson(spec));
+  return { success: true, code: `# Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
-// Rust Test Harness
-function generateRustTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'rust');
-  const expected = bytesToArrayLiteral(vector.expected, 'rust');
-  const cleanedCode = stripMainFunction(algorithmCode, 'rust');
-
-  return {
-    success: true,
-    code: `${cleanedCode}
-
-fn main() {
-    println!("Testing ${algorithmName}...");
-
-    let input: Vec<u8> = ${input};
-    let expected: Vec<u8> = ${expected};
-
-    println!("Input length: {}", input.len());
-    println!("Expected length: {}", expected.len());
-    println!("COMPILE_OK");
-}`
-  };
+// Rust vector harness (tests/validation-harness/harness.rs): the spec becomes
+// Rust values, and main() runs the module initializers in the order the files
+// were bundled (dependencies first, so they register first). The crate's inner
+// attributes move to the top of the file.
+function generateRustTestHarness(algorithmCode, spec, algorithmName) {
+  const code = stripMainFunction(algorithmCode, 'rust');
+  const attributes = [];
+  const body = code.replace(/^#!\[[^\]]*\]\s*$/gms, m => { attributes.push(m.trim()); return ''; });
+  const inits = [...code.matchAll(/^\s*pub fn (\w*js_module_init)\(\)/gm)].map(m => `${m[1]}();`);
+  const str = s => JSON.stringify(String(s)).replace(/[^\x00-\x7e]/g, c => `\\u{${c.charCodeAt(0).toString(16)}}`);
+  const plan = p => `VhPlan { fields: vec![${p.fields.map(str).join(', ')}], steps: vec![${p.steps.map(s =>
+    `VhStep { field: ${str(s.field)}, setter: ${str(s.setter || '')}, kind: ${str(s.kind || '')} }`).join(', ')}], mode: ${p.mode
+    ? `Some(VhMode { cipher: ${p.mode.cipher === null ? 'None' : `Some(${str(p.mode.cipher)})`}, key_truthy: ${p.mode.keyTruthy}, iv_truthy: ${p.mode.ivTruthy} })`
+    : 'None'}, inverse: ${p.inverse}, expect: ${p.expect}, rt: ${str(p.rt || '')} }`;
+  const specCode = `vec![${spec.algorithms.map(a => `VhAlgorithm { name: ${str(a.name)}, is_mode: ${!!a.isMode}, multi_key: ${!!a.multiKey}, vectors: vec![${a.vectors.map(plan).join(', ')}] }`).join(', ')}]`;
+  const harness = readHarness('harness.rs').replace('__SPEC__', () => specCode).replace('__MODULE_INITS__', () => inits.join(' '));
+  return { success: true, code: `// Validation of ${algorithmName}\n${attributes.join('\n')}\n${body}\n${harness}` };
 }
 
 // TypeScript vector harness (tests/validation-harness/harness.ts), compiled
@@ -1197,62 +1428,38 @@ function generateTypeScriptTestHarness(algorithmCode, spec, algorithmName) {
 }
 
 // Basic (FreeBASIC) Test Harness
-function generateBasicTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
-
-  return {
-    success: true,
-    code: `' FreeBASIC Test Harness for ${algorithmName}
-' Compile with: fbc64 test.bas
-
-${algorithmCode}
-
-' Test data
-Dim As UByte inputData(0 To ${inputLen > 0 ? inputLen - 1 : 0}) = { ${inputBytes} }
-Dim As UByte expectedData(0 To ${expectedLen > 0 ? expectedLen - 1 : 0}) = { ${expectedBytes} }
-
-Print "Testing ${algorithmName}..."
-Print "Input length: "; ${inputLen}
-Print "Expected length: "; ${expectedLen}
-Print "COMPILE_OK"
-End 0
-`
-  };
+// FreeBASIC vector harness (tests/validation-harness/harness.bas). It runs on
+// the transpiled code's JavaScript-semantics runtime and reads the spec as
+// JSON, appended to a string in lines FreeBASIC accepts.
+function generateBasicTestHarness(algorithmCode, spec, algorithmName) {
+  const json = asciiJson(spec).replace(/"/g, '""');
+  const lines = [];
+  for (let i = 0; i < json.length; i += 200) {
+    let piece = json.slice(i, i + 200);
+    // a doubled quote stays whole
+    while (piece.endsWith('"') && (piece.match(/"+$/)[0].length % 2)) { piece = piece.slice(0, -1); i -= 1; }
+    lines.push(`vh_spec_text &= "${piece}"`);
+  }
+  const harness = readHarness('harness.bas').replace('__SPEC_TEXT__', () => lines.join('\n'));
+  return { success: true, code: `' Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
-// Delphi/Pascal (FreePascal) Test Harness
-function generateDelphiTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
-
-  // The plugin emits a unit: it is compiled from a file of its name, used by the program
-  const unit = algorithmCode.match(/^\s*unit\s+(\w+)\s*;/m);
+// Delphi/Free Pascal vector harness (tests/validation-harness/harness.pas). The
+// plugin emits a unit, compiled from a file of its name and used by the
+// program; the spec is read from spec.json beside the program.
+function generateDelphiTestHarness(algorithmCode, spec, algorithmName) {
+  const extraFiles = { 'spec.json': JSON.stringify(spec) };
+  const names = [];
+  for (const text of algorithmCode.split(DELPHI_UNIT_MARK)) {
+    const unit = text.match(/^\s*unit\s+(\w+)\s*;/m);
+    if (!unit) return { success: false, error: 'the Delphi plugin emitted no unit' };
+    extraFiles[unit[1] + '.pas'] = text;
+    names.push(unit[1]);
+  }
   return {
     success: true,
-    extraFiles: unit ? { [unit[1] + '.pas']: algorithmCode } : undefined,
-    code: `program TestHarness;
-{$MODE DELPHI}
-
-uses SysUtils${unit ? ', ' + unit[1] : ''};
-
-${unit ? '' : algorithmCode}
-
-const
-  InputData: array[0..${inputLen > 0 ? inputLen - 1 : 0}] of Byte = (${inputBytes || '0'});
-  ExpectedData: array[0..${expectedLen > 0 ? expectedLen - 1 : 0}] of Byte = (${expectedBytes || '0'});
-
-begin
-  WriteLn('Testing ${algorithmName}...');
-  WriteLn('Input length: ', ${inputLen});
-  WriteLn('Expected length: ', ${expectedLen});
-  WriteLn('COMPILE_OK');
-end.
-`
+    extraFiles,
+    code: `{ Validation of ${algorithmName} }\n` + readHarness('harness.pas').replace('__UNIT__', () => names.join(', '))
   };
 }
 
@@ -1305,7 +1512,8 @@ function testCCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.c');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only'], {
+  // An executable for the vector harness (GNU C: statement expressions, __builtin_setjmp)
+  const result = spawnTool('gcc', [srcFile, '-std=gnu17', '-O1', '-w', '-o', path.join(outputDir, 'test.exe'), '-lm'], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1322,7 +1530,8 @@ function testCppCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.cpp');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only'], {
+  // An executable for the vector harness; -fwrapv is JavaScript's integer wrap-around
+  const result = spawnTool('g++', [srcFile, '-std=gnu++20', '-O1', '-fwrapv', '-w', '-o', path.join(outputDir, 'test.exe')], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1450,11 +1659,9 @@ function testGoCompilation(code, outputDir) {
   const modFile = path.join(outputDir, 'go.mod');
   fs.writeFileSync(modFile, 'module test\n\ngo 1.21\n');
 
-  // Use NUL on Windows, /dev/null on Unix
-  const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null';
-
-  // Build from the output directory (required for go.mod to be found)
-  const result = spawnTool('go', ['build', '-o', nullDevice, '.'], {
+  // Build the executable the vector harness runs (from the output directory, for go.mod)
+  const exeFile = 'test' + (process.platform === 'win32' ? '.exe' : '');
+  const result = spawnTool('go', ['build', '-o', exeFile, '.'], {
     cwd: outputDir,
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
@@ -1473,8 +1680,8 @@ function testRustCompilation(code, outputDir) {
   const exeFile = path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : ''));
   fs.writeFileSync(srcFile, code);
 
-  // Compile to actual executable (works on all platforms)
-  const result = spawnTool('rustc', [srcFile, '-o', exeFile], {
+  // The executable the vector harness runs (optimized: an unoptimized build runs the ciphers' loops many times slower)
+  const result = spawnTool('rustc', ['-A', 'warnings', '-C', 'opt-level=1', '-C', 'overflow-checks=on', srcFile, '-o', exeFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1521,17 +1728,14 @@ function testBasicCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.bas');
   fs.writeFileSync(srcFile, code);
 
-  // FreeBASIC: -c for compile only (no linking)
-  const result = spawnTool('fbc64', ['-c', srcFile], {
+  // FreeBASIC: built to an executable, which runs the vector harness
+  const exeFile = path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : ''));
+  if (fs.existsSync(exeFile)) try { fs.unlinkSync(exeFile); } catch (e) {}
+  const result = spawnTool('fbc64', [srcFile, '-x', exeFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
-
-  // Clean up object file if created
-  const objFile = path.join(outputDir, 'test.o');
-  if (fs.existsSync(objFile))
-    try { fs.unlinkSync(objFile); } catch (e) {}
 
   return {
     success: result.status === 0,
@@ -1545,9 +1749,9 @@ function testDelphiCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.pas');
   fs.writeFileSync(srcFile, code);
 
-  // FreePascal: -Cn = syntax check only (no code generation)
-  // -Mdelphi = Delphi compatibility mode
-  const result = spawnTool('fpc', ['-Cn', '-Mdelphi', srcFile], {
+  // Free Pascal, Delphi mode, optimized and linked: the vector harness runs it.
+  // -ve reports errors only; the units' own directives set the dialect.
+  const result = spawnTool('fpc', ['-Mdelphi', '-O2', '-ve', srcFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
@@ -1623,11 +1827,17 @@ function executeCode(language, outputDir) {
     case 'javascript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
+    case 'ruby': return runProcess('ruby', [path.join(outputDir, 'test.rb')], { cwd: outputDir });
+    case 'basic': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'go': case 'rust': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     case 'typescript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
     case 'php': return runProcess('php', phpRunArguments().concat([path.join(outputDir, 'test.php')]), { cwd: outputDir });
     case 'java': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'classes'), javaMainClass(outputDir)], { cwd: outputDir });
     case 'kotlin': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'test.jar'), kotlinMainClass(outputDir)], { cwd: outputDir });
+    case 'delphi': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
+    case 'cpp': return runProcess(path.join(outputDir, 'test.exe'), [], { cwd: outputDir });
+    case 'c': return runProcess(path.join(outputDir, 'test.exe'), [], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }
@@ -2171,5 +2381,5 @@ if (require.main === module) {
 module.exports = {
   run, validateFile, vectorPlan, harnessSpec, generateTestHarness, parseHarnessOutput,
   errorClass, summarize, firstError, transpileAlgorithm, frameworkSurface, testCompilation, executeCode,
-  detectCompilers, probeTool, shimEnvironment, LANGUAGE_COMPILERS
+  detectCompilers, probeTool, shimEnvironment, LANGUAGE_COMPILERS, bundleCSharpDependencies
 };

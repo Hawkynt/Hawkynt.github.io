@@ -58,7 +58,7 @@
         this.category = CategoryType.HASH;
         this.subCategory = "Fast Hash";
         this.securityStatus = SecurityStatus.EDUCATIONAL; // Non-cryptographic
-        this.complexity = ComplexityType.MEDIUM;
+        this.complexity = ComplexityType.INTERMEDIATE;
 
         // Algorithm properties
         this.inventor = "Geoff Pike, Jyrki Alakuijala";

@@ -64,9 +64,13 @@ const CATEGORIES = [
   { key: 'csharp', label: 'CSHARP', title: 'C# transpilation regressions', module: './CSharpTranspileRegressions' },
   { key: 'harness', label: 'HARNESS', title: 'The cross-language validation harness', module: './TranspilerValidationTests' },
   { key: 'python', label: 'PYTHON', title: 'Python transpilation regressions', module: './PythonTranspileRegressions' },
+  { key: 'rubybasic', label: 'RUBYBASIC', title: 'Ruby and FreeBASIC transpilation regressions', module: './RubyBasicTranspileRegressions' },
+  { key: 'rustgo', label: 'RUSTGO', title: 'Go and Rust transpilation regressions', module: './RustGoTranspileRegressions' },
+  { key: 'c', label: 'C', title: 'C and C++ transpilation regressions', module: './CTranspileRegressions' },
   { key: 'tsphp', label: 'TSPHP', title: 'TypeScript and PHP transpilation regressions', module: './TsPhpTranspileRegressions' },
   { key: 'perl', label: 'PERL', title: 'Perl transpilation regressions', module: './PerlTranspileRegressions' },
   { key: 'jvm', label: 'JVM', title: 'Java and Kotlin transpilation regressions', module: './JvmTranspileRegressions' },
+  { key: 'delphi', label: 'DELPHI', title: 'Delphi transpilation regressions', module: './DelphiTranspileRegressions' },
   { key: 'validation', label: 'VALIDATION', title: 'Cross-language transpile, compile and run', module: './TranspilerValidation' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);

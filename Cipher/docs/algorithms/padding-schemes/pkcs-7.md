@@ -9,7 +9,7 @@
 | Category | Padding Schemes |
 | Sub-category | Block Padding |
 | Security status | 🛡️ Secure |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | RSA Laboratories |
 | Year | 1993 |
 | Origin | 🇺🇸 United States |

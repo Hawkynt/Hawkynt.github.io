@@ -58,7 +58,7 @@
   /** @type {uint64} */
   const MASK64_HIGH56 = 0xFFFFFFFFFFFFFF00n;  // ~0xFF within 64 bits
   /**
-   * @param {uint64} x - Value
+   * @param {BigInt} x - Value of any width (a sum, difference, product or shift of 64-bit words)
    * @returns {uint64} x mod 2^64
    */
   function m64(x) { return OpCodes.AndN(x, MASK64); }

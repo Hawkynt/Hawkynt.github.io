@@ -255,7 +255,7 @@
       /** @type {int32} */
       let onesCount = 0;
       for (let i = 0; i < data.length; i++) onesCount = onesCount + data[i];
-      /** @type {int32} */
+      /** @type {uint8} */
       const complement = (onesCount > n / 2) ? 1 : 0;
 
       // Undo complement if needed

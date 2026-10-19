@@ -216,8 +216,8 @@
       this.year = 1989;
       this.category = CategoryType.HASH;
       this.subCategory = "MD Family";
-      this.securityStatus = SecurityStatus.INSECURE;
-      this.complexity = ComplexityType.BASIC;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Hash-specific metadata
@@ -345,6 +345,7 @@
      */
     _computeMD2(data) {
       // Step 1: Padding
+      /** @type {uint8} */
       const padLength = 16 - (data.length % 16);
       /** @type {uint8[]} */
       const padding = OpCodes.CreateArray(padLength, padLength);
@@ -481,8 +482,8 @@
       this.year = 1990;
       this.category = CategoryType.HASH;
       this.subCategory = "MD Family";
-      this.securityStatus = SecurityStatus.INSECURE;
-      this.complexity = ComplexityType.BASIC;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Hash-specific metadata

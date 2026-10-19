@@ -1520,13 +1520,15 @@
      * ORed against that artifact-`long` with no common type, CS0019). A plain
      * variable/field reference has no such promotion step of its own - its
      * registered type (e.g. from a prior OpCodes.ToQWord/ToLong mask - see
-     * detectQWordMaskedParams) is real, direct evidence.
+     * detectQWordMaskedParams) is real, direct evidence. So is an explicit
+     * OpCodes.ToQWord/ToLong (a Cast to uint64/int64): it is 64-bit by definition.
      * @param {Object} node
      * @returns {boolean}
      */
     isReliableBigIntCastSkipSource(node) {
       if (!node) return false;
       if (node.type === 'Identifier') return true;
+      if (node.type === 'Cast' && ['uint64', 'int64'].includes(node.targetType)) return true;
       if (node.type === 'ThisPropertyAccess') return true;
       if (node.type === 'MemberExpression' && !node.computed &&
           (node.object?.type === 'ThisExpression' || node.object?.name === 'this')) return true;
@@ -1951,7 +1953,9 @@
           if (isFrameworkBase(className))
             for (const member of info.members) this._inheritableMemberNames.add(member);
       }
-      return this._inheritableMemberNames.has(csName);
+      // A member a class of this file declares hides a module constant of that name
+      // in the class too (the accessor combinationMode and const CombinationMode)
+      return this._inheritableMemberNames.has(csName) || !!this.fileClassMemberNames?.has(csName);
     }
 
     /**
@@ -1991,6 +1995,11 @@
           return null;
         case 'any': case 'object': case 'Object':
           return CSharpType.Dynamic();
+        // A DataView is the byte[] it views in C# (see transformDataViewCreation); an
+        // ArrayBuffer stays loosely typed, as typed-array views of other element
+        // types may share it
+        case 'DataView':
+          return CSharpType.Array(CSharpType.Byte());
       }
       const primitive = TYPE_MAP[ilType];
       if (primitive && primitive.endsWith('[]') && /Array$/.test(ilType) && ilType !== 'Array')
@@ -4443,6 +4452,17 @@
           if (!ev) { ev = { keyTypes: [], valueTypes: [] }; evidenceByName.set(varName, ev); }
           this._collectMapCallEvidence(methodName, node, ev, bodyNode);
         }
+        // `/** @type {Algorithm} */ const cached = CACHE.get(name);` declares the value type
+        if (node.type === 'VariableDeclarator' && this._mapCallMethodName(node.init) === 'get' &&
+            node.init.callee.object?.type === 'Identifier' && typeof node.declaredType === 'string') {
+          const declared = this.mapILType(node.declaredType);
+          if (declared && declared.name !== 'object') {
+            const varName = node.init.callee.object.name;
+            let ev = evidenceByName.get(varName);
+            if (!ev) { ev = { keyTypes: [], valueTypes: [] }; evidenceByName.set(varName, ev); }
+            (ev.declaredValueTypes ||= []).push(declared);
+          }
+        }
         for (const key of Object.keys(node)) {
           if (key === 'loc' || key === 'range' || key === 'comments') continue;
           const child = node[key];
@@ -4453,7 +4473,11 @@
       const result = new Map();
       for (const [varName, ev] of evidenceByName) {
         const keyType = this._unifyMapEvidenceType(ev.keyTypes, false);
-        const valueType = this._unifyMapEvidenceType(ev.valueTypes, true);
+        let valueType = this._unifyMapEvidenceType(ev.valueTypes, true);
+        // Without reliable .set evidence, the type every typed .get declares
+        const declared = ev.declaredValueTypes || [];
+        if (!valueType && declared.length > 0 && declared.every(t => t.toString() === declared[0].toString()))
+          valueType = declared[0];
         // Store whichever of the two has real, unanimous evidence - and ONLY that one.
         // Filling in a made-up default for the OTHER (unresolved) side here would
         // permanently bake a guess into the tag, when the consumers (getExpressionType's
@@ -5016,6 +5040,14 @@
           // Length property returns int
           return CSharpType.Int();
 
+        // A byte buffer's length is an int; anything else is a call of the
+        // object's own byteLength() method (see transformByteLength)
+        case 'DataViewGetByteLength': {
+          const viewType = this.inferFullExpressionType(node.view);
+          if (viewType && viewType.isArray) return CSharpType.Int();
+          return this.inferFullExpressionType(this.byteLengthMethodCall(node));
+        }
+
         case 'ArrayFill': {
           // ArrayFill returns an array - element type from node.elementType, node.value,
           // or default to byte. A negative fill value (`new Array(n).fill(-1)`, the
@@ -5319,6 +5351,7 @@
         case 'Floor':
         case 'Ceil':
         case 'Round':
+          return this.roundedType(node.argument);
         case 'Trunc':
           return CSharpType.Int();
 
@@ -5432,6 +5465,12 @@
         // through to Object(), which downstream narrows to a numeric default and
         // produces bool/int mismatches (CS0019) or wrong casts. Consult that annotation
         // before giving up.
+        // Object.freeze(x) is x (see transformExpression's ObjectFreeze case)
+        case 'ObjectFreeze':
+        case 'ObjectSeal':
+          if (node.object || node.argument) return this.inferFullExpressionType(node.object || node.argument);
+          return CSharpType.Object();
+
         default: {
           if (node.resultType) {
             const mapped = this.mapType(node.resultType);
@@ -5523,10 +5562,42 @@
     /**
      * Infer type from a method call
      */
+    /**
+     * The return type a framework stub class declares for a method called on a
+     * value of that class (csharp.js _getStubMembers), when it is a primitive or a
+     * primitive array; null otherwise, and for a class this file declares itself.
+     * @param {Object} receiver - the IL receiver node
+     * @param {string} method - the JS method name
+     * @returns {CSharpType|null}
+     */
+    stubMethodReturnType(receiver, method) {
+      if (!method || !receiver || receiver.type === 'Identifier' && ['OpCodes', 'Math', 'Object', 'Array', 'String', 'Number'].includes(receiver.name)) return null;
+      const receiverType = this.inferFullExpressionType(receiver);
+      if (!receiverType || receiverType.isArray || this.localClassNames.has(receiverType.name)) return null;
+      const csName = this.toPascalCase(method);
+      let name = receiverType.name;
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (!stub) return null;
+        if (stub.returns?.has(csName)) {
+          const m = /^(byte|sbyte|short|ushort|int|uint|long|ulong|bool|double|string)(\[\])?$/.exec(stub.returns.get(csName) || '');
+          if (!m) return null;
+          const scalar = new CSharpType(m[1]);
+          return m[2] ? CSharpType.Array(scalar) : scalar;
+        }
+        name = stub.base;
+      }
+      return null;
+    }
+
     inferCallExpressionType(node) {
       if (node.callee.type === 'MemberExpression') {
         const obj = node.callee.object;
         const method = node.callee.property.name || node.callee.property.value;
+        // /re/.test(s) is Regex.IsMatch: a bool (not an object compared to null)
+        if (method === 'test' && obj?.type === 'Literal' && obj.regex) return CSharpType.Bool();
+        // A byte buffer's byteLength() is its Length (see transformCallExpression)
+        if (method === 'byteLength' && (node.arguments || []).length === 0 && this.inferFullExpressionType(obj)?.isArray) return CSharpType.Int();
 
         // AlgorithmFramework.Find(name)/etc - resolves at emission time to the
         // `dynamic`-returning stub method (see transformCallExpression's identical
@@ -5559,6 +5630,10 @@
           const returnType = this.getOpCodesReturnType(fullMethod);
           if (returnType) return returnType;
         }
+
+        // A method of a framework stub class (the fountain library's SparseMatrix.Get)
+        const stubReturn = this.stubMethodReturnType(obj, method);
+        if (stubReturn) return stubReturn;
 
         // String.fromCharCode returns string
         if (obj.type === 'Identifier' && obj.name === 'String' && method === 'fromCharCode') {
@@ -5836,6 +5911,12 @@
             return sig.returnType;
           }
         }
+        // A static method of a class this file declares (ms-lzh.js's
+        // `MSLZHInstance._hash3(data, pos)`, a uint32 into an int32 local - CS0266)
+        if (obj.type === 'Identifier' && this.localClassNames.has(obj.name) && !this.getVariableType(obj.name)) {
+          const sig = this.getMethodSignature(obj.name, this.toPascalCase(method)) || this.getMethodSignature(obj.name, method);
+          if (sig?.returnType) return sig.returnType;
+        }
 
         // A call on some OTHER receiver whose own static type is already known - e.g.
         // `this._cipher.generateByte()` (`_cipher` a field declared as a real nested
@@ -5906,6 +5987,12 @@
         // has the real return type.
         if (this.currentClass) {
           const pascalName = this.toPascalCase(funcName);
+          // A bare call names a module function (on the main class), never a method of
+          // the current class - classic-mceliece.js's Decapsulate() method calls the
+          // module's Decapsulate(), which returns bytes
+          const moduleSig = this.mainClassName && this.currentClass.name !== this.mainClassName
+            ? this.getMethodSignature(this.mainClassName, pascalName) : null;
+          if (moduleSig?.returnType) return moduleSig.returnType;
           const sig = this.getMethodSignature(this.currentClass.name, pascalName);
           if (sig?.returnType) {
             return sig.returnType;
@@ -6262,6 +6349,10 @@
      */
     inferBinaryExpressionType(node) {
       const op = node.operator;
+      // 1.0 / IM: a division by or of a number written with a fraction is a double
+      if (op === '/' && (this.isFractionLiteral(node.left) || this.isFractionLiteral(node.right))) return CSharpType.Double();
+      // a ** b: a BigInteger power of BigInts, else a double (see transformExponentiation)
+      if (op === '**') return this.isBigIntOperand(node.left) || this.isBigIntOperand(node.right) ? new CSharpType('BigInteger') : CSharpType.Double();
 
       // Comparison operators return bool
       if (['==', '===', '!=', '!==', '<', '>', '<=', '>='].includes(op)) {
@@ -7108,6 +7199,19 @@
       if (actualType && !actualType.isArray && actualType.name === 'char' && expectedType.name === 'string' && !expectedType.isArray) {
         return new CSharpMethodCall(expr, 'ToString', []);
       }
+      // A BigInteger argument keeps its low bits (darkcrypt-hpc.js's M64(stir[0] -
+      // (stir[6] ^ BigInt(i))), negative before the mask): a plain cast overflows
+      if (actualType && !actualType.isArray && actualType.name === 'BigInteger' && !expectedType.isArray &&
+          ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(expectedType.name))
+        return this.narrowBigInteger(expr, expectedType);
+      // A dynamic value for a numeric array parameter (hqc.js's byte[] key for an int32[]
+      // parameter) converts at run time: an array cast would throw
+      if (actualType && !actualType.isArray && actualType.name === 'dynamic' && expectedType.isArray &&
+          ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(expectedType.elementType?.name) && !expectedType.elementType?.isArray) {
+        const call = new CSharpMethodCall(null, 'AsArrayOf', [new CSharpCast(CSharpType.Object(), expr)]);
+        call.typeArguments = [expectedType.elementType];
+        return call;
+      }
       return new CSharpCast(expectedType, expr);
     }
 
@@ -7290,7 +7394,124 @@
       return this.moduleBindingTargets.get(node.name) || null;
     }
 
+    /**
+     * Folds every long concatenation of string literals (a data table written as
+     * 'hex...' + 'hex...' + ..., Brotli's 1200-line dictionary) into one literal,
+     * so the transformation does not recurse once per term.
+     * @param {Object} jsAst - the program, changed in place
+     */
+    foldStringLiteralChains(jsAst) {
+      const fold = node => {
+        const rights = [];
+        let left = node;
+        while (left && left.type === 'BinaryExpression' && left.operator === '+') { rights.push(left.right); left = left.left; }
+        if (rights.length < 8 || left?.type !== 'Literal' || typeof left.value !== 'string') return null;
+        let text = left.value;
+        for (let i = rights.length - 1; i >= 0; --i) {
+          if (rights[i]?.type !== 'Literal' || typeof rights[i].value !== 'string') return null;
+          text += rights[i].value;
+        }
+        return { type: 'Literal', value: text, raw: JSON.stringify(text), resultType: left.resultType };
+      };
+      this._walkAstNodes(jsAst, node => {
+        for (const key in node) {
+          if (key === 'parent') continue;
+          const value = node[key];
+          if (Array.isArray(value)) {
+            for (let i = 0; i < value.length; ++i) {
+              const folded = value[i]?.type === 'BinaryExpression' ? fold(value[i]) : null;
+              if (folded) value[i] = folded;
+            }
+          } else if (value?.type === 'BinaryExpression') {
+            const folded = fold(value);
+            if (folded) node[key] = folded;
+          }
+        }
+      });
+    }
+
+    /**
+     * Two fields of one class that differ only in case (`this.n` and `this.N`)
+     * are one C# property once PascalCased. Each field of such a pair whose name
+     * starts lower-case is renamed within its class (n -> nField), so both keep
+     * their own value.
+     * @param {Object} jsAst - the program, changed in place
+     */
+    renameCaseCollidingFields(jsAst) {
+      const fieldName = n => {
+        if (n?.type === 'ThisPropertyAccess') return typeof n.property === 'string' ? n.property : n.property?.name;
+        if (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression') return n.property?.name;
+        return null;
+      };
+      this._walkAstNodes(jsAst, cls => {
+        if (cls.type !== 'ClassDeclaration' && cls.type !== 'ClassExpression') return;
+        const assigned = new Set();
+        const memberNames = new Set();
+        this._walkAstNodes(cls.body, n => {
+          if (n.type === 'AssignmentExpression' && fieldName(n.left)) assigned.add(fieldName(n.left));
+          if (n.type === 'MethodDefinition' && n.key?.name) memberNames.add(n.key.name);
+        });
+        const renames = new Map();
+        for (const name of assigned) {
+          if (!/^[a-z]/.test(name) || memberNames.has(name)) continue;
+          const pascal = this.toPascalCase(name);
+          if (pascal !== name && assigned.has(pascal)) renames.set(name, name + 'Field');
+        }
+        if (renames.size === 0) return;
+        this._walkAstNodes(cls.body, n => {
+          const name = fieldName(n);
+          if (!name || !renames.has(name)) return;
+          if (n.type === 'ThisPropertyAccess' && typeof n.property === 'string') n.property = renames.get(name);
+          else n.property = Object.assign({}, n.property, { name: renames.get(name) });
+        });
+      });
+    }
+
+    /**
+     * `Array(n)` called without `new` is `new Array(n)`; the IL leaves it a plain
+     * call of a function named Array (Array(256).fill(0x61) in BriefLZ's vectors).
+     * @param {Object} jsAst - the program, changed in place
+     */
+    normalizeArrayCalls(jsAst) {
+      const asCreation = n => n?.type === 'CallExpression' && n.callee?.type === 'Identifier' && n.callee.name === 'Array' &&
+        n.arguments?.length === 1 ? { type: 'ArrayCreation', size: n.arguments[0], elementType: null, resultType: null, ilNodeType: 'ArrayCreation' } : null;
+      this._walkAstNodes(jsAst, node => {
+        for (const key in node) {
+          if (key === 'parent') continue;
+          const value = node[key];
+          if (Array.isArray(value)) {
+            for (let i = 0; i < value.length; ++i) { const c = asCreation(value[i]); if (c) value[i] = c; }
+          } else {
+            const c = asCreation(value);
+            if (c) node[key] = c;
+          }
+        }
+      });
+    }
+
     transform(jsAst) {
+      this.normalizeArrayCalls(jsAst);
+      this.foldStringLiteralChains(jsAst);
+      this.arrayHoldingConstructors = this.preScanArrayHoldingConstructors(jsAst);
+      // The PascalCase names of every class member this file declares (see isInheritableMemberName)
+      this.fileClassMemberNames = new Set();
+      this._walkAstNodes(jsAst, n => {
+        if (n.type === 'MethodDefinition' && n.key?.name && n.kind !== 'constructor') this.fileClassMemberNames.add(this.toPascalCase(n.key.name));
+      });
+      this.renameCaseCollidingFields(jsAst);
+      this.programBody = jsAst.body || null;
+      // Members the file tests against undefined (`cfg.count !== undefined`): such a
+      // value member starting undefined is nullable (see inferPropertyType)
+      this.undefinedTestedMembers = new Set();
+      const isUndefined = n => (n?.type === 'Identifier' && n.name === 'undefined') ||
+        (n?.type === 'Literal' && (n.isUndefined || n.value === undefined && n.resultType === 'void'));
+      const memberName = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name)
+        : n?.type === 'MemberExpression' && !n.computed ? (n.property?.name || n.property?.value) : null;
+      this._walkAstNodes(jsAst.body, n => {
+        if (n.type !== 'BinaryExpression' || !['===', '!==', '==', '!='].includes(n.operator)) return;
+        const name = isUndefined(n.right) ? memberName(n.left) : isUndefined(n.left) ? memberName(n.right) : null;
+        if (name) this.undefinedTestedMembers.add(name);
+      });
       const unit = new CSharpCompilationUnit();
 
       // Standard usings for crypto code. System.Buffers.Binary is required
@@ -7375,6 +7596,7 @@
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
         this.refArrayParams = this.preScanRefArrayParams(jsAst);
+        this.writtenArrayParams = this.preScanWrittenArrayParams(jsAst.body);
         // Module bindings something reassigns or grows (a push becomes an assignment
         // in C#) cannot be readonly fields
         this.reassignedModuleBindings = new Set();
@@ -7459,6 +7681,7 @@
         // declared earlier in the file needs its constructor's parameter types on
         // file before that earlier class's own `new X(...)` call sites transform).
         this.preRegisterConstructorSignatures(jsAst);
+        this.preRegisterDeclaredFieldTypes(jsAst);
         // Approximate REGULAR (non-constructor) method signatures for every
         // top-level class too - see preRegisterAllMethodSignaturesAcrossClasses's
         // own doc comment (PPM's PPMContext.AddSymbol motivating case). Runs after
@@ -7501,7 +7724,48 @@
       // AlgorithmFramework.Find/RegisterAlgorithm/GetAll resolve to the runtime's
       // registry class (csharp.js), which looks up every bundled algorithm.
 
+      this.applyRefArgumentsEverywhere(unit);
+      this.linkLocalOverrides(unit);
       return unit;
+    }
+
+    /**
+     * A JavaScript method a subclass redeclares is dispatched on the object, so a
+     * base-class call `this.shiftRows(s)` reaches the subclass's method (kupyna.js).
+     * A C# method of a class this file declares, which a subclass (also declared
+     * here) redeclares with the identical signature, becomes virtual and the
+     * redeclaration an override. Signatures that differ stay separate methods.
+     * @param {CSharpCompilationUnit} unit - the transformed unit
+     */
+    linkLocalOverrides(unit) {
+      const classes = new Map();
+      const collect = types => {
+        for (const t of types || []) {
+          if (t?.nodeType !== 'Class') continue;
+          classes.set(t.name, t);
+          collect(t.nestedTypes);
+          collect((t.members || []).filter(m => m?.nodeType === 'Class'));
+        }
+      };
+      collect(unit.namespace?.types);
+      const signature = m => `${m.returnType?.toString()}(${m.parameters.map(p => `${p.isRef ? 'ref ' : ''}${p.isOut ? 'out ' : ''}${p.type?.toString()}`).join(',')})`;
+      const instanceMethods = c => (c.members || []).filter(m => m?.nodeType === 'Method' && !m.isStatic);
+      for (const cls of classes.values()) {
+        for (const method of instanceMethods(cls)) {
+          if (method.isOverride) continue;
+          const sig = signature(method);
+          let base = classes.get(cls.baseClass?.name);
+          for (let hops = 0; base && hops < 32; ++hops, base = classes.get(base.baseClass?.name)) {
+            const inherited = instanceMethods(base).find(m => m.name === method.name);
+            if (!inherited) continue;
+            if (signature(inherited) === sig && inherited.accessModifier === method.accessModifier && method.accessModifier !== 'private') {
+              if (!inherited.isOverride && !inherited.isAbstract) inherited.isVirtual = true;
+              method.isOverride = true;
+            }
+            break;
+          }
+        }
+      }
     }
 
     /**
@@ -7513,6 +7777,42 @@
      * @param {Array} body - Program body (top-level statements)
      * @param {CSharpClass} mainClass - the generated main class
      */
+    /**
+     * A module loop that registers algorithms as a static method running it and
+     * returning what it registered, in order: its RegisterAlgorithm(x) calls
+     * collect into a list.
+     * @param {Object} loop - the IL loop statement
+     * @param {number} number - the loop's number among the module's registration loops
+     * @param {CSharpClass} mainClass - the generated main class
+     * @returns {CSharpMethodCall} the call of the method
+     */
+    registrationLoopCall(loop, number, mainClass) {
+      const name = 'RegistrationLoop' + number;
+      const method = this.transformFunctionToMethod(name, {
+        type: 'FunctionExpression', params: [], body: { type: 'BlockStatement', body: [loop] }
+      });
+      method.isStatic = true;
+      method.accessModifier = 'private';
+      method.returnType = CSharpType.Array(new CSharpType('Algorithm'));
+      if (!method.body) method.body = new CSharpBlock();
+      const redirect = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(redirect); return; }
+        if (n.nodeType === 'MethodCall' && n.methodName === 'RegisterAlgorithm' && n.arguments?.length === 1 &&
+            (!n.target || n.target.nodeType === 'Identifier' && n.target.name === 'AlgorithmFramework')) {
+          n.target = new CSharpIdentifier('registered');
+          n.methodName = 'Add';
+          n.arguments = [new CSharpCast(new CSharpType('Algorithm'), n.arguments[0])];
+        }
+        for (const key of Object.keys(n)) if (key !== 'sourceLocation' && key !== 'comments') redirect(n[key]);
+      };
+      redirect(method.body);
+      method.body.statements.unshift(new CSharpRawCode('var registered = new List<Algorithm>();'));
+      method.body.statements.push(new CSharpReturn(new CSharpMethodCall(new CSharpIdentifier('registered'), 'ToArray', [])));
+      mainClass.members.push(method);
+      return new CSharpMethodCall(null, name, []);
+    }
+
     emitAlgorithmRegistry(body, mainClass) {
       const isRegisterCall = expr => expr?.type === 'CallExpression' && expr.arguments?.length === 1 && (
         (expr.callee?.type === 'Identifier' && expr.callee.name === 'RegisterAlgorithm') ||
@@ -7580,6 +7880,12 @@
               loopLocals.isLoop = true;
               visit(unrolled(cloneNode(node.body), arrayName, indexName, element, index), loopLocals);
             });
+          } else {
+            // A loop over computed data (mayo.js's `for (...) RegisterAlgorithm(new
+            // MAYOAlgorithm(PARAMETER_SETS[i].name))`) registers when it runs
+            let registers = false;
+            this._walkAstNodes(node.body, n => { if (isRegisterCall(n)) registers = true; });
+            if (registers) registered.push({ registrationLoop: node });
           }
         }
       };
@@ -7597,7 +7903,9 @@
       const algorithmType = new CSharpType('Algorithm');
       // Each registered algorithm is a static field of its own (a test harness finds
       // algorithms by their static fields), listed in Algorithms in source order
+      let loopCount = 0;
       const entries = registered.map((arg, index) => {
+        if (arg.registrationLoop) return this.registrationLoopCall(arg.registrationLoop, ++loopCount, mainClass);
         const value = this.transformExpression(arg);
         if (arg.type === 'Identifier') return value;
         const field = new CSharpField(`RegisteredAlgorithm${index}`, algorithmType);
@@ -7607,17 +7915,30 @@
         mainClass.members.push(field);
         return new CSharpIdentifier(field.name);
       });
-      const registry = new CSharpField('Algorithms', CSharpType.Array(algorithmType));
+      // A module constant `algorithms` (ripemd.js's list its loop registers) already
+      // holds the name; the registry is then RegisteredAlgorithms
+      const registryName = mainClass.members.some(m => m.name === 'Algorithms') ? 'RegisteredAlgorithms' : 'Algorithms';
+      const registry = new CSharpField(registryName, CSharpType.Array(algorithmType));
       registry.isStatic = true;
       registry.isReadOnly = true;
-      registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
+      if (loopCount === 0) registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
+      else {
+        // Single registrations and the arrays the loops register, concatenated in order
+        let all = new CSharpArrayCreation(algorithmType, null, []);
+        for (let i = 0; i < entries.length; ++i)
+          all = new CSharpMethodCall(all, 'Concat', [registered[i].registrationLoop ? entries[i] : new CSharpArrayCreation(algorithmType, null, [entries[i]])]);
+        registry.initializer = new CSharpMethodCall(all, 'ToArray', []);
+      }
       mainClass.members.push(registry);
 
       if (mainClass.members.some(m => m.name === 'AlgorithmInstance')) return;
       const first = new CSharpField('AlgorithmInstance', algorithmType);
       first.isStatic = true;
       first.isReadOnly = true;
-      first.initializer = new CSharpElementAccess(new CSharpIdentifier('Algorithms'), CSharpLiteral.Int(0));
+      // (a loop may register nothing when run, so it takes the first if any)
+      first.initializer = loopCount === 0
+        ? new CSharpElementAccess(new CSharpIdentifier(registryName), CSharpLiteral.Int(0))
+        : new CSharpMethodCall(new CSharpIdentifier(registryName), 'FirstOrDefault', []);
       mainClass.members.push(first);
     }
 
@@ -7796,6 +8117,38 @@
      * registerMethodSignature already work for ordinary methods), so this pre-scan only
      * needs to be a reasonable approximation for call sites processed earlier in the file.
      */
+    /**
+     * Pre-register the JSDoc-declared type of every `/** @type {T} *\/ this.f = ...;`
+     * a class constructor holds, before any body is transformed: a function declared
+     * ahead of the class (xz-lzma2.js's encodeLiteral reading state.dictResetPos, a
+     * float64) otherwise sees no field type and misses the cast into its int32 local
+     * (CS0266). The class's own transform registers the authoritative type later.
+     * @param {Object} jsAst - the IL program
+     */
+    preRegisterDeclaredFieldTypes(jsAst) {
+      this._walkAstNodes(jsAst.body, node => {
+        if ((node.type !== 'ClassDeclaration' && node.type !== 'ClassExpression') || !node.id?.name) return;
+        const body = node.body?.body || node.body || [];
+        const ctorNode = Array.isArray(body) ? body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor') : null;
+        for (const stmt of ctorNode?.value?.body?.body || []) {
+          const assignment = stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+          if (assignment?.type !== 'AssignmentExpression' || assignment.operator !== '=' || typeof assignment.declaredType !== 'string') continue;
+          const left = assignment.left;
+          const fieldName = left?.type === 'ThisPropertyAccess' ? (typeof left.property === 'string' ? left.property : left.property?.name) : null;
+          if (!fieldName) continue;
+          const pascalName = this.toPascalCase(fieldName);
+          if (this.classFieldTypeOwnHas(node.id.name, pascalName)) continue;
+          let type = this.mapILType(assignment.declaredType);
+          // (nullable where it starts undefined - see inferPropertyType)
+          const right = assignment.right;
+          if (type && !type.isArray && CSHARP_VALUE_TYPES.has(type.name) && this.undefinedTestedMembers?.has(fieldName) &&
+              (right?.type === 'Literal' && (right.isUndefined || right.value === undefined && right.resultType === 'void') || right?.type === 'Identifier' && right.name === 'undefined'))
+            type = new CSharpType(type.name, { isNullable: true });
+          if (type && type.name !== 'object') this.setClassFieldType(node.id.name, pascalName, type);
+        }
+      });
+    }
+
     preRegisterConstructorSignatures(jsAst) {
       if (!jsAst || !Array.isArray(jsAst.body)) return;
       for (const node of jsAst.body) {
@@ -8137,10 +8490,62 @@
           // an export object that we've already handled
           break;
 
+        // A loop or block filling a module table (`for (...) MUL_ALPHA.push(...)`)
+        case 'ForStatement':
+        case 'ForOfStatement':
+        case 'ForInStatement':
+        case 'WhileStatement':
+        case 'DoWhileStatement':
+        case 'BlockStatement':
+        case 'IfStatement':
+          if (!this.touchesModuleLoader(node)) this.transformModuleInitStatement(node, targetClass);
+          break;
+
         default:
-          // Silently skip unhandled top-level node types (e.g. IfStatement IIFE guards)
+          // Silently skip unhandled top-level node types
           break;
       }
+    }
+
+    /**
+     * Whether a module-level statement deals with the module system or the
+     * registry (a UMD guard, `if (!Find(x)) RegisterAlgorithm(x)`), which the
+     * generated registry replaces - such a statement is not module code to run.
+     */
+    touchesModuleLoader(node) {
+      const loaderNames = new Set(['RegisterAlgorithm', 'AlgorithmFramework', 'module', 'exports', 'define', 'global', 'globalThis', 'window', 'self', 'require']);
+      let found = false;
+      this._walkAstNodes(node, n => {
+        if (!found && n.type === 'Identifier' && loaderNames.has(n.name)) found = true;
+      });
+      return found;
+    }
+
+    /**
+     * A statement of the module body that computes something at load time (a
+     * loop filling a table, a store into one). It runs where JavaScript runs it:
+     * a static method holding it, called by the initializer of a static field
+     * declared at that point, so the static fields initialize in source order
+     * around it.
+     */
+    transformModuleInitStatement(node, targetClass) {
+      this.moduleInitCount = (this.moduleInitCount || 0) + 1;
+      const name = 'ModuleInit' + this.moduleInitCount;
+      const method = this.transformFunctionToMethod(name, {
+        type: 'FunctionExpression', params: [], body: { type: 'BlockStatement', body: [node] }
+      });
+      method.isStatic = true;
+      method.accessModifier = 'private';
+      method.returnType = CSharpType.Bool();
+      if (!method.body) method.body = new CSharpBlock();
+      method.body.statements.push(new CSharpReturn(CSharpLiteral.Bool(true)));
+      targetClass.members.push(method);
+      const field = new CSharpField(name + 'Done', CSharpType.Bool());
+      field.isStatic = true;
+      field.isReadOnly = true;
+      field.accessModifier = 'private';
+      field.initializer = new CSharpMethodCall(null, method.name, []);
+      targetClass.members.push(field);
     }
 
     /**
@@ -8160,6 +8565,21 @@
           decl.init = decl.init.object;
         }
         if (!decl.init) continue;
+
+        // A module Map (lwe-signature.js's `const KEY_CACHE = new Map();`, filled with
+        // LWEKeyPair values) takes its key/value types from the .set/.get calls across
+        // the file, as a local Map does from its function body (CS0029 otherwise)
+        if (decl.init.type === 'MapCreation' && decl.id.type === 'Identifier' && this.programBody) {
+          // A declared Map<K, V> (mayo.js's `@type {Map<string, MayoPublicKey>}`) decides
+          // first, so the initializer agrees with the declared field
+          const declaredMap = typeof decl.declaredType === 'string' ? /^Map<\s*([^,<>]+?)\s*,\s*(.+?)\s*>$/.exec(decl.declaredType) : null;
+          if (declaredMap) {
+            const keyType = this.mapILType(declaredMap[1]), valueType = this.mapILType(declaredMap[2]);
+            if (keyType && valueType) this._mergeMapCreationTypeTag(decl.init, { keyType, valueType });
+          }
+          const usage = this.preScanLocalMapUsageTypes(this.programBody).get(decl.id.name);
+          if (usage) this._mergeMapCreationTypeTag(decl.init, usage);
+        }
 
         // Handle ObjectPattern destructuring - skip (imports framework types)
         if (decl.id.type === 'ObjectPattern') {
@@ -8392,6 +8812,7 @@
           field.initializer = this.transformExpression(decl.init);
           // The initializer converted to the IL-declared field type
           if (ilFieldType) field.initializer = this.castIfNeeded(field.initializer, this.inferFullExpressionType(decl.init), fieldType);
+          field.initializer = this.asDoubleQuotient(decl.init, field.initializer, fieldType);
           this.currentArrayElementType = prevArrayElementType;
           targetClass.members.push(field);
 
@@ -10992,6 +11413,7 @@
               ulong: () => CSharpLiteral.ULong(v), float: () => CSharpLiteral.Float(v),
               double: () => CSharpLiteral.Double(v), byte: () => CSharpLiteral.Int(v),
               short: () => CSharpLiteral.Int(v), ushort: () => CSharpLiteral.Int(v),
+              int: () => CSharpLiteral.Int(v), sbyte: () => CSharpLiteral.Int(v),
             } : {
               float: () => CSharpLiteral.Float(v),
             };
@@ -11039,7 +11461,33 @@
           }
         }
 
+        // A default computed from the other arguments (huffman-code-lengths.data.js's
+        // `symbolCount = weights.length`) is no C# constant: the parameter takes null
+        // and the body starts by applying the default - a value type through a
+        // nullable `<name>Arg` parameter, `T name = nameArg ?? <default>;`
+        if (literalDefaultNode && !hasLiteralDefault && !isRef && !inheritedDefaultValue && !csParam.defaultValue) {
+          if (!paramType.isArray && CSHARP_VALUE_TYPES.has(paramType.name) && !paramType.isNullable) {
+            csParam.name = `${paramName}Arg`;
+            csParam.type = new CSharpType(paramType.name, { isNullable: true });
+            csParam.defaultValue = CSharpLiteral.Null();
+            (method.defaultPrelude ||= []).push({ name: paramName, type: paramType, arg: csParam.name, node: literalDefaultNode });
+          } else if (paramType.isArray || paramType.name === 'string' || paramType.name === 'object') {
+            csParam.defaultValue = CSharpLiteral.Null();
+            (method.defaultPrelude ||= []).push({ name: paramName, type: paramType, arg: null, node: literalDefaultNode });
+          }
+        }
+
         method.parameters.push(csParam);
+      }
+
+      // A JavaScript caller may pass fewer arguments than the method names (the
+      // rest are undefined): every parameter without a default gets `default`
+      // (CROSS's absorb(data) for absorb(data, offset, length), CS7036 otherwise)
+      // (from the end: a ref parameter takes none, nor may any parameter before it)
+      for (let i = method.parameters.length - 1; i >= 0; --i) {
+        const p = method.parameters[i];
+        if (p.isParams || p.isRef || p.isOut) break;
+        if (!p.defaultValue) p.defaultValue = new CSharpIdentifier('default');
       }
 
       // A JavaScript override may declare fewer parameters than the framework method
@@ -11099,6 +11547,17 @@
         for (const n of this.collectThisAliasNames(funcNode.body)) this.thisAliasNames.add(n);
         method.body = this.transformFunctionBody(funcNode.body, method);
         this.thisAliasNames = prevThisAliasNames;
+        // Defaults computed from other arguments, applied first (see the parameter loop)
+        if (method.defaultPrelude?.length && method.body) {
+          const prelude = method.defaultPrelude.map(d => {
+            const value = this.castIfNeeded(this.transformExpression(d.node), this.inferFullExpressionType(d.node), d.type);
+            return d.arg
+              ? new CSharpVariableDeclaration(d.name, d.type, new CSharpBinaryExpression(new CSharpIdentifier(d.arg), '??', value))
+              : new CSharpExpressionStatement(new CSharpAssignment(new CSharpIdentifier(d.name), '??=', value));
+          });
+          method.body.statements.unshift(...prelude);
+        }
+        delete method.defaultPrelude;
       }
 
       // Pop scope when done with method
@@ -11158,6 +11617,9 @@
       // detectPassthroughArrayParamType's use there for the full rationale).
       const prevFunctionBodyNode = this.currentFunctionBodyNode;
       this.currentFunctionBodyNode = bodyNode;
+      // const locals holding a subarray view, per function (see subarrayViewArguments)
+      const prevViewLocals = this.viewLocals;
+      this.viewLocals = new Map();
 
       // Clear method-scoped variable tracking for collision detection
       const prevMethodDeclaredVars = this.methodDeclaredVars;
@@ -11220,6 +11682,7 @@
       // the array on such a store, a C# array has to be grown first
       const prevGrowableArrayLocals = this.growableArrayLocals;
       this.growableArrayLocals = this.preScanGrowableArrayLocals(bodyNode);
+      if (bodyNode.type === 'BlockStatement') this.deferAliasedPushes(bodyNode);
 
       if (bodyNode.type === 'BlockStatement') {
         for (const stmt of bodyNode.body) {
@@ -11237,8 +11700,11 @@
         const expr = this.transformExpression(bodyNode);
         block.statements.push(new CSharpReturn(expr));
       }
+      if (bodyNode.type === 'BlockStatement') this.syncFieldAliases(bodyNode, block);
+      if (bodyNode.type === 'BlockStatement') this.syncHeldArrays(bodyNode, block);
 
       // Restore context
+      this.viewLocals = prevViewLocals;
       this.currentMethod = prevMethod;
       this.currentArrayElementType = null;
       this.methodDeclaredVars = prevMethodDeclaredVars;
@@ -11254,6 +11720,231 @@
       this.currentFunctionBodyNode = prevFunctionBodyNode;
 
       return block;
+    }
+
+    /**
+     * `const rows = []; cube.push(rows); ... rows.push(r)` - the container holds
+     * the array the later pushes fill in JavaScript; in C# each push binds the
+     * local to a new array and the container keeps the empty one. Where nothing
+     * after it in the block jumps or reads the container, the push into the
+     * container moves to the end of the block, after the local is complete.
+     * @param {Object} node - IL block or statement, changed in place
+     */
+    deferAliasedPushes(node) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(n => this.deferAliasedPushes(n)); return; }
+      if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionDeclaration') return;
+      for (const key of Object.keys(node)) {
+        if (key !== 'parent' && node[key] && typeof node[key] === 'object') this.deferAliasedPushes(node[key]);
+      }
+      if (node.type !== 'BlockStatement' || !Array.isArray(node.body)) return;
+      const pushOf = stmt => {
+        const e = stmt?.type === 'ExpressionStatement' ? stmt.expression : null;
+        if (e?.type === 'ArrayAppend' && e.array?.type === 'Identifier' && e.value?.type === 'Identifier' && !(e.values?.length > 1))
+          return { container: e.array.name, local: e.value.name };
+        if (e?.type === 'CallExpression' && e.callee?.type === 'MemberExpression' && e.callee.property?.name === 'push' &&
+            e.callee.object?.type === 'Identifier' && e.arguments?.length === 1 && e.arguments[0].type === 'Identifier')
+          return { container: e.callee.object.name, local: e.arguments[0].name };
+        // The same for a store by index: A[i] = row
+        if (e?.type === 'AssignmentExpression' && e.operator === '=' && e.left?.type === 'MemberExpression' && e.left.computed &&
+            e.left.object?.type === 'Identifier' && e.right?.type === 'Identifier' && ['Identifier', 'Literal'].includes(e.left.property?.type))
+          return { container: e.left.object.name, local: e.right.name, index: e.left.property.type === 'Identifier' ? e.left.property.name : null };
+        return null;
+      };
+      const body = node.body;
+      for (let i = 0; i < body.length - 1; ++i) {
+        const push = pushOf(body[i]);
+        if (!push) continue;
+        const declaredHere = body.slice(0, i).some(s => s.type === 'VariableDeclaration' &&
+          s.declarations.some(d => d.id?.name === push.local));
+        if (!declaredHere) continue;
+        const rest = body.slice(i + 1);
+        let rebound = false, blocked = false;
+        this._walkAstNodes(rest, n => {
+          if (['ReturnStatement', 'BreakStatement', 'ContinueStatement', 'ThrowStatement'].includes(n.type)) blocked = true;
+          if (n.type === 'Identifier' && n.name === push.container) blocked = true;
+          // The index must still name the same slot at the end of the block
+          if (push.index && ((n.type === 'AssignmentExpression' && n.left?.type === 'Identifier' && n.left.name === push.index) ||
+              (n.type === 'UpdateExpression' && n.argument?.type === 'Identifier' && n.argument.name === push.index))) blocked = true;
+          if ((n.type === 'ArrayAppend' || n.type === 'ArrayConcat' || n.type === 'ArrayUnshift') && n.array?.type === 'Identifier' && n.array.name === push.local) rebound = true;
+          if (n.type === 'CallExpression' && n.callee?.type === 'MemberExpression' && ['push', 'unshift'].includes(n.callee.property?.name) &&
+              n.callee.object?.type === 'Identifier' && n.callee.object.name === push.local) rebound = true;
+          // A store growing it (SetGrow binds a new array)
+          if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && n.left.computed &&
+              n.left.object?.type === 'Identifier' && n.left.object.name === push.local && this.growableArrayLocals?.has(push.local)) rebound = true;
+        });
+        if (!rebound || blocked) continue;
+        const [moved] = body.splice(i, 1);
+        body.push(moved);
+        --i;
+      }
+    }
+
+    /**
+     * `const keys = []; this.keys = keys; ... keys.push(k)` - the field and the
+     * local are one array in JavaScript, which the pushes (or stores past its end)
+     * grow. A C# array cannot grow, so each such change binds the local to a new
+     * array and the field keeps the old one. The field is assigned the local
+     * again before every return and at the end of the body.
+     * @param {Object} bodyNode - IL function body
+     * @param {CSharpBlock} block - its transformed body, changed in place
+     */
+    syncFieldAliases(bodyNode, block) {
+      const declared = new Set();
+      const rebound = new Set();
+      const aliases = [];
+      const arrayName = n => n?.type === 'Identifier' ? n.name : null;
+      const rebindingTypes = new Set(['ArrayAppend', 'ArrayConcat', 'ArrayUnshift', 'ArraySplice', 'ArrayShift', 'ArrayPop']);
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') declared.add(node.id.name);
+        if (rebindingTypes.has(node.type) && arrayName(node.array)) rebound.add(arrayName(node.array));
+        if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression' && !node.callee.computed &&
+            ['push', 'unshift', 'splice', 'shift', 'pop'].includes(node.callee.property?.name) && arrayName(node.callee.object))
+          rebound.add(arrayName(node.callee.object));
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' &&
+            node.left.computed && arrayName(node.left.object) && this.growableArrayLocals?.has(arrayName(node.left.object)))
+          rebound.add(arrayName(node.left.object));
+      });
+      for (const stmt of bodyNode.body) {
+        const expr = stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+        if (expr?.type === 'AssignmentExpression' && expr.operator === '=' && expr.right?.type === 'Identifier' &&
+            (expr.left?.type === 'ThisPropertyAccess' || (expr.left?.type === 'MemberExpression' && expr.left.object?.type === 'ThisExpression')) &&
+            declared.has(expr.right.name) && rebound.has(expr.right.name))
+          aliases.push(expr);
+      }
+      // The other direction: const lfsr = this._lfsr; lfsr.shift(); lfsr.push(b)
+      // (also a row of one: const x = this.registers[r]; x.shift(); x.push(f))
+      const isField = n => n?.type === 'ThisPropertyAccess' || (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression') ||
+        (n?.type === 'MemberExpression' && n.computed && isField(n.object) && ['Identifier', 'Literal'].includes(n.property?.type));
+      for (const stmt of bodyNode.body) {
+        if (stmt.type !== 'VariableDeclaration') continue;
+        for (const d of stmt.declarations) {
+          if (d.id?.type !== 'Identifier' || !isField(d.init) || !rebound.has(d.id.name)) continue;
+          const local = d.id.name;
+          const sync = () => [new CSharpExpressionStatement(this.transformExpression({
+            type: 'AssignmentExpression', operator: '=', left: d.init, right: { type: 'Identifier', name: local } }))];
+          const localName = this.toCamelCase(this.variableNameMap?.get(local) || local);
+          this.insertSyncsAfter(block, sync, s => s?.nodeType === 'VariableDeclaration' && (s.name === localName || s.name === local));
+        }
+      }
+      if (aliases.length === 0) return;
+      const syncs = () => aliases.map(a => new CSharpExpressionStatement(this.transformExpression(a)));
+      // Only the returns after the field is first assigned the local (an early
+      // return before it must not read the local, which is not declared yet)
+      const aliasValueNames = new Set(syncs().map(s => s.expression?.value?.name).filter(Boolean));
+      this.insertSyncsAfter(block, syncs, s => s?.nodeType === 'ExpressionStatement' && s.expression?.nodeType === 'Assignment' &&
+        s.expression.value?.nodeType === 'Identifier' && aliasValueNames.has(s.expression.value.name));
+    }
+
+    /**
+     * Classes whose constructor keeps an array argument in a field that its methods
+     * push to (`new BitWriter(output)` writing into `output`), as className ->
+     * [{ index, field }]: in JavaScript the caller's array fills too.
+     * @param {Object} jsAst - the program
+     * @returns {Map<string, Array<{index: number, field: string}>>}
+     */
+    preScanArrayHoldingConstructors(jsAst) {
+      const result = new Map();
+      const fieldOf = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name)
+        : (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression' ? n.property?.name : null);
+      this._walkAstNodes(jsAst, cls => {
+        if (cls.type !== 'ClassDeclaration' || !cls.id?.name) return;
+        const pushed = new Set();
+        this._walkAstNodes(cls.body, n => {
+          if (n.type === 'ArrayAppend' && fieldOf(n.array)) pushed.add(fieldOf(n.array));
+          if (n.type === 'CallExpression' && n.callee?.type === 'MemberExpression' && n.callee.property?.name === 'push' && fieldOf(n.callee.object))
+            pushed.add(fieldOf(n.callee.object));
+        });
+        const ctor = (cls.body?.body || []).find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
+        const params = (ctor?.value?.params || []).map(p => p.type === 'Identifier' ? p.name : null);
+        const held = [];
+        this._walkAstNodes(ctor?.value?.body, n => {
+          if (n.type === 'AssignmentExpression' && n.operator === '=' && n.right?.type === 'Identifier' && fieldOf(n.left) &&
+              pushed.has(fieldOf(n.left)) && params.includes(n.right.name))
+            held.push({ index: params.indexOf(n.right.name), field: fieldOf(n.left) });
+        });
+        if (held.length) result.set(cls.id.name, held);
+      });
+      return result;
+    }
+
+    /**
+     * `const out = []; const w = new BitWriter(out); w.writeBit(1); return out;` -
+     * the writer's pushes fill `out` in JavaScript; in C# they rebind the writer's
+     * own field. The local is assigned the writer's field before every return after
+     * the writer is created, and at the end of the body.
+     * @param {Object} bodyNode - IL function body
+     * @param {CSharpBlock} block - its transformed body, changed in place
+     */
+    syncHeldArrays(bodyNode, block) {
+      if (!this.arrayHoldingConstructors?.size) return;
+      const declared = new Set();
+      this._walkAstNodes(bodyNode, n => { if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier') declared.add(n.id.name); });
+      const held = [];
+      for (const stmt of bodyNode.body) {
+        if (stmt.type !== 'VariableDeclaration') continue;
+        for (const d of stmt.declarations) {
+          const init = d.init;
+          const className = (init?.type === 'NewExpression' && init.callee?.type === 'Identifier') ? init.callee.name : null;
+          for (const { index, field } of (className && this.arrayHoldingConstructors.get(className)) || []) {
+            const arg = init.arguments?.[index];
+            if (arg?.type === 'Identifier' && declared.has(arg.name) && d.id?.type === 'Identifier')
+              held.push({ writer: d.id.name, local: arg.name, field });
+          }
+        }
+      }
+      for (const { writer, local, field } of held) {
+        const sync = () => [new CSharpExpressionStatement(this.transformExpression({
+          type: 'AssignmentExpression', operator: '=', left: { type: 'Identifier', name: local },
+          right: { type: 'MemberExpression', computed: false, object: { type: 'Identifier', name: writer }, property: { type: 'Identifier', name: field } }
+        }))];
+        const writerName = this.toCamelCase(this.variableNameMap?.get(writer) || writer);
+        this.insertSyncsAfter(block, sync, s => s?.nodeType === 'VariableDeclaration' && (s.name === writerName || s.name === writer));
+      }
+    }
+
+    /**
+     * Inserts the statements `syncs()` builds before every return after the first
+     * top-level statement `isAnchor` accepts, and at the end of the block.
+     * @param {CSharpBlock} block - the body, changed in place
+     * @param {Function} syncs - () => CSharpStatement[], fresh nodes per call
+     * @param {Function} isAnchor - (C# statement) => boolean
+     */
+    insertSyncsAfter(block, syncs, isAnchor) {
+      const visit = statements => {
+        for (let i = 0; i < statements.length; ++i) {
+          const stmt = statements[i];
+          if (!stmt || typeof stmt !== 'object') continue;
+          if (stmt.nodeType === 'Return') {
+            const added = syncs();
+            statements.splice(i, 0, ...added);
+            i += added.length;
+            continue;
+          }
+          visitNode(stmt);
+        }
+      };
+      const visitNode = node => {
+        if (!node || typeof node !== 'object' || node.nodeType === 'Lambda') return;
+        for (const key of Object.keys(node)) {
+          const value = node[key];
+          if (key === 'statements' && Array.isArray(value)) visit(value);
+          else if (Array.isArray(value)) value.forEach(visitNode);
+          else if (value?.nodeType === 'Return') {
+            // A lone `if (x) return;` body
+            const wrapped = new CSharpBlock();
+            wrapped.statements.push(...syncs(), value);
+            node[key] = wrapped;
+          } else if (value && typeof value === 'object' && value.nodeType) visitNode(value);
+        }
+      };
+      const first = block.statements.findIndex(isAnchor);
+      if (first < 0) return;
+      const tail = block.statements.slice(first + 1);
+      visit(tail);
+      block.statements.splice(first + 1, block.statements.length - first - 1, ...tail);
+      const last = block.statements[block.statements.length - 1];
+      if (!last || (last.nodeType !== 'Return' && last.nodeType !== 'Throw')) block.statements.push(...syncs());
     }
 
     /**
@@ -11289,13 +11980,51 @@
       this._walkAstNodes(bodyNode, node => {
         if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && node.init &&
             (((node.init.type === 'ArrayExpression' || node.init.type === 'ArrayLiteral') && (node.init.elements || []).length === 0) ||
-             (node.init.type === 'ArrayCreation' && !node.init.size && !node.init.length)))
+             (node.init.type === 'ArrayCreation' && !node.init.size && !node.init.length) ||
+             // A whole copy extended past its end (`const rk = key.slice(); rk[i + j] = ...`)
+             (node.init.type === 'ArraySlice' && !node.init.start && !node.init.end) || node.init.type === 'CopyArray'))
           emptyLocals.add(node.id.name);
         if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' &&
             node.left.computed && node.left.object?.type === 'Identifier')
           stored.add(node.left.object.name);
       });
-      return new Set([...emptyLocals].filter(name => stored.has(name)));
+      const growable = new Set([...emptyLocals].filter(name => stored.has(name)));
+      growable.rows = this.preScanGrowableRowLocals(bodyNode);
+      return growable;
+    }
+
+    /**
+     * Names of the locals whose rows are array literals pushed into them
+     * (`const row = [0]; table.push(row);`) and stored into past their end
+     * (`table[i][j] = v`), which grows a JavaScript row.
+     * @param {Object} bodyNode - IL function body
+     * @returns {Set<string>} JS local names
+     */
+    preScanGrowableRowLocals(bodyNode) {
+      const isLiteral = n => n && (n.type === 'ArrayExpression' || n.type === 'ArrayLiteral');
+      const literalLocals = new Set();
+      const withRows = new Set();
+      const rowStored = new Set();
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && isLiteral(node.init)) literalLocals.add(node.id.name);
+      });
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'ArrayAppend' && node.array?.type === 'Identifier') {
+          const values = Array.isArray(node.values) && node.values.length ? node.values : [node.value];
+          if (values.some(v => isLiteral(v) || (v?.type === 'Identifier' && literalLocals.has(v.name)))) withRows.add(node.array.name);
+        }
+        // A row stored as an empty array (matrix[r] = OpCodes.CreateArray(0, 0))
+        const emptyCreation = n => isLiteral(n) ? (n.elements || []).length === 0
+          : (n?.type === 'OpCodesCall' || n?.type === 'CallExpression') && (n.method === 'CreateArray' || n.callee?.property?.name === 'CreateArray') &&
+            n.arguments?.[0]?.type === 'Literal' && n.arguments[0].value === 0;
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+            node.left.object?.type === 'Identifier' && emptyCreation(node.right))
+          withRows.add(node.left.object.name);
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+            node.left.object?.type === 'MemberExpression' && node.left.object.computed && node.left.object.object?.type === 'Identifier')
+          rowStored.add(node.left.object.object.name);
+      });
+      return new Set([...withRows].filter(name => rowStored.has(name)));
     }
 
     /**
@@ -11363,6 +12092,9 @@
               node.expression?.type === 'ArrayUnshift' || node.expression?.type === 'ArraySplice') {
             return this.transformArrayMutationToAssignment(node.expression);
           }
+          // Object.freeze(x)/Object.seal(x) as a statement only protects x, which a
+          // C# array needs no help with; as an expression it is just x (CS0201)
+          if (node.expression?.type === 'ObjectFreeze' || node.expression?.type === 'ObjectSeal') return new CSharpBlock();
           // Skip super() calls - they are handled in constructor transformation
           const calleeNode = node.expression?.callee;
           const isSuperCall = node.expression?.type === 'CallExpression' &&
@@ -11370,6 +12102,8 @@
           if (isSuperCall) {
             return null;
           }
+          const viewWrites = this.subarrayViewArguments(node.expression);
+          if (viewWrites) return viewWrites;
           const expr = this.transformExpression(node.expression);
           // Skip if expression transformed to null (e.g., handled elsewhere)
           return expr ? new CSharpExpressionStatement(expr) : null;
@@ -11381,8 +12115,25 @@
         case 'IfStatement':
           return this.transformIfStatement(node);
 
-        case 'ForStatement':
+        case 'ForStatement': {
+          // for (var i = ...; ...) whose i is read after the loop: var is function
+          // scoped in JavaScript, so it is declared ahead of the loop (CS0103 otherwise)
+          if (node.init?.type === 'VariableDeclaration' && node.init.kind === 'var' && this.currentFunctionBodyNode) {
+            const names = new Set(node.init.declarations.map(d => d.id?.name).filter(Boolean));
+            const inside = new Set();
+            this._walkAstNodes(node, n => inside.add(n));
+            let usedOutside = false;
+            this._walkAstNodes(this.currentFunctionBodyNode, n => {
+              if (!usedOutside && n.type === 'Identifier' && names.has(n.name) && !inside.has(n)) usedOutside = true;
+            });
+            if (usedOutside) {
+              const declaration = this.transformLocalVariableDeclaration(node.init);
+              const loop = this.transformForStatement(Object.assign({}, node, { init: null }));
+              return [...(Array.isArray(declaration) ? declaration : [declaration]), loop];
+            }
+          }
           return this.transformForStatement(node);
+        }
 
         case 'ForOfStatement':
           return this.transformForOfStatement(node);
@@ -11446,6 +12197,7 @@
         // same outer locals JS closures do here).
         case 'FunctionDeclaration': {
           if (!node.id?.name) return null;
+          this.renameCaseCollidingParams(node, this.currentFunctionBodyNode);
           const localFunction = this.transformFunctionToMethod(node.id.name, node);
           localFunction.accessModifier = '';
           localFunction.isStatic = false;
@@ -11455,6 +12207,118 @@
         default:
           // Skip unhandled statement types
           return null;
+      }
+    }
+
+    /**
+     * The parameters each function or method of the file writes elements of
+     * (`dest[i] = ...`, `dest.set(...)`, `dest.fill(...)`), "PascalName#index".
+     * @param {Object} programBody - the IL program body
+     * @returns {Set<string>}
+     */
+    preScanWrittenArrayParams(programBody) {
+      const written = new Set();
+      const consider = (name, fn) => {
+        (fn?.params || []).forEach((param, index) => {
+          const paramName = param?.name || param?.left?.name;
+          if (!paramName || !fn.body) return;
+          const isParam = n => n?.type === 'Identifier' && n.name === paramName;
+          let writes = false;
+          this._walkAstNodes(fn.body, n => {
+            if ((n.type === 'AssignmentExpression' || n.type === 'UpdateExpression') &&
+                (n.left || n.argument)?.type === 'MemberExpression' && (n.left || n.argument).computed && isParam((n.left || n.argument).object)) writes = true;
+            if (['TypedArraySet', 'ArrayFill'].includes(n.type) && isParam(n.array)) writes = true;
+          });
+          if (writes) written.add(`${this.toPascalCase(name)}#${index}`);
+        });
+      };
+      this._walkAstNodes(programBody, node => {
+        if (node.type === 'FunctionDeclaration' && node.id?.name) consider(node.id.name, node);
+        else if (node.type === 'MethodDefinition' && node.kind === 'method' && node.key?.name) consider(node.key.name, node.value);
+      });
+      return written;
+    }
+
+    /**
+     * A call statement handing `x.subarray(a, b)` - a view onto x in JavaScript -
+     * to a parameter the callee writes (sundae-gift.js's `xorBlock(V.subarray(n),
+     * data, len)`): the C# slice is a copy, so it is made in a temporary and copied
+     * back into x after the call.
+     * @param {Object} call - the IL call expression of the statement
+     * @returns {CSharpBlock|null} the block, or null when no argument is such a view
+     */
+    subarrayViewArguments(call) {
+      if (!this.writtenArrayParams?.size || !call) return null;
+      const name = call.type === 'CallExpression' && call.callee?.type === 'Identifier' ? call.callee.name
+        : call.type === 'ThisMethodCall' ? call.method
+        : call.type === 'CallExpression' && call.callee?.type === 'MemberExpression' && !call.callee.computed ? call.callee.property?.name : null;
+      if (!name || !Array.isArray(call.arguments)) return null;
+      const pascal = this.toPascalCase(name);
+      const written = index => this.writtenArrayParams.has(`${pascal}#${index}`);
+      const views = call.arguments.map((arg, index) => arg?.type === 'TypedArraySubarray' && written(index) ? index : -1).filter(i => i >= 0);
+      const viewLocals = call.arguments.map((arg, index) => arg?.type === 'Identifier' && this.viewLocals?.has(arg.name) && written(index) ? index : -1).filter(i => i >= 0);
+      if (views.length === 0 && viewLocals.length === 0) return null;
+      const block = new CSharpBlock();
+      const copies = [];
+      const args = call.arguments.slice();
+      const copyBack = (local, view) => {
+        const begin = view.begin || view.start;
+        const start = begin ? this.ensureIntIndex(this.transformExpression(begin), begin) : CSharpLiteral.Int(0);
+        return new CSharpExpressionStatement(new CSharpMethodCall(new CSharpIdentifier('Array'), 'Copy',
+          [local, CSharpLiteral.Int(0), this.transformExpression(view.array), start, new CSharpMemberAccess(local, 'Length')]));
+      };
+      for (const index of viewLocals)
+        copies.push(copyBack(this.transformExpression(args[index]), this.viewLocals.get(args[index].name)));
+      for (const index of views) {
+        const view = args[index];
+        this.viewCount = (this.viewCount || 0) + 1;
+        const temp = `__view${this.viewCount}`;
+        const viewType = this.inferFullExpressionType(view);
+        block.statements.push(new CSharpVariableDeclaration(temp, new CSharpType('var'), this.transformExpression(view)));
+        if (viewType?.isArray) this.registerVariableType(temp, viewType);
+        this.methodDeclaredVars?.add(temp);
+        args[index] = { type: 'Identifier', name: temp, resultType: view.resultType };
+        copies.push(copyBack(new CSharpIdentifier(temp), view));
+      }
+      const expr = this.transformExpression({ ...call, arguments: args });
+      if (!expr) return null;
+      block.statements.push(new CSharpExpressionStatement(expr), ...copies);
+      return block;
+    }
+
+    /**
+     * A local function parameter whose C# name equals that of a differently cased
+     * enclosing local (sqisign.js: `const F = prm.F;` around `function basisE0(E, f)`,
+     * both `f` in C#) would hide it, and the body's reads of the outer `F` would read
+     * the parameter: the parameter is renamed (`fParam`) in the function's IL.
+     * @param {Object} fn - the IL FunctionDeclaration
+     * @param {Object} enclosingBody - the enclosing function's body
+     */
+    renameCaseCollidingParams(fn, enclosingBody) {
+      if (!enclosingBody || !Array.isArray(fn.params)) return;
+      const outer = new Set();
+      this._walkAstNodes(enclosingBody, n => {
+        if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier') outer.add(n.id.name);
+      });
+      for (const param of fn.params) {
+        const name = param?.type === 'Identifier' ? param.name : param?.left?.type === 'Identifier' ? param.left.name : null;
+        if (!name) continue;
+        const csName = this.toCamelCase(name);
+        if (![...outer].some(o => o !== name && this.toCamelCase(o) === csName)) continue;
+        const renamed = name + 'Param';
+        const rename = n => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(rename); return; }
+          if (n.type === 'Identifier' && n.name === name) n.name = renamed;
+          for (const key of Object.keys(n)) {
+            if (key === 'loc' || key === 'range' || key === 'parent') continue;
+            // a computed-less member name is no reference
+            if ((n.type === 'MemberExpression' && key === 'property' && !n.computed) || (key === 'key' && n.type === 'Property' && !n.computed)) continue;
+            rename(n[key]);
+          }
+        };
+        rename(fn.params);
+        rename(fn.body);
       }
     }
 
@@ -11477,6 +12341,10 @@
       }
 
       for (const decl of node.declarations) {
+        // A const subarray view (orange.js's `const half = state.subarray(16, 32)`)
+        // is a copy in C#: writes through it are copied back (subarrayViewArguments)
+        if (node.kind === 'const' && decl.init?.type === 'TypedArraySubarray' && decl.id?.type === 'Identifier')
+          this.viewLocals?.set(decl.id.name, decl.init);
         // Handle the classic buffer-drain idiom: `const block = this.inputBuffer.splice(0,
         // this.BlockSize);`. JS's Array.prototype.splice both RETURNS the removed slice
         // AND MUTATES the original array in place, removing those elements - there's no
@@ -11846,9 +12714,16 @@
           // uint[], into a scalar-declared local).
           const computedIndexFreshArrayType = decl.init.type === 'MemberExpression' && decl.init.computed &&
             inferredType?.isArray && preAnalyzedType && !preAnalyzedType.isArray;
+          // An array literal of 64-bit masked values (hpc.js's `const tmp =
+          // [OpCodes.ToQWord(...), ...]`, each emitted as a ulong) is that array, not the
+          // BigInteger[] the BigInt operands suggest to the prescan (CS1503 passing it on)
+          const qwordArrayLiteral = (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral') &&
+            inferredType?.isArray && ['ulong', 'long'].includes(inferredType.elementType?.name) &&
+            preAnalyzedType?.isArray && preAnalyzedType.elementType?.name === 'BigInteger';
           if (!jsdocType && preAnalyzedType && preAnalyzedType.name !== 'var' && preAnalyzedType.name !== 'object' &&
               inferredType?.name !== 'BigInteger' && !passthroughType?.isArray && !nameBasedOverrideApplied &&
-              !(hasSpreadInit && inferredType?.isArray) && !identifierAliasHasLiveType && !computedIndexFreshArrayType) {
+              !(hasSpreadInit && inferredType?.isArray) && !identifierAliasHasLiveType && !computedIndexFreshArrayType &&
+              !qwordArrayLiteral) {
             inferredType = preAnalyzedType;
           }
 
@@ -11868,8 +12743,17 @@
           }
 
           // The declaration's IL type, where the IL has one, beats every derivation above
-          const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
+          // ...and its IL BigInt[] result type does not undo the 64-bit evidence either
+          const qwordArray = (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral') &&
+            inferredType?.isArray && ['ulong', 'long'].includes(inferredType.elementType?.name) && decl.resultType === 'BigInt[]';
+          const ilDeclType = this.mapILType(decl.declaredType || (qwordArray ? null : decl.resultType));
           if (ilDeclType) inferredType = ilDeclType;
+          // An undeclared local starting at a BigInt literal (`let t = 0n`) is a
+          // BigInt: it may go negative or past 64 bits (an extended Euclid's
+          // coefficients), which the IL's uint64 guess for the literal cannot hold
+          if (!decl.declaredType && decl.init?.type === 'Literal' && decl.init.bigint !== undefined &&
+              (inferredType?.name === 'ulong' || inferredType?.name === 'long') && !inferredType.isArray)
+            inferredType = CSharpType.BigInteger ? CSharpType.BigInteger() : new CSharpType('BigInteger');
 
           // Set context for array element type before transforming
           // Save previous value to restore afterward
@@ -11898,6 +12782,10 @@
           if (inferredType && inferredType.name !== 'object' && !isMethodCallTuple) {
             type = inferredType;
           }
+          // A number into a bool local (OpCodes.GetBit) is its truthiness
+          if (type?.name === 'bool' && !type.isArray)
+            initializer = this.castIfNeeded(initializer, this.inferFullExpressionType(decl.init), type);
+          initializer = this.asDoubleQuotient(decl.init, initializer, type);
 
           // No evidence at all yet (still the initial `var` placeholder) for a
           // null-initialized local - see _findAnyReassignedScalarType's doc comment:
@@ -12035,8 +12923,12 @@
           this.registerVariableType(originalName, isMethodCallTuple ? inferredType : type);
         } else {
           // No initializer - C# var requires an initializer, so we need an explicit type
-          // JSDoc @type has highest priority
-          if (jsdocType && jsdocType.name !== 'object') {
+          // The IL's declared type (its JSDoc @type) has highest priority
+          const ilDeclared = decl.declaredType ? this.mapILType(decl.declaredType) : null;
+          if (ilDeclared && ilDeclared.name !== 'object') {
+            type = ilDeclared;
+            initializer = this.getDefaultValueForType(type);
+          } else if (jsdocType && jsdocType.name !== 'object') {
             type = jsdocType;
             // Provide a default initializer for the type
             initializer = this.getDefaultValueForType(type);
@@ -12121,7 +13013,8 @@
 
         case 'BinaryExpression':
         case 'LogicalExpression':
-          return this.transformBinaryExpression(node);
+          if (node.operator === '**') return this.transformExponentiation(node);
+          return this.asUint32Result(node, this.asFractionDivision(node, this.asBigIntShift(node, this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node))))));
 
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
@@ -12787,7 +13680,7 @@
             case 'ceil':
               return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Ceiling', args);
             case 'round':
-              return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Round', args);
+              return this.jsRound(this.asDoubleOperand(node.arguments?.[0], args[0]));
             case 'min':
               return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Min', args);
             case 'max':
@@ -13074,6 +13967,9 @@
               (CSHARP_VALUE_TYPES.has(valueType.name) || valueType.name === 'string')) {
             return CSharpLiteral.Bool(false);
           }
+          // A value statically an array is one: the other branch (push(data) of
+          // a non-array) is dead and is dropped like the false case above
+          if (valueType?.isArray) return CSharpLiteral.Bool(true);
           const value = this.transformExpression(node.value);
           // In C#, we can check if something is an array with "is Array" or just != null for typed arrays
           return new CSharpBinaryExpression(value, '!=', CSharpLiteral.Null());
@@ -13100,14 +13996,10 @@
         }
 
         // IL AST TypeOfExpression - typeof x -> x.GetType().Name or type check
-        case 'TypeOfExpression': {
-          const arg = this.transformExpression(node.argument);
-          return new CSharpMethodCall(
-            new CSharpMethodCall(arg, 'GetType', []),
-            'ToString',
-            []
-          );
-        }
+        // typeof x names the JavaScript kind of the value (FrameworkFunctions.JsTypeOf):
+        // self-shrinking-generator.js's `typeof polynomial === 'number'`
+        case 'TypeOfExpression':
+          return new CSharpMethodCall(null, 'JsTypeOf', [this.transformExpression(node.argument)]);
 
         // IL AST ObjectFreeze - Object.freeze(x) -> just return x (C# has no direct equivalent)
         case 'ObjectFreeze': {
@@ -13150,6 +14042,9 @@
           if (node.mapFunction) {
             // Array.from(arr, fn) -> arr.Select(fn).ToArray()
             const mapFn = this.transformExpression(node.mapFunction);
+            // A map function taking no element (() => 0x64) still receives one in Select
+            if (mapFn?.nodeType === 'Lambda' && (mapFn.parameters || []).length === 0)
+              mapFn.parameters = [new CSharpParameter('_', null)];
             let selectExpr = new CSharpMethodCall(iterable, 'Select', [mapFn]);
             if (targetElementType) {
               const narrowParam = new CSharpParameter('_v', null);
@@ -13598,6 +14493,9 @@
           return new CSharpIdentifier('UNHANDLED_EXPRESSION_JsonDeserialize');
         }
 
+        case 'DataViewGetByteLength':
+          return this.transformByteLength(node);
+
         default:
           // Log warning for unhandled expression types to aid debugging
           const safeStringify = (obj) => {
@@ -13797,6 +14695,19 @@
         return new CSharpMethodCall(mapExpr, 'ContainsKey', [keyExpr]);
       }
 
+      // A quotient of integers going into a double (see markDoubleDivisions)
+      if (op === '/' && node.__doubleDivision) return this.asDoubleOperand(node, null);
+
+      // `x | 0` is ToInt32: the signed 32-bit value (spinal-code.js's `(value|0) *
+      // 0x27d4eb2d`, whose double product differs for the unsigned value)
+      if (op === '|') {
+        const zero = n => n?.type === 'Literal' && n.value === 0;
+        const operand = zero(node.right) ? node.left : zero(node.left) ? node.right : null;
+        const operandType = operand ? this.inferFullExpressionType(operand) : null;
+        if (operandType && !operandType.isArray && ['uint', 'long', 'ulong'].includes(operandType.name))
+          return new CSharpCast(CSharpType.Int(), this.transformExpression(operand));
+      }
+
 
       // Handle typeof comparisons: typeof x === "string" -> x is string
       // The IL AST builder (type-aware-transpiler.js) normalizes a bare `typeof x`
@@ -13823,6 +14734,15 @@
         // `GetType()` needs an instance and static classes have none - CS0120).
         if (typeStr === 'undefined') {
           return CSharpLiteral.Bool(op === '!=');
+        }
+
+        // `typeof x === 'bigint'` on an array or string is never true, on a BigInteger
+        // always (self-shrinking-generator.js's byte[] seed setter): folded, so the
+        // dead branch is dropped instead of failing to compile
+        if (typeStr === 'bigint') {
+          const varType = this.inferFullExpressionType(node.left.argument);
+          if (varType && (varType.isArray || varType.name === 'string')) return CSharpLiteral.Bool(op === '!=');
+          if (varType && !varType.isArray && varType.name === 'BigInteger') return CSharpLiteral.Bool(op === '==');
         }
 
         const variable = this.transformExpression(node.left.argument);
@@ -14750,6 +15670,10 @@
         const target = this.transformExpression(node.left.array);
         const length = this.transformExpression(node.right);
         const arrayType = this.inferFullExpressionType(node.left.array);
+        // An object's own length member (darkcrypt-pike.js's `reg.length = length` on
+        // a PikeRegister) is a plain member store, read back as reg.Length
+        if (arrayType && !arrayType.isArray && this.isClassTypeName(arrayType.name))
+          return new CSharpAssignment(new CSharpMemberAccess(target, 'Length'), '=', length);
         const elementType = (arrayType && arrayType.isArray && arrayType.elementType) ? arrayType.elementType : CSharpType.Byte();
         return new CSharpAssignment(target, '=', new CSharpArrayCreation(elementType, length));
       }
@@ -14854,13 +15778,33 @@
           }
         }
       }
+      // A store into a growable row of a local table (see preScanGrowableRowLocals):
+      // OpCodes.SetGrow(ref t[i], j, v) grows the row in place
+      if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+          node.left.object?.type === 'MemberExpression' && node.left.object.computed &&
+          node.left.object.object?.type === 'Identifier' && this.growableArrayLocals?.rows?.has(node.left.object.object.name)) {
+        const rowType = this.inferFullExpressionType(node.left.object);
+        if (rowType?.isArray && rowType.elementType) {
+          const rowExpr = this.transformExpression(node.left.object);
+          let value = this.transformExpression(node.right);
+          value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), rowType.elementType);
+          const index = this.ensureIntIndex(this.transformExpression(node.left.property), node.left.property);
+          if (rowExpr.nodeType === 'ElementAccess') {
+            const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'SetGrow',
+              [new CSharpUnaryExpression('ref ', rowExpr), index, value]);
+            call.typeArguments = [rowType.elementType];
+            return call;
+          }
+        }
+      }
       // The same for a field (a property, so no ref): (this.F = OpCodes.Grown(this.F, i))[i] = v,
       // where the index has no side effect to repeat
       const sideEffectFree = n => !!n && (n.type === 'Identifier' || n.type === 'Literal' ||
         (n.type === 'BinaryExpression' && sideEffectFree(n.left) && sideEffectFree(n.right)) ||
+        (n.type === 'MemberExpression' && n.computed && sideEffectFree(n.object) && sideEffectFree(n.property)) ||
         (n.type === 'ThisPropertyAccess'));
       if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
-          node.left.object?.type === 'ThisPropertyAccess' && sideEffectFree(node.left.property) &&
+          node.left.object?.type === 'ThisPropertyAccess' &&
           this.growableArrayFields?.has(typeof node.left.object.property === 'string' ? node.left.object.property : node.left.object.property?.name)) {
         const arrayType = this.inferFullExpressionType(node.left.object);
         if (arrayType?.isArray && arrayType.elementType) {
@@ -14871,6 +15815,13 @@
           let value = this.transformExpression(node.right);
           this.currentArrayElementType = prevElement;
           value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), arrayType.elementType);
+          // An index with a side effect (this.buf[this.bufOff++] = v) is evaluated once:
+          // this.F = OpCodes.Stored(this.F, i, v)
+          if (!sideEffectFree(node.left.property)) {
+            const stored = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'Stored', [fieldExpr, index, value]);
+            stored.typeArguments = [arrayType.elementType];
+            return new CSharpAssignment(fieldExpr, '=', stored);
+          }
           const grown = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'Grown', [fieldExpr, index]);
           grown.typeArguments = [arrayType.elementType];
           const target = new CSharpElementAccess(new CSharpAssignment(fieldExpr, '=', grown), index);
@@ -14878,7 +15829,22 @@
         }
       }
 
-      const target = this.transformExpression(node.left);
+      let target = this.transformExpression(node.left);
+      // A store into the TestCase bag is a plain indexer store (no dynamic cast on the left)
+      if (target?.nodeType === 'Cast' && target.type?.name === 'dynamic' && target.expression?.nodeType === 'ElementAccess' &&
+          target.expression.index?.nodeType === 'Literal')
+        target = target.expression;
+      // A framework property set on a framework-typed instance (cshake.outputSize =
+      // n on an IHashFunctionInstance) goes to the concrete class, which may declare
+      // its own property of that name hiding the stub's: as in JavaScript, where it
+      // is one property, the runtime type decides
+      if (node.left?.type === 'MemberExpression' && !node.left.computed && node.left.object?.type !== 'ThisExpression' &&
+          target?.nodeType === 'MemberAccess' && target.target?.nodeType !== 'Parenthesized') {
+        const receiverType = this.inferFullExpressionType(node.left.object);
+        if (receiverType && !receiverType.isArray && receiverType.name !== 'IAlgorithmInstance' && /^I\w+Instance$/.test(receiverType.name) &&
+            this.isFrameworkInstanceType(receiverType.name) && this.stubChainDeclares(receiverType.name, target.member))
+          target = new CSharpMemberAccess(new CSharpParenthesized(new CSharpCast(CSharpType.Dynamic(), target.target)), target.member);
+      }
 
       // Infer target type first for array element context propagation
       const targetType = this.inferFullExpressionType(node.left);
@@ -14949,6 +15915,25 @@
         const valueType = this.inferFullExpressionType(node.right);
         // Cast when types differ and target is a narrower integral type
         value = this.castIfNeeded(value, valueType, targetType);
+        value = this.asDoubleQuotient(node.right, value, targetType);
+        // A store into a typed array narrows the value to its element type, as
+        // JavaScript does (table[length] = code on a Uint16Array)
+        if (node.left?.type === 'MemberExpression' && node.left.computed) {
+          const arrayType = this.inferFullExpressionType(node.left.object);
+          const element = arrayType?.isArray ? arrayType.elementType : null;
+          if (element && !element.isArray && ['byte', 'sbyte', 'short', 'ushort'].includes(element.name) &&
+              valueType && !valueType.isArray && valueType.name !== element.name && value?.nodeType !== 'Cast')
+            value = this.castIfNeeded(value, valueType, element);
+        }
+        // An inlined 32-bit OpCodes operation on a signed operand is a long in C#
+        // (n >>> 1 & 4294967295u); into a 32-bit target it is cast back (OCB's ntz)
+        // (the declared type of a local or parameter, which the IL context may not tell)
+        const parameter = node.left?.type === 'Identifier' && target?.nodeType === 'Identifier'
+          ? (this.currentMethod?.parameters || []).find(p => p.name === target.name) : null;
+        const declaredType = parameter?.type || (node.left?.type === 'Identifier' ? this.getVariableType(node.left.name) || targetType : targetType);
+        if (node.right?.opCodesMethod && value?.nodeType === 'BinaryExpression' &&
+            declaredType && !declaredType.isArray && (declaredType.name === 'int' || declaredType.name === 'uint'))
+          value = new CSharpCast(new CSharpType(declaredType.name), value);
       }
       // For compound assignments (+=, -=, &=, |=, etc.), the result might need casting
       // because C# does implicit widening but the assignment back to target needs narrowing
@@ -14972,6 +15957,16 @@
         // convert the compound assignment to a simple assignment with explicit cast
         if (resultType && targetType && resultType.name !== targetType.name) {
           const needsCast = this.typeNeedsCast(resultType.name, targetType.name);
+          // An element whose index has a side effect (f9.js's `this.IV[this.buflen++] ^=
+          // data[i]`) is read and written once: C# compound assignment narrows by
+          // itself once the operand has the element's type
+          let indexEffect = false;
+          if (node.left?.type === 'MemberExpression' && node.left.computed)
+            this._walkAstNodes(node.left.property, n => {
+              if (['UpdateExpression', 'AssignmentExpression', 'CallExpression', 'ThisMethodCall'].includes(n.type)) indexEffect = true;
+            });
+          if (needsCast && indexEffect && ['^', '|', '&', '+', '-', '*'].includes(binaryOp) && !targetType.isArray)
+            return new CSharpAssignment(target, node.operator, new CSharpCast(targetType, value));
           if (needsCast) {
             // Convert compound assignment to: target = (targetType)(target op value)
             const leftExpr = this.transformExpression(node.left);
@@ -15016,7 +16011,9 @@
      */
     castIfNeeded(expr, sourceType, targetType) {
       if (!targetType || !sourceType) return expr;
-      if (targetType.name === sourceType.name) return expr;
+      // (a nullable value into its non-nullable type unwraps - see below)
+      const unwraps = sourceType.isNullable && !targetType.isNullable && !sourceType.isArray && !targetType.isArray;
+      if (targetType.name === sourceType.name && !unwraps) return expr;
       if (targetType.name === 'object') return expr;
 
       // A `bool`-typed RHS assigned into an ARRAY-typed target is a recognized JS
@@ -15042,6 +16039,12 @@
       // e.g., don't cast int[] to uint
       if (sourceType.isArray !== targetType.isArray) return expr;
 
+      // A number into a bool (OpCodes.GetBit's 0/1 into a @type {boolean} local) is
+      // its JavaScript truthiness; C# has no conversion at all
+      if (targetType.name === 'bool' && !targetType.isArray &&
+          ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(sourceType.name))
+        return new CSharpBinaryExpression(new CSharpParenthesized(expr), '!=', CSharpLiteral.Int(0));
+
       // A base class value into a subclass-typed target (the IL types it as the subclass)
       if (!sourceType.isArray && (this.isClassTypeName(sourceType.name) || sourceType.name === 'object') && this.isClassTypeName(targetType.name))
         return new CSharpCast(targetType, expr);
@@ -15056,9 +16059,16 @@
       // body evidence - returns byte[]): same element-wise conversion as
       // buildParameterConversion uses for call-site argument mismatches, since C# has no
       // `(T[])` reinterpret cast between differently-typed primitive arrays (CS0030).
-      if (sourceType.isArray && targetType.isArray && this.needsCast(sourceType, targetType)) {
+      // A BigInteger[] into a fixed-width array (streebog.js's BigInt rows stored into
+      // its uint64[][] table) converts each element, never the array as a number
+      const bigIntegerRows = sourceType.isArray && targetType.isArray && !sourceType.elementType?.isArray &&
+        !targetType.elementType?.isArray && sourceType.elementType?.name === 'BigInteger' &&
+        ['ulong', 'long', 'uint', 'int'].includes(targetType.elementType?.name);
+      if (sourceType.isArray && targetType.isArray && (bigIntegerRows || this.needsCast(sourceType, targetType))) {
         return this.buildParameterConversion(sourceType, targetType, expr);
       }
+      // Arrays are never narrowed as numbers (an array type's name is its element's)
+      if (sourceType.isArray || targetType.isArray) return expr;
 
       // char to string requires .ToString(), not a cast
       if (sourceType.name === 'char' && targetType.name === 'string') {
@@ -15430,6 +16440,13 @@
           return new CSharpMemberAccess(groupsAccess, 'Value');
         }
 
+        // A member of a file class named by a string (dilithium.js's `set[field]`,
+        // field 'publicKeySize'), read by name at run time (CS0021 otherwise)
+        if (targetType && !targetType.isArray && this.localClassNames.has(targetType.name) &&
+            this.inferFullExpressionType(node.property)?.name === 'string') {
+          return new CSharpMethodCall(null, 'JsMember', [target, index]);
+        }
+
         // A string-keyed Dictionary (a JS object used as a table, e.g. elgamal.js's
         // `ELGAMAL_KEYS[this.keySize]` over `{ 512: ..., 1024: ... }`) looked up with a
         // number: JS converts the key to its decimal string, so do the same rather
@@ -15480,10 +16497,15 @@
         return new CSharpMemberAccess(target, 'Url');
       }
 
+      // A test vector field the TestCase stub does not declare (test.batchSize) is
+      // in its catch-all bag, read as dynamic
+      const memberName = this.toPascalCase(member);
+      if (targetType?.name === 'TestCase' && !targetType.isArray && !this.stubChainDeclares('TestCase', memberName))
+        return new CSharpCast(CSharpType.Dynamic(), new CSharpElementAccess(target, CSharpLiteral.String(member)));
+
       // A framework-typed value (an instance a registered algorithm created) holds a
       // concrete subclass; a member the framework type does not declare is that
       // subclass's own, reached at runtime
-      const memberName = this.toPascalCase(member);
       if (targetType && !targetType.isArray && this.isFrameworkInstanceType(targetType.name) &&
           !this.stubChainDeclares(targetType.name, memberName)) {
         return new CSharpMemberAccess(new CSharpParenthesized(new CSharpCast(CSharpType.Dynamic(), target)), memberName);
@@ -15522,6 +16544,11 @@
     }
 
     transformCallExpression(node) {
+      // `buf.byteLength()` (the IL keeps the method call): a byte buffer's is its
+      // Length, an object's own byteLength() method stays that call
+      if (node.callee?.type === 'MemberExpression' && !node.callee.computed && (node.callee.property?.name === 'byteLength') &&
+          (node.arguments || []).length === 0 && this.inferFullExpressionType(node.callee.object)?.isArray)
+        return new CSharpMemberAccess(this.transformExpression(node.callee.object), 'Length');
       // Handle super() calls - these should be handled in constructor transformation
       // If we reach here, skip them (return null which will be filtered out)
       // Support both Super node type and Identifier with name "super"
@@ -15985,6 +17012,8 @@
               [target, CSharpLiteral.String(firstArgNode.regex.pattern)]
             );
           }
+          // JsSplit: split('') gives the characters, split() the whole string
+          if (args.length <= 1) return new CSharpMethodCall(null, 'JsSplit', [target, args[0] || CSharpLiteral.Null()]);
           return new CSharpMethodCall(target, 'Split', args);
         }
 
@@ -16424,7 +17453,7 @@
             if (args.length >= 1) {
               const argType = this.inferFullExpressionType(node.arguments[0]);
               if (argType?.name !== 'double') {
-                args[0] = new CSharpCast(CSharpType.Double(), args[0]);
+                args[0] = this.asDoubleOperand(node.arguments[0], args[0]);
               }
             }
           }
@@ -16983,6 +18012,35 @@
       return new CSharpObjectCreation(new CSharpType(typeName), args);
     }
 
+    /**
+     * Whether two flat arrays have different numeric element types - no C# array
+     * converts implicitly to another, even where the elements would (byte[] -> int[]).
+     * @param {CSharpType} a - one array type
+     * @param {CSharpType} b - the other
+     * @returns {boolean}
+     */
+    differentNumericArrays(a, b) {
+      const numeric = ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'float', 'double'];
+      return !!(a?.isArray && b?.isArray && a.elementType && b.elementType && !a.elementType.isArray && !b.elementType.isArray &&
+        a.elementType.name !== b.elementType.name && numeric.includes(a.elementType.name) && numeric.includes(b.elementType.name));
+    }
+
+    /**
+     * An array value as an element of a jagged array literal: as is when the element
+     * types agree, converted element by element (buildParameterConversion) when two
+     * flat arrays differ in element type, and as is otherwise.
+     * @param {CSharpType} valueType - the array value's type
+     * @param {CSharpType} elementType - the literal's element (array) type
+     * @param {Object} expr - the C# value
+     * @returns {Object} the element expression
+     */
+    arrayElementConversion(valueType, elementType, expr) {
+      const from = valueType.elementType, to = elementType.elementType;
+      if (!from || !to || from.isArray || to.isArray || from.name === to.name) return expr;
+      if (['object', 'dynamic'].includes(from.name) || ['object', 'dynamic'].includes(to.name)) return expr;
+      return this.buildParameterConversion(valueType, elementType, expr);
+    }
+
     transformArrayExpression(node) {
       // Infer element type from context or actual elements
       let elementType = null;
@@ -17188,6 +18246,10 @@
           return CSharpLiteral.Hex(unsignedValue, 'UL');
         }
 
+        // An array element of another element type (hqc.js's int32[] message in a
+        // list of byte arrays) converts element-wise; C# casts no array to another
+        if (elementType.isArray && elemExprType?.isArray)
+          return this.arrayElementConversion(elemExprType, elementType, elem);
         if (this.needsNarrowingCast(elemExprType, elementType)) {
           return new CSharpCast(elementType, elem);
         }
@@ -17276,7 +18338,9 @@
         } else if (elem) {
           let transformed = this.transformExpression(elem);
           const elemExprType = this.inferFullExpressionType(elem);
-          if (this.needsNarrowingCast(elemExprType, elementType)) {
+          if (elementType.isArray && elemExprType?.isArray) {
+            transformed = this.arrayElementConversion(elemExprType, elementType, transformed);
+          } else if (this.needsNarrowingCast(elemExprType, elementType)) {
             transformed = new CSharpCast(elementType, transformed);
           }
           pendingElements.push(transformed);
@@ -17690,6 +18754,16 @@
     }
 
     transformConditionalExpression(node) {
+      // x != null ? x : y on a nullable value x is x ?? y, which is no longer nullable
+      // (int? pool: pool != null ? pool : this.poolIdx gave int? for an int, CS0266)
+      const t = node.test;
+      const isNull = n => (n?.type === 'Literal' && n.value === null) || (n?.type === 'Identifier' && n.name === 'undefined');
+      if (t?.type === 'BinaryExpression' && ['!=', '!=='].includes(t.operator) && t.left?.type === 'Identifier' && isNull(t.right) &&
+          node.consequent?.type === 'Identifier' && node.consequent.name === t.left.name) {
+        const xType = this.getVariableType(t.left.name) || this.inferFullExpressionType(t.left);
+        if (xType && !xType.isArray && xType.isNullable && CSHARP_VALUE_TYPES.has(xType.name))
+          return new CSharpBinaryExpression(this.transformExpression(node.consequent), '??', this.transformExpression(node.alternate));
+      }
       // `global.AlgorithmFramework ? AlgorithmFramework.CategoryType.BLOCK : 'block'` (or
       // the `!= null`/`!== undefined` spelling of the same guard) - a defensive-require
       // idiom a handful of files (~33, see isAlgorithmFrameworkRoot) use around every
@@ -17937,8 +19011,11 @@
           // Cast if return type is a narrower numeric type than expression type
           if (this.needsNarrowingCast(exprType, returnType)) {
             expr = new CSharpCast(returnType, expr);
+          } else if (exprType?.isNullable && !returnType.isNullable && !exprType.isArray && CSHARP_VALUE_TYPES.has(returnType.name)) {
+            // A nullable member (one starting undefined) returned as its plain type
+            expr = new CSharpCast(returnType, expr);
           }
-        } else if (exprType?.isArray && this.needsCast(exprType, returnType)) {
+        } else if (exprType?.isArray && (this.needsCast(exprType, returnType) || this.differentNumericArrays(exprType, returnType))) {
           // Array-vs-array element type mismatch - e.g. Streebog's compressBlock,
           // whose declared return type settled on uint[] (from its `h`/`m` parameters'
           // own 32-bit-XOR evidence, backward-propagated from the caller's `state =
@@ -17950,6 +19027,12 @@
           // (buildParameterConversion) rather than leaving the return statement itself
           // as the one place with no cast at all.
           expr = this.buildParameterConversion(exprType, returnType, expr);
+        } else if (exprType && !exprType.isArray && exprType.name === 'object') {
+          // An object-typed value returned as an array - e.g. hawk.js's module
+          // sentinel `const SOLVE_FAIL = null;` (a static object field) from a
+          // method returning BigInteger[][] (CS0266). The value is null or the
+          // array itself, so a plain cast holds.
+          expr = new CSharpCast(returnType, expr);
         } else if (returnType.isArray && exprType && !exprType.isArray && exprType.name === 'bool') {
           // A getter declared array-typed (often forced by a fixed interface override
           // signature - e.g. IAlgorithmInstance.Key) whose body actually returns a
@@ -18084,6 +19167,13 @@
       // `.Select(...).ToArray()` conversion arrays actually need (see
       // buildParameterConversion, which callers should use instead for this case).
       if (initExprType.isArray || targetType.isArray) return false;
+
+      // CreateInstance overrides the framework's, which returns the instance base:
+      // simpira-v2.js's `const instance = this.CreateInstance(false)` into its own
+      // instance class (CS0266)
+      const calledMethod = initNode?.type === 'ThisMethodCall' ? initNode.method
+        : initNode?.type === 'CallExpression' && initNode.callee?.type === 'MemberExpression' ? initNode.callee.property?.name : null;
+      if (calledMethod === 'CreateInstance' && this.localClassNames.has(targetType.name)) return true;
 
       // If types match exactly, no cast needed
       if (initExprType.name === targetType.name) return false;
@@ -18373,16 +19463,22 @@
           // (ushort/byte, previously listed, both widen to int implicitly in C# and
           // needsNarrowingCast correctly says so - dropping their now-redundant cast.)
           const initType = this.inferFullExpressionType(decl.init);
-          if (initType && initType.name !== 'int' && this.needsNarrowingCast(initType, CSharpType.Int())) {
+          // A loop walking a linked structure - adaptive-huffman.js's `for (let n =
+          // node.parent; n !== null; n = n.parent)` - keeps the node's class type
+          // (CS0029 as int).
+          const walksObjects = node.init.declarations.length === 1 && !!initType &&
+            (initType.isArray || initType.name === 'string' || this.isClassTypeName(initType.name));
+          const loopVarType = walksObjects ? initType : CSharpType.Int();
+          if (!walksObjects && initType && initType.name !== 'int' && this.needsNarrowingCast(initType, CSharpType.Int())) {
             initExpr = new CSharpCast(CSharpType.Int(), initExpr);
           }
 
           // Register the loop variable type so it can be looked up when used in the loop body
-          this.registerVariableType(originalVarName, CSharpType.Int());
+          this.registerVariableType(originalVarName, loopVarType);
 
           forStmt.initializer = new CSharpVariableDeclaration(
             varName,
-            CSharpType.Int(),
+            loopVarType,
             initExpr
           );
 
@@ -18432,7 +19528,8 @@
       }
 
       if (node.test) {
-        forStmt.condition = this.transformExpression(node.test);
+        // A bare number as the test (for (; k; k--)) is its truthiness, as in if/while
+        forStmt.condition = this.ensureBooleanCondition(node.test);
       }
 
       if (node.update) {
@@ -18791,6 +19888,35 @@
         }
       }
 
+      // `a[i] && ...` guards a read past the end in JavaScript (undefined is
+      // falsy); the C# condition checks the index first: i >= 0 && i < a.Length && a[i] != 0
+      // A feature test of an array method (src.subarray ? ... : ...) is true: a
+      // C# array stands for every JavaScript array and typed array
+      const arrayMethods = ['subarray', 'slice', 'set', 'fill', 'map', 'forEach', 'indexOf', 'includes', 'push', 'concat'];
+      if (node.type === 'MemberExpression' && !node.computed && arrayMethods.includes(node.property?.name)) {
+        const targetType = this.inferFullExpressionType(node.object);
+        if (targetType?.isArray) return CSharpLiteral.Bool(true);
+      }
+
+      const plainTarget = n => n?.type === 'Identifier' || n?.type === 'ThisPropertyAccess' ||
+        (n?.type === 'MemberExpression' && n.computed && plainTarget(n.object) && ['Identifier', 'Literal'].includes(n.property?.type));
+      if (!this.indexGuarded && node.type === 'MemberExpression' && node.computed && ['Identifier', 'Literal'].includes(node.property?.type) &&
+          plainTarget(node.object)) {
+        const arrayType = this.inferFullExpressionType(node.object);
+        if (arrayType?.isArray && arrayType.elementType) {
+          const array = this.transformExpression(node.object);
+          const index = this.ensureIntIndex(this.transformExpression(node.property), node.property);
+          const inRange = new CSharpBinaryExpression(
+            new CSharpBinaryExpression(index, '>=', CSharpLiteral.Int(0)), '&&',
+            new CSharpBinaryExpression(index, '<', new CSharpMemberAccess(array, 'Length')));
+          // The element's own truthiness, as without the guard
+          this.indexGuarded = true;
+          let truthy;
+          try { truthy = this.ensureBooleanCondition(node); } finally { this.indexGuarded = false; }
+          return new CSharpBinaryExpression(inRange, '&&', truthy);
+        }
+      }
+
       if (node.type === 'LogicalExpression') {
         // && and || - in C# these require both operands to be bool
         // Transform recursively
@@ -18817,9 +19943,24 @@
           return this.transformExpression(node);
         }
 
-        // Special case: !someMethodCall() - assume methods used in boolean context return bool
+        // Special case: !someMethodCall() - assume methods used in boolean context return
+        // bool, unless the call is known to return a dynamic value (`!AlgorithmFramework.
+        // Find(name)`, null when absent: its truthiness) or a reference (null test)
         if (node.argument.type === 'CallExpression') {
+          const callType = this.inferFullExpressionType(node.argument);
+          if (callType?.name === 'dynamic' && !callType.isArray)
+            return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [this.transformExpression(node.argument)]), true);
+          if (callType && (callType.isArray || callType.name === 'string' || this._isClassReferenceType(callType)))
+            return new CSharpBinaryExpression(this.transformExpression(node.argument), '==', CSharpLiteral.Null());
+          // A number (perk.js's `!roundConstantBit(i)`, a 0/1 bit) is falsy at 0
+          if (callType && !callType.isArray && ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(callType.name))
+            return new CSharpBinaryExpression(new CSharpParenthesized(this.transformExpression(node.argument)), '==', CSharpLiteral.Int(0));
           return this.transformExpression(node);
+        }
+
+        // !(a && b): the negated condition, each operand by its own truthiness
+        if (node.argument.type === 'LogicalExpression') {
+          return new CSharpUnaryExpression('!', new CSharpParenthesized(this.ensureBooleanCondition(node.argument)), true);
         }
 
         // !x - if x is non-bool, use x == 0 or x == null
@@ -18870,6 +20011,10 @@
       if (type?.name === 'bool' || type?.name === 'boolean') {
         return expr;
       }
+
+      // A nullable number (lehmer.js's `_skipCount`, int32|null) is falsy when null or 0
+      if (type?.isNullable && !type.isArray && ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'double', 'float'].includes(type.name))
+        return new CSharpBinaryExpression(new CSharpParenthesized(new CSharpBinaryExpression(expr, '??', CSharpLiteral.Int(0))), '!=', CSharpLiteral.Int(0));
 
       // If the transformed expression is already a comparison, don't wrap it again
       // This prevents issues like (data != null) != null
@@ -18951,9 +20096,15 @@
     transformSwitchStatement(node) {
       const switchStmt = new CSharpSwitch(this.transformExpression(node.discriminant));
 
+      // A label read off an object (case CombinationMode.ADDITIVE, a field of a
+      // module instance) is no constant: it is matched by a guard instead,
+      // case var __case when __case == label (CS9135 otherwise)
+      const isObjectField = t => t?.type === 'MemberExpression' && !t.computed &&
+        this.localClassNames?.has(this.inferFullExpressionType(t.object)?.name);
       for (const caseNode of node.cases) {
+        const label = caseNode.test ? this.transformExpression(caseNode.test) : null;
         const csCase = new CSharpSwitchCase(
-          caseNode.test ? this.transformExpression(caseNode.test) : null
+          label && isObjectField(caseNode.test) ? new CSharpBinaryExpression(new CSharpIdentifier('var __case when __case'), '==', label) : label
         );
         for (const stmt of caseNode.consequent) {
           const csStmt = this.transformStatement(stmt);
@@ -18975,21 +20126,30 @@
       // ...; case 2: ...;` intentionally cascades). Detect it from the ORIGINAL JS case
       // bodies (empty consequents are C#-legal "shared label" groupings and need no
       // help) and make it explicit with `goto case <next>;` (or `goto default;`/`break;`).
+      // A case ending in a block, or an if/else whose every path jumps, is terminated too.
       const jumpTypes = new Set(['BreakStatement', 'ReturnStatement', 'ThrowStatement', 'ContinueStatement']);
+      const endsInJump = stmt => {
+        if (!stmt) return false;
+        if (jumpTypes.has(stmt.type)) return true;
+        if (stmt.type === 'BlockStatement') return stmt.body.length > 0 && endsInJump(stmt.body[stmt.body.length - 1]);
+        if (stmt.type === 'IfStatement') return !!stmt.alternate && endsInJump(stmt.consequent) && endsInJump(stmt.alternate);
+        return false;
+      };
       for (let i = 0; i < node.cases.length; ++i) {
         const consequent = node.cases[i].consequent;
         if (!consequent || consequent.length === 0) continue; // shared label - no help needed
-        const lastStmt = consequent[consequent.length - 1];
-        if (jumpTypes.has(lastStmt.type)) continue; // already terminated
+        if (endsInJump(consequent[consequent.length - 1])) continue; // already terminated
 
+        // The next section: `goto default;` for the default label, `goto case <label>;`
+        // for a constant one, else a plain break
         const nextCase = node.cases[i + 1];
-        let gotoTarget = null;
-        if (nextCase) {
-          gotoTarget = nextCase.test ? this.stringifyCaseLabel(nextCase.test) : 'default';
+        let jump = 'break;';
+        if (nextCase && !nextCase.test) jump = 'goto default;';
+        else if (nextCase) {
+          const label = this.stringifyCaseLabel(nextCase.test);
+          if (label) jump = `goto case ${label};`;
         }
-        switchStmt.cases[i].statements.push(
-          new CSharpRawCode(gotoTarget ? `goto case ${gotoTarget};` : 'break;')
-        );
+        switchStmt.cases[i].statements.push(new CSharpRawCode(jump));
       }
 
       return switchStmt;
@@ -19084,6 +20244,12 @@
           this.transformIIFE(node.expression, targetClass);
           return;
         }
+        // (function () { ... }).call(this) - a library's own module scope
+        if (callee.type === 'MemberExpression' && !callee.computed && ['call', 'apply'].includes(callee.property?.name) &&
+            (callee.object?.type === 'FunctionExpression' || callee.object?.type === 'ArrowFunctionExpression')) {
+          this.transformIIFE({ type: 'CallExpression', callee: callee.object, arguments: [] }, targetClass);
+          return;
+        }
       }
 
       // Handle module exports, global assignments, etc.
@@ -19130,7 +20296,21 @@
           const namedClassNode = { ...right, id: { type: 'Identifier', name: left.name } };
           this.transformClassDeclaration(namedClassNode, targetClass);
         }
+        // A store into a module table (`TABLE[i] = v`) runs at load time
+        else if (left.type === 'MemberExpression' && left.computed && !this.touchesModuleLoader(node)) {
+          this.transformModuleInitStatement(node, targetClass);
+        }
+        return;
       }
+
+      // A table filled at load time (`TABLE.push(v)`, zopfli.js's
+      // `FIXED_DISTANCE_LENGTHS.fill(5)`), or a module function run then (`initTables()`)
+      const callsModuleFunction = node.expression.type === 'CallExpression' && node.expression.callee?.type === 'Identifier' &&
+        (this.programBody || []).some(s => s.type === 'FunctionDeclaration' && s.id?.name === node.expression.callee.name);
+      if ((node.expression.type === 'ArrayAppend' || node.expression.type === 'ArrayConcat' || this.isPushCallExpression(node.expression) ||
+           ['ArrayFill', 'TypedArraySet', 'ArrayReverse', 'ArraySort'].includes(node.expression.type) || callsModuleFunction) &&
+          !this.touchesModuleLoader(node))
+        this.transformModuleInitStatement(node, targetClass);
     }
 
 
@@ -19492,6 +20672,12 @@
     inferPropertyType(initialValue, constructorNode, propName) {
       // The IL type of the member, where the IL has one
       const ilType = this.ilMemberType(propName);
+      // ...as nullable where it starts undefined (space-time-block-code.js's optional
+      // STBCConfig members, tested `!== undefined`): 0 would read as a given value
+      const startsUndefined = (initialValue?.type === 'Identifier' && initialValue.name === 'undefined') ||
+        (initialValue?.type === 'Literal' && (initialValue.isUndefined || initialValue.value === undefined && initialValue.resultType === 'void'));
+      if (ilType && startsUndefined && this.undefinedTestedMembers?.has(propName) && !ilType.isArray && CSHARP_VALUE_TYPES.has(ilType.name) && !ilType.isNullable)
+        return new CSharpType(ilType.name, { isNullable: true });
       if (ilType) return ilType;
 
       // Real usage evidence (see preScanDynamicInstanceFields) that this field holds an
@@ -20181,9 +21367,16 @@
                 propType = (propInfo.initialValue ? this.inferPropertyType(propInfo.initialValue, constructorNode, propName) : null) ||
                            this.inferTypeFromName(propName.substring(1));
               }
+              // A backing field starting as BigInt words (this._key = [0n, 0n]) holds
+              // BigInts whatever bytes its accessor takes (Threefry's key words)
               // The IL types of the accessor and of its backing field, where the IL has them
               propType = this.ilMemberType(propName.substring(1)) || propType;
               fieldTypeOverride = this.ilMemberType(propName) || fieldTypeOverride;
+              const init = propInfo.initialValue;
+              if ((init?.type === 'ArrayExpression' || init?.type === 'ArrayLiteral') && init.elements?.length &&
+                  init.elements.every(e => e?.type === 'Literal' && (e.bigint !== undefined || typeof e.value === 'bigint')) &&
+                  !(fieldTypeOverride?.isArray && fieldTypeOverride.elementType && ['BigInteger', 'ulong', 'long'].includes(fieldTypeOverride.elementType.name)))
+                fieldTypeOverride = CSharpType.Array(new CSharpType('BigInteger'));
 
               // Make nullable if it can be null (for reference types only - C# value
               // types like int/uint/bool already have a usable default (0/false) that
@@ -20391,6 +21584,8 @@
       }
 
       // Transform all class members (signatures already pre-registered above)
+      const prevClassBody = this.currentClassBody;
+      this.currentClassBody = classBody;
       for (const item of classBody) {
         if (item.type === 'MethodDefinition') {
           if (item.kind === 'constructor') {
@@ -20447,6 +21642,7 @@
           if (staticCtor) csClass.members.push(staticCtor);
         }
       }
+      this.currentClassBody = prevClassBody;
 
       // Restore previous class context
       this.currentClass = prevClass;
@@ -20652,6 +21848,13 @@
       }
 
       targetClass.nestedTypes.push(csClass);
+      // A class the file subclasses shares its private fields with the subclasses
+      // (ice.js's IceInstanceBase._rounds, set by Ice2Instance): protected, they are
+      // inherited instead of redeclared - a redeclaration hides them from the base
+      if ([...this.localClassBases.values()].includes(csClass.name)) {
+        for (const m of csClass.members)
+          if ((m instanceof CSharpField || m instanceof CSharpProperty) && m.accessModifier === 'private' && !m.isStatic) m.accessModifier = 'protected';
+      }
       this.localClassMembers.set(csClass.name, new Set(csClass.members
         .filter(m => (m instanceof CSharpField || m instanceof CSharpProperty) && m.accessModifier !== 'private').map(m => m.name)));
 
@@ -21073,11 +22276,23 @@
           // registration): body `Identifier` nodes always carry the original raw name.
           this.registerVariableType(rawName, paramType);
           if (rawName !== paramName) this.registerVariableType(paramName, paramType);
+          // The body reads the parameter by the name it is declared with here, not
+          // a camelCased one an earlier pass mapped it to (A became a, CS0103)
+          if (rawName !== paramName) this.variableNameMap.set(rawName, paramName);
+          else this.variableNameMap.delete(rawName);
         }
 
         // Store constructor defaults for later use in static member initialization
         if (defaultParams.length > 0) {
           this.constructorDefaultParams.set(csClass.name, defaultParams);
+        }
+        // A JavaScript caller may pass fewer arguments than the constructor names
+        // (the rest are undefined): every parameter without a default gets `default`,
+        // so `new SlhDsaEngine(params)` binds (CS7036 otherwise)
+        for (let i = ctor.parameters.length - 1; i >= 0; --i) {
+          const p = ctor.parameters[i];
+          if (p.isParams || p.isRef || p.isOut) break;
+          if (!p.defaultValue) p.defaultValue = new CSharpIdentifier('default');
         }
 
         // Overwrite preRegisterConstructorSignatures' approximate guess with the
@@ -21215,6 +22430,18 @@
           const fn = methodNode.value;
           propType = isGetter ? this.mapILType(this.jsDocILType(fn?.typeInfo?.returns))
             : this.mapILType(fn?.params?.[0]?.resultType);
+          // A setter taking another kind of value than its getter returns
+          // (diffie-hellman.js: `set group(selector)` a string, `get group()` a
+          // DHGroup) has no single C# type: the property is dynamic (CS0029)
+          const sibling = (this.currentClassBody || []).find(m => m !== methodNode && m.type === 'MethodDefinition' &&
+            m.kind === (isGetter ? 'set' : 'get') && m.key?.name === methodNode.key?.name && !!m.static === !!methodNode.static);
+          const siblingType = !sibling ? null : isGetter ? this.mapILType(sibling.value?.params?.[0]?.resultType)
+            : this.mapILType(this.jsDocILType(sibling.value?.typeInfo?.returns));
+          const kind = t => t.isArray ? 'array' : this.localClassNames.has(t.name) ? 'class:' + t.name : t.name === 'string' ? 'string' : null;
+          if (propType && siblingType && kind(propType) !== kind(siblingType) && (kind(propType) || kind(siblingType)) &&
+              !(kind(propType) === 'array' && kind(siblingType) === 'array')) {
+            propType = CSharpType.Dynamic();
+          }
         }
 
         // A backing-field-per-accessor property (e.g. `get salt() { return
@@ -21301,6 +22528,25 @@
           setterParamRawName = methodNode.value.params[0].name;
           prevSetterParamType = this.getVariableType(setterParamRawName);
           this.registerVariableType(setterParamRawName, prop.type);
+          // A dynamic property (getter and setter of different kinds) gives its setter
+          // body the parameter as declared: `byte[] keyData = value;` - a dynamic
+          // `value` would make every lambda over it a compile error (CS1977)
+          const declaredParamType = this.mapILType(methodNode.value.params[0].resultType);
+          // ...unless the setter tells kinds of values apart itself (self-shrinking-
+          // generator.js: `typeof seedValue === 'bigint'`, `Array.isArray(seedValue)`)
+          let testsKind = false;
+          this._walkAstNodes(methodNode.value.body, n => {
+            const operand = n.type === 'UnaryExpression' && n.operator === 'typeof' ? n.argument
+              : n.type === 'IsArrayCheck' ? n.value
+              : n.type === 'TypeOfExpression' ? (n.argument || n.value) : null;
+            if (operand?.type === 'Identifier' && operand.name === setterParamRawName) testsKind = true;
+          });
+          if (!testsKind && prop.type?.name === 'dynamic' && !prop.type.isArray && declaredParamType &&
+              !['dynamic', 'object'].includes(declaredParamType.name) && setterParamRawName !== 'value') {
+            this.currentSetterParam = null;
+            this.registerVariableType(setterParamRawName, declaredParamType);
+            bodyBlock.statements.push(new CSharpVariableDeclaration(setterParamRawName, declaredParamType, new CSharpIdentifier('value')));
+          }
         }
 
         // Set currentMethod (duck-typed: transformReturnStatement only reads
@@ -22270,6 +23516,8 @@
      * Also handles spread: arr.push(...other) -> arr = arr.Concat(other).ToArray()
      */
     transformPushStatementToAssignment(node) {
+      const pushCall = this.classPushCall({ array: node.callee.object, values: node.arguments });
+      if (pushCall) return new CSharpExpressionStatement(pushCall);
       const target = this.transformExpression(node.callee.object);
 
       // Infer the array element type to properly cast arguments
@@ -23227,22 +24475,88 @@
         else if (node.type === 'MethodDefinition' && node.kind === 'method' && node.key?.name) consider(node.key.name, node.value);
       });
       if (candidates.size === 0) return refParams;
-      // Every call must pass a local variable at that position
+      // Every call must pass a local variable at that position, or - for a call made
+      // as a statement - a member (`appendAll(this.inputBuffer, data)`), passed
+      // through a temporary and stored back (see applyRefArgumentsEverywhere)
+      const statementCalls = new Set();
+      this._walkAstNodes(jsAst.body, node => {
+        if (node.type === 'ExpressionStatement' && node.expression) statementCalls.add(node.expression);
+      });
+      const storableMember = arg => !arg.computed && (arg.type === 'ThisPropertyAccess' ||
+        (arg.type === 'MemberExpression' && ['ThisExpression', 'Identifier', 'ThisPropertyAccess'].includes(arg.object?.type)));
       const valid = new Set(candidates.keys());
       this._walkAstNodes(jsAst.body, node => {
         let name = null;
         if (node.type === 'ThisMethodCall') name = node.method;
         else if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') name = node.callee.name;
+        // obj.method(x) and Class.method(x) too (see applyRefArgumentsEverywhere)
+        else if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression' && !node.callee.computed) name = node.callee.property?.name;
         if (!name) return;
         const pascal = this.toPascalCase(name);
         (node.arguments || []).forEach((arg, index) => {
           const key = `${pascal}#${index}`;
           if (!valid.has(key)) return;
+          if (arg && statementCalls.has(node) && storableMember(arg)) return;
           if (arg?.type !== 'Identifier' || moduleNames.has(arg.name)) valid.delete(key);
         });
       });
       for (const key of valid) refParams.add(key);
       return refParams;
+    }
+
+    /**
+     * Passes by ref every local given for a ref array parameter at a call through
+     * an object or class (chain.findMatchRuns(..., maxLengths), Grammar._number(rule,
+     * live)) - the direct and this.method() calls are handled where they are built.
+     * @param {Object} root - the C# compilation unit, changed in place
+     */
+    applyRefArgumentsEverywhere(root) {
+      if (!this.refArrayParams?.size) return;
+      const seen = new Set();
+      let temporaries = 0;
+      // A call statement giving a member for a ref parameter passes a temporary and
+      // stores it back: { var __refN = this.f; F(ref __refN); this.f = __refN; }
+      const throughTemporaries = statement => {
+        const call = statement?.nodeType === 'ExpressionStatement' ? statement.expression : null;
+        if (call?.nodeType !== 'MethodCall' || !Array.isArray(call.arguments)) return statement;
+        const before = [], after = [];
+        call.arguments = call.arguments.map((arg, index) => {
+          if (!this.refArrayParams.has(`${call.methodName}#${index}`) || !arg || arg.nodeType === 'Identifier') return arg;
+          const name = `__ref${++temporaries}`;
+          before.push(new CSharpVariableDeclaration(name, new CSharpType('var'), arg));
+          // A member is stored back; a converted copy (ntru.js's byte buffer given
+          // for an int32[] parameter) is converted back to its source's element type
+          const convertedFrom = this.arrayConversionSource(arg);
+          if (arg.nodeType === 'MemberAccess')
+            after.push(new CSharpExpressionStatement(new CSharpAssignment(arg, '=', new CSharpIdentifier(name))));
+          else if (convertedFrom)
+            after.push(new CSharpExpressionStatement(new CSharpAssignment(convertedFrom, '=',
+              new CSharpMethodCall(null, 'ArrayAs', [new CSharpIdentifier(name), convertedFrom]))));
+          return new CSharpIdentifier('ref ' + name);
+        });
+        if (before.length === 0) return statement;
+        const block = new CSharpBlock();
+        block.statements.push(...before, statement, ...after);
+        return block;
+      };
+      const visit = node => {
+        if (!node || typeof node !== 'object' || seen.has(node)) return;
+        seen.add(node);
+        if (node.nodeType === 'MethodCall' && Array.isArray(node.arguments)) {
+          node.arguments = node.arguments.map((arg, index) =>
+            this.refArrayParams.has(`${node.methodName}#${index}`) && arg?.nodeType === 'Identifier' && !String(arg.name).startsWith('ref ')
+              ? new CSharpIdentifier('ref ' + arg.name) : arg);
+        }
+        if (Array.isArray(node.statements)) node.statements = node.statements.map(throughTemporaries);
+        for (const key of ['body', 'thenBranch', 'elseBranch'])
+          if (node[key]?.nodeType === 'ExpressionStatement') node[key] = throughTemporaries(node[key]);
+        for (const key of Object.keys(node)) {
+          const value = node[key];
+          if (Array.isArray(value)) value.forEach(visit);
+          else if (value && typeof value === 'object') visit(value);
+        }
+      };
+      visit(root);
     }
 
     /**
@@ -23258,8 +24572,25 @@
       return args.map((arg, index) => {
         if (!this.refArrayParams.has(`${methodName}#${index}`)) return arg;
         const plain = plainArgs[index];
+        // A local converted to the parameter's element type stays the conversion,
+        // passed through a temporary and converted back (applyRefArgumentsEverywhere)
+        if (plain?.nodeType === 'Identifier' && arg !== plain && this.arrayConversionSource(arg)) return arg;
         return plain?.nodeType === 'Identifier' ? new CSharpIdentifier('ref ' + plain.name) : arg;
       });
+    }
+
+    /**
+     * The array an element-wise conversion `x.Select(_v => (T)_v).ToArray()` reads,
+     * when it is a local or a member (something a converted copy can be stored back to).
+     * @param {Object} expr - C# expression
+     * @returns {Object|null} the converted array's expression
+     */
+    arrayConversionSource(expr) {
+      if (expr?.nodeType !== 'MethodCall' || expr.methodName !== 'ToArray' || expr.arguments?.length) return null;
+      const select = expr.target;
+      if (select?.nodeType !== 'MethodCall' || select.methodName !== 'Select') return null;
+      const source = select.target;
+      return source?.nodeType === 'Identifier' || source?.nodeType === 'MemberAccess' ? source : null;
     }
 
     /**
@@ -23387,8 +24718,14 @@
      */
     transformUnpackBytes(node) {
       // Handle both IL AST (arguments array) and legacy (value property)
-      const value = this.transformExpression(node.arguments?.[0] || node.value);
+      const valueNode = node.arguments?.[0] || node.value;
+      let value = this.transformExpression(valueNode);
       const bits = node.bits || 32;
+      // A float64 word (a length past 2^32 split into halves) unpacks as the
+      // JavaScript helper's `>>> 0` sees it: its low 32 bits as an unsigned integer
+      const valueType = bits <= 32 ? this.inferFullExpressionType(valueNode) : null;
+      if (valueType && !valueType.isArray && (valueType.name === 'double' || valueType.name === 'float'))
+        value = new CSharpCast(CSharpType.UInt(), new CSharpCast(CSharpType.Long(), value));
       const isBigEndian = node.endian === 'big';
       const byteCount = bits / 8;
 
@@ -23406,6 +24743,18 @@
         }
         const masked = new CSharpBinaryExpression(result, '&', CSharpLiteral.Int(0xFF));
         return new CSharpCast(CSharpType.Byte(), masked);
+      }
+
+      // A value with a side effect (`Unpack32LE(this._next32())`) is evaluated once:
+      // the OpCodes helper takes it, instead of one copy per byte
+      let sideEffect = false;
+      this._walkAstNodes(valueNode, n => {
+        if (['CallExpression', 'NewExpression', 'AssignmentExpression', 'UpdateExpression', 'ThisMethodCall'].includes(n.type)) sideEffect = true;
+      });
+      if (sideEffect && [16, 32, 64].includes(bits)) {
+        const parameterType = bits === 16 ? new CSharpType('ushort') : bits === 32 ? CSharpType.UInt() : new CSharpType('ulong');
+        return new CSharpMethodCall(new CSharpIdentifier('OpCodes'), `Unpack${bits}${isBigEndian ? 'BE' : 'LE'}`,
+          [new CSharpCast(parameterType, value)]);
       }
 
       // Generate full byte array: new byte[] { (byte)(v >> X), (byte)(v >> Y), ... }
@@ -23543,14 +24892,73 @@
     }
 
     transformArrayAppend(node) {
+      this.markAppendedDoubleDivisions(node);
       return new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
+    }
+
+    /**
+     * Values pushed to a double array divide as doubles (al-kindi-frequency.js's
+     * `percentages.push(total > 0 ? (counts[k] / total) * 100 : 0)`).
+     * @param {Object} node - the IL ArrayAppend
+     */
+    markAppendedDoubleDivisions(node) {
+      const arrayType = this.inferFullExpressionType(node.array);
+      if (!arrayType?.isArray || !['double', 'float'].includes(arrayType.elementType?.name)) return;
+      for (const value of (Array.isArray(node.values) && node.values.length ? node.values : [node.value])) this.markDoubleDivisions(value);
+    }
+
+    /**
+     * Mark every quotient of two integers within an arithmetic value going into a
+     * double (through + - * / %, a conditional's branches and negation; not into
+     * calls or indexes): transformBinaryExpression divides them as doubles, as
+     * JavaScript does.
+     * @param {Object} node - the IL value
+     * @returns {boolean} whether any quotient was marked
+     */
+    markDoubleDivisions(node) {
+      if (!node || typeof node !== 'object') return false;
+      let marked = false;
+      if (node.type === 'BinaryExpression' && ['+', '-', '*', '/', '%'].includes(node.operator)) {
+        if (node.operator === '/') {
+          const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+          const leftType = this.inferFullExpressionType(node.left), rightType = this.inferFullExpressionType(node.right);
+          if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray) {
+            node.__doubleDivision = true;
+            marked = true;
+          }
+        }
+        marked = this.markDoubleDivisions(node.left) || marked;
+        marked = this.markDoubleDivisions(node.right) || marked;
+      } else if (node.type === 'ConditionalExpression') {
+        marked = this.markDoubleDivisions(node.consequent) || marked;
+        marked = this.markDoubleDivisions(node.alternate) || marked;
+      } else if ((node.type === 'UnaryExpression' && node.operator === '-') || node.type === 'ParenthesizedExpression') {
+        marked = this.markDoubleDivisions(node.argument || node.expression) || marked;
+      }
+      return marked;
     }
 
     /**
      * Transform ArrayAppend statement to arr = arr.Append(value).ToArray()
      * or arr = arr.Concat(value).ToArray() when appending arrays
      */
+    /**
+     * A push(...) call on an object of a class the file declares (a ring buffer
+     * with its own push method): the IL builds the array append for every
+     * .push(), but it is that method.
+     * @returns {Object|null} the C# call, or null when the receiver is no such object
+     */
+    classPushCall(node) {
+      const receiverType = this.inferFullExpressionType(node.array);
+      if (!receiverType || receiverType.isArray || !this.localClassNames?.has(receiverType.name)) return null;
+      const values = Array.isArray(node.values) && node.values.length ? node.values : [node.value];
+      return new CSharpMethodCall(this.transformExpression(node.array), 'Push', values.map(v => this.transformExpression(v)));
+    }
+
     transformArrayAppendToAssignment(node) {
+      const pushCall = this.classPushCall(node);
+      if (pushCall) return new CSharpExpressionStatement(pushCall);
+      this.markAppendedDoubleDivisions(node);
       const target = this.transformExpression(node.array);
       const toArrayExpr = new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
       return new CSharpExpressionStatement(new CSharpAssignment(target, '=', toArrayExpr));
@@ -23576,6 +24984,31 @@
      */
     transformArrayPatternAssignmentToStatements(node) {
       const elements = node.left.elements || [];
+      // [a, b, c] = [x, y, z] (a swap or rotation): each value goes to a temporary of
+      // its target's own type first, then to the target - an array literal of the
+      // values would take one element type for all (byte), cutting uint words (THX)
+      const right = node.right;
+      if ((right?.type === 'ArrayExpression' || right?.type === 'ArrayLiteral') && right.elements?.length === elements.length &&
+          right.elements.every(e => e && e.type !== 'SpreadElement') && elements.every(e => e && (e.type === 'Identifier' || e.type === 'MemberExpression' || e.type === 'ThisPropertyAccess'))) {
+        const statements = [];
+        const temps = [];
+        elements.forEach((elem, i) => {
+          let name = `swap${i}`;
+          while (this.methodDeclaredVars.has(name)) name += '_';
+          this.methodDeclaredVars.add(name);
+          const targetType = elem.type === 'Identifier' ? this.getVariableType(elem.name) || this.inferFullExpressionType(elem) : this.inferFullExpressionType(elem);
+          const value = this.castIfNeeded(this.transformExpression(right.elements[i]), this.inferFullExpressionType(right.elements[i]), targetType);
+          statements.push(new CSharpVariableDeclaration(name, targetType && targetType.name !== 'object' ? targetType : CSharpType.Var(), value));
+          temps.push(name);
+        });
+        elements.forEach((elem, i) => {
+          const target = elem.type === 'Identifier'
+            ? new CSharpIdentifier(this.toCamelCase(this.variableNameMap.get(elem.name) || elem.name))
+            : this.transformExpression(elem);
+          statements.push(new CSharpExpressionStatement(new CSharpAssignment(target, '=', new CSharpIdentifier(temps[i]))));
+        });
+        return statements;
+      }
       const sourceExpr = this.transformExpression(node.right);
 
       let tempName = 'destructured';
@@ -23661,6 +25094,14 @@
     transformArraySlice(node) {
       const array = this.transformExpression(node.array);
 
+      // A string's slice (rainbow.js's `entry.digest.slice(0, 16)`) is JsSlice
+      const sliced = this.inferFullExpressionType(node.array);
+      if (sliced?.name === 'string' && !sliced.isArray) {
+        const args = [array, this.ensureIntIndex(node.start ? this.transformExpression(node.start) : CSharpLiteral.Int(0), node.start)];
+        if (node.end) args.push(this.ensureIntIndex(this.transformExpression(node.end), node.end));
+        return new CSharpMethodCall(null, 'JsSlice', args);
+      }
+
       // Check if a node represents a negative expression
       const isNegativeExpression = (n) => {
         if (!n) return false;
@@ -23711,14 +25152,11 @@
 
       // Determine start index
       let startExpr;
+      // A negative bound stays negative (as an int): SliceArray counts it from the
+      // end and clamps it, as slice does (Length - n would go wrong for n > Length)
       if (node.start && isNegativeExpression(node.start)) {
-        // Negative start: arr.slice(-n) -> start = arr.Length - n
         const positiveStart = getPositiveExpression(node.start);
-        startExpr = new CSharpBinaryExpression(
-          new CSharpMemberAccess(array, 'Length'),
-          '-',
-          this.ensureIntIndex(positiveStart, getPositiveJsNode(node.start))
-        );
+        startExpr = new CSharpUnaryExpression('-', this.ensureIntIndex(positiveStart, getPositiveJsNode(node.start)));
       } else {
         startExpr = node.start ? this.ensureIntIndex(this.transformExpression(node.start), node.start) : CSharpLiteral.Int(0);
       }
@@ -23726,13 +25164,8 @@
       // Determine end index
       let endExpr;
       if (node.end && isNegativeExpression(node.end)) {
-        // Negative end: arr.slice(0, -n) -> end = arr.Length - n
         const positiveEnd = getPositiveExpression(node.end);
-        endExpr = new CSharpBinaryExpression(
-          new CSharpMemberAccess(array, 'Length'),
-          '-',
-          this.ensureIntIndex(positiveEnd, getPositiveJsNode(node.end))
-        );
+        endExpr = new CSharpUnaryExpression('-', this.ensureIntIndex(positiveEnd, getPositiveJsNode(node.end)));
       } else if (node.end) {
         endExpr = this.ensureIntIndex(this.transformExpression(node.end), node.end);
       } else {
@@ -24196,6 +25629,22 @@
           argRank && elemRank && elemRank > argRank) {
         return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
       }
+      // The framework's byte buffer (this.inputBuffer.concat(padding)) holds bytes:
+      // numbers concatenated to it are bytes (DMAC's padding built by CreateArray)
+      const receiverField = receiverNode?.type === 'ThisPropertyAccess'
+        ? (typeof receiverNode.property === 'string' ? receiverNode.property : receiverNode.property?.name) : null;
+      if (receiverField && /^_?inputBuffer$/i.test(receiverField) && elementType.name === 'byte' && !elementType.isArray &&
+          argType.isArray && argType.elementType && !argType.elementType.isArray && argRank && argRank > 1)
+        return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
+      // A byte array built from registered byte arrays (hqc.js's `uBytes.concat(vBytes)
+      // .concat(d).concat(salt)`) takes a registered wider array's values as bytes
+      let root = receiverNode;
+      while (root?.type === 'ArrayConcat') root = root.array;
+      const registered = node => node?.type === 'Identifier' && !!this.getVariableType(node.name)?.isArray;
+      if (registered(root) && registered(argNode) && elementType.name === 'byte' && !elementType.isArray &&
+          this.getVariableType(root.name).elementType?.name === 'byte' &&
+          argType.isArray && argType.elementType && !argType.elementType.isArray && argRank && argRank > 1)
+        return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
       return transformedArg;
     }
 
@@ -24203,8 +25652,19 @@
      * Transform ArrayConcat to array.Concat(...).ToArray()
      */
     transformArrayConcat(node) {
-      const array = this.transformExpression(node.array);
-      const elementType = this.arrayElementTypeOf(node.array);
+      let array = this.transformExpression(node.array);
+      // A dynamic receiver (comb4p.js's `dynamic h1`) binds no LINQ Concat at run
+      // time: cast it to the array type of what it is concatenated with (byte[])
+      const receiverType = this.inferFullExpressionType(node.array);
+      let dynamicReceiverElement = null;
+      if (receiverType?.name === 'dynamic' && !receiverType.isArray) {
+        const argType = (node.arrays || []).map(a => this.inferFullExpressionType(a)).find(t => t?.isArray && t.elementType && !['dynamic', 'object'].includes(t.elementType.name));
+        const castType = argType || CSharpType.Array(CSharpType.Byte());
+        array = new CSharpCast(castType, array);
+        dynamicReceiverElement = castType.elementType;
+      }
+      // (dynamic arguments are then cast to that same array type - castConcatArgument)
+      const elementType = dynamicReceiverElement || this.arrayElementTypeOf(node.array);
       // Reverse-direction fix: castConcatArgument only ever widens the ARGUMENT to
       // match a wider RECEIVER (see its own doc comment), never the reverse, since
       // narrowing an argument risks real data loss in general. When there's exactly
@@ -24236,8 +25696,15 @@
         }
       }
       let result = array;
+      // An array literal receiver is emitted with the element type of its context
+      // (bwt.js's test vector `[0, 0, 0, 0, 255].concat(Array.from(...))` as byte[]):
+      // an argument of another numeric element type converts to it
+      const emittedElement = array?.nodeType === 'ArrayCreation' && array.elementType && !array.elementType.isArray ? array.elementType : null;
       for (const arr of (node.arrays || [])) {
-        const other = this.castConcatArgument(elementType, arr, this.transformExpression(arr), node.array);
+        let other = this.castConcatArgument(elementType, arr, this.transformExpression(arr), node.array);
+        const argType = emittedElement ? this.inferFullExpressionType(arr) : null;
+        if (emittedElement && this.differentNumericArrays(argType, CSharpType.Array(emittedElement)))
+          other = this.buildParameterConversion(argType, CSharpType.Array(emittedElement), this.transformExpression(arr));
         result = new CSharpMethodCall(result, 'Concat', [other]);
       }
       return new CSharpMethodCall(result, 'ToArray', []);
@@ -24392,7 +25859,23 @@
      * C#: array.Select(x => f(x)).ToArray()
      */
     transformArrayMap(node) {
-      const array = this.castDynamicReceiverForLinq(this.transformExpression(node.array), node.array);
+      // [{ n, k, ... }].map(s => ({ text: ..., key: ... })) as the vectors: the
+      // records mapped are plain objects, only what map returns is a TestCase
+      const records = (node.array?.type === 'ArrayExpression' || node.array?.type === 'ArrayLiteral') &&
+        (node.array.elements || []).length > 0 &&
+        node.array.elements.every(e => e?.type === 'ObjectExpression' || e?.type === 'ObjectLiteral');
+      const prevElementType = this.currentArrayElementType;
+      if (records && prevElementType?.name === 'TestCase') this.currentArrayElementType = null;
+      let array;
+      try {
+        array = this.castDynamicReceiverForLinq(this.transformExpression(node.array), node.array);
+      } finally {
+        this.currentArrayElementType = prevElementType;
+      }
+      if (records && prevElementType?.name === 'TestCase') {
+        const callback = this.transformCallback(node.callback, [null, CSharpType.Int()]);
+        return new CSharpMethodCall(new CSharpMethodCall(array, 'Select', [callback]), 'ToArray', []);
+      }
       const elementType = this.arrayElementTypeOf(node.array);
       const callback = this.transformCallback(node.callback, [elementType, CSharpType.Int()]);
       const selectCall = new CSharpMethodCall(array, 'Select', [callback]);
@@ -24689,6 +26172,8 @@
      */
     transformArrayPop(node) {
       const array = this.transformExpression(node.array);
+      const removed = this.arrayRemovalExpression(node, array, false);
+      if (removed) return removed;
       // For List<T>: list.RemoveAt(list.Count - 1)
       return new CSharpMethodCall(array, 'RemoveAt', [
         new CSharpBinaryExpression(
@@ -24704,8 +26189,38 @@
      */
     transformArrayShift(node) {
       const array = this.transformExpression(node.array);
+      const removed = this.arrayRemovalExpression(node, array, true);
+      if (removed) return removed;
       // For List<T>: list.RemoveAt(0)
       return new CSharpMethodCall(array, 'RemoveAt', [CSharpLiteral.Int(0)]);
+    }
+
+    /**
+     * `arr.shift()`/`arr.pop()` used as a value on a C# array (a local or a field):
+     * ((Func<T>)(() => { var __v = arr[0]; arr = arr.Skip(1).ToArray(); return __v; })).Invoke()
+     * - the removed element, with the array rebound to the rest, as JavaScript
+     * shrinks it in place.
+     * @returns {Object|null} the C# expression, or null when the target is no array variable
+     */
+    arrayRemovalExpression(node, array, isShift) {
+      const target = node.array;
+      const assignable = target && (target.type === 'Identifier' || target.type === 'ThisPropertyAccess' ||
+        (target.type === 'MemberExpression' && !target.computed && target.object?.type === 'ThisExpression'));
+      const arrayType = assignable ? this.inferFullExpressionType(target) : null;
+      if (!arrayType?.isArray || !arrayType.elementType) return null;
+      const length = new CSharpMemberAccess(array, 'Length');
+      const lambda = new CSharpLambda([], new CSharpBlock());
+      lambda.body.statements.push(new CSharpVariableDeclaration('__v', arrayType.elementType,
+        new CSharpElementAccess(array, isShift ? CSharpLiteral.Int(0) : new CSharpBinaryExpression(length, '-', CSharpLiteral.Int(1)))));
+      const rest = isShift
+        ? new CSharpMethodCall(new CSharpMethodCall(array, 'Skip', [CSharpLiteral.Int(1)]), 'ToArray', [])
+        : new CSharpMethodCall(new CSharpMethodCall(array, 'Take', [new CSharpBinaryExpression(length, '-', CSharpLiteral.Int(1))]), 'ToArray', []);
+      lambda.body.statements.push(new CSharpExpressionStatement(new CSharpAssignment(array, '=', rest)));
+      lambda.body.statements.push(new CSharpReturn(new CSharpIdentifier('__v')));
+      const cast = new CSharpCast(
+        new CSharpType('Func', { isGeneric: true, genericArguments: [arrayType.elementType] }),
+        new CSharpParenthesized(lambda));
+      return new CSharpMethodCall(new CSharpParenthesized(cast), 'Invoke', []);
     }
 
     /**
@@ -24763,7 +26278,9 @@
         'int64': CSharpType.Long()
       };
 
-      const csharpType = typeMap[elementType] || CSharpType.UInt();
+      // Any other element type the IL declares (a class: adaptive-huffman.js's
+      // `new Array(256)` of FgkNode) is that type
+      const csharpType = typeMap[elementType] || (node.elementType && this.mapILType(elementType)) || CSharpType.UInt();
       return new CSharpArrayCreation(csharpType, size);
     }
 
@@ -24777,7 +26294,16 @@
       // new Uint8Array(existingArray) -> existingArray.ToArray()
       const sizeNode = node.size;
       if (sizeNode && this.isArrayCopyPattern(sizeNode)) {
-        const sourceArray = this.transformExpression(sizeNode);
+        let sourceArray = this.transformExpression(sizeNode);
+        // A dynamic source (x25519.js's `new Uint8Array(this._privateKey)`, a field
+        // typed dynamic) binds no LINQ extension at run time: it is cast to the
+        // typed array first
+        const sourceType = this.inferFullExpressionType(sizeNode);
+        if (sourceType?.name === 'dynamic' && !sourceType.isArray) {
+          const elementTypes = { Uint8Array: 'byte', Uint8ClampedArray: 'byte', Int8Array: 'sbyte', Uint16Array: 'ushort', Int16Array: 'short',
+            Uint32Array: 'uint', Int32Array: 'int', Float32Array: 'float', Float64Array: 'double', BigUint64Array: 'ulong', BigInt64Array: 'long' };
+          sourceArray = new CSharpCast(CSharpType.Array(new CSharpType(elementTypes[arrayType] || 'byte')), sourceArray);
+        }
         return new CSharpMethodCall(sourceArray, 'ToArray', []);
       }
 
@@ -24807,6 +26333,22 @@
      */
     isArrayCopyPattern(node) {
       if (!node) return false;
+
+      // A member of a file class whose type is registered decides by that type
+      // (cross.js's `new Uint8Array(p.pkBytes)`, an int32 size despite "bytes")
+      if (node.type === 'MemberExpression' && !node.computed) {
+        const ownerType = this.inferFullExpressionType(node.object);
+        const propName = node.property?.name || node.property?.value;
+        const fieldType = ownerType && !ownerType.isArray && this.localClassNames.has(ownerType.name) && propName
+          ? this.getOwnClassFieldType(ownerType.name, this.toPascalCase(propName)) : null;
+        if (fieldType) return !!fieldType.isArray;
+      }
+      // ...and so does an own field (faest.js's `new Uint8Array(this.bytes)`, bits / 8)
+      if (node.type === 'ThisPropertyAccess' && this.currentClass?.name && this.localClassNames.has(this.currentClass.name)) {
+        const propName = typeof node.property === 'string' ? node.property : node.property?.name;
+        const fieldType = propName ? this.getOwnClassFieldType(this.currentClass.name, this.toPascalCase(propName)) : null;
+        if (fieldType && !['object', 'dynamic'].includes(fieldType.name)) return !!fieldType.isArray;
+      }
 
       // Check by type annotation
       if (node.resultType) {
@@ -25012,11 +26554,153 @@
       const floorResult = new CSharpMethodCall(
         new CSharpIdentifier('Math'),
         'Floor',
-        [new CSharpCast(CSharpType.Double(), arg)]
+        [this.asDoubleOperand(node.argument, arg)]
       );
       // Use int as default (matches transformCeil behavior)
       // If uint is needed, the assignment context will handle proper casting
-      return new CSharpCast(CSharpType.Int(), floorResult);
+      return new CSharpCast(this.roundedType(node.argument), floorResult);
+    }
+
+    /**
+     * A product of two 32-bit numbers as JavaScript computes it: in doubles, so
+     * one past 2^53 is rounded (an LCG's `ToUint32(1099087573 * s)`), where C#
+     * multiplies the integers exactly. Such a product goes through JsMul, which
+     * keeps C#'s result type. A product with a small constant or a 16-bit operand
+     * stays below 2^53 and is left alone.
+     * @param {Object} node - the JS/IL binary expression
+     * @param {Object} result - its transformed C# expression
+     * @returns {Object} the C# expression to use
+     */
+    asJsProduct(node, result) {
+      if (node.operator !== '*' || result?.nodeType !== 'BinaryExpression' || result.operator !== '*') return result;
+      // An inlined OpCodes.Mul32 and the like are exact (Math.imul)
+      if (node.opCodesMethod) return result;
+      const small = n => n?.type === 'Literal' && typeof n.value === 'number' && Math.abs(n.value) < 2 ** 21;
+      if (small(node.left) || small(node.right)) return result;
+      const wide = ['int', 'uint', 'long'];
+      const leftType = this.inferFullExpressionType(node.left);
+      const rightType = this.inferFullExpressionType(node.right);
+      if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
+      return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
+    }
+
+    /**
+     * An inlined 32-bit OpCodes operation (Not32, Shr32, ...) the IL types uint32
+     * masks its result with & 4294967295u; on a signed operand C# makes that a long.
+     * It is cast to the uint it stands for (notKxorIV.push(OpCodes.Not32(x)) pushed a
+     * long into a uint[], CS1929).
+     */
+    asUint32Result(node, result) {
+      if (!node.opCodesMethod || node.resultType !== 'uint32' || node.operator !== '&' || result?.nodeType !== 'BinaryExpression' || result.operator !== '&') return result;
+      const signed = ['int', 'long', 'sbyte', 'short'];
+      const leftType = this.inferFullExpressionType(node.left);
+      const castToSigned = result.left?.nodeType === 'Cast' && signed.includes(result.left.type?.name) && !result.left.type?.isArray;
+      if (!castToSigned && (!leftType || leftType.isArray || !signed.includes(leftType.name))) return result;
+      return new CSharpCast(CSharpType.UInt(), result);
+    }
+
+    /** Whether a JS/IL node is a number literal written with a fraction or exponent (1.0, 1e3). */
+    isFractionLiteral(node) {
+      return node?.type === 'Literal' && typeof node.value === 'number' && typeof node.raw === 'string' &&
+        !/^0[xXbBoO]/.test(node.raw) && /[.eE]/.test(node.raw);
+    }
+
+    /**
+     * 1.0 / IM - a division with a number written with a fraction (the scale of
+     * Numerical Recipes' generators) divides doubles; the literal is emitted as one
+     * (1.0, not 1, which C# would divide as integers).
+     */
+    asFractionDivision(node, result) {
+      if (node.operator !== '/' || result?.nodeType !== 'BinaryExpression' || result.operator !== '/') return result;
+      if (this.isFractionLiteral(node.left)) result.left = CSharpLiteral.Double(node.left.value);
+      else if (this.isFractionLiteral(node.right)) result.right = CSharpLiteral.Double(node.right.value);
+      return result;
+    }
+
+    /**
+     * A quotient going into a double (const AM = 1.0 / IM): JavaScript divides the
+     * numbers as doubles, C# integers as integers - the dividend is converted.
+     * @param {Object} node - the JS/IL value
+     * @param {Object} expr - its transformed C# expression
+     * @param {CSharpType} targetType - the type the value goes into
+     * @returns {Object} the C# expression to use
+     */
+    asDoubleQuotient(node, expr, targetType) {
+      if (!targetType || targetType.isArray || (targetType.name !== 'double' && targetType.name !== 'float')) return expr;
+      // A quotient nested in the value ((a / b) * 100) is transformed again, marked
+      if (node?.type !== 'BinaryExpression' || node.operator !== '/')
+        return this.markDoubleDivisions(node) ? this.transformExpression(node) : expr;
+      const quotient = this.asDoubleOperand(node, expr);
+      return quotient.nodeType === 'BinaryExpression' ? quotient : expr;
+    }
+
+    /**
+     * A BigInt shift (OpCodes.ShiftLn(BigInt(1), 128)) whose left operand the IL
+     * typed as a small uint64 literal: C# masks a ulong shift count to 6 bits, so the
+     * operand is made a BigInteger, as in JavaScript.
+     * @param {Object} node - the JS/IL binary expression
+     * @param {Object} result - its transformed C# expression
+     * @returns {Object} the C# expression to use
+     */
+    asBigIntShift(node, result) {
+      if (!node.bigint || !['<<', '>>'].includes(node.operator) || result?.nodeType !== 'BinaryExpression' || result.operator !== node.operator) return result;
+      const leftType = this.inferFullExpressionType(node.left);
+      if (leftType?.name === 'BigInteger' && !leftType.isArray) return result;
+      // A literal, or a computed 64-bit value (lfsr258.js's ShiftLn(AndN(z, mask), 10),
+      // the AND typed uint64): a JavaScript BigInt shift keeps every bit. A plain
+      // reference declared 64-bit is meant to stay so (see transformBigIntCast)
+      const wrapped = node.left?.type === 'Cast' ? node.left.arguments?.[0] : node.left?.type === 'BigIntCast' ? node.left.argument : null;
+      const reference = wrapped && this.isReliableBigIntCastSkipSource(wrapped) ? wrapped : node.left;
+      const plain64 = this.isReliableBigIntCastSkipSource(reference) && ['ulong', 'long'].includes(leftType?.name) && !leftType.isArray;
+      // (only a masking AND: a value cast to 64 bits, hpc.js's ToQWord(x) << 21, is
+      // masked again after the shift, where the ulong shift agrees)
+      const masked = node.left?.type === 'BinaryExpression' && node.left.operator === '&';
+      if (node.left?.type !== 'Literal' && (plain64 || !masked || !['ulong', 'long'].includes(leftType?.name) || node.operator !== '<<')) return result;
+      return new CSharpBinaryExpression(new CSharpCast(new CSharpType('BigInteger'), result.left), result.operator, result.right);
+    }
+
+    /**
+     * A comparison of a signed integer with a ulong has no C# operator (CS0034);
+     * JavaScript compares the two numbers, which a comparison of doubles does.
+     * @param {Object} node - the JS/IL binary expression
+     * @param {Object} result - its transformed C# expression
+     * @returns {Object} the C# expression to use
+     */
+    asJsComparison(node, result) {
+      const comparisons = ['<', '>', '<=', '>=', '==', '!=', '===', '!=='];
+      if (!comparisons.includes(node.operator) || result?.nodeType !== 'BinaryExpression' || !comparisons.includes(result.operator)) return result;
+      const signed = ['sbyte', 'short', 'int', 'long'];
+      const leftType = this.inferFullExpressionType(node.left), rightType = this.inferFullExpressionType(node.right);
+      const mixed = (a, b) => a?.name === 'ulong' && !a.isArray && signed.includes(b?.name) && !b.isArray;
+      if (!mixed(leftType, rightType) && !mixed(rightType, leftType)) return result;
+      return new CSharpBinaryExpression(new CSharpCast(CSharpType.Double(), result.left), result.operator,
+        new CSharpCast(CSharpType.Double(), result.right));
+    }
+
+    /**
+     * A Math.ceil/round operand as the double JavaScript computes. A quotient of
+     * two integers is a fraction in JavaScript, but C# divides integers to an
+     * integer, so `(double)(a / b)` already lost what ceil/round look at: the
+     * dividend is converted instead, `(double)a / b`.
+     * @param {Object} argNode - the JS/IL operand
+     * @param {Object} arg - its transformed C# expression
+     * @returns {Object} a double-typed C# expression
+     */
+    asDoubleOperand(argNode, arg) {
+      if (argNode && argNode.type === 'BinaryExpression' && argNode.operator === '/') {
+        const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+        const leftType = this.inferFullExpressionType(argNode.left);
+        const rightType = this.inferFullExpressionType(argNode.right);
+        if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray) {
+          // A product as the dividend (y * 256 / m) is a double too, not an integer that wraps
+          const product = argNode.left;
+          const dividend = product.type === 'BinaryExpression' && product.operator === '*' && !product.opCodesMethod
+            ? new CSharpBinaryExpression(new CSharpCast(CSharpType.Double(), this.transformExpression(product.left)), '*', this.transformExpression(product.right))
+            : new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left));
+          return new CSharpBinaryExpression(dividend, '/', this.transformExpression(argNode.right));
+        }
+      }
+      return new CSharpCast(CSharpType.Double(), arg);
     }
 
     /**
@@ -25027,9 +26711,9 @@
       const ceilResult = new CSharpMethodCall(
         new CSharpIdentifier('Math'),
         'Ceiling',
-        [new CSharpCast(CSharpType.Double(), arg)]
+        [this.asDoubleOperand(node.argument, arg)]
       );
-      return new CSharpCast(CSharpType.Int(), ceilResult);
+      return new CSharpCast(this.roundedType(node.argument), ceilResult);
     }
 
     /**
@@ -25104,6 +26788,28 @@
     /**
      * Transform Pow to Math.Pow
      */
+    /** Whether a JS/IL operand is a BigInt (a BigInt literal, or BigInteger-typed). */
+    isBigIntOperand(node) {
+      if (!node) return false;
+      if (node.type === 'Literal' && (node.bigint !== undefined || typeof node.value === 'bigint')) return true;
+      const type = this.inferFullExpressionType(node);
+      return type?.name === 'BigInteger' && !type.isArray;
+    }
+
+    /**
+     * a ** b, which C# has no operator for (CS0193): BigInteger.Pow(a, (int)b) for
+     * BigInts (2n ** BigInt(h)), Math.Pow((double)a, (double)b) for numbers.
+     */
+    transformExponentiation(node) {
+      const base = this.transformExpression(node.left);
+      const exponent = this.transformExpression(node.right);
+      if (this.isBigIntOperand(node.left) || this.isBigIntOperand(node.right))
+        return new CSharpMethodCall(new CSharpIdentifier('BigInteger'), 'Pow',
+          [new CSharpCast(new CSharpType('BigInteger'), base), new CSharpCast(CSharpType.Int(), exponent)]);
+      return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Pow',
+        [new CSharpCast(CSharpType.Double(), base), new CSharpCast(CSharpType.Double(), exponent)]);
+    }
+
     transformPow(node) {
       const base = this.transformExpression(node.base);
       const exponent = this.transformExpression(node.exponent);
@@ -25115,16 +26821,30 @@
     }
 
     /**
-     * Transform Round to Math.Round
+     * Transform Round. Math.round rounds a half up (2.5 -> 3, -2.5 -> -2), where
+     * C#'s Math.Round rounds it to even (2.5 -> 2), so it is Math.Floor(x + 0.5).
      */
     transformRound(node) {
       const arg = this.transformExpression(node.argument);
-      const roundResult = new CSharpMethodCall(
-        new CSharpIdentifier('Math'),
-        'Round',
-        [new CSharpCast(CSharpType.Double(), arg)]
-      );
-      return new CSharpCast(CSharpType.Int(), roundResult);
+      return new CSharpCast(this.roundedType(node.argument), this.jsRound(this.asDoubleOperand(node.argument, arg)));
+    }
+
+    /**
+     * The type Math.floor/ceil/round give back: int, but a 64-bit operand (or
+     * dividend) keeps its type, as (int) would cut a uint64 counter.
+     * @param {Object} argNode - the JS/IL operand
+     * @returns {CSharpType}
+     */
+    roundedType(argNode) {
+      const operand = argNode?.type === 'BinaryExpression' && argNode.operator === '/' ? argNode.left : argNode;
+      const type = operand ? this.inferFullExpressionType(operand) : null;
+      return type && !type.isArray && (type.name === 'long' || type.name === 'ulong') ? new CSharpType(type.name) : CSharpType.Int();
+    }
+
+    /** Math.round(x) of a double x: Math.Floor(x + 0.5). */
+    jsRound(operand) {
+      return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Floor',
+        [new CSharpBinaryExpression(operand, '+', CSharpLiteral.Double(0.5))]);
     }
 
     /**
@@ -25563,21 +27283,20 @@
      * IL AST: { type: 'StringSubstring', string: expr, start: expr, end?: expr }
      */
     transformStringSubstring(node) {
+      // The IL builds this node for slice, substring and substr alike; the helpers
+      // take slice's reading of a negative bound (from the end, the common
+      // `s.slice(0, -2)`) and clamp the bounds, where string.Substring throws
       const str = this.transformExpression(node.string);
-      const start = this.transformExpression(node.start);
-
-      if (node.end) {
-        const end = this.transformExpression(node.end);
-        // string.Substring(start, end - start)
-        return new CSharpMethodCall(
-          str,
-          'Substring',
-          [start, new CSharpBinaryExpression(end, '-', start)]
-        );
+      const start = node.start ? this.ensureIntIndex(this.transformExpression(node.start), node.start) : CSharpLiteral.Int(0);
+      if (node.length) {
+        const length = this.ensureIntIndex(this.transformExpression(node.length), node.length);
+        return new CSharpMethodCall(null, 'JsSubstr', [str, start, length]);
       }
-
-      // string.Substring(start) - to end of string
-      return new CSharpMethodCall(str, 'Substring', [start]);
+      if (node.end) {
+        const end = this.ensureIntIndex(this.transformExpression(node.end), node.end);
+        return new CSharpMethodCall(null, 'JsSlice', [str, start, end]);
+      }
+      return new CSharpMethodCall(null, 'JsSlice', [str, start]);
     }
 
     /**
@@ -25691,8 +27410,9 @@
           [str, CSharpLiteral.String(pattern)]
         );
       }
-      const separator = this.transformExpression(node.separator);
-      return new CSharpMethodCall(str, 'Split', [separator]);
+      // JsSplit: split('') gives the characters, split() the whole string
+      const separator = node.separator ? this.transformExpression(node.separator) : CSharpLiteral.Null();
+      return new CSharpMethodCall(null, 'JsSplit', [str, separator]);
     }
 
     /**
@@ -25816,6 +27536,28 @@
       }
 
       return creation;
+    }
+
+    /**
+     * DataViewGetByteLength. The IL builds it for `x.byteLength` and also for a
+     * call `x.byteLength()` of an object's own method (zstd's bit cursors). A
+     * DataView or ArrayBuffer is a byte[] in C#, so its length is .Length; any
+     * other object keeps the call of its own method.
+     */
+    transformByteLength(node) {
+      const viewType = this.inferFullExpressionType(node.view);
+      if (viewType && viewType.isArray)
+        return new CSharpMemberAccess(this.transformExpression(node.view), 'Length');
+      return this.transformExpression(this.byteLengthMethodCall(node));
+    }
+
+    /** The plain JS call `view.byteLength()` a DataViewGetByteLength node stands for. */
+    byteLengthMethodCall(node) {
+      return {
+        type: 'CallExpression',
+        callee: { type: 'MemberExpression', object: node.view, property: { type: 'Identifier', name: 'byteLength' }, computed: false },
+        arguments: []
+      };
     }
 
     /**

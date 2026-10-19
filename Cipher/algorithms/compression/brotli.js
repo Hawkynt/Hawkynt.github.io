@@ -169,12 +169,13 @@
 
   // Section 7.1: context lookup tables for UTF8 (Lut0/Lut1) and Signed (Lut2)
   // context modes. Extracted and CRC-32 verified against the RFC 7932 text.
+  const { CONTEXT_LUT0, CONTEXT_LUT1, CONTEXT_LUT2 } = BrotliDictionary;
   /** @type {uint8[]} */
-  const LUT0 = BrotliDictionary.Table('CONTEXT_LUT0');
+  const LUT0 = CONTEXT_LUT0;
   /** @type {uint8[]} */
-  const LUT1 = BrotliDictionary.Table('CONTEXT_LUT1');
+  const LUT1 = CONTEXT_LUT1;
   /** @type {uint8[]} */
-  const LUT2 = BrotliDictionary.Table('CONTEXT_LUT2');
+  const LUT2 = CONTEXT_LUT2;
 
   // Section 9.2: MNIBBLES field value to nibble count (0 = metadata block).
   /** @type {int32[]} */
@@ -2477,10 +2478,7 @@
   /** @type {int32} */
   const DICTIONARY_LITERAL_BITS = 8;
 
-  /** @type {int32[]} */
-  const NWORDS = BrotliDictionary.Table('NWORDS');
-  /** @type {int32[]} */
-  const DOFFSET = BrotliDictionary.Table('DOFFSET');
+  const { NWORDS, DOFFSET } = BrotliDictionary;
 
   /**
    * @param {string} text - Latin-1 text
@@ -2564,12 +2562,13 @@
    * @returns {DictionaryGroup[]} Transform groups
    */
   function buildDictionaryGroups() {
+    const { TRANSFORM_PREFIXES, TRANSFORM_TYPES, TRANSFORM_SUFFIXES } = BrotliDictionary;
     /** @type {string[]} */
-    const prefixes = BrotliDictionary.Table('TRANSFORM_PREFIXES');
+    const prefixes = TRANSFORM_PREFIXES;
     /** @type {int32[]} */
-    const types = BrotliDictionary.Table('TRANSFORM_TYPES');
+    const types = TRANSFORM_TYPES;
     /** @type {string[]} */
-    const suffixes = BrotliDictionary.Table('TRANSFORM_SUFFIXES');
+    const suffixes = TRANSFORM_SUFFIXES;
     /** @type {DictionaryGroup[]} */
     const groups = [];
 
@@ -2651,8 +2650,9 @@
    * @returns {uint8[][]} Untouched, FermentFirst and FermentAll word lists
    */
   function buildDictionaryForms() {
+    const { DICT } = BrotliDictionary;
     /** @type {uint8[]} */
-    const dict = BrotliDictionary.Table('DICT');
+    const dict = DICT;
     /** @type {uint8[]} */
     const base = new Uint8Array(dict.length);
     for (let i = 0; i < dict.length; ++i) {
@@ -3694,7 +3694,7 @@
     const pairCost = [];
     for (let i = 0; i < clusters.length; ++i) {
       /** @type {float64[]} */
-      const row = filledArray(clusters.length, 0);
+      const row = OpCodes.CreateArray(clusters.length, 0);
       for (let j = i + 1; j < clusters.length; ++j) {
         row[j] = mergeCostUnits(clusters[i], clusters[j]);
       }

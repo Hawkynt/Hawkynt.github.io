@@ -9,10 +9,10 @@
 | Category | Padding Schemes |
 | Sub-category | Bit Padding |
 | Security status | 🛡️ Secure |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Merkle-Damgård |
 | Year | 1979 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/padding/bit-padding.js`](../../../algorithms/padding/bit-padding.js) |
 
 ## Capabilities

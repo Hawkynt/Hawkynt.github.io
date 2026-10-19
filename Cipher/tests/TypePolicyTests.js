@@ -23,6 +23,8 @@ function equal(actual, expected, what = '') {
   if (a !== expected) throw new Error(`${what}expected ${JSON.stringify(expected)}, got ${JSON.stringify(a)}`);
 }
 function ok(cond, what) { if (!cond) throw new Error(what); }
+/** Equal as JSON (arrays and plain values). */
+function same(actual, expected, what = '') { equal(JSON.stringify(actual), JSON.stringify(expected), what); }
 
 /** Parse and return the IL AST. */
 function il(code) { return quiet(() => new TypeAwareJSASTParser(code).parse()); }
@@ -549,6 +551,144 @@ test('template: given an OpCodes helper declared {T[]} (ClearArray), when a uint
   equal(arg.contextType, undefined);
 });
 
+// ------------------------------------------------------------ length fields, undefined
+test('length: given a local class with its own length field, when x.length is read, then it is a member read of the field type', () => {
+  const ast = il('class M {\n  /** @param {int32[]} length */\n  constructor(length) { /** @type {int32[]} */ this.length = length; }\n}\n/** @param {M} m\n * @returns {int32[]} */\nfunction f(m) { return m.length; }');
+  const read = find(ast, n => n.type === 'ReturnStatement').argument;
+  same([read.type, read.resultType], ['MemberExpression', 'int32[]']);
+});
+test('length: given an array, when a.length is read, then it is still an int32 ArrayLength', () => {
+  const ast = il('/** @param {uint8[]} a\n * @returns {int32} */\nfunction f(a) { return a.length; }');
+  const read = find(ast, n => n.type === 'ReturnStatement').argument;
+  same([read.type, read.resultType], ['ArrayLength', 'int32']);
+});
+test('length: given a local class without a length field, when x.length is read, then it is an ArrayLength (boundary)', () => {
+  const ast = il('class M { constructor() { /** @type {int32} */ this.size = 0; } }\n/** @param {M} m\n * @returns {int32} */\nfunction f(m) { return m.length; }');
+  equal(find(ast, n => n.type === 'ReturnStatement').argument.type, 'ArrayLength');
+});
+test('undefined: given the undefined keyword, when transformed, then it is a marked undefined literal typed like null', () => {
+  const lit = find(il('/** @returns {?uint8[]} */\nfunction f() { return undefined; }'), n => n.type === 'ReturnStatement').argument;
+  same([lit.type, lit.isUndefined, lit.raw, lit.resultType, 'value' in lit && lit.value === undefined], ['Literal', true, 'undefined', 'null', true]);
+});
+test('undefined: given null, when transformed, then it is no undefined literal', () => {
+  const lit = find(il('/** @returns {?uint8[]} */\nfunction f() { return null; }'), n => n.type === 'ReturnStatement').argument;
+  same([lit.value, lit.isUndefined, lit.resultType], [null, undefined, 'null']);
+});
+
+// ------------------------------------------------------------ array element types
+const elementSites = code => reasons(code).filter(x => /an array is not converted/.test(x));
+test('elements: given an int32[] passed where uint8[] is declared, when counted, then it is a site', () => {
+  same(elementSites('/** @param {uint8[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {int32[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 1);
+});
+test('elements: given a Uint32Array passed where uint8[] is declared, when counted, then it is a site (a typed array is its element type)', () => {
+  same(elementSites('/** @param {uint8[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @returns {int32} */\nfunction f() { return g(new Uint32Array(4)); }').length, 1);
+});
+test('elements: given uint8[] where uint8[][] is declared (another depth), when counted, then it is a site', () => {
+  same(elementSites('/** @param {uint8[][]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {uint8[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 1);
+});
+test('elements: given the same element type in another spelling (byte[] for uint8[]), when counted, then nothing is reported', () => {
+  same(elementSites('/** @param {uint8[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {byte[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 0);
+});
+test('elements: given arrays of classes, when one is passed for another, then they are not judged (covariant in the targets)', () => {
+  same(elementSites('/** @param {LinkItem[]} b\n * @returns {int32} */\nfunction g(b) { return b.length; }\n/** @param {Vulnerability[]} w\n * @returns {int32} */\nfunction f(w) { return g(w); }').length, 0);
+});
+test('elements: given an array literal of narrower integers, when uint32[] is declared, then the literal is uint32[] (each element widens)', () => {
+  const lit = declOf(il('/** @param {uint8} a\n * @param {uint16} b */\nfunction f(a, b) { /** @type {uint32[]} */ const w = [a, b, 7]; }'), 'w').init;
+  same(lit.resultType, 'uint32[]');
+});
+test('elements: given an array literal with an int32 element, when uint8[] is declared, then it stays int32[] and is a site (narrowing is explicit)', () => {
+  same(elementSites('/** @param {int32} n */\nfunction f(n) { /** @type {uint8[]} */ const w = [n]; }').length, 1);
+  same(elementSites('/** @param {int32} n */\nfunction f(n) { /** @type {uint8[]} */ const w = [OpCodes.ToByte(n)]; }').length, 0);
+});
+test('elements: given [c ? 1 : 0] where uint8[] is declared, when typed, then the choice of literals takes the element type', () => {
+  same(elementSites('/** @param {boolean} c */\nfunction f(c) { /** @type {uint8[]} */ const w = [c ? 1 : 0]; }').length, 0);
+});
+test('elements: given [...a, x] of uint8 where uint8[] is declared, when typed, then the spread keeps the type', () => {
+  same(elementSites('/** @param {uint8[]} a\n * @param {uint8} x */\nfunction f(a, x) { /** @type {uint8[]} */ const w = [...a, x]; }').length, 0);
+});
+test('elements: given OpCodes.CreateArray(n, 0) where int32[] or float64[] is declared, when typed, then the fresh array takes that type', () => {
+  same(elementSites('/** @param {int32} n */\nfunction f(n) { /** @type {int32[]} */ const a = OpCodes.CreateArray(n, 0); /** @type {float64[]} */ const b = OpCodes.CreateArray(n, 0); }').length, 0);
+  same(declOf(il('/** @param {int32} n */\nfunction f(n) { /** @type {int32[]} */ const a = OpCodes.CreateArray(n, 0); }'), 'a').init.resultType, 'int32[]');
+});
+test('elements: given OpCodes.CreateArray(n, x) with a variable int32 fill where uint8[] is declared, when counted, then it is a site', () => {
+  same(elementSites('/** @param {int32} n\n * @param {int32} x */\nfunction f(n, x) { /** @type {uint8[]} */ const a = OpCodes.CreateArray(n, x); }').length, 1);
+});
+test('elements: given Object.freeze([...BigInt literals]) where BigInt[] is declared, when typed, then the frozen literal takes it', () => {
+  same(elementSites('/** @type {BigInt[]} */\nconst K = Object.freeze([0x428a2f98d728ae22n, 5n]);').length, 0);
+});
+test('elements: given OpCodes.CopyArray of an int32[], when typed, then its argument is expected as int32[] (no byte context)', () => {
+  same(elementSites('/** @param {int32[]} p\n * @returns {int32[]} */\nfunction f(p) { /** @type {int32[]} */ const r = OpCodes.CopyArray(p); return r; }').length, 0);
+});
+test('elements: given a 64-bit helper result beside a BigInt literal, when an array is built, then it is no tuple', () => {
+  same(declOf(il('/** @param {uint64[]} k */\nfunction f(k) { const t = [OpCodes.ToQWord(k[0] + k[1]), 0n]; }'), 't').init.resultType, 'uint64[]');
+});
+test('widening: given integer types, when compared, then only lossless conversions widen', () => {
+  same([['uint8', 'int32'], ['uint16', 'uint32'], ['int32', 'uint32'], ['uint32', 'int32'], ['uint64', 'bigint'], ['int32', 'float64'], ['uint64', 'float64'], ['byte', 'uint8']]
+    .map(([a, b]) => TypeAwareJSASTParser._widensTo(a, b)), [true, true, false, false, true, true, false, true]);
+});
+
+// ------------------------------------------------------------ IL: declared types of fresh values
+test('fresh: given new Array(n) where uint32[][] is declared, when typed, then the creation is that array', () => {
+  const init = declOf(il('/** @param {int32} n */\nfunction f(n) { /** @type {uint32[][]} */ const t = new Array(n); }'), 't').init;
+  same([init.type, init.resultType], ['ArrayCreation', 'uint32[][]']);
+});
+test('fresh: given `let t = 0n, u = 1n` declared BigInt, when typed, then both literals are BigInts (not uint64)', () => {
+  const decl = find(il('function f() { /** @type {BigInt} */\n let t = 0n, u = 1n; return t - u; }'), n => n.type === 'VariableDeclaration');
+  same(decl.declarations.map(d => d.init.resultType), ['bigint', 'bigint']);
+});
+test('fresh: given a BigInt literal where uint64 is declared, when typed, then it stays uint64 (boundary)', () => {
+  same(declOf(il('/** @type {uint64} */\nconst m = 0xFFn;'), 'm').init.resultType, 'uint64');
+});
+test('fresh: given frozen nested literal tables where uint32[][][] is declared, when counted, then nothing is guessed', () => {
+  same(sites('/** @type {uint32[][][]} */\nconst T = Object.freeze([Object.freeze([[0x060d838f, 0x16f3a365], [1, 2]])]);').length, 0);
+});
+test('framework: given AlgorithmFramework.js, when the transpiler parses it, then it parses (no statement relies on ASI)', () => {
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'AlgorithmFramework.js'), 'utf8');
+  ok(il(src), 'parsed');
+});
+
+// ------------------------------------------------------------ literal-typed variables
+test('literal: given `let tau = 0` that later accumulates fractions, when counted, then the variable is a site', () => {
+  ok(reasons('/** @param {int32} k\n * @returns {float64} */\nfunction f(k) { let tau = 0; for (let i = 1; i <= k; i++) tau += 1 / i; return tau; }')
+    .some(x => /variable 'tau' is typed by its integer literal but line \d+ stores a float64/.test(x)), 'reported');
+});
+test('literal: given the same accumulator declared float64, when counted, then nothing is reported', () => {
+  ok(!reasons('/** @param {int32} k\n * @returns {float64} */\nfunction f(k) { /** @type {float64} */ let tau = 0; for (let i = 1; i <= k; i++) tau += 1 / i; return tau; }')
+    .some(x => /typed by its integer literal/.test(x)), 'not reported');
+});
+test('literal: given `let n = 0` that only ever holds integers, when counted, then nothing is reported (boundary)', () => {
+  ok(!reasons('/** @param {int32[]} a\n * @returns {int32} */\nfunction f(a) { let n = 0; for (let i = 0; i < a.length; i++) n += a[i]; return n; }')
+    .some(x => /typed by its integer literal/.test(x)), 'not reported');
+});
+test('literal: given a same-named variable in another function, when counted, then each function has its own (scopes)', () => {
+  ok(!reasons('/** @returns {float64} */\nfunction g() { /** @type {float64} */ let t = 0; t += 0.5; return t; }\n/** @returns {int32} */\nfunction f() { let t = 0; t += 1; return t; }')
+    .some(x => /typed by its integer literal/.test(x)), 'not reported');
+});
+
+// ------------------------------------------------------------ enum members
+test('enum: given the framework, when loaded, then each enum knows its members', () => {
+  const members = new TypeAwareJSASTParser('').typeKnowledge.frameworkEnumMembers;
+  ok(members.get('CountryCode').has('US') && members.get('CountryCode').has('INTL'), 'CountryCode members');
+  ok(members.get('SecurityStatus').has('BROKEN') && !members.get('SecurityStatus').has('INSECURE'), 'SecurityStatus members');
+  equal(members.get('ComplexityType').size, 5);
+});
+test('enum: given a member the enum does not declare, when counted, then the read is a site', () => {
+  ok(reasons('function f() { return SecurityStatus.INSECURE; }')
+    .some(x => /framework enum member SecurityStatus\.INSECURE does not exist/.test(x)), 'reported');
+});
+test('enum: given such a member in a condition, when counted, then the read is a site too', () => {
+  ok(reasons('/** @param {CountryCode} c\n * @returns {boolean} */\nfunction f(c) { if (c === CountryCode.XX) return true; return false; }')
+    .some(x => /CountryCode\.XX does not exist/.test(x)), 'reported');
+});
+test('enum: given AlgorithmFramework.ComplexityType.LOW, when counted, then the qualified read is a site', () => {
+  ok(reasons('function f() { return AlgorithmFramework.ComplexityType.LOW; }')
+    .some(x => /ComplexityType\.LOW does not exist/.test(x)), 'reported');
+});
+test('enum: given declared members and a member of a member value, when counted, then nothing is reported', () => {
+  ok(!reasons('/** @returns {string} */\nfunction f() { return CategoryType.BLOCK.name + CountryCode.US.name + ComplexityType.RESEARCH.name; }')
+    .some(x => /enum member/.test(x)), 'not reported');
+});
+
 // ------------------------------------------------------------ soundness: classes, enums, arguments
 test('soundness: given a framework enum, when checked, then only its members pass', () => {
   global.AlgorithmFramework = global.AlgorithmFramework || quiet(() => require(path.join(__dirname, '..', 'AlgorithmFramework.js')));
@@ -556,6 +696,7 @@ test('soundness: given a framework enum, when checked, then only its members pas
   const check = TypeSoundness.checkerFor('CountryCode');
   equal(check(AF.CountryCode.US), null);
   equal(check(null), null);
+  equal(check(undefined), 'undefined-enum-member');
   equal(check('Multi-national'), 'string');
   equal(check({ name: 'United States' }), 'not-enum-member');
 });
@@ -585,9 +726,24 @@ test('soundness: given an argument (kind only), when checked, then any whole num
   equal(TypeSoundness.kindCheckerFor('uint64')(8n), null);
   equal(TypeSoundness.kindCheckerFor('boolean')(1), 'number');
 });
+test('soundness: given a 64-bit parameter (kind only), when BigInts at and beyond 64 bits are passed, then a bit pattern fits and a wider value does not', () => {
+  for (const t of ['uint64', 'int64']) {
+    const check = TypeSoundness.kindCheckerFor(t);
+    equal(check(0xFFFFFFFFFFFFFFFFn), null, `${t} 2^64-1 `);
+    equal(check(-0x8000000000000000n), null, `${t} -2^63 `);
+    equal(check(0x10000000000000000n), 'above-range', `${t} 2^64 `);
+    equal(check(-0x8000000000000001n), 'below-range', `${t} -2^63-1 `);
+    equal(check(2 ** 53), null, `${t} Number `);
+  }
+});
 test('soundness: given an argument declared uint8[] (kind only), when a Uint32Array is passed, then the typed-array kind fails', () => {
   equal(TypeSoundness.kindCheckerFor('uint8[]')(new Uint32Array(2)), 'typed-array-kind');
-  equal(TypeSoundness.kindCheckerFor('uint8[]')([300]), null);
+});
+test('soundness: given an argument declared uint8[], when a plain array holds 255 or 300, then its elements are held to the range (a call converts no element)', () => {
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([0, 255]), null);
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([1, 300]), 'element-above-range');
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([-1]), 'element-negative');
+  equal(TypeSoundness.kindCheckerFor('int32')(0xFFFFFFFF), null, 'a scalar is still checked for its kind only ');
 });
 test('soundness: given a call argument with a declared parameter type, when sites are collected, then it is checked as an argument', () => {
   const parsed = TypeSoundness.parseSource('/**\n * @param {uint32} a\n * @returns {uint32}\n */\nfunction g(a) { return a; }\n/** @param {uint32} x */\nfunction f(x) { return g(x); }');

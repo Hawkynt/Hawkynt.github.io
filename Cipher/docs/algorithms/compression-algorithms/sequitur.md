@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Craig G. Nevill-Manning, Ian H. Witten |
 | Year | 1997 |
-| Origin | Not specified |
+| Origin | 🇳🇿 New Zealand |
 | Source | [`algorithms/compression/sequitur.js`](../../../algorithms/compression/sequitur.js) |
 
 ## Security

@@ -60,8 +60,8 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Random Padding";
       this.securityStatus = SecurityStatus.DEPRECATED; // Withdrawn standard
-      this.complexity = ComplexityType.SIMPLE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       this.documentation = [
         new LinkItem("ISO/IEC 10126 (Withdrawn)", "https://www.iso.org/standard/18101.html"),

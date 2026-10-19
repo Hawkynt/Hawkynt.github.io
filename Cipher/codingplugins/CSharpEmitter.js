@@ -455,7 +455,11 @@
       let init = '';
       if (node.initializer) {
         if (node.initializer.nodeType === 'VariableDeclaration') {
-          init = `${node.initializer.type.toString()} ${node.initializer.name}`;
+          // A keyword as the loop variable's name (for (let base = 0; ...)) is
+          // escaped like everywhere else it is used
+          const keywords = /^(base|object|string|params|event|operator|checked|decimal|delegate|explicit|implicit|internal|lock|namespace|out|override|readonly|ref|sbyte|sealed|sizeof|stackalloc|struct|typeof|uint|ulong|unchecked|unsafe|ushort|using|virtual|volatile|fixed|foreach|goto|is|as|in)$/;
+          const loopName = keywords.test(node.initializer.name) ? '@' + node.initializer.name : node.initializer.name;
+          init = `${node.initializer.type.toString()} ${loopName}`;
           if (node.initializer.initializer) {
             init += ` = ${this.emit(node.initializer.initializer)}`;
           }
@@ -611,9 +615,13 @@
       }
 
       // BigInteger literal - use BigInteger.Parse for very large values
+      // HexNumber reads a leading digit 8-F as the sign (Parse("F") is -1), so the
+      // digits get a leading 0; a negative value is the negated magnitude
       if (node.isBigInteger) {
-        const hexStr = node.value.toString(16).toUpperCase();
-        return `BigInteger.Parse("${hexStr}", System.Globalization.NumberStyles.HexNumber)`;
+        const value = BigInt(node.value);
+        const negative = value < 0n;
+        const hexStr = '0' + (negative ? -value : value).toString(16).toUpperCase();
+        return `${negative ? '-' : ''}BigInteger.Parse("${hexStr}", System.Globalization.NumberStyles.HexNumber)`;
       }
 
       // Numeric literal
@@ -625,6 +633,15 @@
         result = String(node.value);
       }
 
+      // A whole double is written with its fraction (1.0), which C# would read as an int
+      if (node.literalType === 'double' && typeof node.value === 'number' && Number.isFinite(node.value) && /^-?\d+$/.test(result)) {
+        return result + '.0';
+      }
+      // A number written with an exponent or fraction (1.7976931348623157e+308) is a
+      // double whatever integer suffix its size suggested (1.79...e+308L does not parse)
+      if (node.suffix && /^[uUlL]+$/.test(node.suffix) && /[.eE]/.test(result) && !node.isHex) {
+        return result;
+      }
       if (node.suffix) {
         result += node.suffix;
       }

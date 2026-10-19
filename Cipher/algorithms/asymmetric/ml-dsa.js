@@ -350,7 +350,7 @@
     const spec = findPreHash(label);
 
     /** @type {uint8[]} */
-    const out = [1, context.length];
+    const out = [1, OpCodes.ToByte(context.length)];
     appendAll(out, context);
     appendAll(out, OpCodes.Hex8ToBytes(spec.oid));
     appendAll(out, preHashDigest(spec, message));

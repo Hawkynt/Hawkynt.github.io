@@ -56,6 +56,7 @@
    * @returns {uint8[]} Padded data
    */
   function addByteCountPadding(data, blockSize) {
+    /** @type {uint8} */
     const paddingLength = blockSize - (data.length % blockSize);
     const padding = OpCodes.CreateArray(paddingLength, paddingLength);
     return [...data, ...padding];
@@ -364,7 +365,7 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Password-Based Padding";
       this.securityStatus = SecurityStatus.SECURE; // Standard padding for 8-byte blocks
-      this.complexity = ComplexityType.SIMPLE;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       this.documentation = [
@@ -497,7 +498,7 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Block Padding";
       this.securityStatus = SecurityStatus.SECURE; // Standard and widely adopted
-      this.complexity = ComplexityType.SIMPLE;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       this.documentation = [

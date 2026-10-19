@@ -12,7 +12,7 @@
 | Complexity | Beginner |
 | Inventor | Polybius |
 | Year | -150 |
-| Origin | Not specified |
+| Origin | 🇬🇷 Greece |
 | Source | [`algorithms/classical/polybius.js`](../../../algorithms/classical/polybius.js) |
 
 ## Security

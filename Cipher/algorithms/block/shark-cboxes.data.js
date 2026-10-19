@@ -22,12 +22,30 @@
  * Extracted by: SHARK C-box extraction script
  */
 
-(function() {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define([], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory();
+  } else {
+    // Browser global
+    root.SharkCBoxes = factory();
+  }
+}((function () {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function () {
   'use strict';
 
   // CBOX_ENC - 8 boxes of 256 64-bit words
   // Each entry is [high32, low32] representing a 64-bit value
   // Source: Crypto++ Library sharkbox.cpp
+  /** @type {uint32[][][]} */
   const CBOX_ENC = Object.freeze([
     // Box 0
     Object.freeze([
@@ -2106,6 +2124,7 @@
   // CBOX_DEC - 8 boxes of 256 64-bit words
   // Each entry is [high32, low32] representing a 64-bit value
   // Source: Crypto++ Library sharkbox.cpp
+  /** @type {uint32[][][]} */
   const CBOX_DEC = Object.freeze([
     // Box 0
     Object.freeze([
@@ -4181,12 +4200,6 @@
     ])
   ]);
 
-  // Export for use in shark.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CBOX_ENC, CBOX_DEC };
-  } else if (typeof define === 'function' && define.amd) {
-    define([], function() { return { CBOX_ENC, CBOX_DEC }; });
-  } else {
-    this.SharkCBoxes = { CBOX_ENC, CBOX_DEC };
-  }
-}).call(this);
+  // Used by shark.js and the DarkCrypt SHARK variants
+  return { CBOX_ENC, CBOX_DEC };
+}));

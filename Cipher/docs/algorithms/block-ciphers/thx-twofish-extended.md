@@ -12,7 +12,7 @@
 | Complexity | Expert |
 | Inventor | Educational Variant (Based on Schneier Twofish) |
 | Year | 2025 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/block/thx.js`](../../../algorithms/block/thx.js) |
 
 ## Parameters

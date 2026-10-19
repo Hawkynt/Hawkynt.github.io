@@ -77,7 +77,7 @@
       this.subCategory = "Stream Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.MULTI;
+      this.country = CountryCode.INTL;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [

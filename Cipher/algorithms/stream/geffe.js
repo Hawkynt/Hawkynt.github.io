@@ -205,8 +205,8 @@
       this.year = 1973;
       this.category = CategoryType.STREAM;
       this.subCategory = "LFSR Stream Cipher";
-      this.securityStatus = SecurityStatus.INSECURE;
-      this.complexity = ComplexityType.BASIC;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Algorithm-specific metadata

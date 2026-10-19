@@ -9,7 +9,7 @@
 | Category | Compression Algorithms |
 | Sub-category | Entropy Coding |
 | Security status | Not classified |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Solomon W. Golomb |
 | Year | 1966 |
 | Origin | 🇺🇸 United States |

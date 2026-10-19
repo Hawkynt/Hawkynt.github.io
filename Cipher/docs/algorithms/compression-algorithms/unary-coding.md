@@ -9,7 +9,7 @@
 | Category | Compression Algorithms |
 | Sub-category | Universal |
 | Security status | Not classified |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Information Theory (fundamental) |
 | Year | 1940 |
 | Origin | ❓ Unknown |

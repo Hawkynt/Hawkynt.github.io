@@ -329,7 +329,7 @@ Always use direct enum object assignment for metadata properties:
 - `SecurityStatus.EXPERIMENTAL` - Research phase, security not established
 - `SecurityStatus.EDUCATIONAL` - Educational purposes only, not for production
 
-**Countries:** `CountryCode.US`, `CountryCode.RU`, `CountryCode.CN`, `CountryCode.DE`, `CountryCode.GB`, `CountryCode.FR`, `CountryCode.JP`, `CountryCode.KR`, `CountryCode.IL`, `CountryCode.BE`, `CountryCode.CA`, `CountryCode.AU`, `CountryCode.IT`, `CountryCode.NL`, `CountryCode.CH`, `CountryCode.SE`, `CountryCode.NO`, `CountryCode.IN`, `CountryCode.BR`, `CountryCode.UA`, `CountryCode.INTL`, `CountryCode.ANCIENT`, `CountryCode.UNKNOWN`, etc.
+**Countries:** `CountryCode.US`, `CountryCode.RU`, `CountryCode.CN`, `CountryCode.DE`, `CountryCode.GB`, `CountryCode.FR`, `CountryCode.JP`, `CountryCode.KR`, `CountryCode.IL`, `CountryCode.BE`, `CountryCode.CA`, `CountryCode.AU`, `CountryCode.IT`, `CountryCode.NL`, `CountryCode.CH`, `CountryCode.SE`, `CountryCode.NO`, `CountryCode.IN`, `CountryCode.BR`, `CountryCode.UA`, `CountryCode.AT`, `CountryCode.BG`, `CountryCode.CR`, `CountryCode.DK`, `CountryCode.FI`, `CountryCode.GR`, `CountryCode.ID`, `CountryCode.NZ`, `CountryCode.PL`, `CountryCode.PT`, `CountryCode.SG`, `CountryCode.TR`, `CountryCode.ZA`, `CountryCode.INTL` (international or multinational work), `CountryCode.ANCIENT`, `CountryCode.UNKNOWN`. A member the enum does not declare reads `undefined` and fails TYPES and SOUNDNESS; add a missing country to `AlgorithmFramework.js` with its flag and name.
 
 **Complexity:** `ComplexityType.BEGINNER`, `ComplexityType.INTERMEDIATE`, `ComplexityType.ADVANCED`, `ComplexityType.EXPERT`, `ComplexityType.RESEARCH`
 

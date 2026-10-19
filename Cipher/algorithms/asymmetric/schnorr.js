@@ -641,7 +641,7 @@
       this.subCategory = "Digital Signatures";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       // Algorithm capabilities
       this.SupportedKeySizes = [new KeySize(32, 32, 1)];

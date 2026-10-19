@@ -416,14 +416,14 @@ All 15 language plugins use the full AST pipeline architecture:
 │  │   RustAST.js    │  AST Node Definitions                                      │
 │  ├─────────────────┤  ────────────────────                                      │
 │  │                 │                                                            │
-│  │  • RustModule   │  Root node containing all code                             │
-│  │  • RustStruct   │  Struct definitions                                        │
-│  │  • RustImpl     │  Implementation blocks                                     │
-│  │  • RustFunction │  Function/method definitions                               │
-│  │  • RustType     │  Type representations (u8, Vec<T>, etc.)                   │
-│  │  • RustBlock    │  Code blocks { ... }                                       │
-│  │  • RustLiteral  │  Literal values (numbers, strings)                         │
-│  │  • RustConst    │  Constant declarations                                     │
+│  │  • File         │  Root node containing all code                             │
+│  │  • Struct       │  Struct definitions                                        │
+│  │  • Impl         │  Implementation blocks                                     │
+│  │  • Fn           │  Function/method definitions                               │
+│  │  • Let          │  Local variables (types as Rust spellings)                 │
+│  │  • Block        │  Code blocks { ... }                                       │
+│  │  • Lit          │  Literal values (numbers, strings)                         │
+│  │  • MethodCall   │  Method calls (wrapping_add, get, set, ...)                │
 │  │  • ...          │  Statements, expressions, etc.                             │
 │  │                 │                                                            │
 │  └────────┬────────┘                                                            │
@@ -435,13 +435,13 @@ All 15 language plugins use the full AST pipeline architecture:
 │  ├─────────────────┤  ──────────────────────────────                            │
 │  │                 │                                                            │
 │  │  transform()    │  Entry point - transforms entire program                   │
-│  │  ├─ transformClassDeclaration()   → RustStruct + RustImpl                    │
-│  │  ├─ transformMethodDefinition()   → RustFunction                             │
-│  │  ├─ transformVariableDeclaration()→ RustLet / RustConst                      │
-│  │  ├─ transformStatement()          → Various statement nodes                  │
-│  │  ├─ transformExpression()         → Various expression nodes                 │
-│  │  ├─ mapType()                     → IL type → RustType                       │
-│  │  └─ inferTypeFromValue()          → Literal → RustType                       │
+│  │  ├─ emitClass()                   → Struct + Impl (flattened chain)          │
+│  │  ├─ emitFunctionDecl()            → Fn                                       │
+│  │  ├─ variableDeclaration()         → Let                                      │
+│  │  ├─ stmt()                        → Various statement nodes                  │
+│  │  ├─ expr()                        → Various expression nodes                 │
+│  │  ├─ rustType()                    → IL type → Rust type                      │
+│  │  └─ coerce()                      → a value converted to an IL type          │
 │  │                 │                                                            │
 │  │  Uses typeAnnotation from IL AST nodes                                      │
 │  │                 │                                                            │
@@ -710,11 +710,46 @@ The transformers recognize and convert common JavaScript patterns:
 
 ---
 
+## Statically Typed Targets: Go and Rust
+
+Go and Rust have no class inheritance with virtual dispatch, and Rust no
+garbage collector, so both targets transpile from a whole-program model of the
+IL (`ILProgramModel.js`) rather than class by class:
+
+- **Flat classes.** `AlgorithmFramework.js` is parsed by the same IL parser and
+  merged into the program. Every class becomes one struct holding the fields of
+  its whole base chain, with every inherited method emitted on it, so the
+  framework's `IBlockCipherInstance.Result()` calls the class's own
+  `EncryptBlock`. Only the framework parts a program reaches are emitted.
+- **Members by name.** A class nothing derives from is a concrete type; a type
+  with subclasses (`Algorithm`, `IBlockCipherInstance`, a local base class) and
+  any untyped object go through `JsObject` (`JsGet`/`JsSet`/`JsCall` in Go, the
+  `JsObject` trait in Rust), which every class implements by its JavaScript
+  member names - the way JavaScript resolves members, and what the vector
+  harnesses use to apply test vector fields.
+- **Types from the IL only.** Every target type comes from an IL type; an
+  operation computes in the type the IL gives its result: 32-bit bitwise
+  operators as ToInt32/ToUint32 do, BigInt operators at full width (a 64-bit
+  BigInt the IL types `uint64` is a native `uint64`/`u64`; wider ones are
+  `*big.Int` in Go and the runtime's own `JsBig` in Rust - no external crate).
+  Rust uses `wrapping_*` arithmetic wherever the IL type is fixed-width.
+- **A runtime per target** (embedded in `GoTransformer.js`/`RustTransformer.js`)
+  holds the JavaScript semantics that are not one operator: the object
+  protocol, arrays (Rust: `JsArr<T>`, a shared `Rc<RefCell<Vec<T>>>`, so an array
+  aliases as in JavaScript), strings (Latin-1: one character per code below
+  256), exceptions (a panic carrying the thrown value; `try` is
+  `recover`/`catch_unwind`), the algorithm registry and the OpCodes helpers the
+  IL keeps as calls.
+- **Library mode.** `{ library: true, symbolPrefix: 'x_' }` emits only a file's
+  own declarations under a prefix, so the validation bundles an algorithm's
+  dependencies (`Find('AES')`) into one program.
+
 ## File Structure
 
 ```
 codingplugins/
 ├── LanguagePlugin.js              # Base plugin class and registry
+├── ILProgramModel.js              # Whole-program model of the IL for Go and Rust
 ├── ReadMe.md                      # This documentation
 │
 └── [All 15 Languages - 4 files each]
@@ -722,14 +757,15 @@ codingplugins/
     ├── [Basic]
     │   ├── basic.js               # Plugin entry point
     │   ├── BasicAST.js            # Basic AST node definitions
-    │   ├── BasicTransformer.js    # IL AST → Basic AST
+    │   ├── BasicTransformer.js    # IL AST → Basic AST; FreeBasicTransformer emits FreeBASIC
+    │   │                          #   directly onto an embedded runtime with JavaScript semantics
     │   └── BasicEmitter.js        # Basic AST → Basic source code
     │
-    ├── [C]
-    │   ├── c.js
-    │   ├── CAST.js
-    │   ├── CTransformer.js
-    │   └── CEmitter.js
+    ├── [C]                        # JavaScript semantics on a C runtime (tagged values,
+    │   ├── c.js                   #   BigInt in 32-bit limbs, objects, closures, setjmp
+    │   ├── CAST.js                #   exceptions); CTransformer compiles the JavaScript
+    │   ├── CTransformer.js        #   JavaScriptTransformer makes of the IL, plus
+    │   └── CEmitter.js            #   AlgorithmFramework and the OpCodes members used
     │
     ├── [C++]
     │   ├── cpp.js
@@ -795,7 +831,7 @@ codingplugins/
     ├── [Ruby]
     │   ├── ruby.js
     │   ├── RubyAST.js
-    │   ├── RubyTransformer.js
+    │   ├── RubyTransformer.js     # IL AST → Ruby AST, with the embedded JavaScript-semantics runtime
     │   └── RubyEmitter.js
     │
     ├── [Rust]

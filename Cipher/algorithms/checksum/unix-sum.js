@@ -146,7 +146,7 @@
       this.year = 1971;
       this.category = CategoryType.CHECKSUM;
       this.subCategory = "Legacy Checksum";
-      this.securityStatus = SecurityStatus.INSECURE;
+      this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 

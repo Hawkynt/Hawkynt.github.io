@@ -1,32 +1,54 @@
 /**
  * RubyEmitter.js - Ruby Code Generator from Ruby AST
- * Generates properly formatted Ruby source code from RubyAST nodes
+ * Prints RubyAST nodes as Ruby source, adding exactly the parentheses Ruby's
+ * operator precedence requires.
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> Ruby AST -> Ruby Emitter -> Ruby Source
+ * Pipeline: JS Source -> JS AST -> Type Inference (IL AST) -> Ruby AST -> Ruby Emitter -> Ruby Source
+ *
+ * Options:
+ * - indent: indentation string (default two spaces)
+ * - newline/lineEnding: line ending (default '\n')
+ * - addComments: emit the file's doc comment (default true)
  */
 
 (function(global) {
   'use strict';
 
-  // Load RubyAST if available
-  let RubyAST;
-  if (typeof require !== 'undefined') {
-    RubyAST = require('./RubyAST.js');
-  } else if (global.RubyAST) {
-    RubyAST = global.RubyAST;
-  }
+  // Precedence, high binds tighter (Ruby's operator table)
+  const PREC = {
+    PRIMARY: 20,
+    NOT: 18,        // ! ~ unary +
+    POW: 17,        // **
+    NEG: 16,        // unary -
+    MUL: 15,        // * / %
+    ADD: 14,        // + -
+    SHIFT: 13,      // << >>
+    BITAND: 12,     // &
+    BITOR: 11,      // | ^
+    REL: 10,        // < <= > >=
+    EQ: 9,          // == != === =~ <=>
+    AND: 8,         // &&
+    OR: 7,          // ||
+    RANGE: 6,       // .. ...
+    TERNARY: 5,     // ? :
+    ASSIGN: 3,      // = op=
+    LOWEST: 0
+  };
 
-  /**
-   * Ruby Code Emitter
-   * Generates formatted Ruby code from a Ruby AST
-   *
-   * Supported Options:
-   * - indent: string - Indentation string (default: '  ')
-   * - newline/lineEnding: string - Line ending character (default: '\n')
-   * - addComments: boolean - Emit documentation comments. Default: true
-   * - useSymbolKeys: boolean - Use symbols for hash keys. Default: true
-   */
+  const BINARY_PREC = {
+    '**': PREC.POW,
+    '*': PREC.MUL, '/': PREC.MUL, '%': PREC.MUL,
+    '+': PREC.ADD, '-': PREC.ADD,
+    '<<': PREC.SHIFT, '>>': PREC.SHIFT,
+    '&': PREC.BITAND,
+    '|': PREC.BITOR, '^': PREC.BITOR,
+    '<': PREC.REL, '<=': PREC.REL, '>': PREC.REL, '>=': PREC.REL,
+    '==': PREC.EQ, '!=': PREC.EQ, '===': PREC.EQ, '=~': PREC.EQ, '<=>': PREC.EQ,
+    '&&': PREC.AND, '||': PREC.OR,
+    '..': PREC.RANGE, '...': PREC.RANGE
+  };
+
   class RubyEmitter {
     constructor(options = {}) {
       this.options = options;
@@ -35,22 +57,14 @@
       this.newline = options.newline || options.lineEnding || '\n';
     }
 
-    /**
-     * Emit Ruby code from a Ruby AST node
-     */
+    /** Emit a statement-level node (or a whole module) */
     emit(node) {
       if (!node) return '';
-
-      const emitterMethod = `emit${node.nodeType}`;
-      if (typeof this[emitterMethod] === 'function') {
-        return this[emitterMethod](node);
-      }
-
-      console.error(`No emitter for node type: ${node.nodeType}`);
-      return `# Unknown node type: ${node.nodeType}`;
+      const method = `emit${node.nodeType}`;
+      if (typeof this[method] === 'function') return this[method](node);
+      // An expression in statement position
+      return this.line(this.expr(node));
     }
-
-    // ========================[ HELPERS ]========================
 
     indent() {
       return this.indentString.repeat(this.indentLevel);
@@ -60,790 +74,319 @@
       return content ? `${this.indent()}${content}${this.newline}` : this.newline;
     }
 
-    // ========================[ MODULE ]========================
+    // ========================[ STRUCTURE ]========================
 
     emitModule(node) {
       let code = '';
-
-      // Magic comments
-      for (const magic of node.magicComments) {
-        code += this.emit(magic);
-      }
-
-      if (node.magicComments.length > 0) {
-        code += this.newline;
-      }
-
-      // Module doc comment
-      if (node.docComment && this.options.addComments !== false) {
-        code += this.emit(node.docComment);
-        code += this.newline;
-      }
-
-      // Requires
-      for (const req of node.requires) {
-        code += this.emit(req);
-      }
-      if (node.requires.length > 0) {
-        code += this.newline;
-      }
-
-      // Items
-      for (const item of node.items) {
-        code += this.emit(item);
-        code += this.newline;
-      }
-
+      for (const magic of node.magicComments) code += this.line(`# ${magic.name}: ${magic.value}`);
+      if (node.magicComments.length) code += this.newline;
+      if (node.docComment && this.options.addComments !== false) code += this.emitDocComment(node.docComment) + this.newline;
+      for (const item of node.items) code += this.emit(item);
       return code;
     }
 
-    emitRequire(node) {
-      const keyword = node.isRelative ? 'require_relative' : 'require';
-      return this.line(`${keyword} '${node.path}'`);
+    emitDocComment(node) {
+      return String(node.text).split('\n').map(l => this.line(l ? `# ${l}` : '#')).join('');
     }
 
-    emitMagicComment(node) {
-      return this.line(`# ${node.name}: ${node.value}`);
+    emitComment(node) {
+      return String(node.text).split('\n').map(l => this.line(`# ${l}`)).join('');
     }
 
-    // ========================[ CLASS/MODULE ]========================
-
-    emitClass(node) {
-      let code = '';
-
-      // Doc comment
-      if (node.docComment && this.options.addComments !== false) {
-        code += this.emit(node.docComment);
-      }
-
-      // Class declaration
-      let decl = 'class ' + node.name;
-      if (node.superclass) {
-        decl += ' < ' + node.superclass;
-      }
-      code += this.line(decl);
-
-      this.indentLevel++;
-
-      // Includes/extends
-      for (const mod of node.modules) {
-        code += this.line(`include ${mod}`);
-      }
-
-      // Attributes
-      for (const attr of node.attributes) {
-        code += this.emit(attr);
-      }
-
-      if (node.attributes.length > 0) {
-        code += this.newline;
-      }
-
-      // Constants
-      for (const constant of node.constants) {
-        code += this.emit(constant);
-      }
-
-      // Class variables
-      for (const classVar of node.classVariables) {
-        code += this.emit(classVar);
-      }
-
-      if ((node.constants.length > 0 || node.classVariables.length > 0) && node.methods.length > 0) {
-        code += this.newline;
-      }
-
-      // Methods
-      for (let i = 0; i < node.methods.length; i++) {
-        code += this.emit(node.methods[i]);
-        if (i < node.methods.length - 1) {
-          code += this.newline;
-        }
-      }
-
-      this.indentLevel--;
-      code += this.line('end');
-
-      return code;
+    emitRawCode(node) {
+      const lines = String(node.code).replace(/\n$/, '').split('\n');
+      return lines.map(l => (l.length ? this.indent() + l : '') + this.newline).join('');
     }
 
     emitModuleDef(node) {
-      let code = '';
-
-      if (node.docComment && this.options.addComments !== false) {
-        code += this.emit(node.docComment);
-      }
-
-      code += this.line('module ' + node.name);
+      let code = this.line(`module ${node.name}`);
       this.indentLevel++;
-
-      for (const constant of node.constants) {
-        code += this.emit(constant);
-      }
-
-      for (let i = 0; i < node.methods.length; i++) {
-        code += this.emit(node.methods[i]);
-        if (i < node.methods.length - 1) {
-          code += this.newline;
-        }
-      }
-
+      for (const item of node.body) code += this.emit(item);
       this.indentLevel--;
-      code += this.line('end');
+      return code + this.line('end');
+    }
 
-      return code;
+    emitClass(node) {
+      let code = this.line(`class ${node.name}${node.superclass ? ' < ' + this.expr(node.superclass, PREC.PRIMARY) : ''}`);
+      this.indentLevel++;
+      node.body.forEach((member, i) => {
+        if (i > 0 && member.nodeType === 'Method') code += this.newline;
+        code += this.emit(member);
+      });
+      this.indentLevel--;
+      return code + this.line('end');
     }
 
     emitAttribute(node) {
-      const attrType = 'attr_' + node.type;
-      return this.line(`${attrType} ${node.names.join(', ')}`);
+      const list = node.names.map(n => `:${n}`).join(', ');
+      if (node.isStatic) return this.line(`singleton_class.send(:attr_${node.kind}, ${list})`);
+      return this.line(`attr_${node.kind} ${list}`);
     }
-
-    // ========================[ METHODS ]========================
 
     emitMethod(node) {
-      let code = '';
-
-      // Doc comment
-      if (node.docComment && this.options.addComments !== false) {
-        code += this.emit(node.docComment);
-      }
-
-      // Method declaration
-      let decl = 'def ';
-      if (node.isClassMethod) {
-        decl += 'self.';
-      }
-      decl += node.name;
-
-      // Parameters
-      if (node.parameters.length > 0) {
-        const params = node.parameters.map(p => this.emitParameterDecl(p));
-        decl += '(' + params.join(', ') + ')';
-      }
-
-      // Endless method (Ruby 3+)
-      if (node.isEndless && this.options.useModernSyntax !== false && node.body && node.body.statements.length === 1) {
-        code += this.line(decl + ' = ' + this.emit(node.body.statements[0]));
-        return code;
-      }
-
-      code += this.line(decl);
-
-      // Body
-      if (node.body) {
-        this.indentLevel++;
-        code += this.emitBlockContents(node.body);
-        this.indentLevel--;
-      }
-
-      code += this.line('end');
-
-      return code;
+      const params = node.parameters.map(p => this.emitParameter(p)).join(', ');
+      let code = this.line(`def ${node.isStatic ? 'self.' : ''}${node.name}${params ? `(${params})` : ''}`);
+      this.indentLevel++;
+      code += this.emitStatements(node.body);
+      this.indentLevel--;
+      return code + this.line('end');
     }
 
-    emitParameterDecl(node) {
-      let decl = '';
-
-      if (node.isRest) {
-        decl += '*';
-      } else if (node.isKeywordRest) {
-        decl += '**';
-      } else if (node.isBlock) {
-        decl += '&';
-      }
-
-      decl += node.name;
-
-      if (node.isKeyword && !node.isRest && !node.isKeywordRest && !node.isBlock) {
-        decl += ':';
-      }
-
-      if (node.defaultValue) {
-        decl += ' = ' + this.emit(node.defaultValue);
-      }
-
-      return decl;
+    emitParameter(p) {
+      if (p.isRest) return `*${p.name}`;
+      return p.defaultValue ? `${p.name} = ${this.expr(p.defaultValue, PREC.TERNARY)}` : p.name;
     }
 
     // ========================[ STATEMENTS ]========================
 
+    emitStatements(block) {
+      if (!block) return '';
+      const statements = block.nodeType === 'Block' ? block.statements : [block];
+      return statements.map(s => this.emit(s)).join('');
+    }
+
     emitBlock(node) {
-      let code = '';
-      if (!node || !node.statements) {
-        return code;
-      }
-
-      for (const stmt of node.statements) {
-        code += this.emit(stmt);
-      }
-
-      return code;
-    }
-
-    emitBlockContents(node) {
-      let code = '';
-
-      if (!node || !node.statements) {
-        return code;
-      }
-
-      for (const stmt of node.statements) {
-        code += this.emit(stmt);
-      }
-
-      return code;
-    }
-
-    emitAssignment(node) {
-      const target = this.emit(node.target);
-      const value = this.emit(node.value);
-      return this.line(`${target} ${node.operator} ${value}`);
+      return this.emitStatements(node);
     }
 
     emitExpressionStatement(node) {
-      return this.line(this.emit(node.expression));
+      return this.line(this.expr(node.expression, PREC.LOWEST, true));
     }
 
     emitReturn(node) {
-      if (node.expression) {
-        return this.line('return ' + this.emit(node.expression));
-      }
-      return this.line('return');
+      return this.line(node.expression ? `return ${this.expr(node.expression, PREC.TERNARY)}` : 'return');
     }
 
-    emitIf(node) {
-      let code = '';
-
-      // Modifier form (statement if condition)
-      if (node.isModifier) {
-        const keyword = node.isUnless ? 'unless' : 'if';
-        const stmt = this.emit(node.thenBranch.statements[0]);
-        code = this.line(stmt.trim() + ' ' + keyword + ' ' + this.emit(node.condition));
-        return code;
-      }
-
-      // Regular if/unless
-      const keyword = node.isUnless ? 'unless' : 'if';
-      code = this.line(keyword + ' ' + this.emit(node.condition));
-
-      this.indentLevel++;
-      code += this.emitBlockContents(node.thenBranch);
-      this.indentLevel--;
-
-      // Elsif branches
-      const elsifBranches = node.elsifBranches || [];
-      for (const elsif of elsifBranches) {
-        code += this.line('elsif ' + this.emit(elsif.condition));
-        this.indentLevel++;
-        code += this.emitBlockContents(elsif.body);
-        this.indentLevel--;
-      }
-
-      // Else branch
-      if (node.elseBranch) {
-        code += this.line('else');
-        this.indentLevel++;
-        code += this.emitBlockContents(node.elseBranch);
-        this.indentLevel--;
-      }
-
-      code += this.line('end');
-
-      return code;
-    }
-
-    emitCase(node) {
-      let code = this.line('case ' + this.emit(node.expression));
-
-      for (const whenBranch of node.whenBranches) {
-        code += this.emit(whenBranch);
-      }
-
-      if (node.elseBranch) {
-        code += this.line('else');
-        this.indentLevel++;
-        code += this.emitBlockContents(node.elseBranch);
-        this.indentLevel--;
-      }
-
-      code += this.line('end');
-
-      return code;
-    }
-
-    emitWhen(node) {
-      const patterns = node.patterns.map(p => this.emit(p)).join(', ');
-      let code = this.line('when ' + patterns);
-
-      this.indentLevel++;
-      code += this.emitBlockContents(node.body);
-      this.indentLevel--;
-
-      return code;
-    }
-
-    emitFor(node) {
-      let code = this.line('for ' + node.variable + ' in ' + this.emit(node.iterable));
-
-      this.indentLevel++;
-      code += this.emitBlockContents(node.body);
-      this.indentLevel--;
-
-      code += this.line('end');
-
-      return code;
-    }
-
-    emitWhile(node) {
-      const keyword = node.isUntil ? 'until' : 'while';
-      let code = this.line(keyword + ' ' + this.emit(node.condition));
-
-      this.indentLevel++;
-      code += this.emitBlockContents(node.body);
-      this.indentLevel--;
-
-      code += this.line('end');
-
-      return code;
-    }
-
-    emitLoop(node) {
-      let code = this.line('loop do');
-
-      this.indentLevel++;
-      code += this.emitBlockContents(node.body);
-      this.indentLevel--;
-
-      code += this.line('end');
-
-      return code;
-    }
-
-    emitBreak(node) {
-      if (node.expression) {
-        return this.line('break ' + this.emit(node.expression));
-      }
+    emitBreak() {
       return this.line('break');
     }
 
-    emitNext(node) {
-      if (node.expression) {
-        return this.line('next ' + this.emit(node.expression));
-      }
+    emitNext() {
       return this.line('next');
     }
 
     emitRaise(node) {
-      let code = 'raise ';
-      if (node.exception) {
-        code += this.emit(node.exception);
+      return this.line(`raise ${this.expr(node.exception, PREC.TERNARY)}`);
+    }
+
+    emitIf(node) {
+      let code = this.line(`if ${this.expr(node.condition, PREC.LOWEST)}`);
+      code += this.nested(node.thenBranch);
+      for (const branch of node.elsifBranches) {
+        code += this.line(`elsif ${this.expr(branch.condition, PREC.LOWEST)}`);
+        code += this.nested(branch.body);
       }
-      if (node.message) {
-        code += ', ' + this.emit(node.message);
+      if (node.elseBranch && this.hasStatements(node.elseBranch)) {
+        code += this.line('else');
+        code += this.nested(node.elseBranch);
       }
-      return this.line(code);
+      return code + this.line('end');
+    }
+
+    emitWhile(node) {
+      if (node.isDoWhile) {
+        let code = this.line('begin');
+        code += this.nested(node.body);
+        return code + this.line(`end while ${this.expr(node.condition, PREC.LOWEST)}`);
+      }
+      let code = this.line(`while ${this.expr(node.condition, PREC.LOWEST)}`);
+      code += this.nested(node.body);
+      return code + this.line('end');
+    }
+
+    emitFor(node) {
+      let code = this.line(`for ${node.variable} in ${this.expr(node.iterable, PREC.LOWEST)}`);
+      code += this.nested(node.body);
+      return code + this.line('end');
+    }
+
+    emitCase(node) {
+      let code = this.line(`case ${this.expr(node.subject, PREC.LOWEST)}`);
+      for (const when of node.whens) {
+        code += this.line(`when ${when.patterns.map(p => this.expr(p, PREC.TERNARY)).join(', ')}`);
+        code += this.nested(when.body);
+      }
+      if (node.elseBody) {
+        code += this.line('else');
+        code += this.nested(node.elseBody);
+      }
+      return code + this.line('end');
     }
 
     emitBegin(node) {
       let code = this.line('begin');
-
-      this.indentLevel++;
-      if (node.tryBlock) {
-        code += this.emitBlockContents(node.tryBlock);
+      code += this.nested(node.body);
+      for (const r of node.rescues) {
+        const types = r.exceptionTypes && r.exceptionTypes.length ? ' ' + r.exceptionTypes.join(', ') : '';
+        code += this.line(`rescue${types}${r.variableName ? ' => ' + r.variableName : ''}`);
+        code += this.nested(r.body);
       }
-      this.indentLevel--;
-
-      for (const rescue of node.rescueClauses) {
-        code += this.emit(rescue);
-      }
-
-      if (node.elseBlock) {
-        code += this.line('else');
-        this.indentLevel++;
-        code += this.emitBlockContents(node.elseBlock);
-        this.indentLevel--;
-      }
-
-      if (node.ensureBlock) {
+      if (node.ensureBody) {
         code += this.line('ensure');
-        this.indentLevel++;
-        code += this.emitBlockContents(node.ensureBlock);
-        this.indentLevel--;
+        code += this.nested(node.ensureBody);
       }
+      return code + this.line('end');
+    }
 
-      code += this.line('end');
-
+    nested(block) {
+      this.indentLevel++;
+      const code = this.emitStatements(block);
+      this.indentLevel--;
       return code;
     }
 
-    emitRescue(node) {
-      let code = 'rescue';
-
-      if (node.exceptionTypes && node.exceptionTypes.length > 0) {
-        code += ' ' + node.exceptionTypes.join(', ');
-      }
-
-      if (node.variableName) {
-        code += ' => ' + node.variableName;
-      }
-
-      code = this.line(code);
-
-      this.indentLevel++;
-      code += this.emitBlockContents(node.body);
-      this.indentLevel--;
-
-      return code;
+    hasStatements(block) {
+      return block && (block.nodeType !== 'Block' || block.statements.length > 0);
     }
 
     // ========================[ EXPRESSIONS ]========================
 
+    /**
+     * An expression, parenthesized when its precedence is below what the
+     * context needs.
+     * @param {object} node - expression node
+     * @param {number} minPrec - the least precedence the context accepts unparenthesized
+     * @param {boolean} [statement] - in statement position (assignments need no parentheses)
+     */
+    expr(node, minPrec = PREC.LOWEST, statement = false) {
+      const [code, prec] = this.exprWithPrec(node, statement);
+      return prec < minPrec ? `(${code})` : code;
+    }
+
+    exprWithPrec(node, statement = false) {
+      if (!node) return ['nil', PREC.PRIMARY];
+      switch (node.nodeType) {
+        case 'Literal': return this.emitLiteral(node);
+        case 'Identifier': return [node.name, PREC.PRIMARY];
+        case 'BinaryExpression': return this.emitBinary(node);
+        case 'UnaryExpression': return this.emitUnary(node);
+        case 'MethodCall': return [this.emitCall(node), PREC.PRIMARY];
+        case 'Index': return [`${this.expr(node.target, PREC.PRIMARY)}[${node.indices.map(i => this.expr(i, PREC.TERNARY)).join(', ')}]`, PREC.PRIMARY];
+        case 'Assignment': return [`${this.expr(node.target, PREC.PRIMARY)} ${node.operator} ${this.expr(node.value, PREC.ASSIGN)}`, statement ? PREC.LOWEST : PREC.ASSIGN];
+        case 'MultipleAssignment': return [`${node.targets.map(t => this.expr(t, PREC.PRIMARY)).join(', ')} = ${this.expr(node.value, PREC.TERNARY)}`, statement ? PREC.LOWEST : -1];
+        case 'ArrayLiteral': return [`[${node.elements.map(e => this.expr(e, PREC.TERNARY)).join(', ')}]`, PREC.PRIMARY];
+        case 'HashLiteral': return [node.pairs.length ? `{ ${node.pairs.map(([k, v]) => `${this.expr(k, PREC.TERNARY)} => ${this.expr(v, PREC.TERNARY)}`).join(', ')} }` : '{}', PREC.PRIMARY];
+        case 'Lambda': return [this.emitLambda(node), PREC.PRIMARY];
+        case 'Conditional': return [`${this.expr(node.condition, PREC.TERNARY + 1)} ? ${this.expr(node.thenExpr, PREC.TERNARY + 1)} : ${this.expr(node.elseExpr, PREC.TERNARY)}`, PREC.TERNARY];
+        case 'Splat': return [`*${this.expr(node.expression, PREC.PRIMARY)}`, PREC.PRIMARY];
+        case 'Sequence': return [`(${node.expressions.map(e => this.expr(e, PREC.LOWEST, true)).join('; ')})`, PREC.PRIMARY];
+        case 'Super': return [`super(${node.arguments.map(a => this.expr(a, PREC.TERNARY)).join(', ')})`, PREC.PRIMARY];
+        case 'RawExpression': return [node.code, node.precedence];
+        default: return [`js_unsupported(${JSON.stringify(String(node.nodeType))})`, PREC.PRIMARY];
+      }
+    }
+
     emitLiteral(node) {
-      if (node.literalType === 'nil') return 'nil';
-      if (node.literalType === 'true') return 'true';
-      if (node.literalType === 'false') return 'false';
-
-      if (node.literalType === 'string') {
-        const escaped = String(node.value)
-          .replace(/\\/g, '\\\\')
-          .replace(/"/g, '\\"')
-          .replace(/\n/g, '\\n')
-          .replace(/\r/g, '\\r')
-          .replace(/\t/g, '\\t');
-        return `"${escaped}"`;
+      const v = node.value;
+      switch (node.literalType) {
+        case 'nil': return ['nil', PREC.PRIMARY];
+        case 'bool': return [v ? 'true' : 'false', PREC.PRIMARY];
+        case 'string': return [RubyEmitter.quote(String(v)), PREC.PRIMARY];
+        case 'symbol': return [`:${v}`, PREC.PRIMARY];
+        case 'int': {
+          const text = String(v);
+          return [text, text.startsWith('-') ? PREC.NEG : PREC.PRIMARY];
+        }
+        case 'float': {
+          if (Number.isNaN(v)) return ['JS::NAN', PREC.PRIMARY];
+          if (v === Infinity) return ['JS::INF', PREC.PRIMARY];
+          if (v === -Infinity) return ['-JS::INF', PREC.NEG];
+          let text = String(v);
+          if (/e/.test(text) && !/\./.test(text.split('e')[0])) text = text.replace('e', '.0e');
+          if (!/[.e]/.test(text)) text += '.0';
+          return [text, text.startsWith('-') ? PREC.NEG : PREC.PRIMARY];
+        }
+        default: return [String(v), PREC.PRIMARY];
       }
-
-      if (node.literalType === 'symbol') {
-        return `:${node.value}`;
-      }
-
-      if (node.literalType === 'regexp') {
-        const flags = node.flags || '';
-        return `/${node.value}/${flags}`;
-      }
-
-      // Numeric
-      if (node.literalType === 'integer' || node.literalType === 'float') {
-        return String(node.value);
-      }
-
-      return String(node.value);
     }
 
-    emitIdentifier(node) {
-      let prefix = '';
-      if (node.isInstance) prefix = '@';
-      else if (node.isClass) prefix = '@@';
-      else if (node.isGlobal) prefix = '$';
-
-      return prefix + node.name;
-    }
-
-    emitBinaryExpression(node) {
-      const left = this.emit(node.left);
-      const right = this.emit(node.right);
+    emitBinary(node) {
       const op = node.operator;
-
-      // Add parentheses for operator precedence
-      const leftStr = this.needsParens(node.left, op, 'left') ? `(${left})` : left;
-      const rightStr = this.needsParens(node.right, op, 'right') ? `(${right})` : right;
-      return `${leftStr} ${op} ${rightStr}`;
-    }
-
-    needsParens(node, parentOp, side) {
-      if (!node || node.nodeType !== 'BinaryExpression') return false;
-      const childOp = node.operator;
-      // Ruby operator precedence (higher = binds tighter)
-      const precedence = {
-        '**': 15,
-        '*': 13, '/': 13, '%': 13,
-        '+': 12, '-': 12,
-        '<<': 11, '>>': 11,
-        '&': 10,
-        '^': 9, '|': 9,
-        '<': 8, '<=': 8, '>': 8, '>=': 8,
-        '<=>': 7, '==': 7, '!=': 7, '===': 7,
-        '&&': 6, 'and': 6,
-        '||': 5, 'or': 5
-      };
-      const parentPrec = precedence[parentOp] || 0;
-      const childPrec = precedence[childOp] || 0;
-      if (childPrec < parentPrec) return true;
-      if (childPrec === parentPrec && side === 'right') return true;
-      return false;
-    }
-
-    emitUnaryExpression(node) {
-      const operand = this.emit(node.operand);
-
-      // Space for 'not'
-      if (node.operator === 'not') {
-        return `not ${operand}`;
+      const prec = BINARY_PREC[op] !== undefined ? BINARY_PREC[op] : PREC.LOWEST;
+      let leftMin = prec;
+      let rightMin = prec + 1;
+      if (op === '**') {
+        leftMin = prec + 1;
+        rightMin = PREC.NEG;
+      } else if (prec === PREC.EQ || prec === PREC.REL) {
+        leftMin = prec + 1;
       }
-
-      return `${node.operator}${operand}`;
+      return [`${this.expr(node.left, leftMin)} ${op} ${this.expr(node.right, rightMin)}`, prec];
     }
 
-    emitMethodCall(node) {
-      let code = '';
+    emitUnary(node) {
+      const op = node.operator;
+      if (op === '-') {
+        const operand = this.expr(node.operand, PREC.PRIMARY);
+        return [`-${operand.startsWith('-') ? `(${operand})` : operand}`, PREC.NEG];
+      }
+      if (op === '!' || op === '~' || op === '+') return [`${op}${this.expr(node.operand, PREC.PRIMARY)}`, PREC.NOT];
+      return [`${op} ${this.expr(node.operand, PREC.PRIMARY)}`, PREC.LOWEST];
+    }
 
+    emitCall(node) {
+      const args = node.arguments.map(a => this.expr(a, PREC.TERNARY)).join(', ');
+      let block = '';
+      if (node.block) block = ' ' + this.emitBlockExpression(node.block);
       if (node.receiver) {
-        code += this.emit(node.receiver);
-        code += node.isSafeNavigation ? '&.' : '.';
+        const receiver = this.expr(node.receiver, PREC.PRIMARY);
+        const safeReceiver = /^-?\d/.test(receiver) ? `(${receiver})` : receiver;
+        if (node.useShortCall) return `${safeReceiver}.(${args})${block}`;
+        if (!args && !node.forceParens) return `${safeReceiver}.${node.methodName}${block}`;
+        return `${safeReceiver}.${node.methodName}(${args})${block}`;
       }
-
-      code += node.methodName;
-
-      // Arguments
-      if (node.arguments.length > 0) {
-        const args = node.arguments.map(a => this.emit(a));
-        code += '(' + args.join(', ') + ')';
-      }
-
-      // Block
-      if (node.block) {
-        code += ' ' + this.emit(node.block);
-      }
-
-      return code;
-    }
-
-    emitArrayLiteral(node) {
-      const elements = node.elements.map(e => this.emit(e));
-      return `[${elements.join(', ')}]`;
-    }
-
-    emitHashLiteral(node) {
-      if (node.pairs.length === 0) {
-        return '{}';
-      }
-
-      const pairs = node.pairs.map(p => {
-        const key = this.emit(p.key);
-        const value = this.emit(p.value);
-
-        // Modern syntax for symbol keys
-        if (p.key.literalType === 'symbol' && this.options.useModernSyntax !== false) {
-          return `${p.key.value}: ${value}`;
-        }
-
-        return `${key} => ${value}`;
-      });
-
-      return `{ ${pairs.join(', ')} }`;
-    }
-
-    emitRange(node) {
-      const start = this.emit(node.start);
-      const end = this.emit(node.end);
-      const op = node.isExclusive ? '...' : '..';
-      return `${start}${op}${end}`;
-    }
-
-    emitStringInterpolation(node) {
-      let code = '"';
-
-      for (const part of node.parts) {
-        if (typeof part === 'string') {
-          code += part;
-        } else {
-          code += '#{' + this.emit(part) + '}';
-        }
-      }
-
-      code += '"';
-      return code;
-    }
-
-    emitBlockExpression(node) {
-      // Determine brace style
-      const useBraces = node.isBraces || (node.body.statements.length === 1);
-
-      let code = '';
-
-      // Parameters
-      if (node.parameters.length > 0) {
-        const params = node.parameters.map(p => p.name);
-        code += '|' + params.join(', ') + '| ';
-      }
-
-      if (useBraces) {
-        code = '{ ' + code;
-
-        if (node.body.statements.length === 1) {
-          code += this.emit(node.body.statements[0]).trim();
-        } else {
-          this.indentLevel++;
-          code += this.newline;
-          code += this.emitBlockContents(node.body);
-          this.indentLevel--;
-          code += this.indent();
-        }
-
-        code += ' }';
-      } else {
-        code = 'do ' + code;
-        code += this.newline;
-
-        this.indentLevel++;
-        code += this.emitBlockContents(node.body);
-        this.indentLevel--;
-
-        code += this.indent() + 'end';
-      }
-
-      return code;
+      return `${node.methodName}(${args})${block}`;
     }
 
     emitLambda(node) {
-      let code = '';
+      const params = node.parameters.map(p => this.emitParameter(p)).join(', ');
+      const head = `->(${params})`;
+      const body = node.body;
+      if (body && body.nodeType !== 'Block') return `${head} { ${this.expr(body, PREC.LOWEST, true)} }`;
+      const statements = body ? body.statements : [];
+      if (statements.length === 0) return `${head} { nil }`;
+      // A multi-line brace body, indented one level below the current line
+      this.indentLevel++;
+      const inner = statements.map(s => this.emit(s)).join('');
+      this.indentLevel--;
+      return `${head} {${this.newline}${inner}${this.indent()}}`;
+    }
 
-      // Stabby lambda (->)
-      if (node.isStabby && this.options.useModernSyntax !== false) {
-        code = '->';
+    emitBlockExpression(node) {
+      const params = node.parameters.length ? ` |${node.parameters.map(p => this.emitParameter(p)).join(', ')}|` : '';
+      const body = node.body;
+      if (body && body.nodeType !== 'Block') return `{${params} ${this.expr(body, PREC.LOWEST, true)} }`;
+      this.indentLevel++;
+      const inner = (body ? body.statements : []).map(s => this.emit(s)).join('');
+      this.indentLevel--;
+      return `{${params}${this.newline}${inner}${this.indent()}}`;
+    }
 
-        if (node.parameters.length > 0) {
-          const params = node.parameters.map(p => p.name);
-          code += '(' + params.join(', ') + ')';
-        }
-
-        code += ' { ';
-
-        const stmts1 = (node.body && node.body.statements) || (node.body ? [node.body] : []);
-        if (stmts1.length === 1) {
-          code += this.emit(stmts1[0]).trim();
-        } else if (stmts1.length > 0) {
-          this.indentLevel++;
-          code += this.newline;
-          code += node.body.statements ? this.emitBlockContents(node.body) : stmts1.map(s => this.indent() + this.emit(s)).join(this.newline);
-          this.indentLevel--;
-          code += this.indent();
-        }
-
-        code += ' }';
-      } else {
-        // lambda { |x| ... }
-        code = 'lambda { ';
-
-        if (node.parameters.length > 0) {
-          const params = node.parameters.map(p => p.name);
-          code += '|' + params.join(', ') + '| ';
-        }
-
-        const stmts2 = (node.body && node.body.statements) || (node.body ? [node.body] : []);
-        if (stmts2.length === 1) {
-          code += this.emit(stmts2[0]).trim();
-        } else if (stmts2.length > 0) {
-          this.indentLevel++;
-          code += this.newline;
-          code += node.body.statements ? this.emitBlockContents(node.body) : stmts2.map(s => this.indent() + this.emit(s)).join(this.newline);
-          this.indentLevel--;
-          code += this.indent();
-        }
-
-        code += ' }';
+    /** A Ruby double-quoted string literal of any JavaScript string, ASCII only */
+    static quote(text) {
+      let out = '"';
+      for (const ch of text) {
+        const code = ch.codePointAt(0);
+        if (ch === '\\') out += '\\\\';
+        else if (ch === '"') out += '\\"';
+        else if (ch === '#') out += '\\#';
+        else if (ch === '\n') out += '\\n';
+        else if (ch === '\r') out += '\\r';
+        else if (ch === '\t') out += '\\t';
+        else if (code < 0x20 || code === 0x7f) out += '\\x' + code.toString(16).padStart(2, '0');
+        else if (code > 0x7e) {
+          // Lone surrogates have no UTF-8 encoding: the replacement character stands in
+          out += (code >= 0xD800 && code <= 0xDFFF) ? '\\u{fffd}' : `\\u{${code.toString(16)}}`;
+        } else out += ch;
       }
-
-      return code;
-    }
-
-    emitIndex(node) {
-      return `${this.emit(node.target)}[${this.emit(node.index)}]`;
-    }
-
-    emitConditional(node) {
-      const cond = this.emit(node.condition);
-      const thenExpr = this.emit(node.thenExpression);
-      const elseExpr = this.emit(node.elseExpression);
-
-      return `${cond} ? ${thenExpr} : ${elseExpr}`;
-    }
-
-    emitSplat(node) {
-      const prefix = node.isDoubleSplat ? '**' : '*';
-      return `${prefix}${this.emit(node.expression)}`;
-    }
-
-    emitConstantAccess(node) {
-      if (node.namespace) {
-        return `${node.namespace}::${node.constant}`;
-      }
-      return node.constant;
-    }
-
-    emitYield(node) {
-      if (node.arguments.length > 0) {
-        const args = node.arguments.map(a => this.emit(a));
-        return `yield(${args.join(', ')})`;
-      }
-      return 'yield';
-    }
-
-    emitSuper(node) {
-      if (node.arguments === null) {
-        return 'super';
-      }
-      if (node.arguments.length === 0) {
-        return 'super()';
-      }
-      const args = node.arguments.map(a => this.emit(a));
-      return `super(${args.join(', ')})`;
-    }
-
-    emitDefined(node) {
-      return `defined?(${this.emit(node.expression)})`;
-    }
-
-    // ========================[ DOCUMENTATION ]========================
-
-    emitDocComment(node) {
-      if (this.options.addComments === false) {
-        return '';
-      }
-
-      const lines = node.text.split('\n');
-      const prefix = node.isYard ? '# ' : '# ';
-
-      let code = '';
-      for (const line of lines) {
-        code += this.line(prefix + line.trim());
-      }
-
-      return code;
-    }
-
-    emitConstant(node) {
-      let code = '';
-
-      if (node.docComment && this.options.addComments !== false) {
-        code += this.emit(node.docComment);
-      }
-
-      code += this.line(`${node.name} = ${this.emit(node.value)}`);
-
-      return code;
-    }
-
-    // ========================[ RAW CODE ]========================
-
-    emitRawCode(node) {
-      // Emit raw Ruby code as-is (used for framework stubs)
-      // Handle multi-line code properly with indentation
-      const lines = node.code.split('\n');
-      let code = '';
-      for (const line of lines) {
-        code += this.line(line);
-      }
-      return code;
+      return out + '"';
     }
   }
 
-  // Export
-  const exports = { RubyEmitter };
+  RubyEmitter.PREC = PREC;
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = exports;
+    module.exports = { RubyEmitter, PREC };
   }
   if (typeof global !== 'undefined') {
     global.RubyEmitter = RubyEmitter;

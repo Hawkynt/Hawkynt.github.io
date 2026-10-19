@@ -12,7 +12,7 @@
 | Complexity | Expert |
 | Inventor | Jørn Justesen |
 | Year | 1972 |
-| Origin | Not specified |
+| Origin | 🇩🇰 Denmark |
 | Source | [`algorithms/ecc/justesen-code.js`](../../../algorithms/ecc/justesen-code.js) |
 
 ## Security

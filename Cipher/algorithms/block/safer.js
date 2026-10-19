@@ -439,8 +439,8 @@
       g = OpCodes.And32((g + this.expandedKey[++keyIndex]), 0xFF);
       h = OpCodes.Xor32(h, this.expandedKey[++keyIndex]);
 
-      return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF),
-              OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
+      return [OpCodes.ToByte(a), OpCodes.ToByte(b), OpCodes.ToByte(c), OpCodes.ToByte(d),
+              OpCodes.ToByte(e), OpCodes.ToByte(f), OpCodes.ToByte(g), OpCodes.ToByte(h)];
     }
 
     /**
@@ -504,8 +504,8 @@
         a = OpCodes.Xor32(this._LOG(a), this.expandedKey[--keyIndex]);
       }
 
-      return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF),
-              OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
+      return [OpCodes.ToByte(a), OpCodes.ToByte(b), OpCodes.ToByte(c), OpCodes.ToByte(d),
+              OpCodes.ToByte(e), OpCodes.ToByte(f), OpCodes.ToByte(g), OpCodes.ToByte(h)];
     }
 
     // Exponential S-box lookup

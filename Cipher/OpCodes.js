@@ -365,8 +365,8 @@
 
     /**
      * Convert to unsigned 64-bit BigInt (qword)
-     * @param {BigInt} value - Value to convert
-     * @returns {BigInt} Unsigned 64-bit value
+     * @param {BigInt} value - Value to convert, of any width
+     * @returns {uint64} Unsigned 64-bit value (value mod 2^64, as a BigInt)
      */
     ToQWord: function(value) {
       return BigInt(value) & 0xFFFFFFFFFFFFFFFFn;

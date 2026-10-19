@@ -100,6 +100,7 @@
     let eax = 0;
     /** @type {uint32} */
     let edx = 0;
+    /** @type {uint32} */
     let index = 0;
 
     /** @type {uint32[]} */

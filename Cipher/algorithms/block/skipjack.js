@@ -360,10 +360,10 @@
 
       // Pack back to bytes
       const cipherBytes = [
-        OpCodes.And32(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.And32(w1, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.And32(w2, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.And32(w3, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.And32(w4, 0xFF)
+        OpCodes.GetByte(w1, 1), OpCodes.ToByte(w1),
+        OpCodes.GetByte(w2, 1), OpCodes.ToByte(w2),
+        OpCodes.GetByte(w3, 1), OpCodes.ToByte(w3),
+        OpCodes.GetByte(w4, 1), OpCodes.ToByte(w4)
       ];
 
       return cipherBytes;
@@ -417,10 +417,10 @@
 
       // Pack back to bytes (different order for decryption output)
       const plainBytes = [
-        OpCodes.And32(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.And32(w2, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.And32(w1, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.And32(w4, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.And32(w3, 0xFF)
+        OpCodes.GetByte(w2, 1), OpCodes.ToByte(w2),
+        OpCodes.GetByte(w1, 1), OpCodes.ToByte(w1),
+        OpCodes.GetByte(w4, 1), OpCodes.ToByte(w4),
+        OpCodes.GetByte(w3, 1), OpCodes.ToByte(w3)
       ];
 
       return plainBytes;

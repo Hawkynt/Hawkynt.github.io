@@ -74,7 +74,7 @@
       this.subCategory = "Extended Block Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       // Algorithm-specific configuration
       // Only the three round counts below are defined, so 32, 64 and 128 byte

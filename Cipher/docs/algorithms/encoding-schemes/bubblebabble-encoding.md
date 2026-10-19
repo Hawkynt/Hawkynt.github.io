@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Antti Huima |
 | Year | 2000 |
-| Origin | Not specified |
+| Origin | 🇫🇮 Finland |
 | Source | [`algorithms/encoding/bubblebabble.js`](../../../algorithms/encoding/bubblebabble.js) |
 
 ## Security

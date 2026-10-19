@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Ismail Adomnitei, Thomas Peyrin |
 | Year | 2019 |
-| Origin | Not specified |
+| Origin | 🇸🇬 Singapore |
 | Source | [`algorithms/aead/ace.js`](../../../algorithms/aead/ace.js) |
 
 ## Parameters

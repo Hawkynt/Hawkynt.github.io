@@ -1629,7 +1629,7 @@
    * @returns {uint8[]} .xz stream (CRC32 check)
    */
   function encodeXZContainer(data) {
-    /** @type {int32} */
+    /** @type {uint8} */
     const checkId = CHECK_ID_CRC32;
     /** @type {uint8[]} */
     const streamFlags = [0x00, checkId];
@@ -1665,7 +1665,7 @@
     const lzma2 = encodeLZMA2Compressed(data);
 
     // Block header
-    /** @type {int32} */
+    /** @type {uint8} */
     const propByte = dictSizeProp(data.length); // smallest standard dictionary size covering the whole input
     /** @type {uint8[]} */
     const filterFlags = [0x21, 0x01, propByte]; // filter ID VLI (LZMA2=33), props size VLI, props byte
@@ -1673,7 +1673,7 @@
     const compSizeVLI = encodeVLI(lzma2.length);
     /** @type {uint8[]} */
     const uncompSizeVLI = encodeVLI(data.length);
-    /** @type {int32} */
+    /** @type {uint8} */
     const blockFlags = 0xC0; // compressed+uncompressed size present, 1 filter
 
     /** @type {uint8[]} */
@@ -1685,8 +1685,8 @@
     /** @type {int32} */
     const paddedLen = Math.ceil(totalNoSizeByte / 4) * 4;
     /** @type {uint8[]} */
-    const padding = zeroArray(paddedLen - totalNoSizeByte);
-    /** @type {int32} */
+    const padding = OpCodes.CreateArray(paddedLen - totalNoSizeByte, 0);
+    /** @type {uint8} */
     const sizeByteValue = (paddedLen + 4) / 4 - 1;
 
     /** @type {uint8[]} */
@@ -1701,7 +1701,7 @@
     /** @type {int32} */
     const blockPaddedLen = Math.ceil(blockDataLen / 4) * 4;
     /** @type {uint8[]} */
-    const blockPadding = zeroArray(blockPaddedLen - blockDataLen);
+    const blockPadding = OpCodes.CreateArray(blockPaddedLen - blockDataLen, 0);
 
     /** @type {uint8[]} */
     const checkBytes = crc32Bytes(data);

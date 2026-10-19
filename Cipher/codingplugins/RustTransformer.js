@@ -1,6067 +1,4787 @@
 /**
- * RustTransformer.js - IL AST to Rust AST Transformer
- * Converts IL AST (type-inferred, language-agnostic) to Rust AST
+ * RustTransformer.js - IL AST to Rust AST
  * (c)2006-2025 Hawkynt
  *
- * Full Pipeline:
- *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ * Pipeline: JS Source -> IL AST -> RustTransformer -> Rust AST -> RustEmitter -> Rust Source
  *
- * This transformer handles: IL AST → Rust AST
+ * Every Rust type comes from an IL type (resultType, declared field and
+ * parameter types, JSDoc returns); nothing is guessed from a name or a value.
  *
- * IL AST characteristics:
- *   - Type-inferred (no untyped nodes)
- *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
- *   - Global options already applied
+ * The object model (see ILProgramModel.js) keeps JavaScript's reference
+ * semantics without fighting the borrow checker:
+ * - arrays are JsArr<T>, a shared, growable Rc<RefCell<Vec<T>>> (cloning one
+ *   aliases it, as assigning a JavaScript array does);
+ * - every class is a handle C(Option<Rc<RefCell<CData>>>) whose data holds the
+ *   fields of its whole base chain, AlgorithmFramework.js's included, with every
+ *   inherited method emitted on it; fields are read and written through
+ *   accessor methods, so no borrow outlives one field access;
+ * - a type with subclasses, and any untyped object, is JsObj (members by name
+ *   through the JsObject trait, as JavaScript resolves them); any value of no
+ *   one type is JsAny; BigInt is the runtime's JsBig (no external crates);
+ * - a local variable a closure captures lives in a shared cell (JsCell), so the
+ *   closure and the function see one variable.
  *
- * Language options (applied here and in emitter):
- *   - edition: Rust edition (2015, 2018, 2021)
- *   - noStd: Enable no_std mode
- *   - useZeroCopy: Use zero-copy patterns
- *   - addComments: Include generated comments
+ * Numbers follow JavaScript: an IL type of fixed width is that Rust type and
+ * its arithmetic wraps (wrapping_add, wrapping_mul, ...) exactly where the IL
+ * type is fixed-width; bitwise operators work on 32 bits as ToInt32/ToUint32
+ * do, BigInt operators at full width. A throw is a panic carrying the thrown
+ * value; try/catch is catch_unwind.
  */
 
-(function(global) {
+(function (global) {
   'use strict';
 
-  // Load dependencies
-  let RustAST;
+  let RustAST, Model;
   if (typeof require !== 'undefined') {
     RustAST = require('./RustAST.js');
-  } else if (global.RustAST) {
+    Model = require('./ILProgramModel.js');
+  } else {
     RustAST = global.RustAST;
+    Model = global.ILProgramModel;
   }
 
-  const {
-    RustType, RustModule, RustUseDeclaration, RustAttribute,
-    RustStruct, RustStructField, RustEnum, RustEnumVariant, RustImpl,
-    RustFunction, RustParameter, RustBlock, RustLet, RustExpressionStatement,
-    RustReturn, RustIf, RustFor, RustWhile, RustLoop, RustMatch, RustMatchArm,
-    RustBreak, RustContinue, RustLiteral, RustIdentifier, RustBinaryExpression,
-    RustUnaryExpression, RustAssignment, RustFieldAccess, RustIndex,
-    RustMethodCall, RustCall, RustStructLiteral, RustArrayLiteral, RustVecMacro,
-    RustCast, RustReference, RustDereference, RustRange, RustTuple, RustClosure,
-    RustMacroCall, RustIfExpression, RustBlockExpression, RustDocComment, RustConst
-  } = RustAST;
+  const R = RustAST;
+  const { canonicalType, isArrayType, elementType, isIntType, isFloatType, isNumericType, isBigType, intBits, isSignedInt } = Model;
 
-  /**
-   * Maps JavaScript/JSDoc types to Rust types
-   */
-  const TYPE_MAP = {
-    // Unsigned integers
-    'uint8': 'u8', 'byte': 'u8',
-    'uint16': 'u16', 'ushort': 'u16', 'word': 'u16',
-    'uint32': 'u32', 'uint': 'u32', 'dword': 'u32',
-    'uint64': 'u64', 'ulong': 'u64', 'qword': 'u64',
-    // Signed integers
-    'int8': 'i8', 'sbyte': 'i8',
-    'int16': 'i16', 'short': 'i16',
-    'int32': 'i32', 'int': 'i32',
-    'int64': 'i64', 'long': 'i64',
-    // Floating point
-    'float': 'f32', 'float32': 'f32',
-    'double': 'f64', 'float64': 'f64',
-    // In crypto context, JavaScript 'number' typically means u32 (for bit operations)
-    'number': 'u32',
-    // Other
-    'boolean': 'bool', 'bool': 'bool',
-    'string': 'String', 'String': 'String',
-    'void': '()',
-    'object': 'HashMap<String, u32>',
-    'Array': 'Vec'
-  };
+  /** The name of a property key: the IL keeps it as a string, ESTree as an Identifier or Literal. */
+  const propKey = k => typeof k === 'string' ? k : (k && (k.name !== undefined ? k.name : String(k.value)));
 
-  /**
-   * JavaScript AST to Rust AST Transformer
-   *
-   * Supported Options:
-   * - indent: string - Indentation string (default: '    ')
-   * - lineEnding: string - Line ending character (default: '\n')
-   * - addComments: boolean - Add doc comments (///). Default: true
-   * - useStrictTypes: boolean - Use strict type annotations. Default: true
-   * - errorHandling: boolean - Use Result<T, E> for error handling. Default: true
-   * - edition: string - Rust edition ('2015', '2018', '2021'). Default: '2021'
-   * - useOwnership: boolean - Use proper Rust ownership patterns. Default: true
-   * - useTraits: boolean - Generate trait implementations. Default: true
-   * - useGenerics: boolean - Use generic types where appropriate. Default: true
-   * - useZeroCopy: boolean - Prefer &[u8] over Vec<u8> for read-only data. Default: true
-   * - useSIMD: boolean - Enable SIMD optimizations. Default: false
-   * - noStd: boolean - Generate code for no_std environments. Default: false
-   */
+  const RUST_KEYWORDS = new Set(['as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum', 'extern', 'false',
+    'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub', 'ref', 'return', 'self', 'Self', 'static',
+    'struct', 'super', 'trait', 'true', 'type', 'unsafe', 'use', 'where', 'while', 'abstract', 'become', 'box', 'do', 'final', 'macro',
+    'override', 'priv', 'try', 'typeof', 'unsized', 'virtual', 'yield', 'union', 'gen']);
+  const RESERVED = new Set(['this', 'main', 'std', 'core', 'alloc', 'Some', 'None', 'Ok', 'Err', 'Option', 'Result', 'Vec', 'String',
+    'Box', 'Rc', 'RefCell', 'Cell', 'Ref', 'RefMut', 'HashMap', 'Default', 'Clone', 'Any', 'drop', 'vec', 'format', 'panic', 'assert']);
+
+  // Methods a class handle has itself or through its traits: a JavaScript method of
+  // the same name (a clone() say) would shadow them
+  const HANDLE_METHODS = new Set(['clone', 'd', 'dm', 'is_null', 'to_obj', 'ptr_eq', 'new', 'default', 'as_any', 'to_js', 'from_js',
+    'eq', 'ne', 'fmt', 'hash', 'borrow', 'borrow_mut', 'into', 'from', 'clone_from']);
+
+  /** A Rust string literal holding a JavaScript string (characters as \u{..} escapes when not printable ASCII). */
+  function rustStringLiteral(s) {
+    let out = '"';
+    for (const ch of String(s)) {
+      const code = ch.codePointAt(0);
+      if (code === 0x22) out += '\\"';
+      else if (code === 0x5c) out += '\\\\';
+      else if (code === 0x0a) out += '\\n';
+      else if (code === 0x0d) out += '\\r';
+      else if (code === 0x09) out += '\\t';
+      else if (code >= 0x20 && code < 0x7f) out += ch;
+      else if (code >= 0xD800 && code < 0xE000) out += '?';
+      else out += `\\u{${code.toString(16)}}`;
+    }
+    return out + '"';
+  }
+
+  /** The Rust spelling of a JavaScript constant of an IL type (a typed literal). */
+  function rustConstLiteral(c, t) {
+    if (c === null || c === undefined) return 'JsAny::undefined()';
+    if (typeof c === 'string') return rustStringLiteral(c) + '.to_string()';
+    if (typeof c === 'boolean') return String(c);
+    const suffix = { uint8: 'u8', uint16: 'u16', uint32: 'u32', uint64: 'u64', int8: 'i8', int16: 'i16', int32: 'i32', int64: 'i64' }[t];
+    if (typeof c === 'bigint') {
+      if (suffix) return c < 0n ? `(${c}${suffix})` : `${c}${suffix}`;
+      return c >= -(2n ** 63n) && c < 2n ** 63n ? `JsBig::from_i64(${c < 0n ? `(${c}i64)` : `${c}i64`})` : `js_big_lit("${c}")`;
+    }
+    if (Number.isNaN(c)) return 'f64::NAN';
+    if (!Number.isFinite(c)) return c > 0 ? 'f64::INFINITY' : 'f64::NEG_INFINITY';
+    if (suffix && Number.isInteger(c)) return c < 0 ? `(${c}${suffix})` : `${c}${suffix}`;
+    const s = String(c);
+    return (c < 0 ? '(' : '') + (/[.e]/.test(s) ? s.replace(/e/, s.includes('.') ? 'e' : '.0e') : s + '.0') + 'f64' + (c < 0 ? ')' : '');
+  }
+
+  /** A Rust expression with its IL type (and its value when it is a compile-time constant). */
+  class Val {
+    constructor(e, t, c) {
+      this.t = t;
+      if (c !== undefined) this.c = c;
+      this.e = e || (c !== undefined ? R.Lit(rustConstLiteral(c, t)) : R.Lit('()'));
+    }
+    get isConst() { return this.c !== undefined; }
+  }
+
   class RustTransformer {
     constructor(options = {}) {
       this.options = options;
-      this.currentStruct = null;
-      this.currentImpl = null;
-      this.variableTypes = new Map();  // Maps variable name -> RustType
-      this.structFieldTypes = new Map(); // Maps field name -> RustType
-      this.methodReturnTypes = new Map(); // Maps method name -> RustType
-      this.nestedStructs = [];
-      this.scopeStack = [];
-      this.inConstructor = false;  // Track if we're in a constructor (new() fn)
-      this.currentMethodReturnType = null;  // Track return type for wrapping Some()
-    }
-
-    /**
-     * Convert name to snake_case (Rust convention for variables/functions)
-     */
-    toSnakeCase(str) {
-      if (!str) return str;
-      // Ensure str is a string
-      if (typeof str !== 'string') {
-        str = String(str);
-      }
-      // Check if it's already UPPER_SNAKE_CASE (like constants)
-      if (/^[A-Z][A-Z0-9_]*$/.test(str)) {
-        return str.toLowerCase();
-      }
-      // Handle camelCase and PascalCase
-      return str
-        // Insert underscore before uppercase letters that follow lowercase letters
-        .replace(/([a-z])([A-Z])/g, '$1_$2')
-        // Insert underscore before uppercase letters that are followed by lowercase letters
-        // (handles acronyms like HTMLParser -> html_parser)
-        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-        .toLowerCase();
-    }
-
-    /**
-     * Convert name to snake_case and escape Rust reserved keywords
-     * Use this for all method and variable names
-     */
-    toSafeSnakeCase(str) {
-      let name = this.toSnakeCase(str);
-      if (this.isRustKeyword(name)) {
-        name = name + '_';
-      }
-      return name;
-    }
-
-    /**
-     * Check if a name is a Rust reserved keyword
-     */
-    isRustKeyword(name) {
-      const rustKeywords = [
-        // Strict keywords
-        'as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum', 'extern',
-        'false', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub',
-        'ref', 'return', 'self', 'Self', 'static', 'struct', 'super', 'trait', 'true', 'type', 'unsafe',
-        'use', 'where', 'while',
-        // Reserved for future use
-        'abstract', 'become', 'box', 'do', 'final', 'macro', 'override', 'priv', 'try', 'typeof', 'unsized',
-        'virtual', 'yield'
-      ];
-      return rustKeywords.includes(name);
-    }
-
-    /**
-     * Convert name to PascalCase (Rust convention for types)
-     */
-    toPascalCase(str) {
-      if (!str) return str;
-      if (typeof str !== 'string')
-        str = String(str);
-      return str.charAt(0).toUpperCase() + str.slice(1);
-    }
-
-    /**
-     * Convert name to SCREAMING_SNAKE_CASE (Rust convention for constants)
-     */
-    toScreamingSnakeCase(str) {
-      if (!str) return str;
-      if (typeof str !== 'string')
-        str = String(str);
-      // Check if it's already UPPER_SNAKE_CASE
-      if (/^[A-Z][A-Z0-9_]*$/.test(str)) {
-        return str;
-      }
-      // Handle camelCase and PascalCase
-      return str
-        // Insert underscore before uppercase letters that follow lowercase letters
-        .replace(/([a-z])([A-Z])/g, '$1_$2')
-        // Insert underscore before uppercase letters that are followed by lowercase letters
-        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-        .toUpperCase();
-    }
-
-    /**
-     * Map JavaScript type string to Rust type
-     */
-    mapType(typeName) {
-      if (!typeName) return RustType.U32();
-
-      // Handle arrays
-      if (typeName.endsWith('[]')) {
-        const elementTypeName = typeName.slice(0, -2);
-        const elementType = this.mapType(elementTypeName);
-        // Use &[T] for zero-copy (read-only), otherwise Vec<T> for owned data
-        if (this.options.useZeroCopy) {
-          return RustType.Slice(elementType); // &[T] for zero-copy
-        } else {
-          return RustType.Vec(elementType); // Vec<T> for owned data
-        }
-      }
-
-      const rustTypeName = TYPE_MAP[typeName] || typeName;
-
-      // Map to Rust types
-      const typeMap = {
-        'u8': RustType.U8(),
-        'u16': RustType.U16(),
-        'u32': RustType.U32(),
-        'u64': RustType.U64(),
-        'i8': RustType.I8(),
-        'i16': RustType.I16(),
-        'i32': RustType.I32(),
-        'i64': RustType.I64(),
-        'f32': RustType.F32(),
-        'f64': RustType.F64(),
-        'bool': RustType.Bool(),
-        'String': RustType.String(),
-        '()': RustType.Unit()
-      };
-
-      return typeMap[rustTypeName] || new RustType(rustTypeName);
-    }
-
-    /**
-     * Map IL AST result type to Rust type
-     * This uses the type information added to IL nodes during JS→IL transformation
-     */
-    mapILType(ilType) {
-      if (!ilType) return null;
-
-      // Handle non-string types (might be an AST node or object)
-      if (typeof ilType !== 'string') {
-        // Extract type from object if possible
-        if (ilType.type) return this.mapILType(ilType.type);
-        if (ilType.name) return this.mapILType(ilType.name);
-        if (ilType.resultType) return this.mapILType(ilType.resultType);
-        return null;
-      }
-
-      // Handle array types (e.g., 'uint8[]', 'int32[]')
-      if (ilType.endsWith('[]')) {
-        const elementType = ilType.slice(0, -2);
-        const rustElementType = this.mapILType(elementType);
-        return RustType.Vec(rustElementType || RustType.U8());
-      }
-
-      // Map IL types to Rust types
-      const ilTypeMap = {
-        'uint8': RustType.U8(),
-        'int8': RustType.I8(),
-        'uint16': RustType.U16(),
-        'int16': RustType.I16(),
-        'uint32': RustType.U32(),
-        'int32': RustType.I32(),
-        'uint64': RustType.U64(),
-        'int64': RustType.I64(),
-        'float32': RustType.F32(),
-        'float64': RustType.F64(),
-        'usize': RustType.Usize(),
-        'isize': RustType.Isize(),
-        'boolean': RustType.Bool(),
-        'bool': RustType.Bool(),
-        'string': RustType.String(),
-        'void': RustType.Unit(),
-        'number': RustType.U32(), // Default for crypto operations
-        'any': null, // Will need fallback
-        // Also support rust type names directly
-        'u8': RustType.U8(),
-        'u16': RustType.U16(),
-        'u32': RustType.U32(),
-        'u64': RustType.U64(),
-        'i8': RustType.I8(),
-        'i16': RustType.I16(),
-        'i32': RustType.I32(),
-        'i64': RustType.I64(),
-        'f32': RustType.F32(),
-        'f64': RustType.F64()
-      };
-
-      return ilTypeMap[ilType] || null;
-    }
-
-    /**
-     * Get type from IL node, with fallback to inference
-     * Prioritizes explicit resultType over inference
-     */
-    getTypeFromILNode(node, fallback = null) {
-      if (!node) return fallback;
-
-      // For array expressions, check if elements are object constructors (NewExpression)
-      // If so, infer type from the constructor rather than trusting IL type
-      if ((node.type === 'ArrayExpression' || node.ilNodeType === 'ArrayLiteral') &&
-          node.elements && node.elements.length > 0) {
-        const firstElem = node.elements[0];
-        if (firstElem?.type === 'NewExpression') {
-          let className = null;
-          // Handle direct class reference: new ClassName(...)
-          if (firstElem.callee?.type === 'Identifier') {
-            className = this.toPascalCase(firstElem.callee.name);
-          }
-          // Handle namespaced class reference: new Namespace.ClassName(...)
-          else if (firstElem.callee?.type === 'MemberExpression') {
-            const prop = firstElem.callee.property;
-            className = this.toPascalCase(prop?.name || prop?.value || 'Unknown');
-          }
-          if (className) {
-            return RustType.Vec(new RustType(className));
-          }
-        }
-      }
-
-      // First priority: explicit resultType from IL transformation
-      if (node.resultType) {
-        const rustType = this.mapILType(node.resultType);
-        if (rustType) return rustType;
-      }
-
-      // Second priority: elementType for array nodes
-      if (node.elementType && node.elementType !== 'any') {
-        const elementRustType = this.mapILType(node.elementType);
-        if (elementRustType) return RustType.Vec(elementRustType);
-      }
-
-      // Fallback to provided default
-      return fallback;
-    }
-
-    /**
-     * Register a variable's type in the current scope
-     */
-    registerVariableType(name, type) {
-      this.variableTypes.set(name, type);
-    }
-
-    /**
-     * Get a registered variable's type
-     */
-    getVariableType(name) {
-      return this.variableTypes.get(name) || null;
-    }
-
-    /**
-     * Get list of variable names that are known to be u32 (crypto accumulators)
-     */
-    getU32Variables() {
-      // Common crypto accumulator variable names that are u32, not usize
-      return ['j', 'sum', 'delta', 'rounds', 'v0', 'v1', 'z', 'y', 'e', 'p', 'mx'];
-    }
-
-    /**
-     * Push a new scope for nested functions
-     */
-    pushScope() {
-      this.scopeStack.push(new Map(this.variableTypes));
-    }
-
-    /**
-     * Pop scope when leaving nested function
-     */
-    popScope() {
-      if (this.scopeStack.length > 0) {
-        this.variableTypes = this.scopeStack.pop();
-      }
-    }
-
-    /**
-     * Infer Rust type from variable name pattern
-     */
-    inferTypeFromName(name) {
-      if (!name) return RustType.U32();
-
-      const lowerName = name.toLowerCase();
-
-      // Boolean-related names (common patterns: isX, hasX, canX, shouldX, etc.)
-      if (lowerName.startsWith('is') || lowerName.startsWith('has') ||
-          lowerName.startsWith('can') || lowerName.startsWith('should') ||
-          lowerName.startsWith('will') || lowerName.startsWith('was') ||
-          lowerName.startsWith('did') || lowerName.startsWith('do') ||
-          lowerName.includes('flag') || lowerName.includes('enabled') ||
-          lowerName.includes('disabled') || lowerName.includes('valid') ||
-          lowerName.includes('inverse') || lowerName === 'ok' ||
-          lowerName === 'success' || lowerName === 'result') {
-        return RustType.Bool();
-      }
-
-      // Size/length/index-related names - MUST check BEFORE array patterns
-      // to correctly type block_size, key_size, etc. as usize instead of Vec<u8>
-      // Note: 'j' removed - it's often a crypto accumulator (u32), not just a loop index
-      // Note: 'p' added - commonly used as loop counter in XXTEA and similar algorithms
-      if (lowerName.includes('size') || lowerName.includes('length') ||
-          lowerName.includes('index') || lowerName.includes('count') ||
-          lowerName === 'i' || lowerName === 'n' || lowerName === 'p') {
-        return RustType.Usize();
-      }
-
-      // Word array names - arrays of 32-bit words (Vec<u32>)
-      // IMPORTANT: Check before byte arrays to correctly type "keyWords", "words", etc.
-      if (lowerName.includes('words') || lowerName.includes('word_array') ||
-          lowerName === 'sbox' || lowerName.includes('sbox') ||
-          lowerName.includes('sum0') || lowerName.includes('sum1')) {
-        return RustType.Vec(RustType.U32());
-      }
-
-      // Array-related names (use slices for crypto data if useZeroCopy is enabled)
-      // IMPORTANT: Check these BEFORE 'byte' singular to catch 'keybytes', 'databytes', etc.
-      if (lowerName.includes('key') || lowerName.includes('data') ||
-          lowerName.includes('input') || lowerName.includes('output') ||
-          lowerName.includes('block') || lowerName.includes('bytes') ||
-          lowerName.includes('buffer') || lowerName.includes('state')) {
-        if (this.options.useZeroCopy) {
-          return RustType.Slice(RustType.U8()); // &[u8] for zero-copy
-        } else {
-          return RustType.Vec(RustType.U8()); // Vec<u8> for owned data
-        }
-      }
-
-      // Single byte-related names (only match when NOT part of an array pattern)
-      if (lowerName === 'byte' || lowerName === 'b' || /^b\d$/.test(lowerName)) {
-        return RustType.U8();
-      }
-
-      // Crypto operation variables - ensure u32 for bit operations
-      // sum, delta, rounds are typically used with u32 in block cipher implementations
-      // 'j' is commonly used as a running sum/accumulator in crypto code (not a loop index)
-      // Note: 'p' moved to usize loop counters above - it's typically a loop index, not an accumulator
-      if (lowerName === 'sum' || lowerName === 'delta' || lowerName === 'rounds' ||
-          lowerName === 'v0' || lowerName === 'v1' || lowerName === 'z' || lowerName === 'y' ||
-          lowerName === 'j' || lowerName === 'e' ||
-          lowerName.startsWith('k') && lowerName.length <= 2) {
-        return RustType.U32();
-      }
-
-      // Default to u32 for crypto operations
-      return RustType.U32();
-    }
-
-    /**
-     * Transform a JavaScript AST to a Rust AST
-     * @param {Object} jsAst - JavaScript AST from parser
-     * @returns {RustModule} Rust AST
-     */
-    transform(jsAst) {
-      const module = new RustModule();
-
-      // Add #![no_std] attribute if noStd option is enabled
-      if (this.options.noStd) {
-        module.attributes.push(new RustAttribute('no_std', [], false)); // false = inner attribute
-      }
-
-      // Standard uses for crypto code (skip if noStd is enabled)
-      if (!this.options.noStd) {
-        module.uses.push(new RustUseDeclaration('std::collections', ['HashMap']));
-        module.uses.push(new RustUseDeclaration('std::convert', ['TryInto']));
-      }
-
-      // Add framework stub types for algorithm metadata
-      if (this.options.includeFrameworkStubs !== false) {
-        this.addFrameworkStubs(module);
-      }
-
-      // Add module doc comment (respect addComments option)
-      if (this.options.addComments !== false) {
-        const edition = this.options.edition || '2021';
-        const docComment = new RustDocComment(
-          `Generated Rust code (Edition ${edition})\nThis file was automatically generated from JavaScript AST`,
-          false  // inner doc comment
-        );
-        module.attributes.push(docComment);
-      }
-
-      // Transform the JavaScript AST
-      if (jsAst.type === 'Program') {
-        for (const node of jsAst.body) {
-          this.transformTopLevel(node, module);
-        }
-      }
-
-      // Add nested structs
-      for (const nested of this.nestedStructs) {
-        module.items.push(nested);
-      }
-
-      // Add main function if not present (for standalone compilation)
-      if (this.options.addMainFunction !== false) {
-        const hasMain = module.items.some(item =>
-          item.type === 'RustFunction' && item.name === 'main'
-        );
-        if (!hasMain) {
-          const mainFn = new RustFunction('main');
-          mainFn.returnType = RustType.Unit();
-          mainFn.body = new RustBlock();
-          // Empty main function
-          module.items.push(mainFn);
-        }
-      }
-
-      return module;
-    }
-
-    /**
-     * Add framework stub types for algorithm metadata
-     * These allow the code to compile without the actual AlgorithmFramework
-     */
-    addFrameworkStubs(module) {
-      // KeySize struct
-      const keySize = new RustStruct('KeySize');
-      keySize.attributes.push(new RustAttribute('derive', ['Debug', 'Clone', 'Copy']));
-      keySize.fields.push(new RustStructField('min_size', RustType.U32()));
-      keySize.fields.push(new RustStructField('max_size', RustType.U32()));
-      keySize.fields.push(new RustStructField('step', RustType.U32()));
-      module.items.push(keySize);
-
-      // KeySize::new impl
-      const keySizeImpl = new RustImpl('KeySize');
-      const keySizeNew = new RustFunction('new');
-      keySizeNew.visibility = 'pub';
-      keySizeNew.parameters = [
-        new RustParameter('min_size', RustType.U32()),
-        new RustParameter('max_size', RustType.U32()),
-        new RustParameter('step', RustType.U32())
-      ];
-      keySizeNew.returnType = new RustType('Self');
-      keySizeNew.body = new RustBlock();
-      const keySizeSelf = new RustStructLiteral('Self');
-      keySizeSelf.fields = [
-        { name: 'min_size', value: new RustIdentifier('min_size') },
-        { name: 'max_size', value: new RustIdentifier('max_size') },
-        { name: 'step', value: new RustIdentifier('step') }
-      ];
-      keySizeNew.body.statements.push(keySizeSelf);
-      keySizeImpl.methods.push(keySizeNew);
-      module.items.push(keySizeImpl);
-
-      // LinkItem struct
-      const linkItem = new RustStruct('LinkItem');
-      linkItem.attributes.push(new RustAttribute('derive', ['Debug', 'Clone']));
-      linkItem.fields.push(new RustStructField('text', RustType.String()));
-      linkItem.fields.push(new RustStructField('url', RustType.String()));
-      module.items.push(linkItem);
-
-      // LinkItem::new impl
-      const linkItemImpl = new RustImpl('LinkItem');
-      const linkItemNew = new RustFunction('new');
-      linkItemNew.visibility = 'pub';
-      linkItemNew.parameters = [
-        new RustParameter('text', RustType.String()),
-        new RustParameter('url', RustType.String())
-      ];
-      linkItemNew.returnType = new RustType('Self');
-      linkItemNew.body = new RustBlock();
-      const linkItemSelf = new RustStructLiteral('Self');
-      linkItemSelf.fields = [
-        { name: 'text', value: new RustIdentifier('text') },
-        { name: 'url', value: new RustIdentifier('url') }
-      ];
-      linkItemNew.body.statements.push(linkItemSelf);
-      linkItemImpl.methods.push(linkItemNew);
-      module.items.push(linkItemImpl);
-
-      // Vulnerability struct (4 fields: name, url, description, mitigation)
-      // JS constructor: (type, url, description, mitigation)
-      const vulnerability = new RustStruct('Vulnerability');
-      vulnerability.attributes.push(new RustAttribute('derive', ['Debug', 'Clone']));
-      vulnerability.fields.push(new RustStructField('name', RustType.String()));
-      vulnerability.fields.push(new RustStructField('url', RustType.String()));
-      vulnerability.fields.push(new RustStructField('description', RustType.String()));
-      vulnerability.fields.push(new RustStructField('mitigation', RustType.String()));
-      module.items.push(vulnerability);
-
-      // Vulnerability::new impl - matches JS constructor(type, url, description, mitigation)
-      const vulnImpl = new RustImpl('Vulnerability');
-      const vulnNew = new RustFunction('new');
-      vulnNew.visibility = 'pub';
-      vulnNew.parameters = [
-        new RustParameter('name', RustType.String()),
-        new RustParameter('url', RustType.String()),
-        new RustParameter('description', RustType.String()),
-        new RustParameter('mitigation', RustType.String())
-      ];
-      vulnNew.returnType = new RustType('Self');
-      vulnNew.body = new RustBlock();
-      const vulnSelf = new RustStructLiteral('Self');
-      vulnSelf.fields = [
-        { name: 'name', value: new RustIdentifier('name') },
-        { name: 'url', value: new RustIdentifier('url') },
-        { name: 'description', value: new RustIdentifier('description') },
-        { name: 'mitigation', value: new RustIdentifier('mitigation') }
-      ];
-      vulnNew.body.statements.push(vulnSelf);
-      vulnImpl.methods.push(vulnNew);
-      module.items.push(vulnImpl);
-
-      // CategoryType enum
-      const categoryType = new RustEnum('CategoryType');
-      categoryType.attributes.push(new RustAttribute('derive', ['Debug', 'Clone', 'Copy', 'PartialEq', 'Eq']));
-      for (const variant of ['BLOCK', 'STREAM', 'HASH', 'MAC', 'KDF', 'AEAD', 'ASYMMETRIC', 'ENCODING', 'COMPRESSION', 'CLASSICAL', 'ECC', 'CHECKSUM', 'SPECIAL']) {
-        categoryType.variants.push(new RustEnumVariant(variant));
-      }
-      module.items.push(categoryType);
-
-      // SecurityStatus enum
-      const securityStatus = new RustEnum('SecurityStatus');
-      securityStatus.attributes.push(new RustAttribute('derive', ['Debug', 'Clone', 'Copy', 'PartialEq', 'Eq']));
-      for (const variant of ['SECURE', 'BROKEN', 'DEPRECATED', 'EXPERIMENTAL', 'EDUCATIONAL', 'OBSOLETE']) {
-        securityStatus.variants.push(new RustEnumVariant(variant));
-      }
-      module.items.push(securityStatus);
-
-      // ComplexityType enum (includes BASIC as alias for BEGINNER)
-      const complexityType = new RustEnum('ComplexityType');
-      complexityType.attributes.push(new RustAttribute('derive', ['Debug', 'Clone', 'Copy', 'PartialEq', 'Eq']));
-      for (const variant of ['BEGINNER', 'BASIC', 'INTERMEDIATE', 'ADVANCED', 'EXPERT', 'RESEARCH']) {
-        complexityType.variants.push(new RustEnumVariant(variant));
-      }
-      module.items.push(complexityType);
-
-      // CountryCode enum (common codes)
-      const countryCode = new RustEnum('CountryCode');
-      countryCode.attributes.push(new RustAttribute('derive', ['Debug', 'Clone', 'Copy', 'PartialEq', 'Eq']));
-      for (const variant of ['US', 'GB', 'DE', 'FR', 'IL', 'RU', 'CN', 'JP', 'BE', 'CH', 'NL', 'AU', 'CA', 'KR', 'INTERNATIONAL', 'UNKNOWN']) {
-        countryCode.variants.push(new RustEnumVariant(variant));
-      }
-      module.items.push(countryCode);
-
-      // Value enum for dynamic typing (similar to serde_json::Value)
-      // Used for config objects and other dynamic data structures
-      const valueEnum = new RustEnum('Value');
-      valueEnum.attributes.push(new RustAttribute('derive', ['Debug', 'Clone']));
-      valueEnum.variants.push(new RustEnumVariant('Null'));
-      valueEnum.variants.push(new RustEnumVariant('Bool', [new RustType('bool')]));
-      valueEnum.variants.push(new RustEnumVariant('Number', [new RustType('f64')]));
-      valueEnum.variants.push(new RustEnumVariant('String', [new RustType('String')]));
-      valueEnum.variants.push(new RustEnumVariant('Array', [new RustType('Vec<Value>')]));
-      valueEnum.variants.push(new RustEnumVariant('Object', [new RustType('HashMap<String, Value>')]));
-      module.items.push(valueEnum);
-
-      // Add hex module for hex::decode functionality
-      const hexDecode = new RustFunction('decode');
-      hexDecode.visibility = 'pub';
-      hexDecode.parameters = [new RustParameter('s', new RustType('String'))];
-      hexDecode.returnType = new RustType('Result<Vec<u8>, String>');
-      hexDecode.body = new RustBlock();
-      // Implementation: parse hex string to bytes
-      const bytesExpr = new RustIdentifier(`(0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i+2], 16).unwrap_or(0)).collect()`);
-      hexDecode.body.statements.push(new RustReturn(new RustCall(new RustIdentifier('Ok'), [bytesExpr])));
-
-      // Create Hex module struct as namespace
-      const hexModule = new RustStruct('Hex');
-      hexModule.isUnit = true;
-      hexModule.attributes = [];
-      module.items.push(hexModule);
-
-      const hexImpl = new RustImpl('Hex');
-      hexImpl.methods.push(hexDecode);
-      module.items.push(hexImpl);
-    }
-
-    /**
-     * Transform a top-level JavaScript node
-     */
-    transformTopLevel(node, targetModule) {
-      switch (node.type) {
-        case 'VariableDeclaration':
-          this.transformVariableDeclaration(node, targetModule);
-          break;
-
-        case 'FunctionDeclaration':
-          this.transformFunctionDeclaration(node, targetModule);
-          break;
-
-        case 'ClassDeclaration':
-          this.transformClassDeclaration(node, targetModule);
-          break;
-
-        case 'ExpressionStatement':
-          // Handle IIFE wrappers - extract content from inside
-          if (node.expression.type === 'CallExpression') {
-            const callee = node.expression.callee;
-            // UMD pattern: (function(root, factory) { ... })(...)
-            if (callee.type === 'FunctionExpression' ||
-                callee.type === 'ArrowFunctionExpression') {
-              // Extract and process IIFE body content
-              this.transformIIFEContent(callee, node.expression, targetModule);
-            }
-          }
-          break;
-
-        default:
-          // Skip unhandled top-level node types
-          break;
-      }
-    }
-
-    /**
-     * Extract and transform content from IIFE wrapper
-     * Handles multiple patterns:
-     * - Simple: (function(global) { ... })(globalThis)
-     * - UMD: (function(root, factory) { ... })((function(){...})(), function(deps) { ... })
-     */
-    transformIIFEContent(calleeNode, callExpr, targetModule) {
-      let bodyStatements = [];
-
-      // First, try to find the factory function in UMD pattern
-      // UMD pattern: the second argument is usually the factory function
-      if (callExpr && callExpr.arguments && callExpr.arguments.length >= 2) {
-        const factoryArg = callExpr.arguments[1];
-        if (factoryArg.type === 'FunctionExpression' || factoryArg.type === 'ArrowFunctionExpression') {
-          // Found UMD factory function - extract from its body
-          bodyStatements = factoryArg.body?.body || [];
-        }
-      }
-
-      // Simple IIFE pattern: extract from callee's body
-      if (bodyStatements.length === 0 && calleeNode.body && calleeNode.body.body) {
-        bodyStatements = calleeNode.body.body;
-      }
-
-      // Process statements
-      for (const stmt of bodyStatements) {
-        // Skip 'use strict' and other expression statements
-        if (stmt.type === 'ExpressionStatement') {
-          continue;
-        }
-
-        // Process class declarations
-        if (stmt.type === 'ClassDeclaration') {
-          this.transformClassDeclaration(stmt, targetModule);
-          continue;
-        }
-
-        // Process function declarations
-        if (stmt.type === 'FunctionDeclaration') {
-          this.transformFunctionDeclaration(stmt, targetModule);
-          continue;
-        }
-
-        // Process variable declarations (const/let/var)
-        if (stmt.type === 'VariableDeclaration') {
-          this.transformVariableDeclaration(stmt, targetModule);
-          continue;
-        }
-
-        // Skip if statements (usually feature detection)
-        if (stmt.type === 'IfStatement') continue;
-      }
-    }
-
-    /**
-     * Transform a variable declaration
-     */
-    transformVariableDeclaration(node, targetModule) {
-      for (const decl of node.declarations) {
-        if (!decl.init) continue;
-
-        // Skip ObjectPattern destructuring (e.g., const { RegisterAlgorithm } = AlgorithmFramework)
-        if (decl.id.type === 'ObjectPattern')
-          continue;
-
-        // Handle array destructuring: const [a, b, c] = arr;
-        if (decl.id.type === 'ArrayPattern') {
-          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
-          if (sourceExpr) {
-            for (let i = 0; i < decl.id.elements.length; ++i) {
-              const elem = decl.id.elements[i];
-              if (!elem) continue; // Skip holes in destructuring
-
-              const varName = this.toSnakeCase(elem.name);
-              const indexExpr = new RustIndexExpression(sourceExpr, RustLiteral.UInt(i, 'usize'));
-              const constDecl = new RustConst(
-                node.kind === 'const' ? this.toScreamingSnakeCase(elem.name) : varName,
-                new RustType('_'), // Type inference
-                indexExpr
-              );
-              targetModule.items.push(constDecl);
-            }
-          }
-          continue;
-        }
-
-        const name = decl.id.name;
-
-        // Check if this is an object literal defining a module/struct
-        if (decl.init.type === 'ObjectExpression') {
-          const struct = this.transformObjectToStruct(name, decl.init);
-          if (struct) {
-            targetModule.items.push(struct);
-          }
-        }
-        // Check if this is an IIFE (immediately invoked function expression)
-        else if (decl.init.type === 'CallExpression' &&
-                 (decl.init.callee.type === 'FunctionExpression' ||
-                  decl.init.callee.type === 'ArrowFunctionExpression')) {
-          // Extract return value from IIFE
-          const returnValue = this.getIIFEReturnValue(decl.init);
-          if (returnValue) {
-            const constDecl = new RustConst(
-              this.toScreamingSnakeCase(name),
-              this.inferTypeFromValue(returnValue),
-              this.transformExpression(returnValue)
-            );
-            targetModule.items.push(constDecl);
-          }
-        }
-        // Handle simple literals and expressions as static constants
-        else if (decl.init.type === 'Literal' ||
-                 decl.init.type === 'ArrayExpression' ||
-                 decl.init.type === 'UnaryExpression' ||
-                 decl.init.type === 'BinaryExpression') {
-          const constDecl = new RustConst(
-            this.toScreamingSnakeCase(name),
-            this.inferTypeFromValue(decl.init),
-            this.transformExpression(decl.init)
-          );
-          targetModule.items.push(constDecl);
-        }
-        // Skip NewExpression for top-level const - Rust can't call non-const fn in const context
-        // These are typically algorithm instance registrations that aren't needed in the generated code
-        else if (decl.init.type === 'NewExpression') {
-          // Skip - Rust doesn't support calling constructors in const context
-          // Could use lazy_static or OnceCell if needed in the future
-        }
-      }
-    }
-
-    /**
-     * Transform an object literal to a Rust struct
-     */
-    transformObjectToStruct(name, objNode) {
-      const struct = new RustStruct(this.toPascalCase(name));
-      struct.attributes.push(new RustAttribute('derive', ['Debug', 'Clone']));
-
-      // Create impl block for methods
-      const impl = new RustImpl(struct.name);
-
-      const prevStruct = this.currentStruct;
-      const prevImpl = this.currentImpl;
-      this.currentStruct = struct;
-      this.currentImpl = impl;
-
-      for (const prop of objNode.properties) {
-        const propName = prop.key.name || prop.key.value;
-        const propValue = prop.value;
-
-        if (prop.method || propValue.type === 'FunctionExpression' || propValue.type === 'ArrowFunctionExpression') {
-          // Method
-          const method = this.transformFunctionToMethod(propName, propValue);
-          impl.methods.push(method);
-        } else {
-          // Field
-          const field = this.transformToField(propName, propValue);
-          struct.fields.push(field);
-        }
-      }
-
-      this.currentStruct = prevStruct;
-      this.currentImpl = prevImpl;
-
-      // Add impl block if it has methods
-      if (impl.methods.length > 0) {
-        this.nestedStructs.push(impl);
-      }
-
-      return struct;
-    }
-
-    /**
-     * Transform a field
-     */
-    transformToField(name, valueNode) {
-      const fieldName = this.toSnakeCase(name);
-      const fieldType = this.inferTypeFromValue(valueNode);
-
-      const field = new RustStructField(fieldName, fieldType);
-      this.structFieldTypes.set(fieldName, fieldType);
-
-      return field;
-    }
-
-    /**
-     * Infer Rust type from a JavaScript value expression
-     */
-    inferTypeFromValue(valueNode) {
-      if (!valueNode) return RustType.U32();
-
-      // First priority: use type from IL node if available (resultType or elementType)
-      const ilType = this.getTypeFromILNode(valueNode);
-      if (ilType) return ilType;
-
-      switch (valueNode.type) {
-        case 'Literal':
-          if (valueNode.value === null || valueNode.value === undefined) {
-            // Return null to indicate nullable - caller should wrap in Option
-            return null;
-          }
-          if (typeof valueNode.value === 'number') {
-            if (Number.isInteger(valueNode.value)) {
-              return valueNode.value >= 0 ? RustType.U32() : RustType.I32();
-            }
-            return RustType.F64();
-          }
-          if (typeof valueNode.value === 'string') return RustType.String(); // Use owned String for struct fields
-          if (typeof valueNode.value === 'boolean') return RustType.Bool();
-          return RustType.U32();
-
-        case 'ArrayExpression':
-          if (valueNode.elements.length > 0) {
-            let firstElem = valueNode.elements[0];
-            // Handle spread elements: [...v0Bytes, ...v1Bytes] -> look at what's being spread
-            if (firstElem?.type === 'SpreadElement') {
-              // Spread of byte array -> result is Vec<u8>
-              const spreadType = this.inferTypeFromValue(firstElem.argument);
-              // If spreading a Vec<T>, the concat result is also Vec<T>
-              if (spreadType.name === 'Vec' && spreadType.genericArguments?.[0]) {
-                return spreadType;
-              }
-              // Check the name of what's being spread
-              if (firstElem.argument?.type === 'Identifier') {
-                const argName = firstElem.argument.name.toLowerCase();
-                if (argName.includes('bytes') || argName.includes('block') ||
-                    argName.includes('data') || argName.includes('buffer')) {
-                  return RustType.Vec(RustType.U8());
-                }
-              }
-            }
-            const elemType = this.inferTypeFromValue(firstElem);
-            // Always use Vec for array literals (they are owned values)
-            // useZeroCopy only affects parameter types and variable inference
-            return RustType.Vec(elemType);
-          }
-          return RustType.Vec(RustType.U8());
-
-        case 'ArrayCreation':
-          // IL AST node for new Array(size) - infer element type from elementType or default
-          if (valueNode.elementType && valueNode.elementType !== 'any') {
-            // Map element type string to RustType
-            switch (valueNode.elementType) {
-              case 'number':
-              case 'u32':
-              case 'dword':
-                return RustType.Vec(RustType.U32());
-              case 'u8':
-              case 'byte':
-                return RustType.Vec(RustType.U8());
-              case 'u16':
-                return RustType.Vec(RustType.U16());
-              case 'u64':
-                return RustType.Vec(RustType.U64());
-              default:
-                return RustType.Vec(RustType.U32());
-            }
-          }
-          // Default to Vec<u32> for generic arrays
-          return RustType.Vec(RustType.U32());
-
-        case 'TypedArrayCreation':
-          // IL AST node for new Uint8Array(size), new Uint32Array(size), etc.
-          if (valueNode.arrayType) {
-            switch (valueNode.arrayType) {
-              case 'Uint8Array':
-              case 'Int8Array':
-                return RustType.Vec(RustType.U8());
-              case 'Uint16Array':
-              case 'Int16Array':
-                return RustType.Vec(RustType.U16());
-              case 'Uint32Array':
-              case 'Int32Array':
-                return RustType.Vec(RustType.U32());
-              case 'BigUint64Array':
-              case 'BigInt64Array':
-                return RustType.Vec(RustType.U64());
-              default:
-                return RustType.Vec(RustType.U8());
-            }
-          }
-          return RustType.Vec(RustType.U8());
-
-        case 'Identifier': {
-          // First check if we have a registered type for this variable
-          const registeredType = this.getVariableType(valueNode.name);
-          if (registeredType)
-            return registeredType;
-          // Fall back to name-based inference
-          return this.inferTypeFromName(valueNode.name);
-        }
-
-        case 'NewExpression':
-          // new ClassName() -> returns ClassName type
-          if (valueNode.callee?.type === 'Identifier') {
-            const calleeName = valueNode.callee.name;
-            // Special handling for Array constructor: new Array(size) -> Vec<u32>
-            if (calleeName === 'Array') {
-              // Try to infer element type from arguments or default to u32
-              return RustType.Vec(RustType.U32());
-            }
-            // Special handling for typed arrays
-            if (calleeName === 'Uint8Array' || calleeName === 'Int8Array') {
-              return RustType.Vec(RustType.U8());
-            }
-            if (calleeName === 'Uint16Array' || calleeName === 'Int16Array') {
-              return RustType.Vec(RustType.U16());
-            }
-            if (calleeName === 'Uint32Array' || calleeName === 'Int32Array') {
-              return RustType.Vec(RustType.U32());
-            }
-            if (calleeName === 'BigUint64Array' || calleeName === 'BigInt64Array') {
-              return RustType.Vec(RustType.U64());
-            }
-            const className = this.toPascalCase(calleeName);
-            return new RustType(className);
-          }
-          if (valueNode.callee?.type === 'MemberExpression') {
-            const className = this.toPascalCase(valueNode.callee.property?.name || 'Unknown');
-            return new RustType(className);
-          }
-          return RustType.U32();
-
-        case 'CallExpression':
-          // Check if it's a constructor-like call: ClassName.new(...)
-          if (valueNode.callee?.type === 'MemberExpression' &&
-              valueNode.callee?.property?.name === 'new') {
-            const className = this.toPascalCase(valueNode.callee.object?.name);
-            return new RustType(className);
-          }
-          // Check for format/format! calls - these return String
-          if (valueNode.callee?.type === 'Identifier' &&
-              (valueNode.callee.name === 'format' || valueNode.callee.name === 'format!')) {
-            return RustType.String();
-          }
-          // Check for methods that typically return strings
-          if (valueNode.callee?.type === 'MemberExpression') {
-            const methodName = valueNode.callee.property?.name || valueNode.callee.property?.value;
-            const objName = valueNode.callee.object?.name;
-            // String.fromCharCode returns a char
-            if ((objName === 'String' || objName === 'string') &&
-                (methodName === 'fromCharCode' || methodName === 'from_char_code')) {
-              return RustType.Char();
-            }
-            if (['toString', 'toUpperCase', 'toLowerCase', 'trim', 'slice',
-                 'substring', 'substr', 'replace', 'join'].includes(methodName)) {
-              return RustType.String();
-            }
-            // Config-like methods (getVariantConfig, getConfig, etc.) return HashMap-like objects
-            if (methodName && (methodName.toLowerCase().includes('config') ||
-                methodName.toLowerCase().includes('variant'))) {
-              return new RustType('HashMap<String, Value>');
-            }
-          }
-          // this.methodName() - try to infer from method name
-          if (valueNode.callee?.type === 'ThisMethodCall') {
-            const methodName = valueNode.callee.method;
-            if (methodName && methodName.toLowerCase().includes('config')) {
-              return new RustType('HashMap<String, Value>');
-            }
-          }
-          return RustType.U32();
-
-        case 'TemplateLiteral':
-          // Template literals always produce strings
-          return RustType.String();
-
-        case 'StringInterpolation':
-          // IL AST node for template strings
-          return RustType.String();
-
-        case 'ThisMethodCall':
-          // IL AST node: this.methodName(args)
-          if (valueNode.method) {
-            const methodName = valueNode.method;
-            const lowerMethod = methodName.toLowerCase();
-            // Methods that return arrays of words (Vec<u32>)
-            if (lowerMethod.includes('words') || lowerMethod.includes('word_array') ||
-                lowerMethod.includes('keywords'))
-              return RustType.Vec(RustType.U32());
-            // Block cipher methods return Vec<u8>
-            if (lowerMethod.includes('encrypt') || lowerMethod.includes('decrypt') ||
-                lowerMethod.includes('block') || lowerMethod.includes('process') ||
-                lowerMethod === 'result' || lowerMethod === 'feed')
-              return RustType.Vec(RustType.U8());
-            // Check registered method return types
-            const registeredType = this.methodReturnTypes.get(methodName);
-            if (registeredType) return registeredType;
-            // Config-like methods return HashMap-like objects
-            if (lowerMethod.includes('config') || lowerMethod.includes('variant'))
-              return new RustType('HashMap<String, Value>');
-            // String-returning methods
-            if (['toString', 'toUpperCase', 'toLowerCase', 'trim'].includes(methodName))
-              return RustType.String();
-          }
-          return RustType.U32();
-
-        case 'OpCodesCall': {
-          // IL AST node: OpCodes.Method(args)
-          const method = valueNode.method || valueNode.callee?.property?.name;
-          // CopyArray/CloneArray returns the same type as its argument
-          if (method === 'CopyArray' || method === 'CloneArray') {
-            const argNode = valueNode.arguments?.[0];
-            if (argNode) {
-              return this.inferTypeFromValue(argNode);
-            }
-          }
-          // XorArrays returns Vec<u8>
-          if (method === 'XorArrays') {
-            return RustType.Vec(RustType.U8());
-          }
-          // Hex8ToBytes returns Vec<u8>
-          if (method === 'Hex8ToBytes') {
-            return RustType.Vec(RustType.U8());
-          }
-          // Pack operations return u32 or similar
-          if (method && method.includes('Pack')) {
-            if (method.includes('16')) return RustType.U16();
-            if (method.includes('64')) return RustType.U64();
-            return RustType.U32();
-          }
-          // Unpack operations return Vec<u8>
-          if (method && method.includes('Unpack')) {
-            return RustType.Vec(RustType.U8());
-          }
-          // Rotation operations return the same type
-          if (method && (method.includes('Rot') || method.includes('Shr') || method.includes('Shl'))) {
-            return RustType.U32();
-          }
-          return RustType.U32();
-        }
-
-        case 'ObjectExpression':
-          // Object literal - use HashMap or a generated struct
-          return new RustType('HashMap<String, Value>');
-
-        case 'ConditionalExpression':
-          // For ternary, infer from consequent branch
-          return this.inferTypeFromValue(valueNode.consequent);
-
-        case 'LogicalExpression':
-          // For JavaScript || operator, it returns first truthy value (not boolean)
-          // So the type should be the type of the operands, not bool
-          // In JS: config[x] || config["default"] returns the config object type
-          // For &&, in JS it returns the last truthy value or first falsy value
-          if (valueNode.operator === '||' || valueNode.operator === '&&') {
-            const leftType = this.inferTypeFromValue(valueNode.left);
-            const rightType = this.inferTypeFromValue(valueNode.right);
-            // If left type is bool, this is a real boolean expression
-            if (leftType && leftType.name === 'bool')
-              return RustType.Bool();
-            // Otherwise, return the left type (for ||) as the null-coalescing result
-            if (leftType && leftType.name !== 'undefined')
-              return leftType;
-            // Fallback to right type if left is unknown
-            if (rightType && rightType.name !== 'undefined')
-              return rightType;
-          }
-          // Fallback for unknown patterns - don't default to bool, return U32
-          return RustType.U32();
-
-        case 'BinaryExpression':
-          // For binary ops like + - * / % etc.
-          // String concatenation
-          if (valueNode.operator === '+') {
-            const leftType = this.inferTypeFromValue(valueNode.left);
-            if (leftType.name === 'String') return RustType.String();
-          }
-          // Comparison ops return bool
-          if (['==', '!=', '===', '!==', '<', '>', '<=', '>='].includes(valueNode.operator)) {
-            return RustType.Bool();
-          }
-          // Arithmetic ops - infer from left
-          return this.inferTypeFromValue(valueNode.left);
-
-        case 'Cast':
-        case 'TypeConversion': {
-          // Cast/TypeConversion - return the target type
-          const targetType = valueNode.targetType || valueNode.toType || 'u32';
-          const typeMap = {
-            'int32': RustType.I32(), 'int': RustType.I32(),
-            'uint32': RustType.U32(), 'uint': RustType.U32(), 'dword': RustType.U32(),
-            'int8': RustType.I8(), 'uint8': RustType.U8(), 'byte': RustType.U8(),
-            'int16': RustType.I16(), 'uint16': RustType.U16(),
-            'int64': RustType.I64(), 'uint64': RustType.U64(),
-            'i32': RustType.I32(), 'u32': RustType.U32(),
-            'i8': RustType.I8(), 'u8': RustType.U8(),
-            'i16': RustType.I16(), 'u16': RustType.U16(),
-            'i64': RustType.I64(), 'u64': RustType.U64(),
-            'usize': RustType.Usize(), 'isize': RustType.Isize()
-          };
-          return typeMap[targetType] || RustType.U32();
-        }
-
-        case 'MemberExpression': {
-          // Handle enum variant access: CategoryType.BLOCK, SecurityStatus.SECURE, etc.
-          const frameworkEnums = ['CategoryType', 'SecurityStatus', 'ComplexityType', 'CountryCode'];
-
-          // Handle computed array indexing: return element type
-          // For arr[i] where arr is Vec<T>, return T
-          if (valueNode.computed) {
-            // Check if object is an identifier or field access
-            const objType = this.inferTypeFromValue(valueNode.object);
-            if (objType && objType.name === 'Vec' && objType.genericArguments?.[0]) {
-              // Return the element type
-              return objType.genericArguments[0];
-            }
-          }
-
-          // Direct access: CategoryType.BLOCK
-          if (valueNode.object?.type === 'Identifier') {
-            const objectName = valueNode.object.name;
-            if (frameworkEnums.includes(objectName)) {
-              return new RustType(objectName);
-            }
-            // Computed access on an identifier: configs[variant] -> HashMap value type
-            // When accessing a hash map, the result is the value type
-            if (valueNode.computed) {
-              // If the variable is known to be a HashMap, return the value type
-              const varType = this.getVariableType(objectName);
-              if (varType && varType.name.startsWith('HashMap')) {
-                // Return the value type of the HashMap
-                return new RustType('HashMap<String, Value>'); // Nested objects are also HashMaps
-              }
-              // Check variable name patterns for config-like objects
-              const lowerName = objectName.toLowerCase();
-              if (lowerName.includes('config') || lowerName === 'options' ||
-                  lowerName === 'settings' || lowerName === 'params') {
-                return new RustType('HashMap<String, Value>');
-              }
-            }
-          }
-
-          // Nested access: AlgorithmFramework.CategoryType.BLOCK
-          if (valueNode.object?.type === 'MemberExpression') {
-            const innerProp = valueNode.object.property?.name || valueNode.object.property?.value;
-            if (innerProp && frameworkEnums.includes(innerProp)) {
-              return new RustType(innerProp);
-            }
-          }
-
-          // Property access on config-like objects: config.description
-          if (valueNode.object?.type === 'Identifier') {
-            const objName = valueNode.object.name.toLowerCase();
-            if (objName.includes('config') || objName === 'options' || objName === 'settings') {
-              const propName = valueNode.property?.name || valueNode.property?.value;
-              // Infer property type based on common patterns
-              if (propName) {
-                const lowerProp = propName.toLowerCase();
-                if (lowerProp.includes('description') || lowerProp.includes('name') ||
-                    lowerProp.includes('text') || lowerProp.includes('title')) {
-                  return RustType.String();
-                }
-                if (lowerProp.includes('complexity')) {
-                  return new RustType('ComplexityType');
-                }
-                // Numbers (size, bits, etc.)
-                return RustType.U32();
-              }
-            }
-          }
-
-          return RustType.U32();
-        }
-
-        case 'ThisPropertyAccess': {
-          // this.property -> look up field type from struct field registry
-          const fieldName = this.toSnakeCase(valueNode.property);
-          const fieldType = this.structFieldTypes.get(fieldName);
-          if (fieldType) {
-            return fieldType;
-          }
-          // Fall back to name-based inference
-          return this.inferTypeFromName(valueNode.property);
-        }
-
-        // Pack operations return appropriate integer types
-        case 'Pack32LE':
-        case 'Pack32BE':
-          return RustType.U32();
-
-        case 'Pack16LE':
-        case 'Pack16BE':
-          return RustType.U16();
-
-        case 'Pack64LE':
-        case 'Pack64BE':
-          return RustType.U64();
-
-        // IL PackBytes node - determine type from bits field
-        case 'PackBytes': {
-          const bits = valueNode.bits || 32;
-          if (bits === 16) return RustType.U16();
-          if (bits === 64) return RustType.U64();
-          return RustType.U32();
-        }
-
-        default:
-          return RustType.U32();
-      }
-    }
-
-    /**
-     * Transform a function declaration
-     */
-    transformFunctionDeclaration(node, targetModule) {
-      const funcName = this.toSnakeCase(node.id.name);
-      const func = new RustFunction(funcName);
-
-      // Infer return type (default to unit)
-      func.returnType = RustType.Unit();
-
-      // Parameters
-      if (node.params) {
-        for (const param of node.params) {
-          const paramName = this.toSnakeCase(param.name);
-          const paramType = this.inferTypeFromName(param.name);
-          const rustParam = new RustParameter(paramName, paramType);
-          func.parameters.push(rustParam);
-
-          this.registerVariableType(param.name, paramType);
-        }
-      }
-
-      // Body
-      if (node.body) {
-        func.body = this.transformBlockStatement(node.body);
-      }
-
-      targetModule.items.push(func);
-    }
-
-    /**
-     * Transform a function to a method
-     */
-    transformFunctionToMethod(name, funcNode) {
-      const methodName = this.toSafeSnakeCase(name);
-      const method = new RustFunction(methodName);
-
-      // Add &self parameter for instance methods
-      method.isSelfMethod = true;
-      method.selfParameter = '&self';
-
-      // Infer return type
-      method.returnType = RustType.Unit();
-
-      // Parameters (excluding self)
-      if (funcNode.params) {
-        for (const param of funcNode.params) {
-          const paramName = this.toSnakeCase(param.name);
-          const paramType = this.inferTypeFromName(param.name);
-          const rustParam = new RustParameter(paramName, paramType);
-          method.parameters.push(rustParam);
-
-          this.registerVariableType(param.name, paramType);
-        }
-      }
-
-      // Body
-      if (funcNode.body) {
-        method.body = this.transformBlockStatement(funcNode.body);
-      }
-
-      return method;
-    }
-
-    /**
-     * Transform a class declaration to a Rust struct
-     */
-    transformClassDeclaration(node, targetModule) {
-      const className = this.toPascalCase(node.id.name);
-      const struct = new RustStruct(className);
-      struct.attributes.push(new RustAttribute('derive', ['Debug', 'Clone']));
-
-      const impl = new RustImpl(className);
-
-      const prevStruct = this.currentStruct;
-      const prevImpl = this.currentImpl;
-      this.currentStruct = struct;
-      this.currentImpl = impl;
-
-      // Handle both class body structures:
-      // - Standard: {type: 'ClassBody', body: [...]}
-      // - Unwrapped UMD: array directly
-      const members = node.body?.body || node.body || [];
-
-      // First pass: collect all fields (constructor + other methods)
-      let constructorFields = [];
-      let constructorInitStatements = [];
-      let constructorMember = null;
-      let additionalFields = [];
-
-      if (members && members.length > 0) {
-        // Find constructor and extract its fields
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.kind === 'constructor') {
-            constructorMember = member;
-            const { fields, initStatements } = this.extractFieldsFromConstructor(member);
-            constructorFields = fields;
-            constructorInitStatements = initStatements;
-            break;
-          }
-        }
-
-        // Add constructor fields to struct
-        for (const field of constructorFields) {
-          struct.fields.push(field);
-        }
-
-        // Scan all methods for additional field assignments
-        additionalFields = this.extractAdditionalFieldsFromMethods(members, constructorFields);
-        for (const field of additionalFields) {
-          struct.fields.push(field);
-        }
-      }
-
-      // Pre-scan: collect all methods called via this.method() anywhere in the class
-      // These methods need &self even if their body doesn't use 'this'
-      this.methodsCalledViaSelf = new Set();
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (member.type === 'MethodDefinition' && member.value?.body) {
-            this.collectThisMethodCalls(member.value.body);
-          }
-        }
-      }
-
-      // Second pass: transform methods
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (member.type === 'MethodDefinition') {
-            if (member.kind === 'constructor') {
-              // Create 'new' method from constructor, passing additional fields to init as None
-              const ctor = this.transformConstructor(member, constructorInitStatements, additionalFields);
-              impl.methods.push(ctor);
-            } else if (member.kind === 'get') {
-              // Getter: transform to get_property_name() method
-              const method = this.transformGetterMethod(member);
-              impl.methods.push(method);
-            } else if (member.kind === 'set') {
-              // Setter: transform to set_property_name(&mut self, value)
-              const method = this.transformSetterMethod(member);
-              impl.methods.push(method);
-            } else {
-              // Regular method
-              const method = this.transformMethodDefinition(member);
-              impl.methods.push(method);
-            }
-          } else if (member.type === 'PropertyDefinition') {
-            // Field
-            const field = this.transformPropertyDefinition(member);
-            struct.fields.push(field);
-          } else if (member.type === 'StaticBlock') {
-            // ES2022 static block -> Rust doesn't have static class blocks
-            // Transform to module-level statements or lazy_static
-            const initStatements = this.transformStaticBlock(member);
-            if (initStatements) {
-              struct.staticInitStatements = struct.staticInitStatements || [];
-              struct.staticInitStatements.push(...initStatements);
-            }
-          }
-        }
-      }
-
-      this.currentStruct = prevStruct;
-      this.currentImpl = prevImpl;
-
-      targetModule.items.push(struct);
-      if (impl.methods.length > 0) {
-        targetModule.items.push(impl);
-      }
-    }
-
-    /**
-     * Check if a statement is a this.property = value assignment
-     */
-    isThisPropertyAssignment(stmt) {
-      if (stmt.type !== 'ExpressionStatement') return false;
-      const expr = stmt.expression;
-      if (expr.type !== 'AssignmentExpression') return false;
-      // Handle both standard JS AST (MemberExpression) and IL AST (ThisPropertyAccess)
-      if (expr.left.type === 'ThisPropertyAccess') return true;
-      if (expr.left.type === 'MemberExpression' && expr.left.object?.type === 'ThisExpression') return true;
-      return false;
-    }
-
-    /**
-     * Extract fields from constructor's this.x = y assignments
-     */
-    extractFieldsFromConstructor(node) {
-      const fields = [];
-      const initStatements = [];
-
-      if (!node.value || !node.value.body || node.value.body.type !== 'BlockStatement')
-        return { fields, initStatements };
-
-      for (const stmt of node.value.body.body) {
-        if (this.isThisPropertyAssignment(stmt)) {
-          const expr = stmt.expression;
-          // Handle both MemberExpression (property.name/value) and ThisPropertyAccess (property is string)
-          const propName = expr.left.type === 'ThisPropertyAccess'
-            ? expr.left.property
-            : (expr.left.property.name || expr.left.property.value);
-          const isPrivate = propName.startsWith('_');
-
-          // Convert field name to snake_case, removing leading underscore
-          let fieldName = this.toSnakeCase(propName);
-          if (fieldName.startsWith('_'))
-            fieldName = fieldName.substring(1);
-
-          // Skip test vectors - they have mixed types (String and Vec<u8>) that don't work with HashMap
-          if (fieldName === 'tests' || fieldName === 'test_vectors') {
-            continue;
-          }
-
-          const value = expr.right;
-
-          // Infer field type from value first
-          let fieldType = this.inferTypeFromValue(value);
-
-          // For numeric values, also check if field name suggests a specific type
-          // (size/length/index/count fields should be usize, not u32)
-          // (rounds/delta/sum fields should be u32, not i32 for crypto)
-          // IMPORTANT: Only override with size-related types or u32, NOT with bool or other types
-          if (value.type === 'Literal' && typeof value.value === 'number') {
-            const nameBasedType = this.inferTypeFromName(propName);
-            // Use name-based type for: usize (sizes), and u32 when inferred i32 (crypto vars)
-            if (nameBasedType.name === 'usize' || nameBasedType.name === 'isize' ||
-                (nameBasedType.name === 'u32' && fieldType.name === 'i32'))
-              fieldType = nameBasedType;
-          }
-
-          // For empty arrays assigned to buffer/data/input fields, use Vec<u8> instead of inferred int type
-          if (value.type === 'ArrayExpression' && (!value.elements || value.elements.length === 0)) {
-            const lowerName = propName.toLowerCase();
-            if (lowerName.includes('buffer') || lowerName.includes('data') ||
-                lowerName.includes('block') || lowerName.includes('input') ||
-                lowerName.includes('output') || lowerName.includes('bytes'))
-              fieldType = RustType.Vec(RustType.U8());
-          }
-
-          // Special handling for null initializations - use Option<T>
-          if (value.type === 'Literal' && value.value === null) {
-            const lowerName = propName.toLowerCase();
-            if (lowerName.includes('buffer') || lowerName.includes('data') ||
-                lowerName.includes('block') || lowerName.includes('key') ||
-                lowerName.includes('input') || lowerName.includes('output') ||
-                lowerName.includes('bytes') || lowerName.includes('iv') ||
-                lowerName.includes('nonce'))
-              fieldType = RustType.Option(RustType.Vec(RustType.U8()));
-            else if (lowerName.includes('state') || lowerName === '_h' || lowerName === '_w' ||
-                     lowerName === '_m' || lowerName === '_s' ||
-                     // Crypto numeric arrays: sum0, sum1, keyWords, sbox, etc.
-                     lowerName.includes('sum') || lowerName.includes('words') ||
-                     lowerName.includes('sbox') || lowerName.includes('table'))
-              fieldType = RustType.Option(RustType.Vec(RustType.U32()));
-            else if (lowerName.includes('length') || lowerName.includes('count') || lowerName.includes('size'))
-              fieldType = RustType.Usize();
-            else
-              fieldType = RustType.Option(RustType.U32());
-          }
-
-          const field = new RustStructField(fieldName, fieldType);
-          field.visibility = isPrivate ? 'pub(crate)' : 'pub';
-          fields.push(field);
-          this.structFieldTypes.set(fieldName, fieldType);
-
-          initStatements.push(stmt);
-        }
-      }
-
-      return { fields, initStatements };
-    }
-
-    /**
-     * Scan all methods (non-constructor) for this.property = ... assignments
-     * that create new fields not already known from the constructor
-     */
-    extractAdditionalFieldsFromMethods(members, knownFields) {
-      const additionalFields = [];
-      const knownFieldNames = new Set(knownFields.map(f => f.name));
-
-      for (const member of members) {
-        if (member.type !== 'MethodDefinition' || member.kind === 'constructor')
-          continue;
-
-        // Scan method body for this.property = assignments
-        const body = member.value?.body;
-        if (!body || body.type !== 'BlockStatement')
-          continue;
-
-        this.scanBlockForFieldAssignments(body, knownFieldNames, additionalFields);
-      }
-
-      return additionalFields;
-    }
-
-    /**
-     * Recursively scan a block for this.property = assignments
-     */
-    scanBlockForFieldAssignments(block, knownFieldNames, additionalFields) {
-      if (!block || !block.body) return;
-
-      for (const stmt of block.body) {
-        if (this.isThisPropertyAssignment(stmt)) {
-          const expr = stmt.expression;
-          // Handle both IL AST (ThisPropertyAccess) and standard AST (MemberExpression)
-          let propertyName;
-          if (expr.left.type === 'ThisPropertyAccess') {
-            propertyName = expr.left.property;
-          } else if (expr.left.type === 'MemberExpression') {
-            propertyName = expr.left.property?.name || expr.left.property?.value;
-          }
-
-          if (!propertyName) continue;
-
-          const fieldName = this.toSnakeCase(propertyName);
-          if (knownFieldNames.has(fieldName)) continue;
-
-          // Skip None assignments - we need to find the actual value assignment
-          if (expr.right?.type === 'Literal' && expr.right?.value === null) {
-            // Mark as needing Option wrapper but don't create field yet
-            continue;
-          }
-          if (expr.right?.type === 'Identifier' && expr.right?.name === 'null') {
-            continue;
-          }
-
-          // Infer type from the assigned value
-          let fieldType = this.inferTypeFromValue(expr.right);
-
-          // Make it Option if it could be null/None based on patterns
-          const lowerName = fieldName.toLowerCase();
-          // Key/IV/Nonce fields are typically byte arrays wrapped in Option
-          if (lowerName === 'key' || lowerName.includes('_key') ||
-              lowerName === 'iv' || lowerName === 'nonce') {
-            fieldType = RustType.Option(RustType.Vec(RustType.U8()));
-          } else if (lowerName.includes('key_word') || lowerName.includes('keyword') ||
-              lowerName.includes('sum') || lowerName.includes('words') ||
-              lowerName.includes('state') || lowerName.includes('sbox') ||
-              lowerName.includes('table')) {
-            // Crypto numeric arrays - override element type to u32
-            fieldType = RustType.Option(RustType.Vec(RustType.U32()));
-          }
-
-          const isPrivate = propertyName.startsWith('_');
-          const field = new RustStructField(fieldName, fieldType);
-          field.visibility = isPrivate ? 'pub(crate)' : 'pub';
-          additionalFields.push(field);
-          knownFieldNames.add(fieldName);
-          this.structFieldTypes.set(fieldName, fieldType);
-        }
-
-        // Recursively scan nested blocks
-        if (stmt.type === 'IfStatement') {
-          if (stmt.consequent?.type === 'BlockStatement')
-            this.scanBlockForFieldAssignments(stmt.consequent, knownFieldNames, additionalFields);
-          if (stmt.alternate?.type === 'BlockStatement')
-            this.scanBlockForFieldAssignments(stmt.alternate, knownFieldNames, additionalFields);
-        } else if (stmt.type === 'WhileStatement' || stmt.type === 'ForStatement' ||
-                   stmt.type === 'ForOfStatement' || stmt.type === 'ForInStatement') {
-          if (stmt.body?.type === 'BlockStatement')
-            this.scanBlockForFieldAssignments(stmt.body, knownFieldNames, additionalFields);
-        }
-      }
-    }
-
-    /**
-     * Transform a constructor to a 'new' method
-     * @param {Object} node - Constructor node
-     * @param {Array} fieldInitStatements - Field init statements from constructor
-     * @param {Array} additionalFields - Additional fields discovered from methods that need None init
-     */
-    transformConstructor(node, fieldInitStatements = [], additionalFields = []) {
-      // Mark that we're in a constructor - this affects how this.method() is transformed
-      // In Rust new() is an associated function, not a method, so we can't use self
-      const wasInConstructor = this.inConstructor;
-      this.inConstructor = true;
-
-      const ctor = new RustFunction('new');
-      ctor.returnType = new RustType('Self');
-
-      // Parameters - skip 'algorithm' parameter which is only used for parent constructor
-      if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          // Skip the 'algorithm' parameter - it's only passed to super() which we don't support
-          if (param.name === 'algorithm') continue;
-
-          const paramName = this.toSnakeCase(param.name);
-          const paramType = this.inferTypeFromName(param.name);
-          const rustParam = new RustParameter(paramName, paramType);
-          ctor.parameters.push(rustParam);
-
-          this.registerVariableType(param.name, paramType);
-        }
-      }
-
-      // Collect field initializers for struct literal
-      const fieldInits = [];
-      const body = new RustBlock();
-
-      // Track fields that need to be extracted as local variables
-      // (fields that are accessed via this.fieldName.property before the struct is built)
-      this.constructorLocals = new Map();
-
-      // Pre-scan: identify fields that are accessed via this.X.Y pattern
-      // These need to be extracted to local variables first
-      if (node.value && node.value.body && node.value.body.type === 'BlockStatement') {
-        const stmts = node.value.body.body;
-        const fieldAssignmentOrder = [];
-
-        // First pass: collect field assignment order and find cross-references
-        for (const stmt of stmts) {
-          if (this.isThisPropertyAssignment(stmt)) {
-            const expr = stmt.expression;
-            const propName = expr.left.type === 'ThisPropertyAccess'
-              ? expr.left.property
-              : (expr.left.property.name || expr.left.property.value);
-            let fieldName = this.toSnakeCase(propName);
-            if (fieldName.startsWith('_')) fieldName = fieldName.substring(1);
-            fieldAssignmentOrder.push({ fieldName, propName, value: expr.right, stmt });
-
-            // Check if any previous field is referenced in this value expression
-            this.findThisFieldAccesses(expr.right, fieldAssignmentOrder);
-          }
-        }
-
-        // Extract fields that are accessed before struct is built
-        for (const [localName, info] of this.constructorLocals) {
-          // Find the original value expression for this field
-          const fieldInfo = fieldAssignmentOrder.find(f => f.fieldName === localName);
-          if (fieldInfo) {
-            // RustLet(pattern, type, initializer) - use null for type to let Rust infer
-            const localVar = new RustLet(localName, null, this.transformExpression(fieldInfo.value));
-            body.statements.push(localVar);
-          }
-        }
-
-        // Now process all statements
-        for (const stmt of stmts) {
-          if (this.isThisPropertyAssignment(stmt)) {
-            // Collect field initializer for struct literal
-            const expr = stmt.expression;
-            // Handle both MemberExpression (property.name/value) and ThisPropertyAccess (property is string)
-            const propName = expr.left.type === 'ThisPropertyAccess'
-              ? expr.left.property
-              : (expr.left.property.name || expr.left.property.value);
-            let fieldName = this.toSnakeCase(propName);
-            // Remove leading underscore for Rust field names (Rust uses pub(crate) instead)
-            if (fieldName.startsWith('_'))
-              fieldName = fieldName.substring(1);
-            // Skip test vectors - they have mixed types that don't work in Rust
-            if (fieldName === 'tests' || fieldName === 'test_vectors') {
-              continue;
-            }
-
-            let value;
-            // If this field was extracted to a local, use the local variable
-            if (this.constructorLocals.has(fieldName)) {
-              value = new RustIdentifier(fieldName);
-            } else {
-              value = this.transformExpression(expr.right);
-            }
-
-            // If we know the field type and it's a literal, ensure the type suffix is correct
-            const expectedType = this.structFieldTypes.get(fieldName);
-            if (expectedType && value && value.nodeType === 'Literal' && typeof value.value === 'number') {
-              const targetType = expectedType.name;
-              // Coerce numeric literals to match expected field type
-              if (targetType === 'usize' && value.suffix !== 'usize')
-                value = RustLiteral.UInt(value.value, 'usize');
-              else if (targetType === 'i32' && value.suffix !== 'i32')
-                value = RustLiteral.UInt(value.value, 'i32');
-              else if (targetType === 'i64' && value.suffix !== 'i64')
-                value = RustLiteral.UInt(value.value, 'i64');
-              else if (targetType === 'u8' && value.suffix !== 'u8')
-                value = RustLiteral.UInt(value.value, 'u8');
-              else if (targetType === 'u16' && value.suffix !== 'u16')
-                value = RustLiteral.UInt(value.value, 'u16');
-              else if (targetType === 'u64' && value.suffix !== 'u64')
-                value = RustLiteral.UInt(value.value, 'u64');
-            }
-
-            // Handle Vec field initialization - coerce element types
-            // Check various locations for the Vec element type
-            let vecElemType = null;
-            if (expectedType?.elementType?.name)
-              vecElemType = expectedType.elementType.name;
-            else if (expectedType?.generic?.name)
-              vecElemType = expectedType.generic.name;
-            else if (expectedType?.isVec && expectedType?.genericArguments?.[0]?.name)
-              vecElemType = expectedType.genericArguments[0].name;
-
-            // Handle both MacroCall (vec!) and VecMacro AST nodes
-            const isVecValue = value && ((value.nodeType === 'MacroCall' && value.name === 'vec') ||
-                               value.nodeType === 'VecMacro');
-
-            if (vecElemType && isVecValue) {
-              const intTypes = ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'usize', 'isize'];
-              // Access elements from either .args or .elements
-              const elements = value.args || value.elements;
-              if (intTypes.includes(vecElemType) && elements) {
-                // Coerce all numeric literal elements in the vec to the expected element type
-                const newElements = elements.map(arg => {
-                  if (arg.nodeType === 'Literal' && typeof arg.value === 'number') {
-                    return RustLiteral.UInt(arg.value, vecElemType);
-                  }
-                  return arg;
-                });
-                // Update the correct property
-                if (value.args) value.args = newElements;
-                else if (value.elements) value.elements = newElements;
-              }
-            }
-
-            fieldInits.push({ name: fieldName, value });
-          } else {
-            // Transform other statements
-            const rustStmt = this.transformStatement(stmt);
-            if (rustStmt) {
-              if (Array.isArray(rustStmt))
-                body.statements.push(...rustStmt);
-              else
-                body.statements.push(rustStmt);
-            }
-          }
-        }
-      }
-
-      // Clear constructor locals
-      this.constructorLocals = null;
-
-      // Add initializers for additional fields discovered from methods
-      for (const field of additionalFields) {
-        let value;
-        // Option types get None, Vec types get vec![]
-        if (field.type?.name === 'Option')
-          value = new RustIdentifier('None');
-        else if (field.type?.name === 'Vec')
-          value = new RustMacroCall('vec', []);
-        else
-          value = new RustIdentifier('None');
-        fieldInits.push({ name: field.name, value });
-      }
-
-      // Create Self { field: value, ... } struct literal as return expression
-      const structLiteral = new RustStructLiteral('Self', fieldInits);
-      body.statements.push(new RustReturn(structLiteral));
-
-      ctor.body = body;
-
-      // Restore constructor flag
-      this.inConstructor = wasInConstructor;
-
-      return ctor;
-    }
-
-    /**
-     * Find accesses to this.field.property patterns in an expression
-     * Marks the 'field' as needing extraction to a local variable
-     */
-    findThisFieldAccesses(node, fieldAssignmentOrder) {
-      if (!node || typeof node !== 'object') return;
-
-      // Check for MemberExpression with ThisPropertyAccess as object
-      // Pattern: this.config.description -> MemberExpression(ThisPropertyAccess(config), description)
-      if (node.type === 'MemberExpression' &&
-          node.object?.type === 'ThisPropertyAccess') {
-        const fieldName = this.toSnakeCase(node.object.property);
-        const cleanName = fieldName.startsWith('_') ? fieldName.substring(1) : fieldName;
-        // Check if this field was already assigned
-        const alreadyAssigned = fieldAssignmentOrder.some(f => f.fieldName === cleanName);
-        if (alreadyAssigned) {
-          this.constructorLocals.set(cleanName, true);
-        }
-      }
-
-      // Check for MemberExpression with MemberExpression(ThisExpression) as object
-      // Pattern: this.config.description (traditional JS AST)
-      if (node.type === 'MemberExpression' &&
-          node.object?.type === 'MemberExpression' &&
-          node.object?.object?.type === 'ThisExpression') {
-        const fieldName = this.toSnakeCase(node.object.property?.name || node.object.property);
-        const cleanName = fieldName.startsWith('_') ? fieldName.substring(1) : fieldName;
-        const alreadyAssigned = fieldAssignmentOrder.some(f => f.fieldName === cleanName);
-        if (alreadyAssigned) {
-          this.constructorLocals.set(cleanName, true);
-        }
-      }
-
-      // Recurse into child nodes
-      for (const key in node) {
-        if (key === 'type' || key === 'loc' || key === 'start' || key === 'end') continue;
-        const value = node[key];
-        if (Array.isArray(value)) {
-          for (const child of value) {
-            this.findThisFieldAccesses(child, fieldAssignmentOrder);
-          }
-        } else if (value && typeof value === 'object') {
-          this.findThisFieldAccesses(value, fieldAssignmentOrder);
-        }
-      }
-    }
-
-    /**
-     * Check if a method body accesses 'this' at all (needs &self or &mut self)
-     * Methods that don't access this can be associated functions
-     */
-    methodAccessesThis(bodyNode) {
-      if (!bodyNode) return false;
-
-      const check = (node) => {
-        if (!node || typeof node !== 'object') return false;
-
-        // Check for any this access
-        if (node.type === 'ThisExpression' ||
-            node.type === 'ThisPropertyAccess' ||
-            node.type === 'ThisMethodCall') {
-          return true;
-        }
-
-        // Check MemberExpression with this
-        if (node.type === 'MemberExpression' &&
-            node.object?.type === 'ThisExpression') {
-          return true;
-        }
-
-        // Recursively check all child nodes
-        for (const key in node) {
-          if (key === 'type') continue;
-          const value = node[key];
-          if (Array.isArray(value)) {
-            if (value.some(check)) return true;
-          } else if (value && typeof value === 'object') {
-            if (check(value)) return true;
-          }
-        }
-        return false;
-      };
-
-      return check(bodyNode);
-    }
-
-    /**
-     * Collect all method names called via this.method() in a body
-     * Adds them to this.methodsCalledViaSelf set
-     */
-    collectThisMethodCalls(bodyNode) {
-      if (!bodyNode) return;
-
-      const collect = (node) => {
-        if (!node || typeof node !== 'object') return;
-
-        // Check for ThisMethodCall
-        if (node.type === 'ThisMethodCall' && node.method) {
-          this.methodsCalledViaSelf.add(node.method);
-        }
-
-        // Also check for CallExpression with this.method pattern
-        if (node.type === 'CallExpression' &&
-            node.callee?.type === 'MemberExpression' &&
-            node.callee?.object?.type === 'ThisExpression' &&
-            node.callee?.property?.name) {
-          this.methodsCalledViaSelf.add(node.callee.property.name);
-        }
-
-        // Recursively check all child nodes
-        for (const key in node) {
-          if (key === 'type') continue;
-          const value = node[key];
-          if (Array.isArray(value)) {
-            value.forEach(collect);
-          } else if (value && typeof value === 'object') {
-            collect(value);
-          }
-        }
-      };
-
-      collect(bodyNode);
-    }
-
-    /**
-     * Check if a method body modifies 'this' (needs &mut self)
-     */
-    methodModifiesThis(bodyNode) {
-      if (!bodyNode) return false;
-
-      const check = (node) => {
-        if (!node || typeof node !== 'object') return false;
-
-        // Check for this.x = y assignments (IL AST uses ThisPropertyAccess)
-        if (node.type === 'AssignmentExpression') {
-          // Standard MemberExpression with ThisExpression
-          if (node.left?.type === 'MemberExpression' &&
-              node.left?.object?.type === 'ThisExpression') {
-            return true;
-          }
-          // IL AST uses ThisPropertyAccess for this.property
-          if (node.left?.type === 'ThisPropertyAccess') {
-            return true;
-          }
-        }
-
-        // Check for ArrayAppend/method calls that modify this properties
-        if (node.type === 'ArrayAppend' || node.type === 'ArrayPop' ||
-            node.type === 'ArrayShift' || node.type === 'ArrayUnshift') {
-          // Check if the array is a this.property
-          if (node.array?.type === 'ThisPropertyAccess' ||
-              (node.array?.type === 'MemberExpression' &&
-               node.array?.object?.type === 'ThisExpression')) {
-            return true;
-          }
-        }
-
-        // Check for method calls on this that might mutate (push, extend, etc.)
-        if (node.type === 'CallExpression' &&
-            node.callee?.type === 'MemberExpression' &&
-            node.callee?.object?.type === 'ThisPropertyAccess') {
-          const method = node.callee?.property?.name;
-          if (['push', 'pop', 'extend', 'clear', 'splice', 'fill'].includes(method)) {
-            return true;
-          }
-        }
-
-        // Recursively check all child nodes
-        for (const key in node) {
-          if (key === 'type') continue;
-          const value = node[key];
-          if (Array.isArray(value)) {
-            if (value.some(check)) return true;
-          } else if (value && typeof value === 'object') {
-            if (check(value)) return true;
-          }
-        }
-        return false;
-      };
-
-      return check(bodyNode);
-    }
-
-    /**
-     * Transform a method definition
-     */
-    transformMethodDefinition(node) {
-      const methodName = this.toSafeSnakeCase(node.key.name);
-      const method = new RustFunction(methodName);
-
-      // Determine self parameter type
-      // If method doesn't access 'this' at all, make it an associated function (no self)
-      // UNLESS it's called via this.method() elsewhere in the class
-      const accessesThis = this.methodAccessesThis(node.value?.body);
-      const isCalledViaSelf = this.methodsCalledViaSelf?.has(node.key.name);
-      method.isSelfMethod = !node.static && (accessesThis || isCalledViaSelf);
-      if (method.isSelfMethod) {
-        // Check if method modifies this -> use &mut self, otherwise &self
-        const modifiesThis = this.methodModifiesThis(node.value?.body);
-        method.selfParameter = modifiesThis ? '&mut self' : '&self';
-      } else {
-        method.selfParameter = null;
-      }
-
-      // Pre-scan variable declarations to register types before return type inference
-      if (node.value && node.value.body) {
-        this.preScanVariableDeclarations(node.value.body);
-      }
-
-      // Infer return type from body
-      method.returnType = RustType.Unit();
-      if (node.value && node.value.body) {
-        const hasReturn = this.hasReturnWithValue(node.value.body);
-        if (hasReturn) {
-          const lowerName = methodName.toLowerCase();
-          // Methods returning word arrays (Vec<u32>) - check first before encrypt/decrypt
-          if (lowerName.includes('words') || lowerName.includes('word_array') ||
-              lowerName.includes('key_words')) {
-            method.returnType = RustType.Vec(RustType.U32());
-          }
-          // Special handling for block cipher methods - they return Vec<u8>
-          else if (lowerName.includes('encrypt') || lowerName.includes('decrypt') ||
-              lowerName === 'result' || lowerName.includes('block') ||
-              lowerName.includes('process') || lowerName === 'feed') {
-            method.returnType = RustType.Vec(RustType.U8());
-          } else {
-            // Try to infer return type
-            const returnType = this.inferReturnType(node.value.body);
-            if (returnType)
-              method.returnType = returnType;
-          }
-        }
-      }
-
-      // Parameters
-      if (node.value && node.value.params) {
-        // Check if method name suggests it works with word arrays
-        const lowerMethodName = methodName.toLowerCase();
-        const isWordMethod = lowerMethodName.includes('words') || lowerMethodName.includes('word_array');
-        // Check if this is an internal helper that might use u32 parameters
-        const isInternalHelper = lowerMethodName.startsWith('_') ||
-                                  lowerMethodName.includes('calculate') ||
-                                  lowerMethodName.includes('mx');
-
-        for (const param of node.value.params) {
-          const paramName = this.toSnakeCase(param.name);
-          let paramType;
-
-          // For methods working with words, single-letter params are typically Vec<u32>
-          if (isWordMethod && param.name.length === 1 && /[a-z]/i.test(param.name)) {
-            paramType = RustType.Vec(RustType.U32());
-          }
-          // For internal helper methods, 'key' is often a single u32 (word from key array)
-          // not the full key byte array
-          else if (isInternalHelper && param.name.toLowerCase() === 'key') {
-            paramType = RustType.U32();
-          } else {
-            paramType = this.inferTypeFromName(param.name);
-          }
-
-          const rustParam = new RustParameter(paramName, paramType);
-          method.parameters.push(rustParam);
-
-          this.registerVariableType(param.name, paramType);
-        }
-      }
-
-      // Body
-      if (node.value && node.value.body) {
-        // Track return type for Some() wrapping in return statements
-        const savedReturnType = this.currentMethodReturnType;
-        this.currentMethodReturnType = method.returnType;
-        method.body = this.transformBlockStatement(node.value.body);
-        this.currentMethodReturnType = savedReturnType;
-      }
-
-      return method;
-    }
-
-    /**
-     * Transform a getter method definition
-     * JavaScript: get key() { return this._key; }
-     * Rust:       pub fn key(&self) -> Option<Vec<u8>> { self._key.clone() }
-     */
-    transformGetterMethod(node) {
-      const propertyName = this.toSafeSnakeCase(node.key.name);
-      const method = new RustFunction(propertyName);
-
-      // Getters always use &self (non-mutating)
-      method.isSelfMethod = !node.static;
-      method.selfParameter = node.static ? null : '&self';
-
-      // Check if this is an Option field getter (common pattern: return this._x ? [...this._x] : null)
-      const lowerName = propertyName.toLowerCase();
-      const fieldType = this.structFieldTypes.get(propertyName) || this.structFieldTypes.get('_' + propertyName);
-      const isOptionField = (fieldType && fieldType.name === 'Option') ||
-        lowerName === 'key' || lowerName.includes('buffer');
-
-      // Return type from annotation or inference
-      if (isOptionField) {
-        // Option fields should return Option<Vec<u8>> clone
-        method.returnType = RustType.Option(RustType.Vec(RustType.U8()));
-        // Simplified body: just clone the Option field
-        const body = new RustBlock();
-        body.statements = [
-          new RustReturn(
-            new RustMethodCall(
-              new RustFieldAccess(new RustIdentifier('self'), propertyName),
-              'clone',
-              []
-            )
-          )
-        ];
-        method.body = body;
-      } else if (node.value && node.value.returnType) {
-        method.returnType = this.mapType(node.value.returnType);
-        if (node.value && node.value.body) {
-          const savedReturnType = this.currentMethodReturnType;
-          this.currentMethodReturnType = method.returnType;
-          method.body = this.transformBlockStatement(node.value.body);
-          this.currentMethodReturnType = savedReturnType;
-        }
-      } else if (node.value && node.value.body) {
-        const returnType = this.inferReturnType(node.value.body);
-        method.returnType = returnType || RustType.U32();
-        const savedReturnType = this.currentMethodReturnType;
-        this.currentMethodReturnType = method.returnType;
-        method.body = this.transformBlockStatement(node.value.body);
-        this.currentMethodReturnType = savedReturnType;
-      } else {
-        // Infer from property name
-        method.returnType = this.inferTypeFromName(node.key.name) || RustType.U32();
-      }
-
-      return method;
-    }
-
-    /**
-     * Transform a setter method definition
-     * JavaScript: set key(value) { this._key = value; }
-     * Rust:       pub fn set_key(&mut self, value: Option<Vec<u8>>) { self._key = value; }
-     */
-    transformSetterMethod(node) {
-      const propertyName = this.toSafeSnakeCase(node.key?.name || 'value');
-      const methodName = 'set_' + propertyName;
-      const method = new RustFunction(methodName);
-
-      // Setters always use &mut self (mutating)
-      method.isSelfMethod = !node.static;
-      method.selfParameter = node.static ? null : '&mut self';
-
-      // Setters return unit type
-      method.returnType = RustType.Unit();
-
-      // Parameters (setter has one parameter)
-      if (node.value && node.value.params && node.value.params.length > 0) {
-        for (const param of node.value.params) {
-          const paramName = this.toSnakeCase(param.name);
-          let paramType = null;
-
-          if (param.typeAnnotation) {
-            paramType = this.mapType(param.typeAnnotation);
-          } else {
-            // Infer from parameter name or property name
-            paramType = this.inferTypeFromName(param.name) ||
-                        this.inferTypeFromName(node.key?.name) ||
-                        RustType.U32();
-          }
-
-          const rustParam = new RustParameter(paramName, paramType);
-          method.parameters.push(rustParam);
-
-          this.registerVariableType(param.name, paramType);
-        }
-      }
-
-      // Body
-      if (node.value && node.value.body) {
-        method.body = this.transformBlockStatement(node.value.body);
-      }
-
-      return method;
-    }
-
-    /**
-     * Check if body has return statement with value
-     */
-    hasReturnWithValue(bodyNode) {
-      if (!bodyNode) return false;
-
-      const check = (node) => {
-        if (!node) return false;
-        if (node.type === 'ReturnStatement' && node.argument) return true;
-
-        for (const key in node) {
-          if (key === 'type') continue;
-          const value = node[key];
-          if (Array.isArray(value)) {
-            if (value.some(check)) return true;
-          } else if (value && typeof value === 'object') {
-            if (check(value)) return true;
-          }
-        }
-        return false;
-      };
-
-      return check(bodyNode);
-    }
-
-    /**
-     * Infer return type from return statements
-     * Returns { type: RustType, isOption: boolean } to track nullable returns
-     */
-    inferReturnType(bodyNode) {
-      if (!bodyNode) return null;
-
-      const returnTypes = [];
-      let hasNullReturn = false;
-
-      const collect = (node) => {
-        if (!node) return;
-        if (node.type === 'ReturnStatement') {
-          if (!node.argument ||
-              (node.argument.type === 'Literal' &&
-               (node.argument.value === null || node.argument.value === undefined))) {
-            // Return null/undefined detected
-            hasNullReturn = true;
-          } else {
-            returnTypes.push(this.inferTypeFromValue(node.argument));
-          }
-        }
-
-        for (const key in node) {
-          if (key === 'type') continue;
-          const value = node[key];
-          if (Array.isArray(value)) {
-            value.forEach(collect);
-          } else if (value && typeof value === 'object') {
-            collect(value);
-          }
-        }
-      };
-
-      collect(bodyNode);
-
-      if (returnTypes.length === 0 && !hasNullReturn) return null;
-
-      // Find a non-null type to use
-      let retType = returnTypes.find(t => t !== null) || RustType.U32();
-
-      // Convert slice types to Vec for return types - you can't return a reference to local data
-      if (retType && retType.isSlice) {
-        const innerType = retType.genericArguments?.[0] || RustType.U8();
-        retType = RustType.Vec(innerType);
-      }
-
-      // If any return is null, wrap in Option<T>
-      if (hasNullReturn) {
-        retType = RustType.Option(retType);
-        retType.isOptionReturn = true;  // Mark for return transformation
-      }
-
-      return retType;
-    }
-
-    /**
-     * Pre-scan a method body to register variable types before return type inference.
-     * This allows inferTypeFromValue to look up variable types for identifiers.
-     */
-    preScanVariableDeclarations(bodyNode) {
-      if (!bodyNode) return;
-
-      const scan = (node) => {
-        if (!node) return;
-
-        if (node.type === 'VariableDeclaration') {
-          for (const decl of node.declarations || []) {
-            if (decl.id?.type === 'Identifier' && decl.id.name) {
-              // Infer type from initializer value
-              let varType = null;
-              if (decl.init) {
-                // First check IL node's resultType
-                if (decl.init.resultType) {
-                  varType = this.getTypeFromILNode(decl.init);
-                }
-                // Fallback to value-based inference
-                if (!varType) {
-                  varType = this.inferTypeFromValue(decl.init);
-                }
-              }
-              // Fallback to name-based inference
-              if (!varType) {
-                varType = this.inferTypeFromName(decl.id.name);
-              }
-              // Apply word array type correction: Vec<i32> -> Vec<u32> for crypto word arrays
-              if (varType && varType.name === 'Vec' && varType.genericArguments?.[0]) {
-                const elemType = varType.genericArguments[0].name;
-                const lowerName = decl.id.name.toLowerCase();
-                if (lowerName.includes('words') || lowerName.includes('word_array') ||
-                    lowerName === 'sbox' || lowerName.includes('sbox') ||
-                    lowerName.includes('sum0') || lowerName.includes('sum1')) {
-                  if (elemType !== 'u32') {
-                    varType = RustType.Vec(RustType.U32());
-                  }
-                }
-              }
-              if (varType) {
-                this.registerVariableType(decl.id.name, varType);
-              }
-            }
-          }
-        }
-
-        // Recurse into child nodes
-        for (const key in node) {
-          if (key === 'type') continue;
-          const value = node[key];
-          if (Array.isArray(value)) {
-            value.forEach(scan);
-          } else if (value && typeof value === 'object') {
-            scan(value);
-          }
-        }
-      };
-
-      scan(bodyNode);
-    }
-
-    /**
-     * Transform a property definition
-     */
-    transformPropertyDefinition(node) {
-      const fieldName = this.toSnakeCase(node.key.name);
-      let fieldType = RustType.U32();
-
-      if (node.value) {
-        fieldType = this.inferTypeFromValue(node.value);
-      }
-
-      const field = new RustStructField(fieldName, fieldType);
-      this.structFieldTypes.set(fieldName, fieldType);
-
-      return field;
-    }
-
-    transformStaticBlock(node) {
-      // ES2022 static block -> Rust module-level statements or lazy_static
-      // Rust doesn't have static class blocks, so transform to statements
-      // Handle both array body and object with body property
-      const statements = Array.isArray(node.body) ? node.body :
-                         (node.body?.body && Array.isArray(node.body.body)) ? node.body.body : [];
-      return statements.map(stmt => this.transformStatement(stmt));
-    }
-
-    transformClassExpression(node) {
-      // ClassExpression -> Rust struct with impl block
-      const structName = node.id?.name || 'AnonymousStruct';
-      const structDecl = new RustStruct(structName);
-
-      if (node.body?.body) {
-        for (const member of node.body.body) {
-          if (member.type === 'PropertyDefinition') {
-            const field = new RustField(
-              this.toSnakeCase(member.key.name),
-              this.inferRustType(member.value)
-            );
-            structDecl.fields.push(field);
-          }
-        }
-      }
-
-      return structDecl;
-    }
-
-    transformYieldExpression(node) {
-      // Rust doesn't have yield directly - use Iterator pattern
-      // For async, would need async-stream crate
-      const argument = node.argument ? this.transformExpression(node.argument) : new RustIdentifier('()');
-      return argument; // Return the value directly for now
-    }
-
-    /**
-     * Transform a block statement
-     */
-    transformBlockStatement(node) {
-      const block = new RustBlock();
-
-      if (node.body && Array.isArray(node.body)) {
-        for (let i = 0; i < node.body.length; i++) {
-          const stmt = node.body[i];
-          const isLast = i === node.body.length - 1;
-
-          const rustStmt = this.transformStatement(stmt);
-          if (rustStmt) {
-            if (Array.isArray(rustStmt)) {
-              block.statements.push(...rustStmt);
-            } else {
-              block.statements.push(rustStmt);
-            }
-          }
-
-          // Check if last statement is a return-like expression
-          if (isLast && stmt.type === 'ReturnStatement' && stmt.argument) {
-            block.hasTrailingExpression = true;
-          }
-        }
-      }
-
-      return block;
-    }
-
-    /**
-     * Transform a statement
-     */
-    transformStatement(node) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'VariableDeclaration':
-          return this.transformLetStatement(node);
-
-        case 'ExpressionStatement':
-          return this.transformExpressionStatementNode(node);
-
-        case 'ReturnStatement':
-          return this.transformReturnStatement(node);
-
-        case 'IfStatement':
-          return this.transformIfStatement(node);
-
-        case 'ForStatement':
-          return this.transformForStatement(node);
-
-        case 'ForOfStatement':
-          return this.transformForOfStatement(node);
-
-        case 'ForInStatement':
-          return this.transformForInStatement(node);
-
-        case 'WhileStatement':
-          return this.transformWhileStatement(node);
-
-        case 'DoWhileStatement':
-          return this.transformDoWhileStatement(node);
-
-        case 'SwitchStatement':
-          return this.transformSwitchStatement(node);
-
-        case 'TryStatement':
-          return this.transformTryStatement(node);
-
-        case 'ThrowStatement':
-          return this.transformThrowStatement(node);
-
-        case 'BlockStatement':
-          return this.transformBlockStatement(node);
-
-        case 'BreakStatement':
-          return new RustBreak();
-
-        case 'ContinueStatement':
-          return new RustContinue();
-
-        default:
-          return null;
-      }
-    }
-
-    /**
-     * Transform a do-while statement to Rust loop with break
-     */
-    transformDoWhileStatement(node) {
-      // Rust doesn't have do-while, use loop { ... if !condition { break; } }
-      const body = this.transformStatement(node.body) || new RustBlock();
-      const bodyBlock = body.nodeType === 'Block' ? body : this.wrapInBlock(body);
-
-      // Add condition check at end
-      const condition = this.transformExpression(node.test);
-      const negatedCondition = new RustUnaryExpression('!', condition);
-      const breakIf = new RustIf(negatedCondition, new RustBlock([new RustBreak()]), null);
-      bodyBlock.statements.push(breakIf);
-
-      return new RustLoop(bodyBlock);
-    }
-
-    /**
-     * Transform a switch statement to Rust match expression
-     */
-    transformSwitchStatement(node) {
-      const discriminant = this.transformExpression(node.discriminant);
-      const match = new RustMatch(discriminant);
-
-      for (const caseNode of node.cases) {
-        const pattern = caseNode.test ? this.transformExpression(caseNode.test) : new RustIdentifier('_');
-        const armBody = new RustBlock();
-
-        // Transform case body
-        for (const stmt of caseNode.consequent) {
-          const rustStmt = this.transformStatement(stmt);
-          if (rustStmt) {
-            if (Array.isArray(rustStmt)) {
-              armBody.statements.push(...rustStmt);
-            } else {
-              armBody.statements.push(rustStmt);
-            }
-          }
-        }
-
-        const arm = new RustMatchArm(pattern, armBody);
-        match.arms.push(arm);
-      }
-
-      return match;
-    }
-
-    /**
-     * Transform a try-catch statement
-     */
-    transformTryStatement(node) {
-      // Rust uses Result<T, E> pattern, not try-catch
-      // For simplicity, wrap in a closure that returns Result
-      const tryBlock = this.transformStatement(node.block);
-
-      if (node.handler) {
-        // Add comment explaining Rust error handling
-        const comment = new RustDocComment('Error handling: Rust uses Result<T, E> instead of try-catch', true);
-        return comment;
-      }
-
-      return tryBlock;
-    }
-
-    /**
-     * Transform a throw statement
-     * JavaScript: throw new Error("message") -> Rust: panic!("message")
-     */
-    transformThrowStatement(node) {
-      // Handle throw new Error("message") specially
-      if (node.argument?.type === 'NewExpression') {
-        const callee = node.argument.callee;
-        const calleeName = callee?.name || callee?.property?.name;
-        if (calleeName === 'Error' || calleeName === 'TypeError' || calleeName === 'RangeError') {
-          // Extract error message from first argument
-          const msgArg = node.argument.arguments?.[0];
-          if (msgArg) {
-            if (msgArg.type === 'Literal' || msgArg.type === 'StringLiteral') {
-              return new RustMacroCall('panic!', new RustLiteral(String(msgArg.value), 'str'));
-            }
-            if (msgArg.type === 'TemplateLiteral') {
-              // Handle template literals - convert to format string
-              const parts = [];
-              for (let i = 0; i < msgArg.quasis.length; ++i) {
-                parts.push(msgArg.quasis[i].value.cooked || msgArg.quasis[i].value.raw);
-                if (i < msgArg.expressions.length) {
-                  parts.push('{}');
-                }
-              }
-              const formatStr = parts.join('');
-              const formatArgs = msgArg.expressions.map(e => this.transformExpression(e));
-              return new RustMacroCall('panic!', [new RustLiteral(formatStr, 'str'), ...formatArgs]);
-            }
-            // Other expression - transform it
-            const msgExpr = this.transformExpression(msgArg);
-            if (msgExpr) {
-              return new RustMacroCall('panic!', [new RustLiteral("{}", 'str'), msgExpr]);
-            }
-          }
-          return new RustMacroCall('panic!', new RustLiteral("Error", 'str'));
-        }
-      }
-
-      // Generic throw expression
-      const expr = node.argument ? this.transformExpression(node.argument) : null;
-      if (!expr) {
-        return new RustMacroCall('panic!', new RustLiteral("error", 'str'));
-      }
-      return new RustMacroCall('panic!', [new RustLiteral("{:?}", 'str'), expr]);
-    }
-
-    /**
-     * Transform a let statement
-     */
-    transformLetStatement(node) {
-      const statements = [];
-
-      for (const decl of node.declarations) {
-        // Handle array destructuring: const [a, b, c] = arr;
-        if (decl.id.type === 'ArrayPattern') {
-          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
-          if (sourceExpr) {
-            for (let i = 0; i < decl.id.elements.length; ++i) {
-              const elem = decl.id.elements[i];
-              if (!elem) continue; // Skip holes in destructuring
-
-              const varName = this.toSnakeCase(elem.name);
-              const indexExpr = new RustIndexExpression(sourceExpr, RustLiteral.UInt(i, 'usize'));
-              const letStmt = new RustLet(varName, new RustType('_'), indexExpr);
-              letStmt.isMutable = node.kind !== 'const';
-              this.registerVariableType(elem.name, new RustType('_'));
-              statements.push(letStmt);
-            }
-          }
-          continue;
-        }
-
-        const varName = this.toSnakeCase(decl.id.name);
-        let varType = null;
-        let initializer = null;
-
-        if (decl.init) {
-          initializer = this.transformExpression(decl.init);
-          varType = this.inferTypeFromValue(decl.init);
-
-          // If value-based inference returned a simple integer type, check if name suggests different type
-          // This helps with loop counters like 'i', 'n' which should be usize for array indexing
-          // and crypto vars like 'sum', 'j' which should be u32 not i32
-          // BUT don't override when the initializer is a method call or array access (trust return/element type)
-          const isMethodCall = decl.init.type === 'CallExpression' ||
-                               decl.init.type === 'ThisMethodCall' ||
-                               (decl.init.type === 'MemberExpression' && decl.init.computed === false);
-          const isArrayAccess = decl.init.type === 'MemberExpression' && decl.init.computed === true;
-          const isSimpleInt = varType && ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'].includes(varType.name);
-          if (isSimpleInt && !isMethodCall && !isArrayAccess) {
-            let nameBasedType = this.inferTypeFromName(decl.id.name);
-            // For local variables, convert slice types to Vec (we need owned data)
-            if (nameBasedType.isSlice) {
-              nameBasedType = RustType.Vec(RustType.U8()); // Convert slice to owned Vec
-            }
-            // Use name-based type for: usize (loop counters), and u32 when IL says i32 (crypto vars)
-            if (nameBasedType.name === 'usize' || nameBasedType.name === 'isize' ||
-                (nameBasedType.name === 'u32' && varType.name === 'i32')) {
-              const origVarType = varType;
-              varType = nameBasedType;
-              // Also update the initializer suffix or cast if needed
-              if (initializer && initializer.nodeType === 'Literal') {
-                initializer = RustLiteral.UInt(initializer.value, nameBasedType.name);
-              } else if (initializer && nameBasedType.name !== origVarType.name) {
-                // For non-literal expressions, wrap in a cast to the target type
-                initializer = new RustCast(initializer, nameBasedType);
-              }
-            }
-          }
-
-          // For Vec types, check if the variable name suggests byte data and override element type
-          // This handles cases where IL AST gives Vec<i32> but name is 'output', 'buffer', etc.
-          if (varType && varType.name === 'Vec' && varType.genericArguments?.[0]) {
-            const elemType = varType.genericArguments[0].name;
-            const lowerName = decl.id.name.toLowerCase();
-            // Check for word array names first (Vec<u32>)
-            if (lowerName.includes('words') || lowerName.includes('word_array') ||
-                lowerName === 'sbox' || lowerName.includes('sbox') ||
-                lowerName.includes('sum0') || lowerName.includes('sum1')) {
-              if (elemType !== 'u32') {
-                varType = RustType.Vec(RustType.U32());
-              }
-            }
-            // Then check for byte data names (Vec<u8>)
-            else if (elemType !== 'u8') {
-              if (lowerName.includes('output') || lowerName.includes('buffer') ||
-                  lowerName.includes('block') || lowerName.includes('data') ||
-                  lowerName.includes('bytes') || lowerName.includes('input') ||
-                  lowerName.includes('result') || lowerName.includes('state')) {
-                varType = RustType.Vec(RustType.U8());
-              }
-            }
-          }
-
-          // Coerce literal initializers to match the declared variable type
-          if (initializer && initializer.nodeType === 'Literal' && typeof initializer.value === 'number') {
-            const targetType = varType.name;
-            if (targetType === 'i32' && initializer.suffix !== 'i32')
-              initializer = RustLiteral.UInt(initializer.value, 'i32');
-            else if (targetType === 'i64' && initializer.suffix !== 'i64')
-              initializer = RustLiteral.UInt(initializer.value, 'i64');
-            else if (targetType === 'u32' && initializer.suffix !== 'u32')
-              initializer = RustLiteral.UInt(initializer.value, 'u32');
-            else if (targetType === 'u64' && initializer.suffix !== 'u64')
-              initializer = RustLiteral.UInt(initializer.value, 'u64');
-            else if (targetType === 'usize' && initializer.suffix !== 'usize')
-              initializer = RustLiteral.UInt(initializer.value, 'usize');
-          }
-
-          // For loop counters initialized with expressions returning u32, cast to usize
-          // e.g., let i = this.cycles - 1 generates self.cycles.wrapping_sub(1u32) which is u32
-          // We need to cast to usize for array indexing
-          const isBinaryExpr = decl.init.type === 'BinaryExpression';
-          if (isMethodCall || isArrayAccess || isBinaryExpr) {
-            const lowerName = decl.id.name.toLowerCase();
-            const isLoopCounter = lowerName === 'i' || lowerName === 'n' || lowerName === 'idx' ||
-                                  lowerName === 'index' || lowerName === 'offset' || lowerName === 'pos' ||
-                                  lowerName === 'p' || lowerName === 'j';
-            // Check if name-based type is usize but value type is u32
-            if (isLoopCounter && (varType.name === 'u32' || varType.name === 'i32')) {
-              // Override type to usize and wrap initializer in a cast
-              varType = RustType.Usize();
-              initializer = new RustCast(initializer, RustType.Usize());
-            }
-          }
-        } else {
-          let nameBasedType = this.inferTypeFromName(decl.id.name);
-          // For local variables, convert slice types to Vec
-          if (nameBasedType.isSlice) {
-            nameBasedType = RustType.Vec(RustType.U8());
-          }
-          varType = nameBasedType;
-        }
-
-        const letStmt = new RustLet(varName, varType, initializer);
-        // In JavaScript, const arr = [] is valid and allows arr.push()
-        // In Rust, we need mut for Vec operations like push/extend
-        // Make Vec variables mutable by default since they're typically modified
-        const isVecType = varType && (varType.name === 'Vec' || varType.isSlice);
-        letStmt.isMutable = node.kind !== 'const' || isVecType;
-
-        this.registerVariableType(decl.id.name, varType);
-        statements.push(letStmt);
-      }
-
-      return statements;
-    }
-
-    /**
-     * Transform an expression statement
-     */
-    transformExpressionStatementNode(node) {
-      const expr = this.transformExpression(node.expression);
-      if (!expr) return null;
-
-      return new RustExpressionStatement(expr);
-    }
-
-    /**
-     * Transform a return statement
-     */
-    transformReturnStatement(node) {
-      // Check if current method returns Option<T>
-      const isOptionReturn = this.currentMethodReturnType &&
-                             this.currentMethodReturnType.name === 'Option';
-
-      if (node.argument) {
-        // Check if returning null/undefined
-        if (node.argument.type === 'Literal' &&
-            (node.argument.value === null || node.argument.value === undefined)) {
-          return new RustReturn(new RustIdentifier('None'));
-        }
-
-        // Special handling for array literals when return type is Vec<T>
-        // Coerce element types to match the declared return type
-        if (node.argument.type === 'ArrayExpression' && this.currentMethodReturnType) {
-          // Check if array has spread elements - let transformArrayExpression handle those
-          const hasSpreadElements = node.argument.elements.some(elem => elem?.type === 'SpreadElement');
-          if (hasSpreadElements) {
-            // Let transformArrayExpression handle spread elements (concat, etc.)
-            const transformed = this.transformExpression(node.argument);
-            if (isOptionReturn) {
-              return new RustReturn(new RustCall(new RustIdentifier('Some'), [transformed]));
-            }
-            return new RustReturn(transformed);
-          }
-
-          const returnType = this.currentMethodReturnType;
-          // Check if returning Vec<T> (directly or inside Option)
-          let vecElemType = null;
-          if (returnType.name === 'Vec' && returnType.genericArguments?.[0]) {
-            vecElemType = returnType.genericArguments[0];
-          } else if (returnType.name === 'Option' && returnType.genericArguments?.[0]) {
-            const inner = returnType.genericArguments[0];
-            if (inner.name === 'Vec' && inner.genericArguments?.[0]) {
-              vecElemType = inner.genericArguments[0];
-            }
-          }
-
-          if (vecElemType) {
-            const elemTypeName = typeof vecElemType === 'string' ? vecElemType : vecElemType.name;
-            // Transform array elements with correct type suffix
-            const elements = node.argument.elements.map(elem => {
-              if (elem?.type === 'Literal' && typeof elem.value === 'number') {
-                return RustLiteral.UInt(elem.value, elemTypeName);
-              }
-              // For expressions, cast to the element type if needed
-              const transformed = this.transformExpression(elem);
-              // Cast non-literals to the target element type (e.g., u32 variable to u8)
-              const inferredType = this.inferTypeFromValue(elem);
-              const inferredName = inferredType?.name || 'u32';
-              if (inferredName !== elemTypeName) {
-                // Need to cast to target element type
-                const targetType = elemTypeName === 'u8' ? RustType.U8() :
-                                   elemTypeName === 'u16' ? RustType.U16() :
-                                   elemTypeName === 'u32' ? RustType.U32() :
-                                   elemTypeName === 'u64' ? RustType.U64() :
-                                   elemTypeName === 'i8' ? RustType.I8() :
-                                   elemTypeName === 'i16' ? RustType.I16() :
-                                   elemTypeName === 'i32' ? RustType.I32() :
-                                   elemTypeName === 'i64' ? RustType.I64() :
-                                   new RustType(elemTypeName);
-                return new RustCast(transformed, targetType);
-              }
-              return transformed;
-            });
-            const vecExpr = new RustVecMacro(elements);
-
-            if (isOptionReturn) {
-              return new RustReturn(new RustCall(new RustIdentifier('Some'), [vecExpr]));
-            }
-            return new RustReturn(vecExpr);
-          }
-        }
-
-        const expr = this.transformExpression(node.argument);
-
-        // If method returns Option and we're returning a value, wrap in Some()
-        if (isOptionReturn) {
-          // Don't wrap if already None
-          if (expr.nodeType === 'Identifier' && expr.name === 'None')
-            return new RustReturn(expr);
-          return new RustReturn(new RustCall(new RustIdentifier('Some'), [expr]));
-        }
-        return new RustReturn(expr);
-      }
-
-      // No argument - return None for Option return types, empty return otherwise
-      if (isOptionReturn)
-        return new RustReturn(new RustIdentifier('None'));
-      return new RustReturn();
-    }
-
-    /**
-     * Transform an if statement
-     */
-    transformIfStatement(node) {
-      const condition = this.transformExpression(node.test);
-      const thenBranch = this.transformStatement(node.consequent) || new RustBlock();
-      const elseBranch = node.alternate ? this.transformStatement(node.alternate) : null;
-
-      // Ensure branches are blocks
-      const thenBlock = thenBranch.nodeType === 'Block' ? thenBranch : this.wrapInBlock(thenBranch);
-      const elseBlock = elseBranch ? (elseBranch.nodeType === 'Block' ? elseBranch : this.wrapInBlock(elseBranch)) : null;
-
-      return new RustIf(condition, thenBlock, elseBlock);
-    }
-
-    /**
-     * Transform a for statement
-     */
-    transformForStatement(node) {
-      // Convert C-style for loop to Rust while loop
-      const whileLoop = new RustWhile(
-        node.test ? this.transformExpression(node.test) : new RustLiteral(true, 'bool'),
-        this.transformStatement(node.body) || new RustBlock()
-      );
-
-      // Add init before loop
-      const statements = [];
-      if (node.init) {
-        const initStmt = this.transformStatement(node.init);
-        if (initStmt) {
-          if (Array.isArray(initStmt)) {
-            statements.push(...initStmt);
-          } else {
-            statements.push(initStmt);
-          }
-        }
-      }
-
-      statements.push(whileLoop);
-
-      // Add update at end of loop body
-      if (node.update && whileLoop.body.nodeType === 'Block') {
-        const updateStmt = new RustExpressionStatement(this.transformExpression(node.update));
-        whileLoop.body.statements.push(updateStmt);
-      }
-
-      return statements.length === 1 ? statements[0] : statements;
-    }
-
-    /**
-     * Transform a while statement
-     */
-    transformWhileStatement(node) {
-      const condition = this.transformExpression(node.test);
-      const body = this.transformStatement(node.body) || new RustBlock();
-
-      const bodyBlock = body.nodeType === 'Block' ? body : this.wrapInBlock(body);
-
-      return new RustWhile(condition, bodyBlock);
-    }
-
-    /**
-     * Transform a for-of statement: for (const x of array) { ... }
-     * Rust equivalent: for x in array.iter() { ... }
-     */
-    transformForOfStatement(node) {
-      // Extract variable name from left side
-      let varName = 'item';
-      if (node.left.type === 'VariableDeclaration') {
-        const decl = node.left.declarations[0];
-        if (decl && decl.id) {
-          varName = this.toSnakeCase(decl.id.name);
-        }
-      } else if (node.left.type === 'Identifier') {
-        varName = this.toSnakeCase(node.left.name);
-      }
-
-      // Transform the iterable - add .iter() for references
-      let iterable = this.transformExpression(node.right);
-
-      // Rust for-in loops: for var_name in iterable { body }
-      const body = this.transformStatement(node.body) || new RustBlock();
-      const bodyBlock = body.nodeType === 'Block' ? body : this.wrapInBlock(body);
-
-      return new RustFor(new RustIdentifier(varName), iterable, bodyBlock);
-    }
-
-    /**
-     * Transform a for-in statement: for (const key in object) { ... }
-     * Rust equivalent: for key in object.keys() { ... }
-     */
-    transformForInStatement(node) {
-      // Extract variable name from left side
-      let varName = 'key';
-      if (node.left.type === 'VariableDeclaration') {
-        const decl = node.left.declarations[0];
-        if (decl && decl.id) {
-          varName = this.toSnakeCase(decl.id.name);
-        }
-      } else if (node.left.type === 'Identifier') {
-        varName = this.toSnakeCase(node.left.name);
-      }
-
-      // Transform the object - for-in iterates over keys, so use .keys()
-      const object = this.transformExpression(node.right);
-      const iterable = new RustMethodCall(object, 'keys', []);
-
-      const body = this.transformStatement(node.body) || new RustBlock();
-      const bodyBlock = body.nodeType === 'Block' ? body : this.wrapInBlock(body);
-
-      return new RustFor(new RustIdentifier(varName), iterable, bodyBlock);
-    }
-
-    /**
-     * Wrap a statement in a block
-     */
-    wrapInBlock(stmt) {
-      const block = new RustBlock();
-      if (stmt) {
-        if (Array.isArray(stmt)) {
-          block.statements.push(...stmt);
-        } else {
-          block.statements.push(stmt);
-        }
-      }
-      return block;
-    }
-
-    /**
-     * Transform an expression
-     * @param {Object} node - AST node
-     * @param {boolean} isLValue - True if this is the left side of an assignment
-     */
-    transformExpression(node, isLValue = false) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'Literal':
-          return this.transformLiteral(node);
-
-        case 'Identifier':
-          return this.transformIdentifier(node);
-
-        case 'BinaryExpression':
-        case 'LogicalExpression':
-          return this.transformBinaryExpression(node);
-
-        case 'UnaryExpression':
-          return this.transformUnaryExpression(node);
-
-        case 'AssignmentExpression':
-          return this.transformAssignmentExpression(node);
-
-        case 'UpdateExpression':
-          return this.transformUpdateExpression(node);
-
-        case 'MemberExpression':
-          return this.transformMemberExpression(node, isLValue);
-
-        case 'CallExpression':
-          return this.transformCallExpression(node);
-
-        case 'ArrayExpression':
-          return this.transformArrayExpression(node);
-
-        case 'ObjectExpression':
-          return this.transformObjectExpression(node);
-
-        case 'NewExpression':
-          return this.transformNewExpression(node);
-
-        case 'ThisExpression':
-          return new RustIdentifier('self');
-
-        case 'ConditionalExpression':
-          return this.transformConditionalExpression(node);
-
-        case 'ArrowFunctionExpression':
-        case 'FunctionExpression':
-          return this.transformFunctionExpression(node);
-
-        case 'SequenceExpression':
-          // Return the last expression in the sequence
-          return this.transformExpression(node.expressions[node.expressions.length - 1]);
-
-        case 'SpreadElement':
-          // ...array -> array (spread into Vec)
-          return this.transformSpreadElement(node);
-
-        case 'Super':
-          // super -> self (Rust doesn't have inheritance)
-          return new RustIdentifier('self');
-
-        case 'TemplateLiteral':
-          // `Hello ${name}!` -> format!("Hello {}!", name)
-          return this.transformTemplateLiteral(node);
-
-        case 'ObjectPattern':
-          // Object destructuring - Rust supports destructuring with structs
-          // Return a comment placeholder
-          return new RustIdentifier('/* Object destructuring pattern */');
-
-        case 'StaticBlock':
-          return this.transformStaticBlock(node);
-
-        case 'ChainExpression':
-          // Optional chaining a?.b - Rust uses Option/Result, transform inner
-          return this.transformExpression(node.expression);
-
-        case 'ClassExpression':
-          // Anonymous class expression - Rust uses closures/structs
-          return this.transformClassExpression(node);
-
-        case 'YieldExpression':
-          // yield - Rust has async/iterators
-          return this.transformYieldExpression(node);
-
-        case 'PrivateIdentifier':
-          // #field -> Rust private (module-level) field
-          return new RustIdentifier(this.toSnakeCase(node.name));
-
-        // ============== IL AST Node Types ==============
-
-        case 'ThisPropertyAccess': {
-          const propName = this.toSnakeCase(node.property);
-          const cleanName = propName.startsWith('_') ? propName.substring(1) : propName;
-
-          // In constructor: check if this field was extracted to a local variable
-          if (this.inConstructor && this.constructorLocals?.has(cleanName)) {
-            // Use the local variable instead of self.field
-            return new RustIdentifier(cleanName);
-          }
-
-          // Normal case: this.prop -> self.prop
-          return new RustFieldAccess(
-            new RustIdentifier('self'),
-            cleanName
-          );
-        }
-
-        case 'ThisMethodCall': {
-          // In constructor: this.method(...) -> Self::method(...)
-          // Because Rust's new() is an associated function, not a method
-          const args = (node.arguments || []).map((arg, idx) => {
-            const transformed = this.transformExpression(arg);
-            // Auto-add reference for byte array arguments to methods
-            // Methods take &[u8] which requires & on Vec<u8> arguments
-            let argName = null;
-            if (arg.type === 'Identifier') {
-              argName = arg.name.toLowerCase();
-            } else if (arg.type === 'ThisPropertyAccess') {
-              argName = (arg.property || '').toLowerCase();
-            }
-            if (argName) {
-              // Common byte array parameter names
-              if (argName.includes('block') || argName.includes('data') ||
-                  argName.includes('bytes') || argName.includes('input') ||
-                  argName.includes('output') || argName.includes('buffer') ||
-                  argName.includes('plaintext') || argName.includes('ciphertext')) {
-                return new RustUnaryExpression('&', transformed);
-              }
-            }
-            return transformed;
-          });
-
-          if (this.inConstructor) {
-            // Use Self::method() for associated functions in constructor
-            return new RustCall(
-              new RustIdentifier(`Self::${this.toSafeSnakeCase(node.method)}`),
-              args
-            );
-          }
-
-          return new RustMethodCall(
-            new RustIdentifier('self'),
-            this.toSafeSnakeCase(node.method),
-            args
-          );
-        }
-
-        case 'HexDecode':
-        case 'StringToBytes': {
-          const arg = this.transformExpression(node.arguments?.[0] || node.value);
-          if (node.type === 'HexDecode') {
-            // hex::decode(str).unwrap()
-            return new RustMethodCall(
-              new RustCall(new RustIdentifier('Hex::decode'), [arg]),
-              'unwrap',
-              []
-            );
-          }
-          // str.as_bytes().to_vec()
-          return new RustMethodCall(
-            new RustMethodCall(arg, 'as_bytes', []),
-            'to_vec',
-            []
-          );
-        }
-
-        case 'PackBytes': {
-          // Pack bytes to u32/u64 - use from_be_bytes or from_le_bytes
-          const rawArgs = node.arguments || node.bytes || [];
-          const bits = node.bits || 32;
-          const isBigEndian = node.endian === 'big' || node.bigEndian;
-          const rustType = bits === 16 ? 'u16' : bits === 64 ? 'u64' : 'u32';
-          const method = isBigEndian ? 'from_be_bytes' : 'from_le_bytes';
-
-          // Check for spread
-          const hasSpread = rawArgs.some(a => a.type === 'SpreadElement');
-          if (hasSpread) {
-            const spreadArg = rawArgs.find(a => a.type === 'SpreadElement');
-            const arg = this.transformExpression(spreadArg.argument || spreadArg);
-            // u32::from_be_bytes(slice.try_into().unwrap())
-            return new RustCall(
-              new RustIdentifier(`${rustType}::${method}`),
-              [new RustMethodCall(
-                new RustMethodCall(arg, 'try_into', []),
-                'unwrap',
-                []
-              )]
-            );
-          }
-
-          const args = rawArgs.map(a => this.transformExpression(a));
-          // u32::from_be_bytes([b0, b1, b2, b3])
-          return new RustCall(
-            new RustIdentifier(`${rustType}::${method}`),
-            [new RustArrayLiteral(args)]
-          );
-        }
-
-        case 'UnpackBytes': {
-          // Unpack u32/u64 to bytes - use to_be_bytes or to_le_bytes
-          const arg = this.transformExpression(node.arguments?.[0] || node.value);
-          const isBigEndian = node.endian === 'big' || node.bigEndian;
-          const method = isBigEndian ? 'to_be_bytes' : 'to_le_bytes';
-          // value.to_be_bytes().to_vec()
-          return new RustMethodCall(
-            new RustMethodCall(arg, method, []),
-            'to_vec',
-            []
-          );
-        }
-
-        case 'ArrayLength': {
-          // array.length -> array.len()
-          const arr = this.transformExpression(node.array || node.argument);
-          return new RustMethodCall(arr, 'len', []);
-        }
-
-        case 'ArraySlice': {
-          // array.slice(start, end) -> array[start..end].to_vec()
-          const arr = this.transformExpression(node.array);
-          const start = node.start ? this.transformExpression(node.start) : new RustLiteral(0, 'int');
-          const end = node.end ? this.transformExpression(node.end) : null;
-          // Use RustIndex with RustRange for arr[start..end], then .to_vec() for owned Vec
-          return new RustMethodCall(
-            new RustIndex(arr, new RustRange(start, end)),
-            'to_vec',
-            []
-          );
-        }
-
-        case 'Min': {
-          // Math.min(a, b, c) -> a.min(b).min(c)
-          // Need to ensure type compatibility between arguments
-          const nodeArgs = node.arguments || [];
-          const args = nodeArgs.map(a => this.transformExpression(a));
-          if (args.length === 0) return RustLiteral.UInt(0, 'usize');
-          if (args.length === 1) return args[0];
-          // Check if first arg is array length (usize) - coerce other args to usize
-          const firstArgIsLen = nodeArgs[0]?.type === 'ArrayLength' ||
-            nodeArgs[0]?.resultType === 'usize';
-          let result = args[0];
-          for (let i = 1; i < args.length; ++i) {
-            let arg = args[i];
-            if (firstArgIsLen && nodeArgs[i]?.type === 'Literal') {
-              // Coerce literal to usize for comparison with array length
-              arg = RustLiteral.UInt(nodeArgs[i].value, 'usize');
-            }
-            result = new RustMethodCall(result, 'min', [arg]);
-          }
-          return result;
-        }
-
-        case 'Max': {
-          // Math.max(a, b, c) -> a.max(b).max(c)
-          // Need to ensure type compatibility between arguments
-          const nodeArgs = node.arguments || [];
-          const args = nodeArgs.map(a => this.transformExpression(a));
-          if (args.length === 0) return RustLiteral.UInt(0, 'usize');
-          if (args.length === 1) return args[0];
-          // Check if first arg is array length (usize) - coerce other args to usize
-          const firstArgIsLen = nodeArgs[0]?.type === 'ArrayLength' ||
-            nodeArgs[0]?.resultType === 'usize';
-          let result = args[0];
-          for (let i = 1; i < args.length; ++i) {
-            let arg = args[i];
-            if (firstArgIsLen && nodeArgs[i]?.type === 'Literal') {
-              // Coerce literal to usize for comparison with array length
-              arg = RustLiteral.UInt(nodeArgs[i].value, 'usize');
-            }
-            result = new RustMethodCall(result, 'max', [arg]);
-          }
-          return result;
-        }
-
-        case 'ArrayCreation': {
-          // new Array(size) -> vec![0u32; size]
-          // Infer element type from context if available
-          let elemType = 'u32';
-          if (node.elementType) {
-            switch (node.elementType) {
-              case 'u8': case 'byte': elemType = 'u8'; break;
-              case 'u16': elemType = 'u16'; break;
-              case 'u64': elemType = 'u64'; break;
-              default: elemType = 'u32'; break;
-            }
-          }
-          let size = node.size ? this.transformExpression(node.size) : new RustLiteral(0, 'usize');
-          // Ensure size is usize (vec! repeat size must be usize)
-          size = this.coerceToUsize(size);
-          return new RustMacroCall('vec', [new RustLiteral(0, elemType), size], '; ');
-        }
-
-        case 'RotateLeft':
-        case 'RotateRight': {
-          // value.rotate_left(n) or value.rotate_right(n)
-          const value = this.transformExpression(node.value || node.arguments?.[0]);
-          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
-          const method = node.type === 'RotateLeft' ? 'rotate_left' : 'rotate_right';
-          return new RustMethodCall(value, method, [amount]);
-        }
-
-        case 'OpCodesCall': {
-          // OpCodes.XYZ(...) - map to Rust operations
-          const method = node.method || node.callee?.property?.name;
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-
-          // Map OpCodes methods
-          if (method === 'RotL32' || method === 'RotL64' || method === 'RotL16') {
-            return new RustMethodCall(args[0], 'rotate_left', [args[1]]);
-          }
-          if (method === 'RotR32' || method === 'RotR64' || method === 'RotR16') {
-            return new RustMethodCall(args[0], 'rotate_right', [args[1]]);
-          }
-          if (method === 'Hex8ToBytes') {
-            return new RustMethodCall(
-              new RustCall(new RustIdentifier('Hex::decode'), args),
-              'unwrap',
-              []
-            );
-          }
-          // CopyArray/CloneArray -> .clone() or .to_vec()
-          if (method === 'CopyArray' || method === 'CloneArray') {
-            if (args.length >= 1) {
-              // For Vec types, .clone() creates a deep copy
-              return new RustMethodCall(args[0], 'clone', []);
-            }
-          }
-          // Default: call as function
-          return new RustCall(new RustIdentifier(this.toSnakeCase(method)), args);
-        }
-
-        case 'Floor': {
-          // Math.floor(x) -> for integer division, just return the value (Rust's / truncates)
-          // For floats, use x.floor()
-          const argNode = node.argument || node.arguments?.[0];
-          const argType = this.inferTypeFromValue(argNode);
-          const arg = this.transformExpression(argNode);
-
-          // If the argument is a binary division on integers, Rust already truncates
-          if (argNode?.type === 'BinaryExpression' && argNode.operator === '/') {
-            // Check if operands are integer types - if so, just return the arg
-            const leftType = this.inferTypeFromValue(argNode.left);
-            const rightType = this.inferTypeFromValue(argNode.right);
-            const isIntDiv = ['u32', 'i32', 'usize', 'isize', 'u64', 'i64', 'u8', 'i8', 'u16', 'i16']
-              .some(t => leftType?.name === t || rightType?.name === t);
-            if (isIntDiv) {
-              return arg; // Rust integer division already truncates
-            }
-          }
-
-          // For integer types, floor is not needed
-          if (argType && ['u32', 'i32', 'usize', 'isize', 'u64', 'i64', 'u8', 'i8', 'u16', 'i16'].includes(argType.name)) {
-            return arg;
-          }
-
-          // For floats or unknown types, use .floor()
-          return new RustMethodCall(arg, 'floor', []);
-        }
-
-        case 'ArrayFill': {
-          // Create filled array -> vec![value; size]
-          let size = node.size ? this.transformExpression(node.size) : new RustLiteral(0, 'usize');
-          // Ensure size is usize (vec! repeat size must be usize)
-          size = this.coerceToUsize(size);
-          const value = node.value ? this.transformExpression(node.value) : new RustLiteral(0, 'u32');
-          return new RustMacroCall('vec', [value, size], '; ');
-        }
-
-        case 'ArrayAppend': {
-          // arr.push(val) or arr.push(...spread) -> arr.push(val) or arr.extend(spread)
-          const array = this.transformExpression(node.array);
-          const value = node.value;
-          if (value?.type === 'SpreadElement') {
-            // arr.push(...spread) -> arr.extend(spread)
-            const spreadArg = this.transformExpression(value.argument);
-            return new RustMethodCall(array, 'extend', [spreadArg]);
-          }
-          // Regular push: arr.push(x)
-          let pushArg = this.transformExpression(value);
-
-          // Get array element type - check IL resultType first, then look up field type, then local variable
-          // BUT: if IL says int32 (default) but value is uint32, use uint32 instead
-          let elemType = null;
-          const arrayType = node.array?.resultType;
-          if (arrayType && typeof arrayType === 'string' && arrayType.endsWith('[]')) {
-            elemType = arrayType.slice(0, -2);
-            // If IL says int32 (default) but value produces uint32, use uint32
-            // This fixes cases where empty arrays get int32 default but are used with uint32 values
-            if (elemType === 'int32' && value?.resultType === 'uint32') {
-              elemType = 'uint32';
-            }
-          } else if (node.array?.type === 'ThisPropertyAccess') {
-            // Look up field type from our struct field registry
-            const fieldName = this.toSnakeCase(node.array.property);
-            const fieldType = this.structFieldTypes.get(fieldName);
-            if (fieldType && fieldType.name === 'Vec' && fieldType.genericArguments?.[0]) {
-              // Get element type - could be a string or an object with .name property
-              const elemArg = fieldType.genericArguments[0];
-              elemType = typeof elemArg === 'string' ? elemArg : (elemArg?.name || null);
-            }
-          } else if (node.array?.type === 'Identifier' || node.array?.name) {
-            // Look up local variable type - handle both Identifier type and nodes with name property
-            const varName = node.array?.name || node.array?.id?.name;
-            if (varName) {
-              const varType = this.getVariableType(varName);
-              if (varType && varType.name === 'Vec' && varType.genericArguments?.[0]) {
-                const elemArg = varType.genericArguments[0];
-                elemType = typeof elemArg === 'string' ? elemArg : (elemArg?.name || null);
-              }
-            }
-          }
-
-          if (elemType) {
-            // Map IL types to Rust types
-            const ilToRust = {
-              'int32': 'i32', 'int': 'i32', 'number': 'i32',
-              'uint32': 'u32', 'uint8': 'u8', 'byte': 'u8',
-              'int8': 'i8', 'uint16': 'u16', 'int16': 'i16',
-              'int64': 'i64', 'uint64': 'u64',
-              // Already Rust types
-              'i32': 'i32', 'u32': 'u32', 'u8': 'u8', 'i8': 'i8',
-              'u16': 'u16', 'i16': 'i16', 'u64': 'u64', 'i64': 'i64'
-            };
-            const rustElemType = ilToRust[elemType] || elemType;
-
-            // Check if value is a byte operation (produces u8 in actual Rust output)
-            // The byte operation optimization transforms data[i] - 48 to data[i].wrapping_sub(48u8)
-            let actualValueType = 'u32'; // default
-            if (value?.type === 'BinaryExpression') {
-              const op = value.operator;
-              const isByteOp = ['-', '+', '&', '|', '^'].includes(op);
-              const rightIsSmall = value.right?.type === 'Literal' &&
-                typeof value.right.value === 'number' && value.right.value <= 255;
-              const leftIsArrayAccess = value.left?.type === 'MemberExpression' && value.left?.computed;
-              if (isByteOp && rightIsSmall && leftIsArrayAccess) {
-                // Check if left array is byte data
-                const leftObjName = (value.left?.object?.name ||
-                  value.left?.object?.property || '').toString().toLowerCase();
-                if (leftObjName.includes('data') || leftObjName.includes('byte') ||
-                    leftObjName.includes('buffer') || leftObjName.includes('input') ||
-                    leftObjName.includes('block') || leftObjName.includes('key')) {
-                  actualValueType = 'u8';
-                }
-              }
-            }
-
-            // Check if the value type differs from the array element type
-            // Use actualValueType from byte operation detection, or fall back to inferTypeFromValue
-            let valueTypeName = actualValueType;
-            if (actualValueType === 'u32') {
-              const inferredType = this.inferTypeFromValue(value);
-              valueTypeName = inferredType?.name || 'u32';
-            }
-
-            // Special handling: if value is a Cast to i32 but array expects u32,
-            // transform the inner expression instead and skip the i32 cast
-            if (valueTypeName === 'i32' && rustElemType === 'u32' && value?.type === 'Cast') {
-              const innerArg = value.arguments?.[0] || value.argument || value.value;
-              if (innerArg) {
-                // Transform the inner expression directly, skipping the i32 cast
-                pushArg = this.transformExpression(innerArg);
-                // If the inner expr returns u32 (like from_le_bytes), no cast needed
-                // Otherwise cast to u32
-                const innerType = this.inferTypeFromValue(innerArg);
-                if (innerType?.name !== 'u32') {
-                  pushArg = new RustCast(pushArg, new RustType('u32'));
-                }
-              }
-            } else if (valueTypeName !== rustElemType) {
-              pushArg = new RustCast(pushArg, new RustType(rustElemType));
-            }
-          }
-          return new RustMethodCall(array, 'push', [pushArg]);
-        }
-
-        case 'ArrayConcat': {
-          // arr.concat(other) -> [arr, other].concat()
-          const array = this.transformExpression(node.array);
-          const others = (node.arrays || []).map(a => this.transformExpression(a));
-          // In Rust: [arr1, arr2, ...].concat() creates a new Vec
-          return new RustMethodCall(
-            new RustArrayLiteral([array, ...others]),
-            'concat',
-            []
-          );
-        }
-
-        case 'ArrayMap': {
-          // arr.map(callback) -> arr.iter().map(|x| ...).collect()
-          const array = this.transformExpression(node.array);
-          const callback = node.callback;
-
-          if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-            // Get parameter name(s)
-            const params = (callback.params || []).map(p =>
-              typeof p === 'string' ? p : p.name
-            );
-
-            // Transform the body
-            const body = this.transformExpression(callback.body);
-            const closure = new RustClosure(params, body);
-
-            return new RustMethodCall(
-              new RustMethodCall(
-                new RustMethodCall(array, 'iter', []),
-                'map',
-                [closure]
-              ),
-              'collect',
-              []
-            );
-          }
-
-          // If callback is already a function reference
-          const callbackExpr = this.transformExpression(callback);
-          return new RustMethodCall(
-            new RustMethodCall(
-              new RustMethodCall(array, 'iter', []),
-              'map',
-              [callbackExpr]
-            ),
-            'collect',
-            []
-          );
-        }
-
-        case 'MathCall': {
-          // Math.method(args...) -> Rust equivalent
-          const method = node.method;
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-
-          switch (method) {
-            case 'imul':
-              // Math.imul(a, b) -> a.wrapping_mul(b)
-              return new RustMethodCall(args[0], 'wrapping_mul', [args[1]]);
-            case 'floor':
-              return new RustMethodCall(args[0], 'floor', []);
-            case 'ceil':
-              return new RustMethodCall(args[0], 'ceil', []);
-            case 'round':
-              return new RustMethodCall(args[0], 'round', []);
-            case 'abs':
-              return new RustMethodCall(args[0], 'abs', []);
-            case 'min':
-              if (args.length >= 2) {
-                let result = args[0];
-                for (let i = 1; i < args.length; ++i)
-                  result = new RustMethodCall(result, 'min', [args[i]]);
-                return result;
-              }
-              return args[0];
-            case 'max':
-              if (args.length >= 2) {
-                let result = args[0];
-                for (let i = 1; i < args.length; ++i)
-                  result = new RustMethodCall(result, 'max', [args[i]]);
-                return result;
-              }
-              return args[0];
-            case 'pow':
-              return new RustMethodCall(args[0], 'pow', [args[1]]);
-            case 'sqrt':
-              return new RustMethodCall(args[0], 'sqrt', []);
-            case 'log':
-              return new RustMethodCall(args[0], 'ln', []);
-            case 'log2':
-              return new RustMethodCall(args[0], 'log2', []);
-            case 'trunc':
-              return new RustMethodCall(args[0], 'trunc', []);
-            case 'sign':
-              return new RustMethodCall(args[0], 'signum', []);
-            case 'clz32':
-              return new RustMethodCall(args[0], 'leading_zeros', []);
-            case 'random':
-              return new RustCall(new RustIdentifier('rand::random'), []);
-            default:
-              // Fallback: call as method on first arg
-              return new RustMethodCall(args[0], this.toSnakeCase(method), args.slice(1));
-          }
-        }
-
-        case 'ParentConstructorCall':
-          // super() - Rust doesn't have inheritance, return comment
-          return new RustIdentifier('/* parent constructor */');
-
-        case 'Cast': {
-          // OpCodes.ToUint32(expr) -> (expr) as u32
-          // The IL AST uses Cast with arguments array and targetType
-          const arg = node.arguments?.[0] || node.argument || node.value;
-
-          // Map target type to Rust type
-          const targetType = node.targetType || 'u32';
-          const rustType = TYPE_MAP[targetType] || targetType;
-
-          // Check if this is an unnecessary i32 cast on a u32-producing expression
-          // Pack32LE, Pack32BE, from_le_bytes etc. already return u32, casting to i32 is wrong
-          if (rustType === 'i32') {
-            const innerType = this.inferTypeFromValue(arg);
-            if (innerType?.name === 'u32') {
-              // Skip the i32 cast entirely - the expression already produces the correct type
-              return this.transformExpression(arg);
-            }
-          }
-
-          const innerExpr = this.transformExpression(arg);
-          if (!innerExpr) return null;
-
-          // Use wrapping operations for integer overflow protection
-          // In Rust, (expr) as u32 handles wrapping automatically
-          return new RustCast(innerExpr, new RustType(rustType));
-        }
-
-        case 'InlinedOpCode':
-          // These are already binary expressions with << >> ^ & | etc.
-          // Just transform as binary expression
-          return this.transformBinaryExpression(node);
-
-        case 'BitwiseOp': {
-          // Bitwise operations: XOR, AND, OR, NOT
-          const left = this.transformExpression(node.left || node.arguments?.[0]);
-          const right = node.right ? this.transformExpression(node.right) : null;
-          const op = node.operator || '^';
-          if (!right)
-            return new RustUnaryExpression('!', left);
-          return new RustBinaryExpression(left, op, right);
-        }
-
-        case 'BitRotation': {
-          // Bit rotation: rotate_left/rotate_right
-          const value = this.transformExpression(node.value || node.arguments?.[0]);
-          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
-          const method = (node.direction === 'left' || node.rotateLeft) ? 'rotate_left' : 'rotate_right';
-          return new RustMethodCall(value, method, [amount]);
-        }
-
-        case 'TypeConversion': {
-          // Type conversion (similar to Cast)
-          const argNode = node.value || node.argument || node.arguments?.[0];
-          const targetType = node.targetType || node.toType || 'u32';
-          const rustType = TYPE_MAP[targetType] || targetType;
-
-          // Check if this is an unnecessary i32 cast on a u32-producing expression
-          // Pack32LE, Pack32BE, from_le_bytes etc. already return u32, casting to i32 is wrong
-          if (rustType === 'i32') {
-            const innerType = this.inferTypeFromValue(argNode);
-            if (innerType?.name === 'u32') {
-              // Skip the i32 cast entirely - the expression already produces the correct type
-              return this.transformExpression(argNode);
-            }
-          }
-
-          const arg = this.transformExpression(argNode);
-          return new RustCast(arg, new RustType(rustType));
-        }
-
-        // IL AST StringInterpolation - `Hello ${name}` -> format!("Hello {}", name)
-        case 'StringInterpolation': {
-          let format = '';
-          const args = [];
-          if (node.parts) {
-            for (const part of node.parts) {
-              if (part.type === 'StringPart' || part.ilNodeType === 'StringPart') {
-                format += (part.value || '').replace(/\{/g, '{{').replace(/\}/g, '}}');
-              } else if (part.type === 'ExpressionPart' || part.ilNodeType === 'ExpressionPart') {
-                format += '{}';
-                args.push(this.transformExpression(part.expression));
-              }
-            }
-          }
-          return new RustMacroCall('format', [new RustLiteral(format, 'str'), ...args]);
-        }
-
-        // IL AST ObjectLiteral - {key: value} -> HashMap or struct
-        case 'ObjectLiteral': {
-          if (!node.properties || node.properties.length === 0)
-            return new RustIdentifier('None');
-          // Use HashMap for generic objects
-          const pairs = [];
-          for (const prop of (node.properties || [])) {
-            if (prop.type === 'SpreadElement') continue;
-            const key = prop.key?.name || prop.key?.value || prop.key || 'key';
-            const value = this.transformExpression(prop.value);
-            pairs.push([new RustLiteral(key, 'str'), value]);
-          }
-          // Return HashMap::from([...])
-          return new RustCall(
-            new RustFieldAccess(new RustIdentifier('HashMap'), 'from'),
-            [new RustArrayLiteral(pairs.map(([k, v]) => new RustTuple([k, v])))]
-          );
-        }
-
-        // IL AST StringFromCharCodes - String.fromCharCode(65) -> char as char
-        case 'StringFromCharCodes': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (args.length === 0)
-            return new RustMethodCall(new RustIdentifier('String'), 'new', []);
-          if (args.length === 1) {
-            // Single char: (code as u8 as char).to_string()
-            return new RustMethodCall(
-              new RustCast(new RustCast(args[0], new RustType('u8')), new RustType('char')),
-              'to_string',
-              []
-            );
-          }
-          // Multiple: collect from chars
-          return new RustMethodCall(
-            new RustMethodCall(
-              new RustArrayLiteral(args.map(a => new RustCast(new RustCast(a, new RustType('u8')), new RustType('char')))),
-              'iter',
-              []
-            ),
-            'collect::<String>',
-            []
-          );
-        }
-
-        // IL AST IsArrayCheck - Array.isArray(x) -> x.is_some() for Option or true for Vec
-        case 'IsArrayCheck': {
-          const value = this.transformExpression(node.value);
-          // Rust doesn't have direct isArray - use !value.is_empty() or value.is_some()
-          return new RustUnaryExpression('!', new RustMethodCall(value, 'is_empty', []));
-        }
-
-        // IL AST ArrowFunction - (x) => expr -> |x| expr
-        case 'ArrowFunction': {
-          const params = (node.params || []).map(p => {
-            const name = typeof p === 'string' ? p : (p.name || 'arg');
-            return new RustIdentifier(name);
-          });
-          let body;
-          if (node.body) {
-            if (node.body.type === 'BlockStatement') {
-              body = this.transformBlockStatement(node.body);
-            } else {
-              body = this.transformExpression(node.body);
-            }
-          } else {
-            body = new RustIdentifier('()');
-          }
-          return new RustClosure(params, body);
-        }
-
-        // IL AST TypeOfExpression - typeof x -> type_of for debug
-        case 'TypeOfExpression': {
-          const value = this.transformExpression(node.value);
-          // Rust doesn't have runtime typeof; use std::any::type_name
-          return new RustCall(
-            new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'any'), 'type_name_of_val'),
-            [new RustReference(value)]
-          );
-        }
-
-        // IL AST Power - x ** y -> x.pow(y) or x.powf(y)
-        case 'Power': {
-          const left = this.transformExpression(node.left);
-          const right = this.transformExpression(node.right);
-          // Use powf for floats, pow for integers
-          return new RustMethodCall(new RustCast(left, new RustType('f64')), 'powf', [new RustCast(right, new RustType('f64'))]);
-        }
-
-        // IL AST ObjectFreeze - Object.freeze(x) -> just return x (no-op in Rust)
-        case 'ObjectFreeze': {
-          return this.transformExpression(node.value);
-        }
-
-        case 'Ceil':
-          return new RustMethodCall(this.transformExpression(node.arguments?.[0] || node.value), 'ceil', []);
-
-        case 'Abs':
-          return new RustMethodCall(this.transformExpression(node.arguments?.[0] || node.value), 'abs', []);
-
-        case 'Pow': {
-          const base = this.transformExpression(node.base || node.arguments?.[0]);
-          const exp = this.transformExpression(node.exponent || node.arguments?.[1]);
-          return new RustMethodCall(new RustCast(base, new RustType('f64')), 'powf', [new RustCast(exp, new RustType('f64'))]);
-        }
-
-        case 'Round':
-          return new RustMethodCall(this.transformExpression(node.arguments?.[0] || node.value), 'round', []);
-
-        case 'Trunc':
-          return new RustMethodCall(this.transformExpression(node.arguments?.[0] || node.value), 'trunc', []);
-
-        case 'Sign':
-          return new RustMethodCall(this.transformExpression(node.arguments?.[0] || node.value), 'signum', []);
-
-        case 'Sqrt':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'sqrt', []);
-
-        case 'Cbrt':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'cbrt', []);
-
-        case 'Log':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'ln', []);
-
-        case 'Log2':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'log2', []);
-
-        case 'Log10':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'log10', []);
-
-        case 'Exp':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'exp', []);
-
-        case 'Sin':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'sin', []);
-
-        case 'Cos':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'cos', []);
-
-        case 'Tan':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'tan', []);
-
-        case 'Asin':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'asin', []);
-
-        case 'Acos':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'acos', []);
-
-        case 'Atan':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'atan', []);
-
-        case 'Atan2': {
-          const y = this.transformExpression(node.arguments?.[0] || node.y);
-          const x = this.transformExpression(node.arguments?.[1] || node.x);
-          return new RustMethodCall(new RustCast(y, new RustType('f64')), 'atan2', [new RustCast(x, new RustType('f64'))]);
-        }
-
-        case 'Sinh':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'sinh', []);
-
-        case 'Cosh':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'cosh', []);
-
-        case 'Tanh':
-          return new RustMethodCall(new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f64')), 'tanh', []);
-
-        case 'Hypot': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (args.length >= 2)
-            return new RustMethodCall(new RustCast(args[0], new RustType('f64')), 'hypot', [new RustCast(args[1], new RustType('f64'))]);
-          return new RustMethodCall(new RustCast(args[0], new RustType('f64')), 'abs', []);
-        }
-
-        case 'Fround':
-          return new RustCast(this.transformExpression(node.arguments?.[0] || node.value), new RustType('f32'));
-
-        case 'MathConstant': {
-          switch (node.name) {
-            case 'PI': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'PI');
-            case 'E': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'E');
-            case 'LN2': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'LN_2');
-            case 'LN10': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'LN_10');
-            case 'LOG2E': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'LOG2_E');
-            case 'LOG10E': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'LOG10_E');
-            case 'SQRT2': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'SQRT_2');
-            case 'SQRT1_2': return new RustFieldAccess(new RustFieldAccess(new RustIdentifier('std'), 'f64::consts'), 'FRAC_1_SQRT_2');
-            default: return new RustLiteral(node.value, 'f64');
-          }
-        }
-
-        case 'NumberConstant': {
-          switch (node.name) {
-            case 'MAX_SAFE_INTEGER': return new RustIdentifier('i64::MAX');
-            case 'MIN_SAFE_INTEGER': return new RustIdentifier('i64::MIN');
-            case 'MAX_VALUE': return new RustIdentifier('f64::MAX');
-            case 'MIN_VALUE': return new RustIdentifier('f64::MIN');
-            case 'POSITIVE_INFINITY': return new RustIdentifier('f64::INFINITY');
-            case 'NEGATIVE_INFINITY': return new RustIdentifier('f64::NEG_INFINITY');
-            case 'NaN': return new RustIdentifier('f64::NAN');
-            case 'EPSILON': return new RustIdentifier('f64::EPSILON');
-            default: return new RustLiteral(node.value, 'f64');
-          }
-        }
-
-        case 'InstanceOfCheck': {
-          // Rust doesn't have runtime type checking - emit a comment
-          const value = this.transformExpression(node.value);
-          return new RustIdentifier(`/* ${value} instanceof check not available in Rust */`);
-        }
-
-        // ========================[ Array Operations ]========================
-
-        case 'ArrayClear': {
-          // arr.clear() -> vec.clear()
-          const arr = this.transformExpression(node.array);
-          return new RustMethodCall(arr, 'clear', []);
-        }
-
-        case 'ArrayEvery': {
-          // arr.every(fn) -> arr.iter().all(|e| ...)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'all',
-                [closure]
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'all',
-              [fn]
-            );
-          }
-          return RustLiteral.Bool(true);
-        }
-
-        case 'ArrayFilter': {
-          // arr.filter(fn) -> arr.iter().filter(|e| ...).collect()
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(
-                  new RustMethodCall(arr, 'iter', []),
-                  'filter',
-                  [closure]
-                ),
-                'collect::<Vec<_>>',
-                []
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'filter',
-                [fn]
-              ),
-              'collect::<Vec<_>>',
-              []
-            );
-          }
-          return arr;
-        }
-
-        case 'ArrayFind': {
-          // arr.find(fn) -> arr.iter().find(|e| ...)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'find',
-                [closure]
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'find',
-              [fn]
-            );
-          }
-          return new RustIdentifier('None');
-        }
-
-        case 'ArrayFindIndex': {
-          // arr.findIndex(fn) -> arr.iter().position(|e| ...)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'position',
-                [closure]
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'position',
-              [fn]
-            );
-          }
-          return new RustIdentifier('None');
-        }
-
-        case 'ArrayForEach': {
-          // arr.forEach(fn) -> for item in arr.iter() { ... }
-          // In expression context, return a comment since forEach is a statement
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.fn;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'for_each',
-                [closure]
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'for_each',
-              [fn]
-            );
-          }
-          return new RustIdentifier('/* forEach requires callback */');
-        }
-
-        case 'ArrayFrom': {
-          // Array.from(x) -> x.to_vec() or Vec::from(x)
-          const iterable = this.transformExpression(node.iterable || node.arrayLike);
-          if (node.mapFunction || node.mapFn) {
-            // Array.from(arr, fn) -> arr.iter().map(fn).collect()
-            const mapFn = this.transformExpression(node.mapFunction || node.mapFn);
-            return new RustMethodCall(
-              new RustMethodCall(
-                new RustMethodCall(iterable, 'iter', []),
-                'map',
-                [mapFn]
-              ),
-              'collect::<Vec<_>>',
-              []
-            );
-          }
-          return new RustMethodCall(iterable, 'to_vec', []);
-        }
-
-        case 'ArrayIncludes': {
-          // arr.includes(element) -> arr.contains(&element)
-          const arr = this.transformExpression(node.array);
-          const element = this.transformExpression(node.value || node.element);
-          return new RustMethodCall(arr, 'contains', [new RustReference(element)]);
-        }
-
-        case 'ArrayIndexOf': {
-          // arr.indexOf(element) -> arr.iter().position(|e| *e == element)
-          const arr = this.transformExpression(node.array);
-          const element = this.transformExpression(node.value || node.element);
-          const closure = new RustClosure(
-            ['e'],
-            new RustBinaryExpression(new RustDereference(new RustIdentifier('e')), '==', element)
-          );
-          return new RustMethodCall(
-            new RustMethodCall(arr, 'iter', []),
-            'position',
-            [closure]
-          );
-        }
-
-        case 'ArrayJoin': {
-          // arr.join(sep) -> arr.join(sep) for strings, or custom for bytes
-          const arr = this.transformExpression(node.array);
-          const sep = node.separator ? this.transformExpression(node.separator) : RustLiteral.String('');
-          return new RustMethodCall(arr, 'join', [sep]);
-        }
-
-        case 'ArrayPop': {
-          // arr.pop() -> vec.pop()
-          const arr = this.transformExpression(node.array);
-          return new RustMethodCall(arr, 'pop', []);
-        }
-
-        case 'ArrayReduce': {
-          // arr.reduce(fn, init) -> arr.iter().fold(init, |acc, e| ...)
-          const arr = this.transformExpression(node.array);
-          const initial = node.initial ? this.transformExpression(node.initial) : new RustLiteral(0, 'u32');
-          const callback = node.callback || node.reducer;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'fold',
-                [initial, closure]
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'fold',
-              [initial, fn]
-            );
-          }
-          return initial;
-        }
-
-        case 'ArrayReverse': {
-          // arr.reverse() -> arr.iter().rev().collect() for new, or arr.reverse() for in-place
-          const arr = this.transformExpression(node.array);
-          if (node.inPlace) {
-            return new RustMethodCall(arr, 'reverse', []);
-          }
-          return new RustMethodCall(
-            new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'rev',
-              []
-            ),
-            'collect::<Vec<_>>',
-            []
-          );
-        }
-
-        case 'ArrayShift': {
-          // arr.shift() -> vec.remove(0)
-          const arr = this.transformExpression(node.array);
-          return new RustMethodCall(arr, 'remove', [RustLiteral.UInt(0, 'usize')]);
-        }
-
-        case 'ArraySome': {
-          // arr.some(fn) -> arr.iter().any(|e| ...)
-          const arr = this.transformExpression(node.array);
-          const callback = node.callback || node.predicate;
-          if (callback) {
-            if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-              const params = (callback.params || []).map(p =>
-                typeof p === 'string' ? p : p.name
-              );
-              const body = this.transformExpression(callback.body);
-              const closure = new RustClosure(params, body);
-              return new RustMethodCall(
-                new RustMethodCall(arr, 'iter', []),
-                'any',
-                [closure]
-              );
-            }
-            const fn = this.transformExpression(callback);
-            return new RustMethodCall(
-              new RustMethodCall(arr, 'iter', []),
-              'any',
-              [fn]
-            );
-          }
-          return RustLiteral.Bool(false);
-        }
-
-        case 'ArraySort': {
-          // arr.sort() -> arr.sort() or arr.sort_unstable()
-          const arr = this.transformExpression(node.array);
-          if (node.comparator || node.compare) {
-            const cmp = this.transformExpression(node.comparator || node.compare);
-            return new RustMethodCall(arr, 'sort_by', [cmp]);
-          }
-          return new RustMethodCall(arr, 'sort', []);
-        }
-
-        case 'ArraySplice': {
-          // arr.splice(start, deleteCount, ...items)
-          // Rust: vec.splice(start..start+deleteCount, items)
-          const arr = this.transformExpression(node.array);
-          const start = this.transformExpression(node.start);
-          const deleteCount = node.deleteCount ? this.transformExpression(node.deleteCount) : new RustLiteral(0, 'usize');
-          const items = (node.items || []).map(item => this.transformExpression(item));
-          const endExpr = new RustBinaryExpression(start, '+', deleteCount);
-          const range = new RustRange(start, endExpr);
-          if (items.length > 0) {
-            return new RustMethodCall(arr, 'splice', [range, new RustVecMacro(items)]);
-          }
-          // For remove-only splice, use drain
-          return new RustMethodCall(arr, 'drain', [range]);
-        }
-
-        case 'ArrayUnshift': {
-          // arr.unshift(element) -> vec.insert(0, element)
-          const arr = this.transformExpression(node.array);
-          const element = this.transformExpression(node.value || node.element);
-          return new RustMethodCall(arr, 'insert', [RustLiteral.UInt(0, 'usize'), element]);
-        }
-
-        case 'ArrayXor': {
-          // XOR two arrays element-wise
-          // for i in 0..arr1.len() { arr1[i] ^= arr2[i]; }
-          const arr1 = this.transformExpression(node.left || node.array1 || node.arguments?.[0]);
-          const arr2 = this.transformExpression(node.right || node.array2 || node.arguments?.[1]);
-          return new RustCall(new RustIdentifier('xor_arrays'), [arr1, arr2]);
-        }
-
-        case 'ClearArray': {
-          // arr.fill(0) or for b in arr.iter_mut() { *b = 0; }
-          const arr = this.transformExpression(node.array || node.value || node.arguments?.[0]);
-          return new RustMethodCall(arr, 'fill', [new RustLiteral(0, 'u8')]);
-        }
-
-        case 'CopyArray': {
-          // arr.to_vec() or arr.clone()
-          const arr = this.transformExpression(node.array || node.value || node.arguments?.[0]);
-          return new RustMethodCall(arr, 'to_vec', []);
-        }
-
-        // ========================[ String Operations ]========================
-
-        case 'StringCharAt': {
-          // s.charAt(index) -> s.chars().nth(index)
-          const str = this.transformExpression(node.string || node.value);
-          const index = node.index ? this.transformExpression(node.index) : RustLiteral.UInt(0, 'usize');
-          return new RustMethodCall(
-            new RustMethodCall(str, 'chars', []),
-            'nth',
-            [index]
-          );
-        }
-
-        case 'StringCharCodeAt': {
-          // s.charCodeAt(index) -> s.as_bytes()[index] as u32
-          const str = this.transformExpression(node.string || node.value);
-          const index = node.index ? this.transformExpression(node.index) : RustLiteral.UInt(0, 'usize');
-          return new RustCast(
-            new RustIndex(
-              new RustMethodCall(str, 'as_bytes', []),
-              index
-            ),
-            RustType.U32()
-          );
-        }
-
-        case 'StringEndsWith': {
-          // s.endsWith(suffix) -> s.ends_with(suffix)
-          const str = this.transformExpression(node.string || node.value);
-          const suffix = this.transformExpression(node.searchValue || node.search || node.suffix);
-          return new RustMethodCall(str, 'ends_with', [suffix]);
-        }
-
-        case 'StringIncludes': {
-          // s.includes(sub) -> s.contains(sub)
-          const str = this.transformExpression(node.string || node.value);
-          const sub = this.transformExpression(node.searchValue || node.search || node.substring);
-          return new RustMethodCall(str, 'contains', [sub]);
-        }
-
-        case 'StringIndexOf': {
-          // s.indexOf(sub) -> s.find(sub)
-          const str = this.transformExpression(node.string || node.value);
-          const sub = this.transformExpression(node.search || node.substring || node.searchValue);
-          return new RustMethodCall(str, 'find', [sub]);
-        }
-
-        case 'StringRepeat': {
-          // s.repeat(count) -> s.repeat(count)
-          const str = this.transformExpression(node.string || node.value);
-          const count = node.count ? this.transformExpression(node.count) : RustLiteral.UInt(1, 'usize');
-          return new RustMethodCall(str, 'repeat', [count]);
-        }
-
-        case 'StringReplace': {
-          // s.replace(old, new) -> s.replace(old, new)
-          const str = this.transformExpression(node.string || node.value);
-          const search = this.transformExpression(node.search || node.searchValue || node.pattern);
-          const replacement = this.transformExpression(node.replacement || node.replaceWith || node.replaceValue);
-          return new RustMethodCall(str, 'replace', [search, replacement]);
-        }
-
-        case 'StringSplit': {
-          // s.split(delim) -> s.split(delim).collect::<Vec<_>>()
-          const str = this.transformExpression(node.string || node.value);
-          const delim = node.separator ? this.transformExpression(node.separator) : RustLiteral.String('');
-          return new RustMethodCall(
-            new RustMethodCall(str, 'split', [delim]),
-            'collect::<Vec<_>>',
-            []
-          );
-        }
-
-        case 'StringStartsWith': {
-          // s.startsWith(prefix) -> s.starts_with(prefix)
-          const str = this.transformExpression(node.string || node.value);
-          const prefix = this.transformExpression(node.searchValue || node.search || node.prefix);
-          return new RustMethodCall(str, 'starts_with', [prefix]);
-        }
-
-        case 'StringSubstring': {
-          // s.substring(start, end) -> &s[start..end]
-          const str = this.transformExpression(node.string || node.value);
-          const start = node.start ? this.transformExpression(node.start) : RustLiteral.UInt(0, 'usize');
-          const end = node.end ? this.transformExpression(node.end) : null;
-          return new RustIndex(str, new RustRange(start, end));
-        }
-
-        case 'StringToLowerCase': {
-          // s.toLowerCase() -> s.to_lowercase()
-          const str = this.transformExpression(node.string || node.value);
-          return new RustMethodCall(str, 'to_lowercase', []);
-        }
-
-        case 'StringToUpperCase': {
-          // s.toUpperCase() -> s.to_uppercase()
-          const str = this.transformExpression(node.string || node.value);
-          return new RustMethodCall(str, 'to_uppercase', []);
-        }
-
-        case 'StringTrim': {
-          // s.trim() -> s.trim()
-          const str = this.transformExpression(node.string || node.value);
-          return new RustMethodCall(str, 'trim', []);
-        }
-
-        case 'StringTransform': {
-          // String transformation based on operation type
-          const str = this.transformExpression(node.string || node.argument);
-          const operation = node.operation || node.method;
-          switch (operation) {
-            case 'toLowerCase':
-              return new RustMethodCall(str, 'to_lowercase', []);
-            case 'toUpperCase':
-              return new RustMethodCall(str, 'to_uppercase', []);
-            case 'trim':
-              return new RustMethodCall(str, 'trim', []);
-            case 'trimStart':
-              return new RustMethodCall(str, 'trim_start', []);
-            case 'trimEnd':
-              return new RustMethodCall(str, 'trim_end', []);
-            case 'split': {
-              const sep = node.separator ? this.transformExpression(node.separator) : RustLiteral.String('');
-              return new RustMethodCall(
-                new RustMethodCall(str, 'split', [sep]),
-                'collect::<Vec<_>>',
-                []
-              );
-            }
-            default:
-              return str;
-          }
-        }
-
-        case 'StringConcat': {
-          // s1.concat(s2) -> format!("{}{}", s1, s2)
-          const str = this.transformExpression(node.string || node.value);
-          const others = (node.args || node.strings || []).map(a => this.transformExpression(a));
-          const allParts = [str, ...others];
-          const formatStr = allParts.map(() => '{}').join('');
-          return new RustMacroCall('format', [new RustLiteral(formatStr, 'str'), ...allParts]);
-        }
-
-        // ========================[ Buffer/DataView Operations ]========================
-
-        case 'BufferCreation': {
-          // new ArrayBuffer(size) -> vec![0u8; size]
-          let size = node.size ? this.transformExpression(node.size) : RustLiteral.UInt(0, 'usize');
-          size = this.coerceToUsize(size);
-          return new RustMacroCall('vec', [new RustLiteral(0, 'u8'), size], '; ');
-        }
-
-        case 'DataViewCreation': {
-          // new DataView(buffer) -> buffer (Rust slices serve as views)
-          const buffer = this.transformExpression(node.buffer || node.arguments?.[0]);
-          return buffer;
-        }
-
-        case 'DataViewRead': {
-          // dataView.getUint32(offset, littleEndian) -> u32::from_le_bytes(...)
-          const view = this.transformExpression(node.view);
-          const offset = this.transformExpression(node.offset);
-          const bits = node.bits || 32;
-          const littleEndian = node.littleEndian;
-          const bytes = bits / 8;
-          const rustType = bits === 16 ? 'u16' : bits === 64 ? 'u64' : 'u32';
-          const method = littleEndian ? 'from_le_bytes' : 'from_be_bytes';
-          const endOffset = new RustBinaryExpression(offset, '+', RustLiteral.UInt(bytes, 'usize'));
-          const slice = new RustIndex(view, new RustRange(offset, endOffset));
-          // type::from_le_bytes(slice.try_into().unwrap())
-          return new RustCall(
-            new RustIdentifier(`${rustType}::${method}`),
-            [new RustMethodCall(
-              new RustMethodCall(slice, 'try_into', []),
-              'unwrap',
-              []
-            )]
-          );
-        }
-
-        case 'DataViewWrite': {
-          // dataView.setUint32(offset, value, littleEndian) -> view[offset..].copy_from_slice(&value.to_le_bytes())
-          const view = this.transformExpression(node.view);
-          const offset = this.transformExpression(node.offset);
-          const val = this.transformExpression(node.value);
-          const bits = node.bits || 32;
-          const littleEndian = node.littleEndian;
-          const bytes = bits / 8;
-          const method = littleEndian ? 'to_le_bytes' : 'to_be_bytes';
-          const endOffset = new RustBinaryExpression(offset, '+', RustLiteral.UInt(bytes, 'usize'));
-          const destSlice = new RustIndex(view, new RustRange(offset, endOffset));
-          return new RustMethodCall(
-            destSlice,
-            'copy_from_slice',
-            [new RustReference(new RustMethodCall(val, method, []))]
-          );
-        }
-
-        // ========================[ Map/Set Operations ]========================
-
-        case 'MapCreation': {
-          // new Map() -> HashMap::new()
-          const args = node.entries ? [this.transformExpression(node.entries)] : [];
-          if (args.length > 0) {
-            // HashMap::from(entries)
-            return new RustCall(
-              new RustFieldAccess(new RustIdentifier('HashMap'), 'from'),
-              args
-            );
-          }
-          return new RustCall(
-            new RustFieldAccess(new RustIdentifier('HashMap'), 'new'),
-            []
-          );
-        }
-
-        case 'MapGet': {
-          // map.get(key) -> map.get(&key)
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new RustMethodCall(map, 'get', [new RustReference(key)]);
-        }
-
-        case 'MapSet': {
-          // map.set(key, value) -> map.insert(key, value)
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          const val = this.transformExpression(node.value);
-          return new RustMethodCall(map, 'insert', [key, val]);
-        }
-
-        case 'MapHas': {
-          // map.has(key) -> map.contains_key(&key)
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new RustMethodCall(map, 'contains_key', [new RustReference(key)]);
-        }
-
-        case 'MapDelete': {
-          // map.delete(key) -> map.remove(&key)
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new RustMethodCall(map, 'remove', [new RustReference(key)]);
-        }
-
-        case 'SetCreation': {
-          // new Set() -> HashSet::new()
-          const args = node.values ? [this.transformExpression(node.values)] : [];
-          if (args.length > 0) {
-            return new RustCall(
-              new RustFieldAccess(new RustIdentifier('HashSet'), 'from'),
-              args
-            );
-          }
-          return new RustCall(
-            new RustFieldAccess(new RustIdentifier('HashSet'), 'new'),
-            []
-          );
-        }
-
-        // ========================[ Missing Utility Operations ]========================
-
-        case 'HexEncode': {
-          // bytes to hex string -> arr.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-          const val = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          const closure = new RustClosure(
-            ['b'],
-            new RustMacroCall('format', [new RustLiteral('{:02x}', 'str'), new RustIdentifier('b')])
-          );
-          return new RustMethodCall(
-            new RustMethodCall(
-              new RustMethodCall(val, 'iter', []),
-              'map',
-              [closure]
-            ),
-            'collect::<String>',
-            []
-          );
-        }
-
-        case 'HexDecode': {
-          // hex string to bytes -> hex_decode helper
-          const val = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new RustCall(new RustIdentifier('hex_decode'), [val]);
-        }
-
-        case 'TypedArrayCreation': {
-          // new Uint32Array(size) -> vec![0u32; size]
-          let size = node.size ? this.transformExpression(node.size) : RustLiteral.UInt(0, 'usize');
-          size = this.coerceToUsize(size);
-          const typeMap = {
-            'Uint8Array': 'u8', 'Int8Array': 'i8',
-            'Uint16Array': 'u16', 'Int16Array': 'i16',
-            'Uint32Array': 'u32', 'Int32Array': 'i32',
-            'Float32Array': 'f32', 'Float64Array': 'f64',
-            'BigUint64Array': 'u64', 'BigInt64Array': 'i64'
-          };
-          const elemType = typeMap[node.typedArrayType] || 'u8';
-          return new RustMacroCall('vec', [new RustLiteral(0, elemType), size], '; ');
-        }
-
-        case 'TypedArraySet': {
-          // typedArray.set(source, offset) -> dest[offset..offset+src.len()].copy_from_slice(&src)
-          const array = this.transformExpression(node.array);
-          const source = this.transformExpression(node.source);
-          if (node.offset) {
-            const offset = this.transformExpression(node.offset);
-            const destSlice = new RustIndex(array, new RustRange(offset, null));
-            return new RustMethodCall(destSlice, 'copy_from_slice', [new RustReference(source)]);
-          }
-          return new RustMethodCall(array, 'copy_from_slice', [new RustReference(source)]);
-        }
-
-        case 'TypedArraySubarray': {
-          // typedArray.subarray(start, end) -> &arr[start..end] or arr[start..end].to_vec()
-          const array = this.transformExpression(node.array);
-          const start = node.start ? this.transformExpression(node.start) : null;
-          const end = node.end ? this.transformExpression(node.end) : null;
-          return new RustMethodCall(
-            new RustIndex(array, new RustRange(start, end)),
-            'to_vec',
-            []
-          );
-        }
-
-        case 'ObjectKeys': {
-          // Object.keys(obj) -> map.keys().collect::<Vec<_>>()
-          const obj = this.transformExpression(node.object || node.arguments?.[0]);
-          return new RustMethodCall(
-            new RustMethodCall(obj, 'keys', []),
-            'collect::<Vec<_>>',
-            []
-          );
-        }
-
-        case 'ObjectValues': {
-          // Object.values(obj) -> map.values().collect::<Vec<_>>()
-          const obj = this.transformExpression(node.object || node.arguments?.[0]);
-          return new RustMethodCall(
-            new RustMethodCall(obj, 'values', []),
-            'collect::<Vec<_>>',
-            []
-          );
-        }
-
-        case 'ObjectEntries': {
-          // Object.entries(obj) -> map.iter().collect::<Vec<_>>()
-          const obj = this.transformExpression(node.object || node.arguments?.[0]);
-          return new RustMethodCall(
-            new RustMethodCall(obj, 'iter', []),
-            'collect::<Vec<_>>',
-            []
-          );
-        }
-
-        case 'Random': {
-          // Math.random() -> rand::random::<f64>()
-          return new RustCall(new RustIdentifier('rand::random::<f64>'), []);
-        }
-
-        case 'DebugOutput': {
-          // console.log() -> eprintln!() or println!()
-          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
-          const method = node.method || 'log';
-          const macro = method === 'error' || method === 'warn' ? 'eprintln' : 'println';
-          if (args.length === 0)
-            return new RustMacroCall(macro, [new RustLiteral('', 'str')]);
-          if (args.length === 1)
-            return new RustMacroCall(macro, [new RustLiteral('{:?}', 'str'), args[0]]);
-          const fmtStr = args.map(() => '{:?}').join(' ');
-          return new RustMacroCall(macro, [new RustLiteral(fmtStr, 'str'), ...args]);
-        }
-
-        case 'ErrorCreation': {
-          // throw new Error(msg) -> format!("Error: {}", msg) or panic!
-          const msg = node.message ? this.transformExpression(node.message) : RustLiteral.String('error');
-          return new RustMacroCall('format', [new RustLiteral('Error: {}', 'str'), msg]);
-        }
-
-        case 'IsFiniteCheck': {
-          // Number.isFinite(x) -> value.is_finite()
-          const val = this.transformExpression(node.value);
-          return new RustMethodCall(val, 'is_finite', []);
-        }
-
-        case 'IsNaNCheck': {
-          // Number.isNaN(x) -> value.is_nan()
-          const val = this.transformExpression(node.value);
-          return new RustMethodCall(val, 'is_nan', []);
-        }
-
-        case 'IsIntegerCheck': {
-          // Number.isInteger(x) -> value.fract() == 0.0
-          const val = this.transformExpression(node.value);
-          return new RustBinaryExpression(
-            new RustMethodCall(val, 'fract', []),
-            '==',
-            new RustLiteral(0.0, 'f64')
-          );
-        }
-
-        case 'ParentMethodCall': {
-          // super.method() -> Trait method call via explicit type
-          // Rust doesn't have direct super calls like OO languages
-          const method = node.method || node.name || 'method';
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          return new RustIdentifier(`/* super.${this.toSnakeCase(method)}() - Rust uses trait method dispatch */`);
-        }
-
-        case 'BigIntCast': {
-          // BigInt(value) -> value as i128 or use num::BigInt
-          const val = this.transformExpression(node.argument || node.value || node.arguments?.[0]);
-          const isSigned = node.signed !== false;
-          const targetType = isSigned ? 'i128' : 'u128';
-          return new RustCast(val, new RustType(targetType));
-        }
-
-        default:
-          return null;
-      }
-    }
-
-    /**
-     * Transform an identifier
-     */
-    transformIdentifier(node) {
-      let name = node.name;
-
-      // Map JavaScript keywords to Rust equivalents
-      if (name === 'undefined') return new RustIdentifier('None');
-      if (name === 'null') return new RustIdentifier('None');
-      if (name === 'NaN') return new RustIdentifier('f64::NAN');
-      if (name === 'Infinity') return new RustIdentifier('f64::INFINITY');
-
-      // Check for Rust reserved keywords that need renaming
-      if (this.isRustKeyword(name)) {
-        name = name + '_';
-      }
-
-      // Preserve UPPER_SNAKE_CASE for constants
-      if (/^[A-Z][A-Z0-9_]*$/.test(name)) {
-        return new RustIdentifier(name);
-      }
-
-      return new RustIdentifier(this.toSnakeCase(name));
-    }
-
-    /**
-     * Transform a literal
-     */
-    transformLiteral(node) {
-      if (typeof node.value === 'number') {
-        if (Number.isInteger(node.value)) {
-          const suffix = node.value >= 0 ? 'u32' : 'i32';
-          return RustLiteral.UInt(node.value, suffix);
-        }
-        return new RustLiteral(node.value, 'float');
-      }
-
-      if (typeof node.value === 'string') {
-        // Single character strings should be char literals in Rust
-        if (node.value.length === 1)
-          return RustLiteral.Char(node.value);
-        return RustLiteral.String(node.value);
-      }
-
-      if (typeof node.value === 'boolean') {
-        return RustLiteral.Bool(node.value);
-      }
-
-      if (node.value === null) {
-        return new RustIdentifier('None');
-      }
-      // Handle undefined - treat same as None in Rust
-      if (node.value === undefined) {
-        return new RustIdentifier('None');
-      }
-
-      return new RustLiteral(node.value, 'unknown');
-    }
-
-    /**
-     * Coerce a Rust expression to usize type
-     * If it's a numeric literal, change its suffix to 'usize'
-     * Otherwise, wrap in a cast
-     */
-    coerceToUsize(expr) {
-      if (!expr) return expr;
-      // If it's a RustLiteral with numeric type, change suffix to usize
-      if (expr.nodeType === 'Literal' && typeof expr.value === 'number') {
-        return RustLiteral.UInt(expr.value, 'usize');
-      }
-      // For other expressions, wrap in cast
-      return new RustCast(expr, RustType.Usize());
-    }
-
-    /**
-     * Transform a binary expression
-     */
-    transformBinaryExpression(node) {
-      // Map operators
-      let operator = node.operator;
-      if (operator === '===') operator = '==';
-      if (operator === '!==') operator = '!=';
-
-      // Handle x.length === 0 -> x.is_empty()  (more idiomatic Rust)
-      if ((operator === '==' || operator === '===') &&
-          node.left?.type === 'MemberExpression' &&
-          node.left?.property?.name === 'length' &&
-          node.right?.type === 'Literal' && node.right?.value === 0) {
-        const array = this.transformExpression(node.left.object);
-        return new RustMethodCall(array, 'is_empty', []);
-      }
-      // Handle x.length !== 0 -> !x.is_empty()
-      if ((operator === '!=' || operator === '!==') &&
-          node.left?.type === 'MemberExpression' &&
-          node.left?.property?.name === 'length' &&
-          node.right?.type === 'Literal' && node.right?.value === 0) {
-        const array = this.transformExpression(node.left.object);
-        return new RustUnaryExpression('!', new RustMethodCall(array, 'is_empty', []));
-      }
-
-      // Handle x.length compared to non-zero numbers - .len() returns usize
-      if ((node.left?.type === 'MemberExpression' && node.left?.property?.name === 'length') ||
-          (node.left?.type === 'ArrayLength')) {
-        let left = this.transformExpression(node.left);
-        let right;
-        // Convert numeric literal to usize for comparison with .len()
-        if (node.right?.type === 'Literal' && typeof node.right.value === 'number') {
-          right = RustLiteral.UInt(node.right.value, 'usize');
-        } else {
-          right = this.transformExpression(node.right);
-        }
-        return new RustBinaryExpression(left, operator, right);
-      }
-
-      // Handle expressions involving .len() in binary operations (like len() % x != 0)
-      // Check if left side contains a .length property access
-      const containsLengthAccess = (n) => {
-        if (!n || typeof n !== 'object') return false;
-        if (n.type === 'MemberExpression' && n.property?.name === 'length') return true;
-        if (n.type === 'ArrayLength') return true;
-        return Object.values(n).some(v => containsLengthAccess(v));
-      };
-
-      if (containsLengthAccess(node.left)) {
-        let left = this.transformExpression(node.left);
-        let right;
-        // Convert numeric literal to usize for comparison with .len()-derived values
-        if (node.right?.type === 'Literal' && typeof node.right.value === 'number') {
-          right = RustLiteral.UInt(node.right.value, 'usize');
-        } else {
-          right = this.transformExpression(node.right);
-        }
-        return new RustBinaryExpression(left, operator, right);
-      }
-
-      // Handle loop index (usize) compared to struct field (often u32)
-      // Pattern: i < self.some_field where i is a loop variable
-      // Note: 'j' removed - it's often a crypto accumulator (u32), not just a loop index
-      // Note: 'p' added - commonly used as loop counter in XXTEA and similar algorithms
-      const isLoopIndex = node.left?.type === 'Identifier' &&
-                          ['i', 'k', 'n', 'idx', 'index', 'round', 'p'].includes(node.left.name.toLowerCase());
-      const isFieldAccess = node.right?.type === 'ThisPropertyAccess' ||
-                            (node.right?.type === 'MemberExpression' &&
-                             node.right?.object?.type === 'ThisExpression');
-      if (isLoopIndex && isFieldAccess && ['<', '<=', '>', '>=', '==', '!='].includes(operator)) {
-        let left = this.transformExpression(node.left);
-        let right = this.transformExpression(node.right);
-        // Cast field to usize: self.field as usize
-        right = new RustCast(right, RustType.Usize());
-        return new RustBinaryExpression(left, operator, right);
-      }
-
-      // Handle variables with length/size suffix compared to literals
-      // Pattern: key_length < 1 or buffer_size > 256 (these are usize in Rust)
-      // Also includes common loop index variables which are typically usize
-      const isUsizeVariable = (n) => {
-        if (n?.type !== 'Identifier') return false;
-        const name = n.name?.toLowerCase() || '';
-        // Common loop index variable names (typed as usize for array indexing)
-        // Note: 'j' removed - it's often a crypto accumulator (u32), not just a loop index
-        // Note: 'p' added - commonly used as loop counter in XXTEA and similar algorithms
-        const loopVars = ['i', 'k', 'n', 'idx', 'index', 'round', 'offset', 'pos', 'position', 'p'];
-        if (loopVars.includes(name)) return true;
-        // Length/size suffix patterns
-        return name.endsWith('_length') || name.endsWith('length') ||
-               name.endsWith('_size') || name.endsWith('size') ||
-               name.endsWith('_len') || name.endsWith('len') ||
-               name.endsWith('_count') || name.endsWith('count');
-      };
-      if (isUsizeVariable(node.left) && node.right?.type === 'Literal' &&
-          typeof node.right.value === 'number' && ['<', '<=', '>', '>=', '==', '!='].includes(operator)) {
-        let left = this.transformExpression(node.left);
-        let right = RustLiteral.UInt(node.right.value, 'usize');
-        return new RustBinaryExpression(left, operator, right);
-      }
-      if (isUsizeVariable(node.right) && node.left?.type === 'Literal' &&
-          typeof node.left.value === 'number' && ['<', '<=', '>', '>=', '==', '!='].includes(operator)) {
-        let left = RustLiteral.UInt(node.left.value, 'usize');
-        let right = this.transformExpression(node.right);
-        return new RustBinaryExpression(left, operator, right);
-      }
-
-      // Check if either side is a usize field access (self.i, self.j, etc.)
-      // Excludes computed member expressions like data[i] which are array accesses
-      const isUsizeFieldAccess = (n) => {
-        if (n?.type !== 'MemberExpression' && n?.type !== 'ThisPropertyAccess') return false;
-        // Computed member expressions (data[i]) are array accesses, not field accesses
-        if (n?.computed) return false;
-        const rawProp = n.property?.name || n.property;
-        const propName = typeof rawProp === 'string' ? rawProp.toLowerCase() : '';
-        // Note: 'j' removed - it's often a crypto accumulator (u32), not just a loop index
-        const usizeFields = ['i', 'index', 'idx', 'offset', 'position', 'pos', 'key_size', 'block_size'];
-        return usizeFields.includes(propName);
-      };
-
-      // Recursively check if an expression involves usize values
-      const involvesUsize = (n) => {
-        if (!n) return false;
-        if (isUsizeVariable(n) || isUsizeFieldAccess(n)) return true;
-        // Nested binary expressions: (i + 1) involves usize if i is usize
-        if (n.type === 'BinaryExpression') {
-          return involvesUsize(n.left) || involvesUsize(n.right);
-        }
-        // Floor/Truncate nodes wrap division for integer semantics - check their argument/value
-        if (n.type === 'Floor' || n.type === 'Truncate' || n.type === 'Ceil') {
-          return involvesUsize(n.argument) || involvesUsize(n.value);
-        }
-        // Division nodes (when not wrapped in Floor)
-        if (n.type === 'Divide' || n.type === 'Division') {
-          return involvesUsize(n.left) || involvesUsize(n.right);
-        }
-        // .len() returns usize
-        if (n.type === 'ArrayLength') return true;
-        if (n.type === 'MemberExpression' && n.property?.name === 'length') return true;
-        return false;
-      };
-
-      // Handle arithmetic operations with usize variables/fields and literals
-      const arithmeticOps = ['+', '-', '*', '/', '%', '&', '|', '^'];
-      if (arithmeticOps.includes(operator)) {
-        const leftIsUsize = isUsizeVariable(node.left) || isUsizeFieldAccess(node.left);
-        const rightIsUsize = isUsizeVariable(node.right) || isUsizeFieldAccess(node.right);
-
-        if (leftIsUsize && node.right?.type === 'Literal' && typeof node.right.value === 'number') {
-          let left = this.transformExpression(node.left);
-          let right = RustLiteral.UInt(node.right.value, 'usize');
-          return new RustBinaryExpression(left, operator, right);
-        }
-        if (rightIsUsize && node.left?.type === 'Literal' && typeof node.left.value === 'number') {
-          let left = RustLiteral.UInt(node.left.value, 'usize');
-          let right = this.transformExpression(node.right);
-          return new RustBinaryExpression(left, operator, right);
-        }
-
-        // Handle nested expressions: (i + 1) % 2 - left is BinaryExpression that involves usize
-        const leftInvolvesUsize = involvesUsize(node.left);
-        const rightInvolvesUsize = involvesUsize(node.right);
-
-        if (leftInvolvesUsize && node.right?.type === 'Literal' && typeof node.right.value === 'number') {
-          let left = this.transformExpression(node.left);
-          let right = RustLiteral.UInt(node.right.value, 'usize');
-          return new RustBinaryExpression(left, operator, right);
-        }
-        if (rightInvolvesUsize && node.left?.type === 'Literal' && typeof node.left.value === 'number') {
-          let left = RustLiteral.UInt(node.left.value, 'usize');
-          let right = this.transformExpression(node.right);
-          return new RustBinaryExpression(left, operator, right);
-        }
-
-        // Handle identifier vs identifier with different numeric types for arithmetic
-        if (node.left?.type === 'Identifier' && node.right?.type === 'Identifier') {
-          const lhsType = this.getVariableType(node.left.name);
-          const rhsType = this.getVariableType(node.right.name);
-          if (lhsType && rhsType && lhsType.name !== rhsType.name) {
-            const isLhsU32 = lhsType.name === 'u32';
-            const isRhsU32 = rhsType.name === 'u32';
-            const isLhsUsize = lhsType.name === 'usize';
-            const isRhsUsize = rhsType.name === 'usize';
-            // u32 with usize -> cast u32 to usize
-            if (isLhsU32 && isRhsUsize) {
-              let left = new RustCast(this.transformExpression(node.left), RustType.Usize());
-              let right = this.transformExpression(node.right);
-              return new RustBinaryExpression(left, operator, right);
-            }
-            if (isLhsUsize && isRhsU32) {
-              let left = this.transformExpression(node.left);
-              let right = new RustCast(this.transformExpression(node.right), RustType.Usize());
-              return new RustBinaryExpression(left, operator, right);
-            }
-          }
-        }
-
-        // Handle expressions: when one side is u32-typed and other involves usize
-        if (rightInvolvesUsize) {
-          const leftType = this.inferTypeFromValue(node.left);
-          if (leftType && leftType.name === 'u32') {
-            let left = new RustCast(this.transformExpression(node.left), RustType.Usize());
-            let right = this.transformExpression(node.right);
-            return new RustBinaryExpression(left, operator, right);
-          }
-        }
-        if (leftInvolvesUsize) {
-          const rightType = this.inferTypeFromValue(node.right);
-          if (rightType && rightType.name === 'u32') {
-            let left = this.transformExpression(node.left);
-            let right = new RustCast(this.transformExpression(node.right), RustType.Usize());
-            return new RustBinaryExpression(left, operator, right);
-          }
-        }
-      }
-
-      // Handle comparison operators with nested usize expressions
-      // e.g., (i + 1) % 2 == 1 -> right side 1 should be 1usize
-      const comparisonOps = ['==', '!=', '<', '<=', '>', '>='];
-      if (comparisonOps.includes(operator)) {
-        const leftInvolvesUsize = involvesUsize(node.left);
-        const rightInvolvesUsize = involvesUsize(node.right);
-
-        if (leftInvolvesUsize && node.right?.type === 'Literal' && typeof node.right.value === 'number') {
-          let left = this.transformExpression(node.left);
-          let right = RustLiteral.UInt(node.right.value, 'usize');
-          return new RustBinaryExpression(left, operator, right);
-        }
-        if (rightInvolvesUsize && node.left?.type === 'Literal' && typeof node.left.value === 'number') {
-          let left = RustLiteral.UInt(node.left.value, 'usize');
-          let right = this.transformExpression(node.right);
-          return new RustBinaryExpression(left, operator, right);
-        }
-
-        // General type matching: if LHS is a known-typed variable and RHS is a literal, match the type
-        if (node.left?.type === 'Identifier' && node.right?.type === 'Literal' && typeof node.right.value === 'number') {
-          const lhsType = this.getVariableType(node.left.name);
-          if (lhsType) {
-            const intTypes = ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'usize', 'isize'];
-            if (intTypes.includes(lhsType.name)) {
-              let left = this.transformExpression(node.left);
-              let right = RustLiteral.UInt(node.right.value, lhsType.name);
-              return new RustBinaryExpression(left, operator, right);
-            }
-          }
-        }
-        if (node.right?.type === 'Identifier' && node.left?.type === 'Literal' && typeof node.left.value === 'number') {
-          const rhsType = this.getVariableType(node.right.name);
-          if (rhsType) {
-            const intTypes = ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'usize', 'isize'];
-            if (intTypes.includes(rhsType.name)) {
-              let left = RustLiteral.UInt(node.left.value, rhsType.name);
-              let right = this.transformExpression(node.right);
-              return new RustBinaryExpression(left, operator, right);
-            }
-          }
-        }
-
-        // Handle identifier vs identifier with different numeric types
-        // Cast u32 to usize when comparing with usize variable
-        if (node.left?.type === 'Identifier' && node.right?.type === 'Identifier') {
-          const lhsType = this.getVariableType(node.left.name);
-          const rhsType = this.getVariableType(node.right.name);
-          if (lhsType && rhsType && lhsType.name !== rhsType.name) {
-            const isLhsU32 = lhsType.name === 'u32';
-            const isRhsU32 = rhsType.name === 'u32';
-            const isLhsUsize = lhsType.name === 'usize';
-            const isRhsUsize = rhsType.name === 'usize';
-            // u32 compared with usize -> cast u32 to usize
-            if (isLhsU32 && isRhsUsize) {
-              let left = new RustCast(this.transformExpression(node.left), RustType.Usize());
-              let right = this.transformExpression(node.right);
-              return new RustBinaryExpression(left, operator, right);
-            }
-            if (isLhsUsize && isRhsU32) {
-              let left = this.transformExpression(node.left);
-              let right = new RustCast(this.transformExpression(node.right), RustType.Usize());
-              return new RustBinaryExpression(left, operator, right);
-            }
-          }
-        }
-
-        // Handle expressions: when left is u32-typed and right involves usize
-        if (rightInvolvesUsize) {
-          const leftType = this.inferTypeFromValue(node.left);
-          if (leftType && leftType.name === 'u32') {
-            let left = new RustCast(this.transformExpression(node.left), RustType.Usize());
-            let right = this.transformExpression(node.right);
-            return new RustBinaryExpression(left, operator, right);
-          }
-        }
-        if (leftInvolvesUsize) {
-          const rightType = this.inferTypeFromValue(node.right);
-          if (rightType && rightType.name === 'u32') {
-            let left = this.transformExpression(node.left);
-            let right = new RustCast(this.transformExpression(node.right), RustType.Usize());
-            return new RustBinaryExpression(left, operator, right);
-          }
-        }
-      }
-
-      // Handle byte operations: data[i] & 0xFF -> data[i] & 255u8
-      // Handle byte subtraction: data[i] - 0x30 -> data[i] - 48u8 (for ASCII conversion)
-      // When indexing a byte array with a byte mask or small value, use u8 type
-      const isByteOperation = ['-', '+', '&', '|', '^'].includes(operator);
-      if (isByteOperation && node.right?.type === 'Literal' &&
-          typeof node.right.value === 'number' && node.right.value <= 255) {
-        // Check if left side is an array index (potential byte access)
-        const isArrayIndex = node.left?.type === 'MemberExpression' && node.left?.computed;
-        const leftObjName = node.left?.object?.name?.toLowerCase() || '';
-        const isDataAccess = leftObjName.includes('data') ||
-                             leftObjName.includes('byte') ||
-                             leftObjName.includes('block') ||
-                             leftObjName.includes('buffer') ||
-                             leftObjName.includes('input') ||
-                             leftObjName.includes('message') ||
-                             leftObjName.includes('key');
-        if (isArrayIndex && isDataAccess) {
-          let left = this.transformExpression(node.left);
-          let right = RustLiteral.UInt(node.right.value, 'u8');
-          return new RustBinaryExpression(left, operator, right);
-        }
-      }
-
-      let left = this.transformExpression(node.left);
-      let right = this.transformExpression(node.right);
-
-      // Handle JavaScript >>> 0 idiom (cast to unsigned)
-      if (operator === '>>>' && node.right.type === 'Literal' && node.right.value === 0) {
-        // In Rust, just cast to u32
-        return new RustCast(left, RustType.U32());
-      }
-
-      // Unsigned right shift in Rust: value as u32 >> amount
-      if (operator === '>>>') {
-        // Cast left to u32 for unsigned shift
-        left = new RustCast(left, RustType.U32());
-        operator = '>>';
-      }
-
-      // Handle typeof comparisons
-      if ((operator === '==' || operator === '!=') &&
-          node.left.type === 'UnaryExpression' && node.left.operator === 'typeof' &&
-          node.right.type === 'Literal' && typeof node.right.value === 'string') {
-        // In Rust, types are known at compile time - typeof checks become static true/false
-        // For byte array parameters, string checks should be false (data is &[u8], not String)
-        const typeCheck = node.right.value;
-        const arg = node.left.argument;
-        const argName = arg?.name || arg?.property?.name || '';
-        const lowerName = String(argName).toLowerCase();
-
-        // Determine the Rust type from the context
-        const isSlice = lowerName.includes('data') || lowerName.includes('bytes') ||
-                       lowerName.includes('block') || lowerName.includes('input') ||
-                       lowerName.includes('message') || lowerName.includes('plaintext') ||
-                       lowerName.includes('ciphertext');
-
-        // typeof x === 'string' on a &[u8] is always false
-        // typeof x !== 'string' on a &[u8] is always true
-        if (typeCheck === 'string' && isSlice) {
-          return RustLiteral.Bool(operator === '!=');
-        }
-        // typeof x === 'object' on a slice/Vec is always true (objects in JS terms)
-        if (typeCheck === 'object' && isSlice) {
-          return RustLiteral.Bool(operator === '==');
-        }
-
-        // For unknown cases, just return true (type matches) or fallback to compile-time check
-        return RustLiteral.Bool(true);
-      }
-
-      return new RustBinaryExpression(left, operator, right);
-    }
-
-    /**
-     * Transform a unary expression
-     */
-    transformUnaryExpression(node) {
-      const operand = this.transformExpression(node.argument);
-
-      let operator = node.operator;
-      if (operator === 'typeof') {
-        // Rust doesn't have typeof, use type_name with reference to operand
-        const refExpr = new RustUnaryExpression('&', operand);
-        return new RustMacroCall('std::any::type_name', refExpr);
-      }
-
-      // Handle JavaScript truthy checks for non-boolean types in Rust
-      if (operator === '!') {
-        // Check what type of value we're negating
-        const argName = node.argument?.name || node.argument?.property;
-        if (argName) {
-          const lowerName = String(argName).toLowerCase();
-          // For arrays/slices/vectors (parameters), use .is_empty()
-          // These are typically passed by reference and can't be None
-          if (lowerName.includes('data') || lowerName.includes('bytes') ||
-              lowerName.includes('block') || lowerName.includes('arr') ||
-              lowerName.includes('vec') || lowerName.includes('input') ||
-              lowerName.includes('output')) {
-            return new RustMethodCall(operand, 'is_empty', []);
-          }
-        }
-        // For field access like self.key, check the field name
-        if (node.argument?.type === 'MemberExpression' ||
-            node.argument?.type === 'ThisPropertyAccess') {
-          const propName = node.argument?.property?.name || node.argument?.property;
-          if (propName) {
-            const lowerName = String(propName).toLowerCase();
-            // Option fields (null-initialized) -> .is_none()
-            if (lowerName.includes('key') || lowerName.includes('buffer') ||
-                lowerName.includes('state')) {
-              return new RustMethodCall(operand, 'is_none', []);
-            }
-            // Non-option collection fields -> .is_empty()
-            if (lowerName.includes('data') || lowerName.includes('input') ||
-                lowerName.includes('output') || lowerName.includes('bytes')) {
-              return new RustMethodCall(operand, 'is_empty', []);
-            }
-          }
-        }
-      }
-
-      return new RustUnaryExpression(operator, operand);
-    }
-
-    /**
-     * Transform an assignment expression
-     */
-    transformAssignmentExpression(node) {
-      const left = this.transformExpression(node.left, true);  // isLValue=true for left side
-      let right = this.transformExpression(node.right);
-
-      // Check if we're assigning to an Option field (like self.key)
-      if (node.left?.type === 'MemberExpression' || node.left?.type === 'ThisPropertyAccess') {
-        const propName = node.left?.property?.name || node.left?.property;
-        if (propName) {
-          const lowerName = String(propName).toLowerCase();
-          const fieldType = this.structFieldTypes.get(this.toSnakeCase(propName));
-
-          // Check if the target field is an Option type
-          const isOptionField = (fieldType && fieldType.name === 'Option') ||
-            lowerName === 'key' || lowerName === '_key' ||
-            lowerName === 'iv' || lowerName === '_iv' ||
-            lowerName === 'nonce' || lowerName === '_nonce' ||
-            (lowerName.includes('buffer') && this.structFieldTypes.get(this.toSnakeCase(propName))?.name === 'Option');
-
-          if (isOptionField && node.operator === '=') {
-            // Check if right side is not None/null
-            const rightNode = node.right;
-            const isNullish = (rightNode?.type === 'Literal' && (rightNode.value === null || rightNode.value === undefined)) ||
-                              (rightNode?.type === 'Identifier' && (rightNode.name === 'null' || rightNode.name === 'None' || rightNode.name === 'undefined'));
-
-            if (!isNullish) {
-              // Wrap the value in Some()
-              // For parameters that are slices/references (like key_bytes: &[u8]), use Some(value.to_vec())
-              const rightName = String(rightNode?.name || '').toLowerCase();
-              const isSliceParam = rightName.includes('bytes') ||
-                                   rightName.includes('key') ||
-                                   rightName.includes('iv') ||
-                                   rightName.includes('nonce') ||
-                                   rightName.includes('data');
-
-              if (isSliceParam && rightNode?.type === 'Identifier') {
-                // For slice parameters, convert to owned Vec: Some(param.to_vec())
-                right = new RustCall(new RustIdentifier('Some'), [
-                  new RustMethodCall(right, 'to_vec', [])
-                ]);
-              } else if (rightNode?.type === 'ArrayExpression') {
-                // For array literals, wrap directly
-                right = new RustCall(new RustIdentifier('Some'), [right]);
-              } else {
-                right = new RustCall(new RustIdentifier('Some'), [right]);
-              }
-            }
-          }
-
-          // Check if field type is usize and right side is a numeric literal
-          if (fieldType && fieldType.name === 'usize' && right?.nodeType === 'Literal' && right.suffix === 'u32') {
-            right = RustLiteral.UInt(right.value, 'usize');
-          }
-        }
-      }
-
-      // For compound assignment operators (+=, -=, *=, /=, %=), match RHS type to LHS variable type
-      const compoundOps = ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='];
-      if (compoundOps.includes(node.operator)) {
-        // Get the type of the LHS variable
-        let lhsType = null;
-        if (node.left?.type === 'Identifier') {
-          lhsType = this.getVariableType(node.left.name);
-        } else if (node.left?.type === 'ThisPropertyAccess') {
-          const fieldName = this.toSnakeCase(node.left.property);
-          lhsType = this.structFieldTypes.get(fieldName);
-        }
-
-        if (lhsType) {
-          const intTypes = ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'usize', 'isize'];
-          if (intTypes.includes(lhsType.name)) {
-            // Case 1: RHS is a literal - update suffix
-            if (right?.nodeType === 'Literal' && typeof right.value === 'number') {
-              right = RustLiteral.UInt(right.value, lhsType.name);
-            }
-            // Case 2: RHS is a variable with different type - cast it
-            else if (node.right?.type === 'Identifier') {
-              const rhsType = this.getVariableType(node.right.name);
-              if (rhsType && intTypes.includes(rhsType.name) && rhsType.name !== lhsType.name) {
-                // Cast RHS to LHS type
-                const targetType = new RustType(lhsType.name);
-                right = new RustCast(right, targetType);
-              }
-            }
-          }
-        }
-      }
-
-      return new RustAssignment(left, node.operator, right);
-    }
-
-    /**
-     * Transform an update expression (++, --)
-     */
-    transformUpdateExpression(node) {
-      const operand = this.transformExpression(node.argument);
-
-      // Rust doesn't have ++ or --, use += 1 or -= 1
-      const op = node.operator === '++' ? '+=' : '-=';
-      return new RustAssignment(operand, op, new RustLiteral(1, 'int'));
-    }
-
-    /**
-     * Transform a member expression
-     * @param {Object} node - AST node
-     * @param {boolean} isLValue - True if this is the left side of an assignment
-     */
-    transformMemberExpression(node, isLValue = false) {
-      if (node.computed) {
-        // Array indexing - indices must be usize in Rust
-        let object = this.transformExpression(node.object, isLValue);
-        let index = this.transformExpression(node.property);
-
-        // If the index is a numeric literal, make it usize
-        if (node.property?.type === 'Literal' && typeof node.property.value === 'number') {
-          index = RustLiteral.UInt(node.property.value, 'usize');
-        }
-        // If the index is a non-literal u32 expression, cast to usize
-        // This handles cases like arr[j & 3] where j is u32
-        else if (node.property?.type !== 'Identifier' ||
-                 this.getU32Variables().includes(node.property.name?.toLowerCase())) {
-          // Check if it's an identifier that's already usize (loop counters like 'i')
-          const isUsizeVar = node.property?.type === 'Identifier' &&
-                             ['i', 'k', 'n', 'idx', 'index', 'round', 'offset', 'pos', 'position'].includes(
-                               node.property.name?.toLowerCase());
-          if (!isUsizeVar) {
-            // Cast to usize for array indexing
-            index = new RustCast(index, RustType.Usize());
-          }
-        }
-
-        // Check if we're indexing into an Option field (like self.key)
-        // If so, we need to unwrap it first: self.key.as_ref().unwrap()[i] for reading
-        // or self.key.as_mut().unwrap()[i] for writing
-        if (node.object?.type === 'MemberExpression' || node.object?.type === 'ThisPropertyAccess') {
-          const propName = node.object?.property?.name || node.object?.property;
-          if (propName) {
-            const lowerName = String(propName).toLowerCase();
-            const fieldType = this.structFieldTypes.get(this.toSnakeCase(propName));
-            const isOptionField = (fieldType && fieldType.name === 'Option') ||
-              lowerName === 'key' || lowerName === '_key' ||
-              lowerName.includes('sum') || lowerName.includes('key_word') || lowerName.includes('words');
-
-            if (isOptionField) {
-              // Use as_mut for lvalue (writing), as_ref for rvalue (reading)
-              const accessMethod = isLValue ? 'as_mut' : 'as_ref';
-              object = new RustMethodCall(
-                new RustMethodCall(object, accessMethod, []),
-                'unwrap',
-                []
-              );
-            }
-          }
-        }
-
-        return new RustIndex(object, index);
-      }
-
-      // Field access
-      const field = node.property.name || node.property.value;
-
-      // Handle special properties
-      if (field === 'length') {
-        const object = this.transformExpression(node.object);
-        return new RustMethodCall(object, 'len', []);
-      }
-
-      // Check if this is an enum/const member access (Type.VARIANT pattern)
-      // Common patterns: CategoryType.BLOCK, SecurityStatus.SECURE, etc.
-      // Also handle nested: AlgorithmFramework.CategoryType.BLOCK -> CategoryType::BLOCK
-
-      // Helper to check if a name is likely an enum type
-      const enumPatterns = ['Type', 'Status', 'Code', 'Mode', 'Kind', 'Category', 'Level'];
-      const isLikelyEnumName = (name) => typeof name === 'string' && enumPatterns.some(p => name.endsWith(p) || name.includes(p));
-      const isEnumVariant = /^[A-Z][A-Z0-9_]*$/.test(field) || /^[A-Z][a-zA-Z0-9]*$/.test(field);
-
-      // Check for nested MemberExpression: Namespace.EnumType.VARIANT
-      if (node.object.type === 'MemberExpression') {
-        const innerObj = node.object.object;
-        const innerProp = node.object.property?.name || node.object.property?.value;
-
-        // Check if inner property is an enum type name
-        if (innerProp && (isLikelyEnumName(innerProp) || isEnumVariant)) {
-          // AlgorithmFramework.CategoryType.BLOCK -> CategoryType::BLOCK
-          const enumName = this.toPascalCase(innerProp);
-          const variantName = field.toUpperCase(); // Keep enum variants uppercase
-          return new RustIdentifier(`${enumName}::${variantName}`);
-        }
-      }
-
-      if (node.object.type === 'Identifier') {
-        const objName = node.object.name;
-        // Detect enum-like types (names ending with Type, Status, Code, etc.)
-        const isLikelyEnum = isLikelyEnumName(objName);
-
-        if (isLikelyEnum || isEnumVariant) {
-          // Use :: syntax for enum variant access: CategoryType::BLOCK
-          const enumName = this.toPascalCase(objName);
-          const variantName = field.toUpperCase(); // Keep enum variants uppercase
-          return new RustIdentifier(`${enumName}::${variantName}`);
-        }
-      }
-
-      const object = this.transformExpression(node.object);
-
-      // For self.x fields, remove leading underscore (Rust uses visibility modifiers)
-      let fieldName = this.toSnakeCase(field);
-      if (node.object.type === 'ThisExpression' && fieldName.startsWith('_'))
-        fieldName = fieldName.substring(1);
-
-      return new RustFieldAccess(object, fieldName);
-    }
-
-    /**
-     * Transform a call expression
-     */
-    transformCallExpression(node) {
-      // Handle OpCodes method calls
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.type === 'Identifier' &&
-          node.callee.object.name === 'OpCodes') {
-        return this.transformOpCodesCall(node);
-      }
-
-      // Handle method calls
-      if (node.callee.type === 'MemberExpression') {
-        const object = this.transformExpression(node.callee.object);
-        const method = node.callee.property.name || node.callee.property.value;
-        const methodName = this.toSafeSnakeCase(method);
-
-        // Transform arguments, adding references for byte array variables when calling methods on self
-        const args = node.arguments.map(arg => {
-          let transformed = this.transformExpression(arg);
-
-          // Check object type - could be ThisExpression or ThisPropertyAccess from IL AST
-          const isThisCall = node.callee.object.type === 'ThisExpression' ||
-                             node.callee.object.type === 'ThisPropertyAccess' ||
-                             (node.callee.object.type === 'Identifier' && node.callee.object.name === 'self');
-
-          // Skip adding references for internal methods (prefixed with _)
-          // These typically take owned values (Vec<u8>) not references (&[u8])
-          const isInternalMethod = methodName.startsWith('_');
-
-          // If calling a method on self/this and the argument is a variable that holds byte data,
-          // we likely need to pass it as a reference (method expects &[u8] but var is Vec<u8>)
-          // But NOT for internal methods which typically take owned values
-          if (isThisCall && !isInternalMethod && arg.type === 'Identifier') {
-            const argName = arg.name.toLowerCase();
-            // Check if the variable name suggests byte data
-            if (argName.includes('block') || argName.includes('data') ||
-                argName.includes('key') || argName.includes('buffer') ||
-                argName.includes('bytes') || argName.includes('input') ||
-                argName.includes('output')) {
-              // Wrap in reference - method expects &[u8] but we have Vec<u8>
-              return new RustUnaryExpression('&', transformed);
-            }
-          }
-          return transformed;
-        });
-
-        // Handle Object methods (JavaScript built-ins)
-        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Object') {
-          // Object.freeze(x) -> x (Rust has immutability by default)
-          if (method === 'freeze' && args.length === 1)
-            return args[0];
-          // Object.keys(obj) -> obj.keys().collect::<Vec<_>>()
-          if (method === 'keys' && args.length === 1)
-            return new RustMethodCall(new RustMethodCall(args[0], 'keys', []), 'collect', []);
-          // Object.values(obj) -> obj.values().collect::<Vec<_>>()
-          if (method === 'values' && args.length === 1)
-            return new RustMethodCall(new RustMethodCall(args[0], 'values', []), 'collect', []);
-          // Object.entries(obj) -> obj.iter().collect::<Vec<_>>()
-          if (method === 'entries' && args.length === 1)
-            return new RustMethodCall(new RustMethodCall(args[0], 'iter', []), 'collect', []);
-          // Object.assign -> clone and extend
-          if (method === 'assign' && args.length >= 2)
-            return new RustMethodCall(args[0], 'clone', []);
-        }
-
-        // Handle String methods (JavaScript built-ins)
-        if (node.callee.object.type === 'Identifier' &&
-            (node.callee.object.name === 'String' || node.callee.object.name === 'string')) {
-          // String.fromCharCode(code) -> code as u8 as char or char::from_u32(code as u32).unwrap_or('\0')
-          // Also handle snake_case from_char_code from IL transformation
-          if ((method === 'fromCharCode' || method === 'from_char_code') && args.length >= 1) {
-            if (args.length === 1) {
-              // Single char: code as u8 as char
-              return new RustCast(new RustCast(args[0], 'u8'), 'char');
-            }
-            // Multiple args: create a string from multiple chars
-            // chars = [c1 as u8 as char, c2 as u8 as char, ...].iter().collect::<String>()
-            const chars = args.map(a => new RustCast(new RustCast(a, 'u8'), 'char'));
-            const arrayLit = new RustArrayLiteral(chars);
-            return new RustMethodCall(
-              new RustMethodCall(arrayLit, 'iter', []),
-              'collect::<String>',
-              []
-            );
-          }
-        }
-
-        // Handle Array methods (JavaScript built-ins)
-        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Array') {
-          // Array.isArray(x) -> true (in Rust, Vec/slice is always an array-like)
-          // We just return true since Rust's type system handles this at compile time
-          if (method === 'isArray' && args.length === 1)
-            return new RustLiteral(true, 'bool');
-          // Array.from(iterable) -> iterable.iter().collect()
-          if (method === 'from' && args.length >= 1)
-            return new RustMethodCall(new RustMethodCall(args[0], 'iter', []), 'collect', []);
-        }
-
-        // Handle Math methods (JavaScript built-ins)
-        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Math') {
-          // Math.imul(a, b) -> a.wrapping_mul(b) for 32-bit integer multiplication with overflow
-          if (method === 'imul' && args.length === 2)
-            return new RustMethodCall(args[0], 'wrapping_mul', [args[1]]);
-          // Math.floor(x) -> x.floor() for floats, or x for integers
-          if (method === 'floor' && args.length === 1)
-            return new RustMethodCall(args[0], 'floor', []);
-          // Math.ceil(x) -> x.ceil()
-          if (method === 'ceil' && args.length === 1)
-            return new RustMethodCall(args[0], 'ceil', []);
-          // Math.round(x) -> x.round()
-          if (method === 'round' && args.length === 1)
-            return new RustMethodCall(args[0], 'round', []);
-          // Math.abs(x) -> x.abs()
-          if (method === 'abs' && args.length === 1)
-            return new RustMethodCall(args[0], 'abs', []);
-          // Math.min(a, b) -> a.min(b)
-          if (method === 'min' && args.length >= 2) {
-            let result = args[0];
-            for (let i = 1; i < args.length; ++i)
-              result = new RustMethodCall(result, 'min', [args[i]]);
-            return result;
-          }
-          // Math.max(a, b) -> a.max(b)
-          if (method === 'max' && args.length >= 2) {
-            let result = args[0];
-            for (let i = 1; i < args.length; ++i)
-              result = new RustMethodCall(result, 'max', [args[i]]);
-            return result;
-          }
-          // Math.pow(base, exp) -> base.pow(exp)
-          if (method === 'pow' && args.length === 2)
-            return new RustMethodCall(args[0], 'pow', [args[1]]);
-          // Math.sqrt(x) -> x.sqrt()
-          if (method === 'sqrt' && args.length === 1)
-            return new RustMethodCall(args[0], 'sqrt', []);
-          // Math.log(x) -> x.ln()
-          if (method === 'log' && args.length === 1)
-            return new RustMethodCall(args[0], 'ln', []);
-          // Math.log2(x) -> x.log2()
-          if (method === 'log2' && args.length === 1)
-            return new RustMethodCall(args[0], 'log2', []);
-          // Math.random() -> rand::random() (requires rand crate)
-          if (method === 'random' && args.length === 0)
-            return new RustCall(new RustIdentifier('rand::random'), []);
-          // Math.trunc(x) -> x.trunc()
-          if (method === 'trunc' && args.length === 1)
-            return new RustMethodCall(args[0], 'trunc', []);
-          // Math.sign(x) -> x.signum()
-          if (method === 'sign' && args.length === 1)
-            return new RustMethodCall(args[0], 'signum', []);
-          // Math.clz32(x) -> x.leading_zeros()
-          if (method === 'clz32' && args.length === 1)
-            return new RustMethodCall(args[0], 'leading_zeros', []);
-        }
-
-        // Handle array instance methods
-        if (method === 'push') {
-          // Check for spread: arr.push(...other) -> arr.extend(other)
-          if (node.arguments.length === 1 && node.arguments[0].type === 'SpreadElement') {
-            const spreadArg = this.transformExpression(node.arguments[0].argument);
-            return new RustMethodCall(object, 'extend', [spreadArg]);
-          }
-
-          // Look up the array's element type for type coercion
-          let pushArg = args[0];
-          let varName = node.callee?.object?.name;
-          if (varName && node.arguments.length === 1) {
-            const varType = this.getVariableType(varName);
-            if (varType && varType.name === 'Vec' && varType.genericArguments?.[0]) {
-              const elemArg = varType.genericArguments[0];
-              const rustElemType = typeof elemArg === 'string' ? elemArg : (elemArg?.name || null);
-              if (rustElemType) {
-                const valueNode = node.arguments[0];
-                const valueType = this.inferTypeFromValue(valueNode);
-                const valueTypeName = valueType?.name || 'u32';
-
-                // Special handling: Cast/TypeConversion to i32 being pushed to u32 array - skip the i32 cast
-                const isCastLikeNode = valueNode?.type === 'Cast' || valueNode?.type === 'TypeConversion';
-                if (valueTypeName === 'i32' && rustElemType === 'u32' && isCastLikeNode) {
-                  const innerArg = valueNode.arguments?.[0] || valueNode.argument || valueNode.value;
-                  if (innerArg) {
-                    // Transform the inner expression directly, skipping the i32 cast
-                    pushArg = this.transformExpression(innerArg);
-                    // If the inner expr returns u32, no additional cast needed
-                    const innerType = this.inferTypeFromValue(innerArg);
-                    if (innerType?.name !== 'u32') {
-                      pushArg = new RustCast(pushArg, new RustType('u32'));
-                    }
-                  }
-                } else if (valueTypeName !== rustElemType) {
-                  pushArg = new RustCast(args[0], new RustType(rustElemType));
-                }
-              }
-            }
-          }
-
-          // Regular push: arr.push(x) -> arr.push(x)
-          return new RustMethodCall(object, 'push', [pushArg]);
-        }
-
-        // Handle concat: arr.concat(other) -> [arr, other].concat()
-        if (method === 'concat' && args.length >= 1) {
-          // Create [arr1, arr2, ...].concat() pattern for Rust
-          return new RustMethodCall(
-            new RustArrayLiteral([object, ...args]),
-            'concat',
-            []
-          );
-        }
-
-        // Handle string methods
-        // str.split('') -> str.chars() or str.bytes() for character iteration
-        if (method === 'split' && args.length >= 1) {
-          // Check if splitting by empty string (character by character)
-          if (node.arguments[0]?.type === 'Literal' && node.arguments[0].value === '') {
-            // str.split('') -> str.chars().collect::<Vec<_>>() for character-by-character split
-            return new RustMethodCall(
-              new RustMethodCall(object, 'chars', []),
-              'collect',
-              []
-            );
-          }
-          // str.split(sep) -> str.split(sep).collect::<Vec<_>>()
-          return new RustMethodCall(
-            new RustMethodCall(object, 'split', args),
-            'collect',
-            []
-          );
-        }
-
-        // Handle map method: arr.map(fn) -> arr.iter().map(fn).collect()
-        if (method === 'map' && args.length >= 1) {
-          // Check if the callback is an arrow function
-          const callback = node.arguments[0];
-          if (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression') {
-            // Transform: arr.map(x => x + 1) -> arr.iter().map(|x| x + 1).collect()
-            const param = callback.params?.[0]?.name || 'x';
-            const body = this.transformExpression(callback.body);
-            const closure = new RustClosure([param], body);
-            return new RustMethodCall(
-              new RustMethodCall(
-                new RustMethodCall(object, 'iter', []),
-                'map',
-                [closure]
-              ),
-              'collect',
-              []
-            );
-          }
-          // If callback is already a function reference, use it directly
-          return new RustMethodCall(
-            new RustMethodCall(
-              new RustMethodCall(object, 'iter', []),
-              'map',
-              args
-            ),
-            'collect',
-            []
-          );
-        }
-
-        // Handle charCodeAt: str.charCodeAt(i) -> str.as_bytes()[i as usize]
-        if (method === 'charCodeAt') {
-          let index = args.length > 0 ? args[0] : RustLiteral.UInt(0, 'usize');
-          // Ensure index is usize (Rust requires usize for array indexing)
-          if (index.nodeType === 'Literal' && index.suffix && index.suffix !== 'usize') {
-            index = new RustCast(index, RustType.Usize());
-          }
-          return new RustIndex(
-            new RustMethodCall(object, 'as_bytes', []),
-            index
-          );
-        }
-
-        return new RustMethodCall(object, methodName, args);
-      }
-
-      // Regular function call
-      const callee = this.transformExpression(node.callee);
-      const args = node.arguments.map(arg => this.transformExpression(arg));
-
-      return new RustCall(callee, args);
-    }
-
-    /**
-     * Transform OpCodes method calls to Rust equivalents
-     */
-    transformOpCodesCall(node) {
-      const methodName = node.callee.property.name;
-      const args = node.arguments.map(arg => this.transformExpression(arg));
-
-      // Map OpCodes methods to Rust equivalents
-      switch (methodName) {
-        // Rotation operations
-        case 'RotL32':
-        case 'RotL64':
-          return new RustMethodCall(args[0], 'rotate_left', [args[1]]);
-
-        case 'RotR32':
-        case 'RotR64':
-          return new RustMethodCall(args[0], 'rotate_right', [args[1]]);
-
-        case 'RotL8':
-          // Cast to u8, rotate, cast back
-          return new RustMethodCall(
-            new RustCast(args[0], RustType.U8()),
-            'rotate_left',
-            [args[1]]
-          );
-
-        case 'RotR8':
-          return new RustMethodCall(
-            new RustCast(args[0], RustType.U8()),
-            'rotate_right',
-            [args[1]]
-          );
-
-        // Byte packing - little endian
-        case 'Pack32LE':
-          return new RustMethodCall(
-            new RustIdentifier('u32'),
-            'from_le_bytes',
-            [new RustArrayLiteral(args)]
-          );
-
-        case 'Pack64LE':
-          return new RustMethodCall(
-            new RustIdentifier('u64'),
-            'from_le_bytes',
-            [new RustArrayLiteral(args)]
-          );
-
-        case 'Pack16LE':
-          return new RustMethodCall(
-            new RustIdentifier('u16'),
-            'from_le_bytes',
-            [new RustArrayLiteral(args)]
-          );
-
-        // Byte packing - big endian
-        case 'Pack32BE':
-          return new RustMethodCall(
-            new RustIdentifier('u32'),
-            'from_be_bytes',
-            [new RustArrayLiteral(args)]
-          );
-
-        case 'Pack64BE':
-          return new RustMethodCall(
-            new RustIdentifier('u64'),
-            'from_be_bytes',
-            [new RustArrayLiteral(args)]
-          );
-
-        case 'Pack16BE':
-          return new RustMethodCall(
-            new RustIdentifier('u16'),
-            'from_be_bytes',
-            [new RustArrayLiteral(args)]
-          );
-
-        // Byte unpacking - little endian
-        case 'Unpack32LE':
-          return new RustMethodCall(args[0], 'to_le_bytes', []);
-
-        case 'Unpack64LE':
-          return new RustMethodCall(args[0], 'to_le_bytes', []);
-
-        case 'Unpack16LE':
-          return new RustMethodCall(args[0], 'to_le_bytes', []);
-
-        // Byte unpacking - big endian
-        case 'Unpack32BE':
-          return new RustMethodCall(args[0], 'to_be_bytes', []);
-
-        case 'Unpack64BE':
-          return new RustMethodCall(args[0], 'to_be_bytes', []);
-
-        case 'Unpack16BE':
-          return new RustMethodCall(args[0], 'to_be_bytes', []);
-
-        // Array operations
-        case 'XorArrays':
-          // Use zip and map: a.iter().zip(b.iter()).map(|(x, y)| x ^ y).collect()
-          return new RustCall(new RustIdentifier('xor_arrays'), args);
-
-        case 'ClearArray':
-          return new RustMethodCall(args[0], 'fill', [new RustLiteral(0, 'u8')]);
-
-        // Conversion utilities
-        case 'Hex8ToBytes':
-          return new RustCall(new RustIdentifier('hex_to_bytes'), args);
-
-        case 'BytesToHex8':
-          return new RustCall(new RustIdentifier('bytes_to_hex'), args);
-
-        case 'AnsiToBytes':
-          // Convert string to bytes
-          return new RustMethodCall(args[0], 'as_bytes', []);
-
-        case 'BytesToAnsi':
-          // Convert bytes to string
-          return new RustCall(
-            new RustFieldAccess(new RustIdentifier('String'), 'from_utf8_lossy'),
-            [args[0]]
-          );
-
-        default:
-          // Default to function call with snake_case naming
-          return new RustCall(new RustIdentifier(this.toSnakeCase(methodName)), args);
-      }
-    }
-
-    /**
-     * Transform an array expression
-     */
-    transformArrayExpression(node) {
-      // Check for single spread element: [...arr] should become arr.to_vec() or arr.clone()
-      if (node.elements.length === 1 && node.elements[0]?.type === 'SpreadElement') {
-        const spreadArg = this.transformExpression(node.elements[0].argument);
-        // [...arr] becomes arr.to_vec() to clone the array
-        return new RustMethodCall(spreadArg, 'to_vec', []);
-      }
-
-      // Check if ALL elements are spread elements: [...a, ...b] -> [a, b].concat()
-      const allSpreads = node.elements.length > 1 &&
-                         node.elements.every(elem => elem?.type === 'SpreadElement');
-      if (allSpreads) {
-        // [...a, ...b, ...c] -> [a, b, c].concat()
-        const spreadArgs = node.elements.map(elem =>
-          this.transformExpression(elem.argument)
-        );
-        // Create [arr1, arr2].concat() pattern
-        return new RustMethodCall(
-          new RustArrayLiteral(spreadArgs),
-          'concat',
-          []
-        );
-      }
-
-      const elements = node.elements.map(elem => {
-        // Handle spread elements: [...other, elem] -> needs extend
-        if (elem?.type === 'SpreadElement') {
-          return this.transformExpression(elem.argument);
-        }
-        return this.transformExpression(elem);
+      this.warnings = [];
+    }
+
+    // ======================================================================
+    // ENTRY
+    // ======================================================================
+
+    /**
+     * Transform an IL Program into a Rust File.
+     * @param {Object} ast - IL AST (Program)
+     * @returns {Object} RustAST File
+     */
+    transform(ast) {
+      this.model = Model.buildModel(ast, { framework: this.options.framework !== false, libraries: this.options.libraries });
+      this.prefix = this.options.symbolPrefix || '';
+      this.library = !!this.options.library;
+      this.items = [];
+      this.initStmts = [];
+      this.tmpCounter = 0;
+      this.labelCounter = 0;
+      this.superCopies = new Map();
+      this.emittedClasses = new Set();
+      this.computeEmittedClasses();
+      for (const item of this.model.items) {
+        if (item.name && !this.model.isReachable(item.name)) continue;
+        if (item.origin === 'framework' && this.library && item.kind === 'variable') continue;
+        try {
+          switch (item.kind) {
+            case 'class': if (this.emittedClasses.has(item.name)) this.emitClass(this.model.classes.get(item.name)); break;
+            case 'function': this.emitTopFunction(item); break;
+            case 'variable': this.emitTopVariable(item); break;
+            case 'statement': this.emitTopStatement(item.node); break;
+          }
+        } catch (e) {
+          if (!this.options.lenient) throw new Error(`${item.kind} ${item.name || ''}: ${e.message}`);
+          this.warnings.push(`${item.kind} ${item.name || ''}: ${e.message}`);
+          this.items.push(R.Comment(`${item.kind} ${item.name || ''} could not be transpiled: ${e.message}`));
+        }
+      }
+      this.items.push(R.Fn(this.prefix + 'js_module_init', null, [], null, R.Block(this.initStmts),
+        'Runs the top-level code of the JavaScript module (registers its algorithms)'));
+      const items = [];
+      if (!this.library) items.push(R.Raw(RUST_HEADER), R.Raw(RUST_RUNTIME));
+      items.push(...this.items);
+      return R.File(items);
+    }
+
+    computeEmittedClasses() {
+      const instantiated = new Set();
+      Model.walk(this.model.items.filter(i => i.origin === 'main').map(i => i.node), n => {
+        if (n.type === 'NewExpression' && Model.constructedName(n.callee)) instantiated.add(Model.constructedName(n.callee));
       });
-
-      // Use vec! macro for dynamic arrays
-      return new RustVecMacro(elements);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const info of this.model.classes.values()) {
+          if (info.origin !== 'framework' || !instantiated.has(info.name) || info._scannedRust) continue;
+          info._scannedRust = true;
+          Model.walk(info.node, n => {
+            const c = n.type === 'NewExpression' && Model.constructedName(n.callee);
+            if (c && !instantiated.has(c)) { instantiated.add(c); changed = true; }
+          });
+        }
+      }
+      for (const info of this.model.classes.values()) {
+        if (!this.model.isReachable(info.name)) continue;
+        if (info.origin === 'main' || instantiated.has(info.name)) this.emittedClasses.add(info.name);
+      }
     }
 
-    /**
-     * Transform a new expression
-     */
-    transformNewExpression(node) {
-      if (node.callee.type === 'Identifier') {
-        const typeName = node.callee.name;
+    // ======================================================================
+    // NAMES
+    // ======================================================================
 
-        // Map TypedArrays to Rust Vec types
-        const typedArrayMap = {
-          'Uint8Array': 'u8',
-          'Uint16Array': 'u16',
-          'Uint32Array': 'u32',
-          'Int8Array': 'i8',
-          'Int16Array': 'i16',
-          'Int32Array': 'i32',
-          'Float32Array': 'f32',
-          'Float64Array': 'f64'
-        };
+    ident(name) {
+      let n = String(name).replace(/\$/g, '_S_').replace(/[^A-Za-z0-9_]/g, '_');
+      if (/^[0-9]/.test(n)) n = '_' + n;
+      if (RUST_KEYWORDS.has(n) || RESERVED.has(n) || /^(js_|Js|JS_|op_|vh_)/.test(n) || n === '_') n += '_';
+      return n;
+    }
 
-        if (typedArrayMap[typeName]) {
-          const hasArrayInit = node.arguments.length > 0 &&
-            node.arguments[0].type === 'ArrayExpression';
+    className(name) { return this.prefix + this.ident(name); }
+    methodName(name) {
+      const n = this.ident(name);
+      return HANDLE_METHODS.has(n) ? n + '_' : n;
+    }
+    getterName(name) { return 'get_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    setterName(name) { return 'set_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    fieldGet(name) { return 'fld_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    fieldSet(name) { return 'fld_set_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    fieldStore(name) { return 'f_' + String(name).replace(/[^A-Za-z0-9_]/g, '_'); }
+    topName(name) {
+      const v = this.model.variables.get(name);
+      if (v && v.origin === 'framework') return this.ident(name);
+      return this.prefix + this.ident(name);
+    }
+    globalCell(name) { return 'G_' + this.topName(name).toUpperCase(); }
+    staticName(cls, name) { return `${this.className(cls)}_${String(name).replace(/[^A-Za-z0-9_]/g, '_')}`; }
+    tmp(base = 't') { return `js_${base}${++this.tmpCounter}`; }
+    label() { return `'l${++this.labelCounter}`; }
 
-          if (hasArrayInit) {
-            // new Uint8Array([1, 2, 3]) -> vec![1u8, 2u8, 3u8]
-            const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
-            return new RustMacroCall('vec', elements);
-          }
+    // ======================================================================
+    // TYPES
+    // ======================================================================
 
-          // new Uint8Array(n) -> vec![0u8; n]
-          let size = node.arguments[0] ? this.transformExpression(node.arguments[0]) : new RustLiteral(0, 'usize');
-          // Ensure size is usize (vec! repeat size must be usize)
-          size = this.coerceToUsize(size);
-          return new RustMacroCall('vec', [new RustLiteral(0, typedArrayMap[typeName]), size], '; ');
-        }
+    isLeafClass(t) {
+      const info = this.model.classOf(t);
+      // The framework's data classes (TestCase, KeySize, ...) share arrays with object literals: they stay dynamic
+      return !!info && this.emittedClasses.has(t) && !info.hasSubclasses && info.origin !== 'framework';
+    }
 
-        // Handle Array constructor
-        if (typeName === 'Array') {
-          if (node.arguments.length === 1) {
-            // new Array(n) -> Vec::with_capacity(n)
-            const size = this.transformExpression(node.arguments[0]);
-            return new RustCall(new RustFieldAccess(new RustIdentifier('Vec'), 'with_capacity'), [size]);
-          }
-          return new RustMacroCall('vec', []);
-        }
-
-        const pascalTypeName = this.toPascalCase(typeName);
-
-        // Skip 'this' as first argument if calling an Instance constructor
-        // This matches skipping the 'algorithm' parameter in the constructor
-        let filteredArgs = node.arguments;
-        if (filteredArgs.length > 0 && filteredArgs[0].type === 'ThisExpression') {
-          filteredArgs = filteredArgs.slice(1);
-        }
-
-        let args = filteredArgs.map(arg => this.transformExpression(arg));
-
-        // Handle Vulnerability constructor overloads
-        // JS: new Vulnerability(name, description, mitigation) - 3 args
-        // JS: new Vulnerability(name, url, description, mitigation) - 4 args
-        // Rust: Vulnerability::new(name, url, description, mitigation) - always 4 args
-        if (typeName === 'Vulnerability' && args.length === 3) {
-          // Insert empty string for url between name and description
-          args = [args[0], RustLiteral.String(''), args[1], args[2]];
-        }
-
-        // Call the 'new' associated function using :: syntax
-        // Use RustIdentifier with full path since Rust uses TypeName::new() not TypeName.new()
-        return new RustCall(
-          new RustIdentifier(`${pascalTypeName}::new`),
-          args
-        );
+    /** The Rust spelling of an IL type. */
+    rustType(t) {
+      if (typeof t === 'string' && t.startsWith('#')) return this.className(t.slice(1));
+      t = canonicalType(t) || 'any';
+      if (t === 'goint' || t === 'idx') return 'usize';
+      if (isIntType(t)) return { uint8: 'u8', uint16: 'u16', uint32: 'u32', uint64: 'u64', int8: 'i8', int16: 'i16', int32: 'i32', int64: 'i64' }[t];
+      if (isFloatType(t)) return 'f64';
+      if (isBigType(t)) return 'JsBig';
+      switch (t) {
+        case 'boolean': return 'bool';
+        case 'string': return 'String';
+        case 'void': return '()';
+        case 'any': case 'null': case 'function': case 'undefined': return 'JsAny';
+        case 'regex': case 'RegExp': return 'JsRegex';
+        case 'Error': case 'TypeError': case 'RangeError': return 'JsError';
+        case 'Map': case 'Set': return 'JsMap';
+        case 'object': return 'JsObj';
       }
-
-      // Handle MemberExpression callees: new Namespace.ClassName(...)
-      // e.g., new AlgorithmFramework.LinkItem(...) -> LinkItem::new(...)
-      if (node.callee.type === 'MemberExpression') {
-        const typeName = node.callee.property?.name || node.callee.property?.value;
-        if (typeName) {
-          const pascalTypeName = this.toPascalCase(typeName);
-          const args = node.arguments.map(arg => this.transformExpression(arg));
-          return new RustCall(
-            new RustIdentifier(`${pascalTypeName}::new`),
-            args
-          );
-        }
+      if (/^Map</.test(t)) return 'JsMap';
+      if (isArrayType(t)) {
+        const el = elementType(t);
+        return `JsArr<${this.rustType(el === 'object' || el === 'any' ? 'any' : el)}>`;
       }
+      if (t.startsWith('[') && t.endsWith(']')) return 'JsArr<JsAny>';
+      if (t.startsWith('(') || t.includes('=>')) return 'JsAny';
+      if (this.isLeafClass(t)) return this.className(t);
+      return 'JsObj';
+    }
 
+    typeOfNullable(t, nullable) {
+      return nullable && (isNumericType(canonicalType(t)) || canonicalType(t) === 'boolean') ? 'any' : (canonicalType(t) || 'any');
+    }
+
+    rustTypeNullable(t, nullable) { return this.rustType(this.typeOfNullable(t, nullable)); }
+
+    /** Copy types are read without a clone. */
+    isCopy(t) {
+      const r = this.rustType(t);
+      return /^(u8|u16|u32|u64|i8|i16|i32|i64|f64|bool|usize)$/.test(r);
+    }
+
+    zero(t) {
+      const r = this.rustType(t);
+      if (r === '()') return R.Lit('()');
+      if (/^(u8|u16|u32|u64|i8|i16|i32|i64|usize)$/.test(r)) return R.Lit(`0${r}`);
+      if (r === 'f64') return R.Lit('0.0f64');
+      if (r === 'bool') return R.Lit('false');
+      if (r === 'String') return R.Call(R.Ident('String::new'), []);
+      return R.Call(R.Ident(`${this.turbofishType(r)}::default`), []);
+    }
+
+    /** A type name usable as a path prefix (JsArr<u8> -> JsArr::<u8>). */
+    turbofishType(r) { return r.replace(/^(\w+)</, '$1::<'); }
+
+    sameRust(a, b) { return this.rustType(a) === this.rustType(b); }
+
+    // ======================================================================
+    // CONVERSION
+    // ======================================================================
+
+    numKind(r) {
+      if (/^(u8|u16|u32|u64|i8|i16|i32|i64|usize)$/.test(r)) return 'int';
+      if (r === 'f64') return 'float';
       return null;
     }
 
-    /**
-     * Transform a conditional expression
-     */
-    transformConditionalExpression(node) {
-      const condition = this.transformExpression(node.test);
-      const thenExpr = this.transformExpression(node.consequent);
-      const elseExpr = this.transformExpression(node.alternate);
+    /** A Rust expression of IL type `to` for a value. */
+    coerce(v, to) {
+      to = canonicalType(to) || 'any';
+      if (!(v instanceof Val)) throw new Error('coerce of a non-value');
+      const from = canonicalType(v.t) || 'any';
+      const rf = this.rustType(from);
+      const rt = this.rustType(to);
+      if (to === 'void') return v.e;
+      if (v.isConst) return this.constTo(v, to);
+      if ((from === 'closure' || from === 'fnref') && v.sig) {
+        // A function as a value: the dynamic calling convention (JsAny in, JsAny out)
+        const fnAny = v.anyFn || this.functionAsAny(v);
+        return rt === 'JsAny' ? fnAny : this.coerce(new Val(fnAny, 'any'), to);
+      }
+      if (rf === rt) return v.e;
+      if (from === 'null') return this.zero(to);
+      if (rt === 'JsAny') return R.MethodCall(v.e, 'to_js', []);
+      if (rt === 'JsObj') {
+        if (rf === 'JsAny') return R.MethodCall(v.e, 'obj', []);
+        if (this.model.classOf(from.replace(/^#/, '')) || rf === 'JsMap') return R.MethodCall(v.e, 'to_obj', []);
+        if (rf === 'JsError') return R.Call(R.Ident('JsObj::new'), [R.Call(R.Ident('JsErrorObject'), [v.e])]);
+        return R.MethodCall(R.MethodCall(v.e, 'to_js', []), 'obj', []);
+      }
+      const nf = this.numKind(rf);
+      const nt = this.numKind(rt);
+      if (nf && nt) {
+        if (nf === 'float' && nt === 'int') return R.Cast(R.Call(R.Ident('js_f2i'), [v.e]), rt);
+        return R.Cast(v.e, rt);
+      }
+      if (rt === 'bool') return this.truthy(v);
+      if (rf === 'bool' && nt) return nt === 'float' ? R.Cast(R.Call(R.Ident('js_b2i'), [v.e]), 'f64') : R.Cast(R.Call(R.Ident('js_b2i'), [v.e]), rt);
+      if (rf === 'JsBig' && nt) return nt === 'float' ? R.MethodCall(v.e, 'to_f64', []) : R.Cast(R.MethodCall(v.e, rt.startsWith('u') ? 'to_u64' : 'to_i64', []), rt);
+      if (rt === 'JsBig' && nf) {
+        if (nf === 'float') return R.Call(R.Ident('JsBig::from_f64'), [v.e]);
+        return rf.startsWith('u') || rf === 'usize' ? R.Call(R.Ident('JsBig::from_u64'), [R.Cast(v.e, 'u64')]) : R.Call(R.Ident('JsBig::from_i64'), [R.Cast(v.e, 'i64')]);
+      }
+      if (rt === 'String') return R.MethodCall(R.MethodCall(v.e, 'to_js', []), 'text', []);
+      if (nt && rf === 'String') {
+        const n = R.Call(R.Ident('js_to_number'), [R.Ref(v.e)]);
+        return nt === 'float' ? n : R.Cast(R.Call(R.Ident('js_f2i'), [n]), rt);
+      }
+      if (rf.startsWith('JsArr<') && rt.startsWith('JsArr<')) return R.Call(R.Ident(`js_arr_conv::<_, ${rt.slice(6, -1)}>`), [R.Ref(v.e)]);
+      // Everything else through the dynamic value
+      if (rf === 'JsAny') return R.Call(R.Ident(`<${rt}>::from_js`), [R.Ref(v.e)]);
+      return R.Call(R.Ident(`<${rt}>::from_js`), [R.Ref(R.MethodCall(v.e, 'to_js', []))]);
+    }
 
-      return new RustIfExpression(condition, thenExpr, elseExpr);
+    /** A constant in the Rust spelling of IL type `to` (wrapped to the width as ToIntN does). */
+    constTo(v, to) {
+      const c = v.c;
+      const rt = this.rustType(to);
+      if (c === null || c === undefined) return this.zero(to);
+      if (typeof c === 'string') {
+        if (rt === 'String') return R.MethodCall(R.Lit(rustStringLiteral(c)), 'to_string', []);
+        if (this.numKind(rt)) return this.constTo(new Val(null, 'float64', Number(c)), to);
+        return this.coerce(new Val(R.MethodCall(R.Lit(rustStringLiteral(c)), 'to_string', []), 'string'), to);
+      }
+      if (typeof c === 'boolean') {
+        if (rt === 'bool') return R.Lit(String(c));
+        if (this.numKind(rt)) return R.Lit(c ? `1${rt === 'f64' ? '.0f64' : rt}` : `0${rt === 'f64' ? '.0f64' : rt}`);
+        return this.coerce(new Val(R.Lit(String(c)), 'boolean'), to);
+      }
+      if (typeof c === 'bigint') {
+        if (rt === 'JsBig') return this.bigLit(c);
+        if (this.numKind(rt) === 'int') return R.Lit(this.intLit(this.wrapBig(c, to), rt));
+        if (rt === 'f64') return R.Lit(this.floatLit(Number(c)));
+        return this.coerce(new Val(this.bigLit(c), 'bigint'), to);
+      }
+      if (typeof c === 'number') {
+        if (rt === 'JsBig') return this.bigLit(BigInt(Math.trunc(Number.isFinite(c) ? c : 0)));
+        if (this.numKind(rt) === 'int') {
+          if (!Number.isFinite(c)) return R.Lit(`0${rt}`);
+          return R.Lit(this.intLit(this.wrapBig(BigInt(Math.trunc(c)), to === 'goint' || to === 'idx' ? 'uint64' : canonicalType(to)), rt));
+        }
+        if (rt === 'f64') return R.Lit(this.floatLit(c));
+        if (rt === 'bool') return R.Lit(c !== 0 && !Number.isNaN(c) ? 'true' : 'false');
+        if (rt === 'String') return R.MethodCall(R.Lit(rustStringLiteral(String(c))), 'to_string', []);
+        const ft = canonicalType(v.t);
+        const natural = isNumericType(ft) ? ft : (Number.isInteger(c) ? 'int32' : 'float64');
+        return this.coerce(new Val(this.constTo(v, natural), natural), to);
+      }
+      return this.zero(to);
+    }
+
+    wrapBig(b, t) {
+      const bits = intBits(t) || 64;
+      return isSignedInt(t) ? BigInt.asIntN(bits, b) : BigInt.asUintN(bits, b);
+    }
+
+    intLit(b, r) {
+      if (b < 0n) return `(${b}${r})`.replace(`(${b}${r})`, b === -(2n ** BigInt(parseInt(r.slice(1)) - 1)) ? `${r}::MIN` : `(${b}${r})`);
+      return `${b}${r}`;
+    }
+
+    floatLit(n) {
+      if (Number.isNaN(n)) return 'f64::NAN';
+      if (n === Infinity) return 'f64::INFINITY';
+      if (n === -Infinity) return 'f64::NEG_INFINITY';
+      let s = String(n);
+      if (!/[.e]/.test(s)) s += '.0';
+      if (/e/.test(s) && !/\./.test(s.split('e')[0])) s = s.replace('e', '.0e');
+      return n < 0 ? `(${s}f64)` : `${s}f64`;
+    }
+
+    bigLit(b) {
+      if (b >= -(2n ** 63n) && b < 2n ** 63n) return R.Call(R.Ident('JsBig::from_i64'), [R.Lit(b < 0n ? (b === -(2n ** 63n) ? 'i64::MIN' : `(${b}i64)`) : `${b}i64`)]);
+      return R.Call(R.Ident('js_big_lit'), [R.Lit(`"${b.toString()}"`)]);
+    }
+
+    /** A boolean Rust expression for JavaScript truthiness of a value. */
+    truthy(v) {
+      if (v.isConst) return R.Lit(v.c ? 'true' : 'false');
+      const r = this.rustType(v.t);
+      if (r === 'bool') return v.e;
+      if (this.numKind(r) === 'int') return R.Binary('!=', v.e, R.Lit(`0${r}`));
+      if (r === 'f64') return R.Call(R.Ident('js_truthy_f64'), [v.e]);
+      if (r === 'String') return R.Unary('!', R.MethodCall(v.e, 'is_empty', []));
+      if (r === 'JsAny') return R.MethodCall(v.e, 'truthy', []);
+      if (r === 'JsBig') return R.Unary('!', R.MethodCall(v.e, 'is_zero', []));
+      if (r === 'JsError' || r === 'JsMap') return R.Lit('true');
+      return R.Unary('!', R.MethodCall(v.e, 'is_null', []));
+    }
+
+    // ======================================================================
+    // CLASSES
+    // ======================================================================
+
+    emitClass(info) {
+      const name = this.className(info.name);
+      const eff = info.effective;
+      const dataName = name + 'Data';
+      const fields = [];
+      for (const [fname, f] of eff.fields) fields.push({ name: this.fieldStore(fname), type: this.rustTypeNullable(f.type, f.nullable) });
+      fields.push({ name: 'js_extra', type: 'HashMap<String, JsAny>' });
+      const chainNames = info.chain().map(c => c.name).join(' < ');
+      this.items.push(R.Struct(dataName, fields, ['Default'], `The fields of the JavaScript class ${info.name}` + (info.base ? ` (${chainNames})` : '')));
+      this.items.push(R.Struct(`${name}(pub Option<Rc<RefCell<${dataName}>>>)`.replace(/^/, ''), [], ['Clone', 'Default'], `A reference to a ${info.name} (null when empty)`));
+
+      const methods = [];
+      methods.push(R.Raw([
+        `    fn d(&self) -> Ref<'_, ${dataName}> {`,
+        `        match &self.0 { Some(r) => r.borrow(), None => js_throw_error("TypeError", "Cannot read properties of null (${info.name})") }`,
+        '    }',
+        `    fn dm(&self) -> RefMut<'_, ${dataName}> {`,
+        `        match &self.0 { Some(r) => r.borrow_mut(), None => js_throw_error("TypeError", "Cannot set properties of null (${info.name})") }`,
+        '    }',
+        '    pub fn is_null(&self) -> bool { self.0.is_none() }',
+        `    pub fn to_obj(&self) -> JsObj { if self.0.is_none() { JsObj::null() } else { JsObj::new(self.clone()) } }`,
+        `    pub fn ptr_eq(&self, other: &${name}) -> bool { match (&self.0, &other.0) { (Some(a), Some(b)) => Rc::ptr_eq(a, b), (None, None) => true, _ => false } }`
+      ].join('\n')));
+      for (const [fname, f] of eff.fields) {
+        const t = this.rustTypeNullable(f.type, f.nullable);
+        methods.push(R.Raw(`    pub fn ${this.fieldGet(fname)}(&self) -> ${t} { self.d().${this.fieldStore(fname)}.clone() }\n    pub fn ${this.fieldSet(fname)}(&self, v: ${t}) { self.dm().${this.fieldStore(fname)} = v; }`));
+      }
+
+      // Static members
+      for (const [sname, s] of eff.staticFields) {
+        if (s.owner !== info) continue;
+        const t = s.type || (s.init && s.init.resultType) || 'any';
+        this.emitGlobal(this.staticName(info.name, sname), t, s.init);
+      }
+      for (const [mname, m] of eff.staticMethods) {
+        if (m.owner !== info) continue;
+        this.items.push(this.emitFunctionDecl(this.staticName(info.name, mname), null, m.fn, m.jsDoc, null));
+      }
+      for (const block of info.staticBlocks || []) {
+        this.withFunction({ returnType: 'void', cls: null }, () => {
+          this.initStmts.push(R.Block(this.stmts(block.body || [])));
+        });
+      }
+
+      // Construction: new() and one init per class of the chain
+      const chain = info.chain();
+      const ctorOwner = [...chain].reverse().find(c => c.ctor) || null;
+      const ctorParams = ctorOwner ? Model.functionParams(ctorOwner.ctor, ctorOwner.ctorDoc) : [];
+      const newParams = ctorParams.map(p => ({ name: 'mut ' + this.ident(p.name), type: this.rustTypeNullable(p.type, p.nullable) }));
+      methods.push(R.Fn('new', null, newParams, name, R.Block([
+        R.Let('this', null, R.Call(R.Ident(name), [R.Call(R.Ident('Some'), [R.Call(R.Ident('Rc::new'), [R.Call(R.Ident('RefCell::new'), [R.Call(R.Ident(`${dataName}::default`), [])])])])]), false),
+        R.ExprStmt(R.MethodCall(R.Ident('this'), this.initName(info), ctorParams.map(p => R.Ident(this.ident(p.name))))),
+      ], R.Ident('this')), `Constructs a ${info.name}`));
+      for (const c of chain) methods.push(this.emitInit(info, c));
+      for (const [mname, m] of eff.methods) methods.push(this.emitFunctionDecl(this.methodName(mname), '&self', m.fn, m.jsDoc, info));
+      for (const [gname, g] of eff.getters) methods.push(this.emitFunctionDecl(this.getterName(gname), '&self', g.fn, g.jsDoc, info));
+      for (const [sname, s] of eff.setters) methods.push(this.emitFunctionDecl(this.setterName(sname), '&self', s.fn, s.jsDoc, info));
+      for (const [key, copy] of [...this.superCopies.entries()].filter(([, v]) => v.cls === info)) methods.push(this.emitFunctionDecl(key, '&self', copy.fn, copy.jsDoc, info));
+      this.items.push(R.Impl(name, methods));
+      this.items.push(...this.emitProtocol(info, name));
+    }
+
+    initName(c) { return `js_init_${String(c.name).replace(/[^A-Za-z0-9_]/g, '_')}`; }
+
+    emitInit(info, c) {
+      if (c.ctor) return this.emitFunctionDecl(this.initName(c), '&self', c.ctor, c.ctorDoc, info, { init: c });
+      const owner = c.base ? [...c.base.chain()].reverse().find(x => x.ctor) : null;
+      const params = owner ? Model.functionParams(owner.ctor, owner.ctorDoc) : [];
+      const rp = params.map(p => ({ name: 'mut ' + this.ident(p.name), type: this.rustTypeNullable(p.type, p.nullable) }));
+      const stmts = [];
+      if (c.base) stmts.push(R.ExprStmt(R.MethodCall(R.Ident('self'), this.initName(c.base), params.map(p => R.Ident(this.ident(p.name))))));
+      stmts.push(...this.fieldInitializers(info, c));
+      return R.Fn(this.initName(c), '&self', rp, null, R.Block(stmts));
+    }
+
+    fieldInitializers(info, c) {
+      const out = [];
+      for (const fd of c.fieldInits || []) {
+        if (!fd.value) continue;
+        const fname = propKey(fd.key);
+        const f = info.effective.fields.get(fname);
+        if (!f) continue;
+        this.withFunction({ returnType: 'void', cls: info, self: true }, () => {
+          const v = this.expr(fd.value);
+          out.push(...this.flushPre(), R.ExprStmt(R.MethodCall(R.Ident('self'), this.fieldSet(fname), [this.coerce(v, this.typeOfNullable(f.type, f.nullable))])));
+        });
+      }
+      return out;
+    }
+
+    /** impl JsObject / JsDyn / ToJs / FromJs: the members of a class by their JavaScript names. */
+    emitProtocol(info, name) {
+      const eff = info.effective;
+      const q = s => rustStringLiteral(s);
+      const lines = [];
+      lines.push(`impl JsObject for ${name} {`, '    fn as_any(&self) -> &dyn Any { self }');
+      // js_get
+      lines.push('    fn js_get(&self, name: &str) -> JsAny {', '        match name {');
+      for (const [fname] of eff.fields) lines.push(`            ${q(fname)} => self.${this.fieldGet(fname)}().to_js(),`);
+      for (const [gname] of eff.getters) lines.push(`            ${q(gname)} => self.${this.getterName(gname)}().to_js(),`);
+      for (const [mname] of eff.methods) if (!eff.getters.has(mname)) lines.push(`            ${q(mname)} => { let o = self.clone(); js_func(move |a| o.js_call(${q(mname)}, a)) }`);
+      lines.push('            _ => self.d().js_extra.get(name).cloned().unwrap_or_default(),', '        }', '    }');
+      // js_set
+      lines.push('    fn js_set(&self, name: &str, value: JsAny) {', '        match name {');
+      for (const [fname, f] of eff.fields) lines.push(`            ${q(fname)} => self.${this.fieldSet(fname)}(<${this.rustTypeNullable(f.type, f.nullable)}>::from_js(&value)),`);
+      const accessorNames = new Set([...eff.getters.keys(), ...eff.setters.keys()]);
+      for (const aname of accessorNames) {
+        const s = eff.setters.get(aname);
+        if (s) {
+          const p = Model.functionParams(s.fn, s.jsDoc)[0] || { type: 'any', nullable: false };
+          lines.push(`            ${q(aname)} => self.${this.setterName(aname)}(<${this.rustTypeNullable(p.type, p.nullable)}>::from_js(&value)),`);
+        } else {
+          lines.push(`            ${q(aname)} => js_throw_error("TypeError", ${q('Cannot set property ' + aname + ' which has only a getter')}),`);
+        }
+      }
+      lines.push('            _ => { self.dm().js_extra.insert(name.to_string(), value); }', '        }', '    }');
+      // js_call
+      lines.push('    fn js_call(&self, name: &str, args: Vec<JsAny>) -> JsAny {', '        match name {');
+      for (const [mname, m] of eff.methods) {
+        const params = Model.functionParams(m.fn, m.jsDoc);
+        const ret = this.signatureReturn(m.fn, m.jsDoc);
+        const args = params.map((p, i) => {
+          const rt = this.rustTypeNullable(p.type, p.nullable);
+          if (p.defaultValue) {
+            let dflt = null;
+            this.withFunction({ returnType: 'void', cls: info, self: true }, () => {
+              const v = this.expr(p.defaultValue);
+              if (!this.fn.pre.length) dflt = this.emitExprText(this.coerce(v, 'any'));
+              this.fn.pre = [];
+            });
+            return `<${rt}>::from_js(&js_arg_or(&args, ${i}, ${dflt || 'JsAny::undefined()'}))`;
+          }
+          return `<${rt}>::from_js(&js_arg(&args, ${i}))`;
+        });
+        const call = `self.${this.methodName(mname)}(${args.join(', ')})`;
+        lines.push(ret.type === 'void' ? `            ${q(mname)} => { ${call}; JsAny::undefined() }` : `            ${q(mname)} => ${call}.to_js(),`);
+      }
+      lines.push('            _ => {', '                let f = self.d().js_extra.get(name).cloned();',
+        `                match f { Some(f) => f.call(args), None => js_throw_error("TypeError", &format!("${info.name}.{} is not a function", name)) }`,
+        '            }', '        }', '    }');
+      const all = [...new Set([...eff.fields.keys(), ...accessorNames, ...eff.methods.keys()])];
+      lines.push(`    fn js_has(&self, name: &str) -> bool { ${all.length ? `matches!(name, ${all.map(q).join(' | ')}) || ` : ''}self.d().js_extra.contains_key(name) }`);
+      lines.push(`    fn js_has_method(&self, name: &str) -> bool { ${eff.methods.size ? `matches!(name, ${[...eff.methods.keys()].map(q).join(' | ')}) || ` : ''}self.d().js_extra.get(name).map(|f| f.is_func()).unwrap_or(false) }`);
+      lines.push('    fn js_ident(&self) -> usize { self.0.as_ref().map(|r| Rc::as_ptr(r) as *const u8 as usize).unwrap_or(0) }');
+      lines.push('    fn js_is_null(&self) -> bool { self.0.is_none() }');
+      lines.push('}');
+      lines.push(`impl JsDyn for ${name} {`, '    fn as_any(&self) -> &dyn Any { self }',
+        '    fn obj(&self) -> Option<JsObj> { Some(self.to_obj()) }', '    fn truthy(&self) -> bool { self.0.is_some() }',
+        '    fn ident(&self) -> usize { JsObject::js_ident(self) }', '}');
+      lines.push(`impl ToJs for ${name} {`, '    fn to_js(&self) -> JsAny { if self.0.is_none() { JsAny::undefined() } else { JsAny::new(self.clone()) } }', '}');
+      lines.push(`impl FromJs for ${name} {`, `    fn from_js(v: &JsAny) -> ${name} { v.downcast::<${name}>().or_else(|| v.obj().downcast::<${name}>()).unwrap_or_default() }`, '}');
+      return [R.Raw(lines.join('\n'))];
+    }
+
+    emitExprText(e) {
+      if (!this._emitter) {
+        const RustEmitter = (typeof require !== 'undefined') ? require('./RustEmitter.js').RustEmitter : global.RustEmitter;
+        this._emitter = new RustEmitter({});
+      }
+      return this._emitter.expr(e);
+    }
+
+    // ======================================================================
+    // FUNCTIONS
+    // ======================================================================
+
+    signatureReturn(fn, jsDoc) {
+      const type = Model.functionReturnType(fn, jsDoc);
+      const nullable = Model.functionReturnNullable(fn, jsDoc);
+      return { type: type === 'void' ? 'void' : this.typeOfNullable(type, nullable) };
+    }
+
+    withFunction(ctx, body) {
+      const saved = this.fn;
+      this.fn = Object.assign({ scopes: [new Map()], pre: [], loops: [], cells: new Set() }, ctx);
+      try { return body(); } finally { this.fn = saved; }
     }
 
     /**
-     * Transform an object expression to Rust struct literal
+     * A Rust function (or method) for a JavaScript function.
+     * @param {string} name - Rust name
+     * @param {string|null} receiver - '&self' for a method
+     * @param {Object} fn - IL FunctionExpression
+     * @param {Object} jsDoc - its JSDoc
+     * @param {Object|null} cls - the class whose `this` it sees
+     * @param {Object} [extra] - { init: ClassInfo } for a constructor body
      */
-    transformObjectExpression(node) {
-      // Collect key-value pairs
-      const pairs = [];
-      for (const prop of node.properties) {
-        // Handle spread properties and missing keys
-        if (!prop.key) {
-          // SpreadElement or other property without key
-          if (prop.type === 'SpreadElement' && prop.argument) {
-            // Skip spread for now - would need to merge
-            continue;
+    emitFunctionDecl(name, receiver, fn, jsDoc, cls, extra = {}) {
+      const params = Model.functionParams(fn, jsDoc);
+      const ret = extra.init ? { type: 'void' } : this.signatureReturn(fn, jsDoc);
+      return this.withFunction({ returnType: ret.type, cls, self: !!receiver, initOf: extra.init || null }, () => {
+        this.fn.cells = this.capturedNames(fn);
+        const rp = [];
+        const prologue = [];
+        for (const p of params) {
+          const t = this.typeOfNullable(p.type, p.nullable);
+          const b = this.declareLocal(p.name, t);
+          if (b.cell) {
+            const raw = this.ident(p.name) + '_p';
+            rp.push({ name: raw, type: this.rustType(t) });
+            prologue.push(R.Let(b.rs, null, R.Call(R.Ident('JsCell::new'), [R.Ident(raw)]), false));
+          } else {
+            rp.push({ name: 'mut ' + b.rs, type: this.rustType(t) });
           }
+        }
+        let stmts = [...prologue];
+        if (extra.init && !this.containsParentCall(fn.body)) {
+          if (extra.init.base) stmts.push(R.ExprStmt(R.MethodCall(R.Ident('self'), this.initName(extra.init.base), [])));
+          stmts.push(...this.fieldInitializers(cls, extra.init));
+        }
+        stmts.push(...this.functionBody(fn));
+        let tail = null;
+        if (ret.type !== 'void' && !this.terminates(stmts)) tail = this.zero(ret.type);
+        return R.Fn(name, receiver, rp, ret.type === 'void' ? null : this.rustType(ret.type), R.Block(stmts, tail));
+      });
+    }
+
+    containsParentCall(body) {
+      let found = false;
+      Model.walk(body, n => {
+        if (n.type === 'FunctionExpression' || n.type === 'ArrowFunction' || n.type === 'ArrowFunctionExpression') return false;
+        if (n.type === 'ParentConstructorCall') found = true;
+      });
+      return found;
+    }
+
+    /**
+     * Names a nested function or closure of this function refers to: they
+     * become shared cells, so the closure and the function see one variable.
+     */
+    capturedNames(fn) {
+      const names = new Set();
+      const isFn = n => n.type === 'FunctionExpression' || n.type === 'ArrowFunction' || n.type === 'ArrowFunctionExpression' || n.type === 'FunctionDeclaration';
+      Model.walk(fn.body, n => {
+        if (n === fn) return;
+        if (isFn(n)) {
+          Model.walk(n.body, m => { if (m.type === 'Identifier' && m.name) names.add(m.name); });
+          return false;
+        }
+      });
+      // Names the closures declare themselves are theirs
+      return names;
+    }
+
+    functionBody(fn) {
+      if (fn.body && fn.body.type === 'BlockStatement') {
+        this.fn.useTypes = Model.localUseTypes(fn.body);
+        this.hoistVars(fn.body);
+        return this.stmts(fn.body.body);
+      }
+      if (fn.body) {
+        const v = this.expr(fn.body);
+        const stmts = this.flushPre();
+        if (this.fn.returnType === 'void') stmts.push(this.exprStmt(v));
+        else stmts.push(R.Return(this.coerce(v, this.fn.returnType)));
+        return stmts;
+      }
+      return [];
+    }
+
+    terminates(stmts) {
+      const last = stmts[stmts.length - 1];
+      return !!last && (last.kind === 'Return');
+    }
+
+    hoistVars(body) {
+      const hoisted = [];
+      Model.walk(body, (n) => {
+        if (n.type === 'FunctionExpression' || n.type === 'FunctionDeclaration' || n.type === 'ArrowFunction' || n.type === 'ArrowFunctionExpression' || n.type === 'ClassDeclaration') return false;
+        if (n.type === 'VariableDeclaration' && n.kind === 'var') {
+          for (const d of n.declarations) if (d.id && d.id.type === 'Identifier') hoisted.push(d);
+          n._hoistedRust = true;
+        }
+      });
+      if (!hoisted.length) return;
+      this.fn.hoisted = [];
+      const seen = new Set();
+      for (const d of hoisted) {
+        if (seen.has(d.id.name)) continue;
+        seen.add(d.id.name);
+        const t = this.typeOfNullable(this.declaratorType(d) || 'any', d.nullable || d.id.nullable);
+        const b = this.declareLocal(d.id.name, t);
+        this.fn.hoisted.push(this.letLocal(b, this.zero(t)));
+      }
+    }
+
+    declaratorType(d) {
+      if (d.declaredType) return canonicalType(d.declaredType);
+      const t = canonicalType(d.resultType || d.id.resultType || (d.init && d.init.resultType));
+      // An untyped declarator (let a; assigned later - an IL gap): the type the IL gives its uses
+      if (!t && this.fn && this.fn.useTypes && d.id && this.fn.useTypes.has(d.id.name)) return this.fn.useTypes.get(d.id.name);
+      if (t === 'boolean' && d.init && d.init.type === 'LogicalExpression') return this.logicalType(d.init);
+      return t;
+    }
+
+    /**
+     * The type of a || b / a && b: one of its operands, so the operands' type
+     * (their common one) where the IL says boolean of operands that are not.
+     */
+    logicalType(node) {
+      const rt = canonicalType(node.resultType) || 'any';
+      if (rt !== 'boolean' || node.operator === '??') return rt;
+      const a = canonicalType(node.left.resultType);
+      const b = canonicalType(node.right.resultType);
+      if (!a || !b || (a === 'boolean' && b === 'boolean')) return rt;
+      if (a === b) return a;
+      if (isNumericType(a) && isNumericType(b)) return this.widen(a, b);
+      const objectLike = t => t !== 'boolean' && t !== 'string' && !isNumericType(t) && !isBigType(t) && !isArrayType(t) && t !== 'any';
+      if (objectLike(a) && objectLike(b)) return 'object';
+      return 'any';
+    }
+
+    // ======================================================================
+    // SCOPES
+    // ======================================================================
+
+    declareLocal(name, type) {
+      const scope = this.fn.scopes[this.fn.scopes.length - 1];
+      const binding = { name, rs: this.ident(name), type: canonicalType(type) || 'any', cell: this.fn.cells.has(name) };
+      scope.set(name, binding);
+      return binding;
+    }
+
+    /** let for a binding: a plain mutable local, or a shared cell. */
+    letLocal(b, init) {
+      if (b.cell) return R.Let(b.rs, `JsCell<${this.rustType(b.type)}>`, R.Call(R.Ident('JsCell::new'), [init]), false);
+      return R.Let(b.rs, this.rustType(b.type), init, true);
+    }
+
+    lookup(name) {
+      for (let i = this.fn.scopes.length - 1; i >= 0; --i) {
+        const b = this.fn.scopes[i].get(name);
+        if (b) return b;
+      }
+      if (this.fn.outer) return this.fn.outer(name);
+      return null;
+    }
+
+    readLocal(b) {
+      if (b.cell) return new Val(R.MethodCall(R.Ident(b.rs), 'get', []), b.type);
+      return new Val(this.isCopy(b.type) ? R.Ident(b.rs) : R.MethodCall(R.Ident(b.rs), 'clone', []), b.type);
+    }
+
+    writeLocal(b, e) {
+      if (b.cell) return R.ExprStmt(R.MethodCall(R.Ident(b.rs), 'set', [e]));
+      return R.Assign(R.Ident(b.rs), '=', e);
+    }
+
+    pushScope() { this.fn.scopes.push(new Map()); }
+    popScope() { return this.fn.scopes.pop(); }
+
+    // ======================================================================
+    // TOP LEVEL
+    // ======================================================================
+
+    emitTopFunction(item) {
+      const node = item.node;
+      this.items.push(this.emitFunctionDecl(this.topName(item.name), null, node, node.jsDoc, null));
+    }
+
+    /**
+     * A module variable: a thread-local cell with a getter and a setter. Its
+     * initializer runs in js_module_init, in source order; a framework
+     * variable (its enums) instead initializes on first use, so a bundled
+     * dependency's module code finds it set.
+     */
+    emitGlobal(goName, t, init, lazy) {
+      const rt = this.rustType(t);
+      const cell = 'G_' + goName.toUpperCase();
+      let initial = 'Default::default()';
+      if (init && lazy) {
+        this.withFunction({ returnType: 'void', cls: null }, () => {
+          const val = this.expr(init);
+          if (this.fn.pre.length) throw new Error('a framework variable initializer with statements');
+          initial = this.emitExprText(this.coerce(val, t));
+        });
+      }
+      this.items.push(R.Raw([
+        `thread_local! { static ${cell}: RefCell<${rt}> = RefCell::new(${initial}); }`,
+        `pub fn ${goName}() -> ${rt} { ${cell}.with(|c| c.borrow().clone()) }`,
+        `pub fn ${goName}_set(v: ${rt}) { ${cell}.with(|c| *c.borrow_mut() = v) }`
+      ].join('\n')));
+      if (init && !lazy) {
+        this.withFunction({ returnType: 'void', cls: null }, () => {
+          const val = this.expr(init);
+          this.initStmts.push(...this.flushPre(), R.ExprStmt(R.Call(R.Ident(goName + '_set'), [this.coerce(val, t)])));
+        });
+      }
+    }
+
+    emitTopVariable(item) {
+      const d = item.node;
+      const v = this.model.variables.get(item.name);
+      const t = this.typeOfNullable(v.type, v.nullable);
+      this.emitGlobal(this.topName(item.name), t, d.init, item.origin === 'framework');
+    }
+
+    emitTopStatement(node) {
+      this.withFunction({ returnType: 'void', cls: null }, () => {
+        const out = this.stmt(node);
+        if (out.length) this.initStmts.push(R.Block(out));
+      });
+    }
+
+    // ======================================================================
+    // STATEMENTS
+    // ======================================================================
+
+    /** Transform with a pre-statement list of its own: what f needs stays with what it returns. */
+    isolate(f) {
+      const saved = this.fn.pre;
+      this.fn.pre = [];
+      try {
+        const v = f();
+        return { v, pre: this.fn.pre };
+      } finally {
+        this.fn.pre = saved;
+      }
+    }
+
+    flushPre() {
+      const pre = this.fn.pre;
+      this.fn.pre = [];
+      return pre;
+    }
+
+    stmts(list) {
+      const out = [];
+      this.pushScope();
+      if (this.fn.hoisted && this.fn.hoisted.length) { out.push(...this.fn.hoisted); this.fn.hoisted = null; }
+      for (const s of list || []) out.push(...this.stmt(s));
+      this.popScope();
+      return out;
+    }
+
+    stmt(node) {
+      if (!node) return [];
+      switch (node.type) {
+        case 'BlockStatement': return [R.Block(this.stmts(node.body))];
+        case 'EmptyStatement': return [];
+        case 'ExpressionStatement': return this.expressionStatement(node.expression);
+        case 'VariableDeclaration': return this.variableDeclaration(node);
+        case 'ReturnStatement': return this.returnStatement(node);
+        case 'IfStatement': return this.ifStatement(node);
+        case 'ForStatement': return this.forStatement(node);
+        case 'WhileStatement': return this.whileStatement(node);
+        case 'DoWhileStatement': return this.doWhileStatement(node);
+        case 'ForOfStatement': return this.forOfStatement(node);
+        case 'ForInStatement': return this.forInStatement(node);
+        case 'BreakStatement': return [this.jump('break', node.label)];
+        case 'ContinueStatement': return [this.jump('continue', node.label)];
+        case 'ThrowStatement': return this.throwStatement(node);
+        case 'TryStatement': return this.tryStatement(node);
+        case 'SwitchStatement': return this.switchStatement(node);
+        case 'LabeledStatement': return this.labeledStatement(node);
+        case 'FunctionDeclaration': return this.localFunction(node);
+        case 'ClassDeclaration': throw new Error('a class declared inside a function is not supported');
+        default: return this.expressionStatement(node);
+      }
+    }
+
+    /**
+     * A break or continue: every loop carries labels ('lN: the loop, 'cN: its
+     * body block), since Rust allows no unlabeled break inside a labeled block.
+     */
+    jump(kind, label) {
+      const loops = this.fn.loops;
+      let target = null;
+      if (label) target = [...loops].reverse().find(l => l.jsLabel === (label.name || label));
+      else target = [...loops].reverse().find(l => kind === 'break' ? true : l.isLoop);
+      if (!target) throw new Error(`${kind} outside a loop`);
+      if (this.fn.tryDepth && target.depth < this.fn.tryDepth) {
+        // Leaving a try body: carried out by the try's flow value
+        const code = this.fn.tryJumps.length;
+        this.fn.tryJumps.push({ kind, target });
+        return R.Return(R.Call(R.Ident('JsFlow::Jump'), [R.Lit(`${code}usize`)]));
+      }
+      if (kind === 'continue') return R.Break(target.bodyLabel);
+      return R.Break(target.label);
+    }
+
+    /** Run body() inside a loop context; returns its statements. */
+    inLoop(info, body) {
+      info.depth = this.fn.tryDepth || 0;
+      this.fn.loops.push(info);
+      try { return body(); } finally { this.fn.loops.pop(); }
+    }
+
+    expressionStatement(e) {
+      if (!e) return [];
+      switch (e.type) {
+        case 'AssignmentExpression': return this.assignment(e, false);
+        case 'UpdateExpression': return this.update(e, false);
+        case 'UnaryExpression':
+          if (e.operator === '++' || e.operator === '--') return this.update(e, false);
+          break;
+        case 'SequenceExpression': return [].concat(...e.expressions.map(x => this.expressionStatement(x)));
+        case 'ParentConstructorCall': return this.parentConstructorCall(e);
+        case 'ArrayAppend': {
+          const v = this.xArrayAppend(e);
+          return [...this.flushPre(), R.ExprStmt(v.e)];
+        }
+        case 'LogicalExpression': {
+          const cond = e.operator === '??' ? R.MethodCall(this.coerce(this.expr(e.left), 'any'), 'is_null', []) : this.condition(e.left);
+          const pre = this.flushPre();
+          const body = this.withBlock(() => this.expressionStatement(e.right));
+          return [...pre, R.If(e.operator === '||' ? R.Unary('!', cond) : cond, R.Block(body))];
+        }
+        case 'ConditionalExpression': {
+          const cond = this.condition(e.test);
+          const pre = this.flushPre();
+          return [...pre, R.If(cond, R.Block(this.withBlock(() => this.expressionStatement(e.consequent))), R.Block(this.withBlock(() => this.expressionStatement(e.alternate))))];
+        }
+      }
+      const v = this.expr(e);
+      return [...this.flushPre(), this.exprStmt(v)];
+    }
+
+    exprStmt(v) {
+      if (v.isConst) return R.ExprStmt(R.Lit('()'));
+      if (v.e.kind === 'Call' || v.e.kind === 'MethodCall' || v.e.kind === 'Macro' || v.e.kind === 'BlockExpr' || v.e.kind === 'IfExpr') return R.ExprStmt(v.e);
+      return R.Let('_', null, v.e, false);
+    }
+
+    withBlock(f) {
+      this.pushScope();
+      try { return f(); } finally { this.popScope(); }
+    }
+
+    variableDeclaration(node) {
+      const out = [];
+      for (const d of node.declarations) {
+        if (!d.id) continue;
+        if (d.id.type !== 'Identifier') { out.push(...this.destructuringDeclaration(d)); continue; }
+        const t = this.typeOfNullable(this.declaratorType(d) || 'any', d.nullable || d.id.nullable || d.declaredNullable);
+        if (node._hoistedRust) {
+          if (!d.init) continue;
+          const b = this.lookup(d.id.name);
+          const v = this.expr(d.init);
+          out.push(...this.flushPre(), this.writeLocal(b, this.coerce(v, b.type)));
           continue;
         }
-        const key = prop.key.name || prop.key.value || 'unknown';
-        const keyLiteral = RustLiteral.String(String(key));
-        const value = this.transformExpression(prop.value);
-        // Create tuple (key, value)
-        pairs.push(new RustTuple([keyLiteral, value]));
+        let init = this.zero(t);
+        if (d.init) {
+          const v = this.expr(d.init);
+          init = this.coerce(v, t);
+          out.push(...this.flushPre());
+        }
+        const b = this.declareLocal(d.id.name, t);
+        out.push(this.letLocal(b, init));
       }
-
-      // Use HashMap::from() with array of tuples: HashMap::from([("k1", v1), ("k2", v2)])
-      const tupleArray = new RustArrayLiteral(pairs);
-      return new RustCall(new RustIdentifier('HashMap::from'), [tupleArray]);
+      return out;
     }
 
-    /**
-     * Transform a function expression to Rust closure
-     */
-    transformFunctionExpression(node) {
-      // Map parameters
-      const params = node.params ? node.params.map(p => {
-        const paramName = this.toSnakeCase(p.name);
-        const paramType = this.inferTypeFromName(p.name);
-        return new RustParameter(paramName, paramType);
-      }) : [];
+    destructuringDeclaration(d) {
+      const out = [];
+      const src = this.expr(d.init);
+      out.push(...this.flushPre());
+      const tmp = this.tmp('d');
+      out.push(R.Let(tmp, this.rustType(src.t), src.e, false));
+      const srcVal = new Val(R.MethodCall(R.Ident(tmp), 'clone', []), src.t);
+      if (d.id.type === 'ArrayPattern') {
+        d.id.elements.forEach((el, i) => {
+          if (!el) return;
+          const target = el.type === 'AssignmentPattern' ? el.left : el;
+          const t = canonicalType(target.resultType) || (isArrayType(src.t) ? elementType(src.t) : 'any');
+          const item = this.indexValue(srcVal, new Val(null, 'int32', i), t);
+          const b = this.declareLocal(target.name, t);
+          out.push(this.letLocal(b, this.coerce(item, t)));
+        });
+      } else if (d.id.type === 'ObjectPattern') {
+        for (const p of d.id.properties) {
+          const key = propKey(p.key);
+          const target = p.value && p.value.type === 'AssignmentPattern' ? p.value.left : (p.value || p.key);
+          const t = canonicalType(target.resultType || p.resultType) || 'any';
+          const item = this.memberValue(srcVal, key, t);
+          const b = this.declareLocal(target.name || key, t);
+          out.push(this.letLocal(b, this.coerce(item, t)));
+        }
+      }
+      return out;
+    }
 
-      // Transform body
-      let body = null;
-      if (node.body) {
-        if (node.body.type === 'BlockStatement') {
-          body = this.transformBlockStatement(node.body);
+    returnStatement(node) {
+      const wrap = e => this.fn.tryDepth ? R.Return(R.Call(R.Ident('JsFlow::Return'), [e])) : R.Return(e);
+      if (!node.argument) {
+        if (this.fn.returnType !== 'void') return [wrap(this.zero(this.fn.returnType))];
+        return [this.fn.tryDepth ? R.Return(R.Call(R.Ident('JsFlow::Return'), [R.Lit('()')])) : R.Return()];
+      }
+      const v = this.expr(node.argument);
+      const pre = this.flushPre();
+      if (this.fn.returnType === 'void') return [...pre, this.exprStmt(v), this.fn.tryDepth ? R.Return(R.Call(R.Ident('JsFlow::Return'), [R.Lit('()')])) : R.Return()];
+      return [...pre, wrap(this.coerce(v, this.fn.returnType))];
+    }
+
+    condition(test) {
+      const v = this.expr(test);
+      return this.truthy(v);
+    }
+
+    /** A condition whose side effects stay inside it (a block expression). */
+    conditionExpr(test) {
+      const c = this.condition(test);
+      const pre = this.flushPre();
+      return pre.length ? R.BlockExpr(pre, c) : c;
+    }
+
+    branch(node) {
+      if (!node) return R.Block([]);
+      return R.Block(this.withBlock(() => node.type === 'BlockStatement' ? this.stmts(node.body) : this.stmt(node)));
+    }
+
+    ifStatement(node) {
+      const cond = this.condition(node.test);
+      const pre = this.flushPre();
+      const then = this.branch(node.consequent);
+      let otherwise = null;
+      if (node.alternate) {
+        if (node.alternate.type === 'IfStatement') {
+          const inner = this.ifStatement(node.alternate);
+          otherwise = inner.length === 1 ? inner[0] : R.Block(inner);
         } else {
-          // Arrow function with expression body
-          body = this.transformExpression(node.body);
+          otherwise = this.branch(node.alternate);
         }
       }
+      return [...pre, R.If(cond, then, otherwise)];
+    }
 
-      return new RustClosure(params, body);
+    takeLabel() {
+      const l = this.fn.pendingLabel || null;
+      this.fn.pendingLabel = null;
+      return l;
     }
 
     /**
-     * Transform logical expression (&&, ||)
-     * Note: JavaScript's || can be null-coalescing (returns first truthy value)
-     * In Rust, || is strictly boolean. For null-coalescing, we use .unwrap_or() or if-else
+     * for (init; test; update) body:
+     *   { init; 'lN: loop { if !test { break 'lN; } 'cN: { body } update; } }
+     * continue leaves the body block, so the update still runs.
      */
-    transformLogicalExpression(node) {
-      const left = this.transformExpression(node.left);
-      const right = this.transformExpression(node.right);
+    forStatement(node) {
+      const jsLabel = this.takeLabel();
+      return this.withBlock(() => {
+        const out = [];
+        if (node.init) out.push(...this.stmt(node.init.type === 'VariableDeclaration' ? node.init : { type: 'ExpressionStatement', expression: node.init }));
+        const info = { label: this.label(), bodyLabel: null, isLoop: true, jsLabel };
+        info.bodyLabel = info.label.replace("'l", "'c");
+        const loopStmts = [];
+        if (node.test) loopStmts.push(R.If(R.Unary('!', R.Paren(this.conditionExpr(node.test))), R.Block([R.Break(info.label)])));
+        const body = this.inLoop(info, () => this.loopBody(node.body));
+        loopStmts.push(R.Raw(`${info.bodyLabel}: ` + this.blockText(body)));
+        if (node.update) loopStmts.push(...this.expressionStatement(node.update));
+        out.push(R.Loop(R.Block(loopStmts), info.label));
+        return [R.Block(out)];
+      });
+    }
 
-      // Check if this is a boolean context or null-coalescing
-      // If left operand is not a boolean type, this is likely null-coalescing
-      if (node.operator === '||') {
-        const leftType = this.inferTypeFromValue(node.left);
-        // If left type is not bool, treat as null-coalescing
-        if (leftType && leftType.name !== 'bool') {
-          // For Option types, use .unwrap_or()
-          // For other types, use if-else pattern
-          // Emit: if left.is_some() { left.unwrap() } else { right }
-          // Or for simpler cases: left.unwrap_or_else(|| right)
-          // For simplicity, use .unwrap_or() pattern
-          return new RustMethodCall(left, 'unwrap_or', [right]);
+    blockText(block) {
+      if (!this._emitter) {
+        const RustEmitter = (typeof require !== 'undefined') ? require('./RustEmitter.js').RustEmitter : global.RustEmitter;
+        this._emitter = new RustEmitter({});
+      }
+      // The emitter prints at its own indentation: nested blocks re-indent when printed as Raw
+      return this._emitter.blockText(block).split('\n').map((l, i) => i === 0 ? l : l).join('\n');
+    }
+
+    loopBody(body) {
+      return R.Block(this.withBlock(() => body && body.type === 'BlockStatement' ? this.stmts(body.body) : this.stmt(body)));
+    }
+
+    whileStatement(node) {
+      const jsLabel = this.takeLabel();
+      const info = { label: this.label(), isLoop: true, jsLabel };
+      info.bodyLabel = info.label.replace("'l", "'c");
+      const cond = this.conditionExpr(node.test);
+      const body = this.inLoop(info, () => this.loopBody(node.body));
+      return [R.Loop(R.Block([R.If(R.Unary('!', R.Paren(cond)), R.Block([R.Break(info.label)])), R.Raw(`${info.bodyLabel}: ` + this.blockText(body))]), info.label)];
+    }
+
+    doWhileStatement(node) {
+      const jsLabel = this.takeLabel();
+      const info = { label: this.label(), isLoop: true, jsLabel };
+      info.bodyLabel = info.label.replace("'l", "'c");
+      const body = this.inLoop(info, () => this.loopBody(node.body));
+      const cond = this.conditionExpr(node.test);
+      return [R.Loop(R.Block([R.Raw(`${info.bodyLabel}: ` + this.blockText(body)), R.If(R.Unary('!', R.Paren(cond)), R.Block([R.Break(info.label)]))]), info.label)];
+    }
+
+    forOfStatement(node) {
+      const jsLabel = this.takeLabel();
+      const iter = this.expr(node.right);
+      const pre = this.flushPre();
+      const decl = node.left.type === 'VariableDeclaration' ? node.left.declarations[0].id : node.left;
+      const it = canonicalType(iter.t) || 'any';
+      const elT = isArrayType(it) ? elementType(it) : (it === 'string' ? 'string' : 'any');
+      const info = { label: this.label(), isLoop: true, jsLabel };
+      info.bodyLabel = info.label.replace("'l", "'c");
+      return this.withBlock(() => {
+        const declared = canonicalType(decl.resultType);
+        const b = this.declareLocal(decl.name, declared || elT);
+        const tmpV = this.tmp('v');
+        const body = this.inLoop(info, () => this.loopBody(node.body));
+        let src;
+        if (isArrayType(it)) src = R.MethodCall(iter.e, 'to_vec', []);
+        else if (it === 'string') src = R.MethodCall(R.Call(R.Ident('js_string_chars'), [R.Ref(iter.e)]), 'to_vec', []);
+        else src = R.MethodCall(R.MethodCall(this.coerce(iter, 'any'), 'list', []), 'unwrap_or_default', []);
+        const elVal = new Val(R.Ident(tmpV), isArrayType(it) ? (elT === 'object' ? 'any' : elT) : (it === 'string' ? 'string' : 'any'));
+        const inner = R.Block([this.letLocal(b, this.coerce(elVal, b.type)), R.Raw(`${info.bodyLabel}: ` + this.blockText(body))]);
+        return [...pre, R.For(tmpV, src, inner, info.label)];
+      });
+    }
+
+    forInStatement(node) {
+      const jsLabel = this.takeLabel();
+      const obj = this.expr(node.right);
+      const pre = this.flushPre();
+      const decl = node.left.type === 'VariableDeclaration' ? node.left.declarations[0].id : node.left;
+      const info = { label: this.label(), isLoop: true, jsLabel };
+      info.bodyLabel = info.label.replace("'l", "'c");
+      return this.withBlock(() => {
+        const b = this.declareLocal(decl.name, 'string');
+        const tmpV = this.tmp('k');
+        const body = this.inLoop(info, () => this.loopBody(node.body));
+        const inner = R.Block([this.letLocal(b, R.Ident(tmpV)), R.Raw(`${info.bodyLabel}: ` + this.blockText(body))]);
+        return [...pre, R.For(tmpV, R.MethodCall(R.Call(R.Ident('js_keys'), [R.Ref(this.coerce(obj, 'any'))]), 'to_vec', []), inner, info.label)];
+      });
+    }
+
+    labeledStatement(node) {
+      const loops = ['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement'];
+      const name = node.label.name || node.label;
+      if (loops.includes(node.body.type)) {
+        this.fn.pendingLabel = name;
+        return this.stmt(node.body);
+      }
+      // A labeled block (or switch): break L leaves it
+      const info = { label: this.label(), isLoop: false, jsLabel: name };
+      info.bodyLabel = info.label;
+      const body = this.inLoop(info, () => this.loopBody(node.body));
+      return [R.Raw(`${info.label}: ` + this.blockText(body))];
+    }
+
+    throwStatement(node) {
+      const v = this.expr(node.argument);
+      const pre = this.flushPre();
+      return [...pre, R.ExprStmt(R.Call(R.Ident('js_throw'), [this.coerce(v, 'any')]))];
+    }
+
+    /**
+     * try { A } catch (e) { B } finally { C }: A runs in catch_unwind as a
+     * closure returning a JsFlow (a return or a jump out of the try is carried
+     * out by that value); B and C run inline.
+     */
+    tryStatement(node) {
+      const savedDepth = this.fn.tryDepth || 0;
+      const savedJumps = this.fn.tryJumps;
+      this.fn.tryDepth = savedDepth + 1;
+      this.fn.tryJumps = [];
+      const flowT = this.fn.returnType === 'void' ? '()' : this.rustType(this.fn.returnType);
+      const tryBody = this.branch(node.block).stmts;
+      const jumps = this.fn.tryJumps;
+      this.fn.tryDepth = savedDepth;
+      this.fn.tryJumps = savedJumps;
+      const r = this.tmp('r');
+      const out = [];
+      const closure = R.Closure([], `JsFlow<${flowT}>`, R.Block([...tryBody, R.Return(R.Ident('JsFlow::Normal'))]));
+      out.push(R.Let(r, null, R.Call(R.Ident('std::panic::catch_unwind'), [R.Call(R.Ident('std::panic::AssertUnwindSafe'), [closure])]), false));
+      let catchBlock;
+      if (node.handler) {
+        catchBlock = this.withBlock(() => {
+          const stmts = [];
+          if (node.handler.param) {
+            const b = this.declareLocal(node.handler.param.name, 'any');
+            stmts.push(this.letLocal(b, R.Call(R.Ident('js_caught'), [R.Ident('p')])));
+          }
+          stmts.push(...this.stmts(node.handler.body.body));
+          return stmts;
+        });
+      } else {
+        catchBlock = [R.ExprStmt(R.Call(R.Ident('std::panic::resume_unwind'), [R.Ident('p')]))];
+      }
+      const finallyStmts = node.finalizer ? this.branch(node.finalizer).stmts : [];
+      // A return or a jump out of the try body continues here, after the finally
+      const flowVar = this.tmp('f');
+      const arms = [`JsFlow::Return(v) => { ${this.fn.tryDepth ? 'return JsFlow::Return(v);' : (this.fn.returnType === 'void' ? 'let _ = v; return;' : 'return v;')} }`];
+      jumps.forEach((j, i) => {
+        const target = j.kind === 'continue' ? j.target.bodyLabel : j.target.label;
+        arms.push(`JsFlow::Jump(${i}) => { break ${target}; }`);
+      });
+      arms.push('_ => {}');
+      const flowStmts = [R.Raw(`match ${flowVar} {\n    ${arms.join('\n    ')}\n}`)];
+      const okArm = R.Block([R.Let(flowVar, null, R.Ident('flow'), false), ...finallyStmts, ...flowStmts]);
+      const errArm = R.Block([...catchBlock, ...finallyStmts]);
+      out.push(R.Match(R.Ident(r), [{ pat: 'Ok(flow)', body: okArm }, { pat: 'Err(p)', body: errArm }]));
+      return [R.Block(out)];
+    }
+
+    /**
+     * switch: 'sN: { let v = disc; let mut go = false;
+     *   if go || <case 1> { go = true; body } ... }  (break leaves 'sN; JavaScript falls through)
+     */
+    switchStatement(node) {
+      const jsLabel = this.takeLabel();
+      const disc = this.expr(node.discriminant);
+      const pre = this.flushPre();
+      const tag = canonicalType(disc.t) || 'any';
+      const v = this.tmp('sw');
+      const go = this.tmp('go');
+      const m = this.tmp('m');
+      const info = { label: this.label(), isLoop: false, jsLabel };
+      info.bodyLabel = info.label;
+      const stmts = [R.Let(v, this.rustType(tag), this.coerce(disc, tag), false)];
+      // Which case matches first (or the default's position)
+      const tests = [];
+      node.cases.forEach((c, i) => {
+        if (!c.test) return;
+        const cv = this.expr(c.test);
+        const casePre = this.flushPre();
+        if (casePre.length) throw new Error('a switch case with side effects is not supported');
+        tests.push({ i, cond: this.equality('===', new Val(R.MethodCall(R.Ident(v), 'clone', []), tag), cv).e });
+      });
+      const defaultIndex = node.cases.findIndex(c => !c.test);
+      let chain = R.Lit(`${defaultIndex >= 0 ? defaultIndex : node.cases.length}usize`);
+      for (let k = tests.length - 1; k >= 0; --k) chain = R.IfExpr(tests[k].cond, R.Lit(`${tests[k].i}usize`), chain);
+      stmts.push(R.Let(m, 'usize', chain, false), R.Let(go, 'bool', R.Lit('false'), true));
+      this.inLoop(info, () => {
+        node.cases.forEach((c, i) => {
+          const body = this.withBlock(() => this.stmts(c.consequent));
+          stmts.push(R.If(R.Binary('||', R.Ident(go), R.Binary('==', R.Ident(m), R.Lit(`${i}usize`))), R.Block([R.Assign(R.Ident(go), '=', R.Lit('true')), ...body])));
+        });
+      });
+      stmts.push(R.Raw(`let _ = ${go};`));
+      return [...pre, R.Raw(`${info.label}: ` + this.blockText(R.Block(stmts)))];
+    }
+
+    localFunction(node) {
+      const name = node.id.name;
+      const b = this.declareLocal(name, 'function');
+      const lit = this.funcLit(node, node.jsDoc);
+      b.fnSig = lit.sig;
+      // A recursive local function reaches itself through its cell
+      if (b.cell) return [R.Let(b.rs, 'JsCell<JsAny>', R.Call(R.Ident('JsCell::new'), [R.Call(R.Ident('JsAny::undefined'), [])]), false), R.ExprStmt(R.MethodCall(R.Ident(b.rs), 'set', [lit.anyFn]))];
+      return [R.Let(b.rs, null, lit.e, false)];
+    }
+
+    /**
+     * A closure for a nested function or arrow function: a move closure over
+     * clones of what it captures (cells stay shared). `anyFn` is the same
+     * function as a JsAny taking and returning JsAny.
+     */
+    funcLit(node, jsDoc) {
+      const params = Model.functionParams(node, jsDoc);
+      const ret = this.signatureReturn(node, jsDoc);
+      const outer = this.fn;
+      const captured = new Map();
+      const lookupOuter = name => {
+        for (let i = outer.scopes.length - 1; i >= 0; --i) {
+          const b = outer.scopes[i].get(name);
+          if (b) { captured.set(b.rs, b); return b; }
         }
-      }
-
-      // Boolean logical expression - use as-is
-      return new RustBinaryExpression(left, node.operator, right);
-    }
-
-    /**
-     * Transform spread element: ...array
-     * In Rust, this typically means extending a Vec or using iterator
-     */
-    transformSpreadElement(node) {
-      // Just transform the argument - spread handling depends on context
-      return this.transformExpression(node.argument);
-    }
-
-    /**
-     * Transform template literal: `Hello ${name}!` -> format!("Hello {}!", name)
-     */
-    transformTemplateLiteral(node) {
-      let formatStr = '';
-      const args = [];
-
-      for (let i = 0; i < node.quasis.length; ++i) {
-        formatStr += node.quasis[i].value.raw.replace(/{/g, '{{').replace(/}/g, '}}');
-        if (i < node.expressions.length) {
-          formatStr += '{}';
-          args.push(this.transformExpression(node.expressions[i]));
+        const b = outer.outer ? outer.outer(name) : null;
+        if (b) captured.set(b.rs, b);
+        return b;
+      };
+      const usesThis = this.usesThis(node);
+      const built = this.withFunction({ returnType: ret.type, cls: outer.cls, self: outer.self, outer: lookupOuter, inClosure: true, initOf: null }, () => {
+        this.fn.cells = this.capturedNames(node);
+        const rp = [];
+        const prologue = [];
+        for (const p of params) {
+          const t = this.typeOfNullable(p.type, p.nullable);
+          const b = this.declareLocal(p.name, t);
+          if (b.cell) {
+            rp.push({ name: this.ident(p.name) + '_p', type: this.rustType(t) });
+            prologue.push(R.Let(b.rs, null, R.Call(R.Ident('JsCell::new'), [R.Ident(this.ident(p.name) + '_p')]), false));
+          } else rp.push({ name: 'mut ' + b.rs, type: this.rustType(t) });
         }
-      }
-
-      // Use format! macro - format string should be &str (no .to_string())
-      return new RustMacroCall('format!', [
-        RustLiteral.Str(formatStr),
-        ...args
-      ]);
+        const body = [...prologue, ...this.functionBody(node)];
+        const tail = ret.type !== 'void' && !this.terminates(body) ? this.zero(ret.type) : null;
+        return { rp, body: R.Block(body, tail) };
+      });
+      // Captures: clones bound before the move closure
+      const captureLets = [...captured.values()].map(b => R.Let(b.rs, null, R.MethodCall(R.Ident(b.rs), 'clone', []), false));
+      if (usesThis && outer.self) captureLets.push(R.Let('self_', null, R.MethodCall(R.Ident(outer.inClosure ? 'self_' : 'self'), 'clone', []), false));
+      const retT = ret.type === 'void' ? null : this.rustType(ret.type);
+      const closure = R.Closure(built.rp, retT, built.body, true);
+      const e = R.BlockExpr(captureLets, closure);
+      // The same function behind the dynamic calling convention
+      const anyParams = params.map((p, i) => `<${this.rustTypeNullable(p.type, p.nullable)}>::from_js(&js_arg(&a, ${i}))`);
+      const fnVar = this.tmp('fn');
+      const anyFn = R.BlockExpr([R.Let(fnVar, null, e, false)],
+        R.Call(R.Ident('js_func'), [R.Raw(`move |a: Vec<JsAny>| { ${ret.type === 'void' ? `${fnVar}(${anyParams.join(', ')}); JsAny::undefined()` : `${fnVar}(${anyParams.join(', ')}).to_js()`} }`)]));
+      const v = new Val(e, 'closure');
+      v.sig = { params, ret };
+      v.anyFn = anyFn;
+      return v;
     }
 
-    /**
-     * Get the return value from an IIFE if it has one
-     */
-    getIIFEReturnValue(callNode) {
-      const func = callNode.callee;
-      if (!func.body || func.body.type !== 'BlockStatement') {
-        // Arrow function with expression body - the body IS the return value
-        if (func.body) return func.body;
-        return null;
+    /** A top-level function as a JsAny function value. */
+    functionAsAny(v) {
+      const params = v.sig.params;
+      const ret = v.sig.ret;
+      const anyParams = params.map((p, i) => `<${this.rustTypeNullable(p.type, p.nullable)}>::from_js(&js_arg(&a, ${i}))`);
+      const f = this.emitExprText(v.e);
+      return R.Call(R.Ident('js_func'), [R.Raw(`move |a: Vec<JsAny>| { ${ret.type === 'void' ? `${f}(${anyParams.join(', ')}); JsAny::undefined()` : `${f}(${anyParams.join(', ')}).to_js()`} }`)]);
+    }
+
+    usesThis(node) {
+      let found = false;
+      Model.walk(node.body, n => {
+        if (n.type === 'ThisExpression' || n.type === 'ThisPropertyAccess' || n.type === 'ThisMethodCall' || n.type === 'ParentMethodCall') found = true;
+      });
+      return found;
+    }
+
+    /** self inside methods, self_ (a captured clone) inside closures. */
+    selfIdent() { return R.Ident(this.fn.inClosure ? 'self_' : 'self'); }
+
+    // ======================================================================
+    // ASSIGNMENT
+    // ======================================================================
+
+    /** [a, b] = [b, a]: the right side into a temporary, then each target from it. */
+    destructuringAssignment(node, asValue) {
+      const src = this.expr(node.right);
+      const pre = this.flushPre();
+      const tmp = this.tmp('d');
+      const stmts = [...pre, R.Let(tmp, this.rustType(src.t), src.e, false)];
+      const srcVal = new Val(this.cloneOf(R.Ident(tmp), src.t), src.t);
+      node.left.elements.forEach((el, i) => {
+        if (!el) return;
+        const target = this.lvalue(el.type === 'AssignmentPattern' ? el.left : el);
+        const item = this.indexValue(srcVal, new Val(null, 'int32', i), target.type);
+        stmts.push(...target.pre, ...this.flushPre(), ...target.set(item));
+      });
+      return asValue ? { stmts, value: srcVal } : stmts;
+    }
+
+    assignment(node, asValue) {
+      const op = node.operator;
+      if (op === '=' && (node.left.type === 'ArrayExpression' || node.left.type === 'ArrayPattern')) return this.destructuringAssignment(node, asValue);
+      const binOp = op === '=' ? null : op.slice(0, -1);
+      if (binOp === '||' || binOp === '&&' || binOp === '??') {
+        const target = this.lvalue(node.left);
+        const cur = target.get();
+        const cond = binOp === '||' ? R.Unary('!', this.truthy(cur)) : binOp === '&&' ? this.truthy(cur) : R.MethodCall(this.coerce(cur, 'any'), 'is_null', []);
+        const rhs = this.expr(node.right);
+        const inner = [...this.flushPre(), ...target.set(rhs)];
+        const stmts = [...target.pre, R.If(cond, R.Block(inner))];
+        return asValue ? { stmts, value: target.get() } : stmts;
       }
+      const target = this.lvalue(node.left);
+      let value;
+      if (binOp) value = this.binaryValues(binOp, target.get(), this.expr(node.right), canonicalType(node.resultType) || target.type, node);
+      else value = this.expr(node.right);
+      const pre = [...target.pre, ...this.flushPre()];
+      const tmp = this.tmp('a');
+      const t = target.type;
+      const stmts = [...pre, R.Let(tmp, this.rustType(t), this.coerce(value, t), false), ...target.set(new Val(this.cloneOf(R.Ident(tmp), t), t))];
+      if (!asValue) return stmts;
+      return { stmts, value: new Val(this.cloneOf(R.Ident(tmp), t), t) };
+    }
 
-      // Look for a return statement at the end of the function body
-      const body = func.body.body;
-      if (!body || body.length === 0) return null;
+    cloneOf(e, t) { return this.isCopy(t) ? e : R.MethodCall(e, 'clone', []); }
 
-      const lastStmt = body[body.length - 1];
-      if (lastStmt.type === 'ReturnStatement' && lastStmt.argument)
-        return lastStmt.argument;
+    /** An assignable place: { type, get() -> Val, set(Val) -> stmts, pre }. */
+    lvalue(node) {
+      const pre = [];
+      switch (node.type) {
+        case 'Identifier': {
+          const b = this.lookup(node.name);
+          if (b) return { type: b.type, pre, get: () => this.readLocal(b), set: v => [this.writeLocal(b, this.coerce(v, b.type))] };
+          const top = this.model.variables.get(node.name);
+          if (top) {
+            const t = this.typeOfNullable(top.type, top.nullable);
+            const n = this.topName(node.name);
+            return { type: t, pre, get: () => new Val(R.Call(R.Ident(n), []), t), set: v => [R.ExprStmt(R.Call(R.Ident(n + '_set'), [this.coerce(v, t)]))] };
+          }
+          throw new Error(`assignment to an unknown variable ${node.name}`);
+        }
+        case 'ThisPropertyAccess':
+          if (!node.computed) return this.memberLvalue(this.thisValue(), node.property, node, pre);
+          return this.indexLvalue(this.thisValue(), node.property, node, pre);
+        case 'MemberExpression': {
+          if (!node.computed) {
+            const key = propKey(node.property);
+            if (node.object.type === 'Identifier' && this.model.classes.has(node.object.name) && !this.lookup(node.object.name)) {
+              const sf = this.findStaticField(this.model.classes.get(node.object.name), key);
+              if (sf) {
+                const n = this.staticName(sf.owner.name, key);
+                const t = sf.type || 'any';
+                return { type: t, pre, get: () => new Val(R.Call(R.Ident(n), []), t), set: v => [R.ExprStmt(R.Call(R.Ident(n + '_set'), [this.coerce(v, t)]))] };
+              }
+            }
+            const obj = this.stableExpr(this.expr(node.object), pre);
+            return this.memberLvalue(obj, key, node, pre);
+          }
+          const obj = this.stableExpr(this.expr(node.object), pre);
+          return this.indexLvalue(obj, node.property, node, pre);
+        }
+        case 'ArrayLength': {
+          const arr = this.stableExpr(this.expr(node.array), pre);
+          return this.memberLvalue(arr, 'length', { resultType: 'int32' }, pre);
+        }
+        default:
+          throw new Error(`cannot assign to ${node.type}`);
+      }
+    }
 
+    /** A value that may be used twice: identifiers stay, anything else goes to a temporary. */
+    stableExpr(v, pre) {
+      pre.push(...this.flushPre());
+      if (v.isConst || v.e.kind === 'Ident' || v.isThis) return v;
+      const tmp = this.tmp('o');
+      pre.push(R.Let(tmp, null, v.e, false));
+      const out = new Val(this.cloneOf(R.Ident(tmp), v.t), v.t);
+      out.stableName = tmp;
+      return out;
+    }
+
+    findStaticField(info, key) {
+      for (let c = info; c; c = c.base) if (c.staticFields.has(key)) return Object.assign({ owner: c }, c.staticFields.get(key));
       return null;
     }
+
+    memberLvalue(obj, key, node, pre) {
+      const ot = canonicalType(obj.t) || 'any';
+      const info = obj.isThis ? this.fn.cls : (this.isLeafClass(ot) ? this.model.classOf(ot) : null);
+      const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (info) {
+        const eff = info.effective;
+        if (eff.fields.has(key)) {
+          const f = eff.fields.get(key);
+          const t = this.typeOfNullable(f.type, f.nullable);
+          return { type: t, pre, field: true, get: () => new Val(R.MethodCall(obj.recv || obj.e, this.fieldGet(key), []), t), set: v => [R.ExprStmt(R.MethodCall(obj.recv || obj.e, this.fieldSet(key), [this.coerce(v, t)]))] };
+        }
+        if (eff.setters.has(key) || eff.getters.has(key)) {
+          const g = eff.getters.get(key);
+          const s = eff.setters.get(key);
+          const gt = g ? this.signatureReturn(g.fn, g.jsDoc).type : 'any';
+          const sp = s ? (Model.functionParams(s.fn, s.jsDoc)[0] || { type: 'any' }) : null;
+          const st = sp ? this.typeOfNullable(sp.type, sp.nullable) : 'any';
+          return {
+            type: s ? st : gt, pre,
+            get: () => g ? new Val(R.MethodCall(obj.recv || obj.e, this.getterName(key), []), gt) : new Val(R.Call(R.Ident('JsAny::undefined'), []), 'any'),
+            set: v => s ? [R.ExprStmt(R.MethodCall(obj.recv || obj.e, this.setterName(key), [this.coerce(v, st)]))] : [R.ExprStmt(R.MethodCall(obj.e, 'js_set', [R.Lit(rustStringLiteral(key)), this.coerce(v, 'any')]))]
+          };
+        }
+      }
+      if (ot === 'Error' || ot === 'TypeError' || ot === 'RangeError') {
+        const field = key === 'message' ? 'message' : key === 'name' ? 'name' : null;
+        if (field) return { type: 'string', pre, get: () => new Val(R.MethodCall(R.Field(obj.e, field), 'clone', []), 'string'), set: () => { throw new Error('assignment to an error field'); } };
+      }
+      if (isArrayType(ot) && key === 'length') {
+        return {
+          type: 'int32', pre,
+          get: () => new Val(R.Cast(R.MethodCall(obj.e, 'len', []), 'i32'), 'int32'),
+          set: v => [R.ExprStmt(R.MethodCall(obj.e, 'set_len', [this.coerce(v, 'idx')]))]
+        };
+      }
+      if (this.rustType(ot) === 'JsAny') {
+        return {
+          type: nodeType, pre,
+          get: () => new Val(R.Call(R.Ident('js_get_prop'), [R.Ref(obj.e), R.Lit(rustStringLiteral(key))]), 'any'),
+          set: v => [R.ExprStmt(R.Call(R.Ident('js_set_prop'), [R.Ref(obj.e), R.Lit(rustStringLiteral(key)), this.coerce(v, 'any')]))]
+        };
+      }
+      const o = this.coerce(obj, 'object');
+      return {
+        type: nodeType, pre,
+        get: () => new Val(R.MethodCall(o, 'get', [R.Lit(rustStringLiteral(key))]), 'any'),
+        set: v => [R.ExprStmt(R.MethodCall(o, 'set', [R.Lit(rustStringLiteral(key)), this.coerce(v, 'any')]))]
+      };
+    }
+
+    indexLvalue(obj, indexNode, node, pre) {
+      const ot = canonicalType(obj.t) || 'any';
+      const idx = this.stableExpr(this.expr(indexNode), pre);
+      if (isArrayType(ot)) {
+        const el = elementType(ot);
+        const elT = el === 'object' ? 'any' : el;
+        const i = this.coerce(idx, 'idx');
+        return {
+          type: elT, pre,
+          get: () => new Val(R.MethodCall(obj.e, 'get', [i]), elT),
+          set: v => [R.ExprStmt(R.MethodCall(obj.e, 'set', [i, this.coerce(v, elT)]))]
+        };
+      }
+      if (ot === 'string') throw new Error('assignment to a string index');
+      const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (this.rustType(ot) === 'JsAny') {
+        const ik = this.coerce(idx, 'any');
+        return {
+          type: nodeType, pre,
+          get: () => new Val(R.Call(R.Ident('js_get_elem'), [R.Ref(obj.e), R.Ref(ik)]), 'any'),
+          set: v => [R.ExprStmt(R.Call(R.Ident('js_set_elem'), [R.Ref(obj.e), R.Ref(ik), this.coerce(v, 'any')]))]
+        };
+      }
+      const o = this.coerce(obj, 'object');
+      const key = R.Ref(R.MethodCall(this.coerce(idx, 'any'), 'text', []));
+      return {
+        type: nodeType, pre,
+        get: () => new Val(R.MethodCall(o, 'get', [key]), 'any'),
+        set: v => [R.ExprStmt(R.MethodCall(o, 'set', [key, this.coerce(v, 'any')]))]
+      };
+    }
+
+    update(node, asValue) {
+      const target = this.lvalue(node.argument);
+      const t = target.type;
+      const cur = target.get();
+      const one = new Val(null, 'int32', 1);
+      const nt = isNumericType(t) || isBigType(t) ? t : 'float64';
+      const pre = [...target.pre, ...this.flushPre()];
+      const old = this.tmp('u');
+      const stmts = [...pre, R.Let(old, this.rustType(t), this.coerce(cur, t), false)];
+      const next = this.binaryValues(node.operator === '++' ? '+' : '-', new Val(this.cloneOf(R.Ident(old), t), t), one, nt, node);
+      if (!asValue) return [...stmts, ...target.set(next)];
+      if (node.prefix) {
+        const nv = this.tmp('n');
+        return { stmts: [...stmts, R.Let(nv, this.rustType(t), this.coerce(next, t), false), ...target.set(new Val(this.cloneOf(R.Ident(nv), t), t))], value: new Val(this.cloneOf(R.Ident(nv), t), t) };
+      }
+      return { stmts: [...stmts, ...target.set(next)], value: new Val(this.cloneOf(R.Ident(old), t), t) };
+    }
+
+    parentConstructorCall(node) {
+      const info = this.fn.cls;
+      const owner = this.fn.initOf;
+      if (!info || !owner || !owner.base) return [];
+      const base = owner.base;
+      const ctorOwner = [...base.chain()].reverse().find(c => c.ctor);
+      const params = ctorOwner ? Model.functionParams(ctorOwner.ctor, ctorOwner.ctorDoc) : [];
+      const args = this.callArgs(node.arguments || [], params);
+      return [...this.flushPre(), R.ExprStmt(R.MethodCall(R.Ident('self'), this.initName(base), args)), ...this.fieldInitializers(info, owner)];
+    }
+
+    // ======================================================================
+    // EXPRESSIONS
+    // ======================================================================
+
+    thisValue() {
+      const cls = this.fn.cls;
+      if (!cls || !this.fn.self) return new Val(R.Call(R.Ident('JsObj::null'), []), 'object');
+      const v = new Val(R.MethodCall(this.selfIdent(), 'clone', []), this.isLeafClass(cls.name) ? cls.name : '#' + cls.name);
+      v.isThis = true;
+      v.recv = this.selfIdent();
+      return v;
+    }
+
+    expr(node) {
+      if (!node) return new Val(R.Call(R.Ident('JsAny::undefined'), []), 'null', null);
+      const handler = this['x' + node.type];
+      if (handler) return handler.call(this, node);
+      return this.unsupported(node);
+    }
+
+    /** A runtime failure where nothing is transpiled (it compiles, and throws when it runs). */
+    unsupportedVal(args, type) {
+      const t = canonicalType(type) || 'any';
+      return new Val(R.Call(R.Ident(`js_unsupported::<${this.rustType(t === 'void' ? 'any' : t)}>`), args), t);
+    }
+
+    unsupported(node) {
+      this.warnings.push(`unsupported ${node.type}`);
+      return this.unsupportedVal([R.Lit(rustStringLiteral(node.type))], canonicalType(node.resultType) || 'any');
+    }
+
+    xLiteral(node) {
+      const t = canonicalType(node.resultType);
+      if (node.regex) return new Val(R.Call(R.Ident('JsRegex::new'), [R.Lit(rustStringLiteral(node.regex.pattern)), R.Lit(rustStringLiteral(node.regex.flags || ''))]), 'regex');
+      const v = node.value;
+      if (v === null) return new Val(R.Call(R.Ident('JsAny::undefined'), []), 'null', null);
+      if (node.bigint !== undefined || typeof v === 'bigint') {
+        const b = BigInt(typeof v === 'bigint' ? v : String(node.bigint || v).replace(/n$/, ''));
+        return new Val(null, isBigType(t) ? 'bigint' : (t === 'uint64' || t === 'int64' ? t : 'bigint'), b);
+      }
+      if (typeof v === 'number') return new Val(null, t && isNumericType(t) ? t : (Number.isInteger(v) ? 'int32' : 'float64'), v);
+      if (typeof v === 'string') return new Val(null, 'string', v);
+      if (typeof v === 'boolean') return new Val(null, 'boolean', v);
+      return new Val(R.Call(R.Ident('JsAny::undefined'), []), 'null', null);
+    }
+
+    xIdentifier(node) {
+      const name = node.name;
+      if (name === 'undefined') return new Val(R.Call(R.Ident('JsAny::undefined'), []), 'null', null);
+      if (name === 'NaN') return new Val(null, 'float64', NaN);
+      if (name === 'Infinity') return new Val(null, 'float64', Infinity);
+      const b = this.lookup(name);
+      if (b) {
+        if (b.fnSig) {
+          const v = new Val(b.cell ? R.MethodCall(R.Ident(b.rs), 'get', []) : R.Ident(b.rs), b.cell ? 'any' : 'closure');
+          v.sig = b.fnSig;
+          v.cellFn = b.cell;
+          return v;
+        }
+        return this.readLocal(b);
+      }
+      const top = this.model.variables.get(name);
+      if (top) return new Val(R.Call(R.Ident(this.topName(name)), []), this.typeOfNullable(top.type, top.nullable));
+      const fn = this.model.functions.get(name);
+      if (fn) {
+        const v = new Val(R.Ident(this.topName(name)), 'fnref');
+        v.sig = { params: Model.functionParams(fn.node, fn.node.jsDoc), ret: this.signatureReturn(fn.node, fn.node.jsDoc) };
+        return v;
+      }
+      if (this.model.classes.has(name)) {
+        const v = new Val(R.Call(R.Ident('JsAny::undefined'), []), 'any');
+        v.classRef = this.model.classes.get(name);
+        return v;
+      }
+      this.warnings.push(`unknown identifier ${name}`);
+      return this.unsupportedVal([R.Lit(rustStringLiteral('identifier ' + name))], canonicalType(node.resultType) || 'any');
+    }
+
+    xThisExpression() { return this.thisValue(); }
+
+    xThisPropertyAccess(node) {
+      const self = this.thisValue();
+      if (node.computed) return this.indexValue(self, this.expr(node.property), canonicalType(node.resultType) || 'any');
+      return this.memberValue(self, node.property, this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable));
+    }
+
+    xMemberExpression(node) {
+      const resultType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (!node.computed) {
+        const key = propKey(node.property);
+        if (node.object.type === 'Identifier' && !this.lookup(node.object.name)) {
+          const special = this.globalMember(node.object.name, key);
+          if (special) return special;
+          if (this.model.classes.has(node.object.name) && !this.model.variables.has(node.object.name)) {
+            const sf = this.findStaticField(this.model.classes.get(node.object.name), key);
+            if (sf) return new Val(R.Call(R.Ident(this.staticName(sf.owner.name, key)), []), sf.type || 'any');
+          }
+        }
+        return this.memberValue(this.expr(node.object), key, resultType);
+      }
+      return this.indexValue(this.expr(node.object), this.expr(node.property), resultType);
+    }
+
+    globalMember(obj, key) {
+      const consts = {
+        'Number.MAX_SAFE_INTEGER': 9007199254740991, 'Number.MIN_SAFE_INTEGER': -9007199254740991,
+        'Number.MAX_VALUE': Number.MAX_VALUE, 'Number.MIN_VALUE': Number.MIN_VALUE, 'Number.EPSILON': Number.EPSILON,
+        'Number.POSITIVE_INFINITY': Infinity, 'Number.NEGATIVE_INFINITY': -Infinity, 'Number.NaN': NaN,
+        'Math.PI': Math.PI, 'Math.E': Math.E, 'Math.LN2': Math.LN2, 'Math.LN10': Math.LN10, 'Math.LOG2E': Math.LOG2E,
+        'Math.LOG10E': Math.LOG10E, 'Math.SQRT2': Math.SQRT2, 'Math.SQRT1_2': Math.SQRT1_2
+      };
+      const k = `${obj}.${key}`;
+      return k in consts ? new Val(null, 'float64', consts[k]) : null;
+    }
+
+    memberValue(obj, key, resultType) {
+      const ot = canonicalType(obj.t) || 'any';
+      if (obj.classRef) {
+        const sf = this.findStaticField(obj.classRef, key);
+        if (sf) return new Val(R.Call(R.Ident(this.staticName(sf.owner.name, key)), []), sf.type || 'any');
+        if (key === 'name') return new Val(null, 'string', obj.classRef.name);
+      }
+      if (ot === 'string' && key === 'length') return new Val(R.Call(R.Ident('js_str_len'), [R.Ref(obj.e)]), 'int32');
+      if (isArrayType(ot) && key === 'length') return new Val(R.Cast(R.MethodCall(obj.e, 'len', []), 'i32'), 'int32');
+      const pre = [];
+      const lv = this.memberLvalue(obj, key, { resultType }, pre);
+      this.fn.pre.push(...pre);
+      return lv.get();
+    }
+
+    indexValue(obj, idx, resultType) {
+      const ot = canonicalType(obj.t) || 'any';
+      if (isArrayType(ot)) {
+        const el = elementType(ot);
+        return new Val(R.MethodCall(obj.e, 'get', [this.coerce(idx, 'idx')]), el === 'object' ? 'any' : el);
+      }
+      if (ot === 'string') return new Val(R.Call(R.Ident('js_char_at'), [R.Ref(obj.e), this.coerce(idx, 'int64')]), 'string');
+      if (ot === 'Map') return new Val(R.MethodCall(obj.e, 'map_get', [R.Ref(this.coerce(idx, 'any'))]), 'any');
+      if (this.rustType(ot) === 'JsAny') return new Val(R.Call(R.Ident('js_get_elem'), [R.Ref(obj.e), R.Ref(this.coerce(idx, 'any'))]), 'any');
+      const o = this.coerce(obj, 'object');
+      return new Val(R.MethodCall(o, 'get', [R.Ref(R.MethodCall(this.coerce(idx, 'any'), 'text', []))]), 'any');
+    }
+
+    xArrayLength(node) {
+      const a = this.expr(node.array);
+      const t = canonicalType(a.t) || 'any';
+      if (isArrayType(t)) return new Val(R.Cast(R.MethodCall(a.e, 'len', []), 'i32'), 'int32');
+      if (t === 'string') return new Val(R.Call(R.Ident('js_str_len'), [R.Ref(a.e)]), 'int32');
+      return new Val(R.Call(R.Ident('js_length'), [R.Ref(this.coerce(a, 'any'))]), 'int32');
+    }
+
+    // ------------------------------------------------------------ operators
+
+    xBinaryExpression(node) {
+      return this.binaryValues(node.operator, this.expr(node.left), this.expr(node.right), canonicalType(node.resultType), node);
+    }
+
+    binaryValues(op, l, r, rt, node) {
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      if (l.isConst && r.isConst && (typeof l.c === 'bigint') === (typeof r.c === 'bigint')) {
+        const folded = this.fold(op, l.c, r.c);
+        if (folded !== undefined) return new Val(null, rt || (typeof folded === 'boolean' ? 'boolean' : typeof folded === 'string' ? 'string' : 'float64'), folded);
+      }
+      switch (op) {
+        case '===': case '==': case '!==': case '!=': return this.equality(op, l, r);
+        case '<': case '<=': case '>': case '>=': return this.compare(op, l, r);
+        case 'in': return new Val(R.Call(R.Ident('js_in'), [R.Ref(R.MethodCall(this.coerce(l, 'any'), 'text', [])), R.Ref(this.coerce(r, 'any'))]), 'boolean');
+        case 'instanceof': return this.instanceOf(l, r);
+      }
+      const big = isBigType(lt) || isBigType(rtp) || isBigType(rt) || typeof l.c === 'bigint' || typeof r.c === 'bigint';
+      if (op === '+' && (lt === 'string' || rtp === 'string' || rt === 'string')) {
+        return new Val(R.Macro('format', ['"{}{}"', this.coerce(l, 'string'), this.coerce(r, 'string')]), 'string');
+      }
+      if (['&', '|', '^', '<<', '>>', '>>>'].includes(op)) return this.bitwise(op, l, r, rt, big);
+      if (op === '**') return this.power(l, r, rt);
+      if (big && (isBigType(rt) || isBigType(lt) || isBigType(rtp))) {
+        const m = { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', '%': 'rem' }[op];
+        const res = new Val(R.MethodCall(this.coerce(l, 'bigint'), m, [R.Ref(this.coerce(r, 'bigint'))]), 'bigint');
+        return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      const t = rt && isNumericType(rt) ? rt : (isNumericType(lt) && isNumericType(rtp) ? this.widen(lt, rtp) : 'float64');
+      if (op === '/') {
+        if ((t === 'uint64' || t === 'int64') && this.isBigIntish(node)) return new Val(R.MethodCall(this.coerce(l, t), 'wrapping_div', [this.coerce(r, t)]), t);
+        const q = new Val(R.Binary('/', this.coerce(l, 'float64'), this.coerce(r, 'float64')), 'float64');
+        return isFloatType(t) ? q : new Val(this.coerce(q, t), t);
+      }
+      if (op === '%') {
+        const w = this.widen(lt, rtp);
+        if (!isIntType(w) || isFloatType(t)) {
+          const m = new Val(R.Binary('%', this.coerce(l, 'float64'), this.coerce(r, 'float64')), 'float64');
+          return isFloatType(t) ? m : new Val(this.coerce(m, t), t);
+        }
+        const m = new Val(R.MethodCall(this.coerce(l, w), 'wrapping_rem', [this.coerce(r, w)]), w);
+        return w === t ? m : new Val(this.coerce(m, t), t);
+      }
+      if (isIntType(t)) {
+        const m = { '+': 'wrapping_add', '-': 'wrapping_sub', '*': 'wrapping_mul' }[op];
+        return new Val(R.MethodCall(this.coerce(l, t), m, [this.coerce(r, t)]), t);
+      }
+      return new Val(R.Binary(op, this.coerce(l, t), this.coerce(r, t)), t);
+    }
+
+    isBigIntish(node) {
+      const isBig = n => n && (isBigType(n.resultType) || n.type === 'BigIntCast' || n.bigint === true || (n.type === 'Literal' && (n.bigint !== undefined || typeof n.value === 'bigint')));
+      return !!node && (isBig(node.left) || isBig(node.right));
+    }
+
+    widen(a, b) {
+      if (a === b) return a;
+      if (isFloatType(a) || isFloatType(b) || !isIntType(a) || !isIntType(b)) return 'float64';
+      if (a === 'uint64' || b === 'uint64') return (isSignedInt(a) || isSignedInt(b)) ? 'int64' : 'uint64';
+      return 'int64';
+    }
+
+    fold(op, a, b) {
+      try {
+        switch (op) {
+          case '+': return a + b;
+          case '-': return a - b;
+          case '*': return a * b;
+          case '/': return typeof a === 'bigint' ? (b === 0n ? undefined : a / b) : a / b;
+          case '%': return typeof a === 'bigint' ? (b === 0n ? undefined : a % b) : a % b;
+          case '**': return a ** b;
+          case '&': return a & b;
+          case '|': return a | b;
+          case '^': return a ^ b;
+          case '<<': return a << b;
+          case '>>': return a >> b;
+          case '>>>': return a >>> b;
+          case '===': case '==': return a === b;
+          case '!==': case '!=': return a !== b;
+          case '<': return a < b;
+          case '<=': return a <= b;
+          case '>': return a > b;
+          case '>=': return a >= b;
+        }
+      } catch (e) { return undefined; }
+      return undefined;
+    }
+
+    bitwise(op, l, r, rt, big) {
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      const wide = t => t === 'uint64' || t === 'int64';
+      if (big || wide(rt) || isBigType(rt)) {
+        if ((wide(lt) || l.isConst) && (wide(rtp) || r.isConst || op === '<<' || op === '>>') && wide(rt) && !isBigType(lt) && !isBigType(rtp)) {
+          if (op === '<<' || op === '>>' || op === '>>>') return new Val(R.Call(R.Ident(op === '<<' ? 'js_shl64' : 'js_shr64'), [this.coerce(l, 'uint64'), this.coerce(r, 'int64')]), 'uint64').t === rt ? new Val(R.Call(R.Ident(op === '<<' ? 'js_shl64' : 'js_shr64'), [this.coerce(l, 'uint64'), this.coerce(r, 'int64')]), 'uint64') : new Val(this.coerce(new Val(R.Call(R.Ident(op === '<<' ? 'js_shl64' : 'js_shr64'), [this.coerce(l, 'uint64'), this.coerce(r, 'int64')]), 'uint64'), rt), rt);
+          return new Val(R.Binary(op, this.coerce(l, rt), this.coerce(r, rt)), rt);
+        }
+        let res;
+        if (op === '<<' || op === '>>' || op === '>>>') res = new Val(R.MethodCall(this.coerce(l, 'bigint'), 'shift', [op === '<<' ? this.coerce(r, 'int64') : R.Unary('-', this.coerce(r, 'int64'))]), 'bigint');
+        else res = new Val(R.MethodCall(this.coerce(l, 'bigint'), { '&': 'and', '|': 'or', '^': 'xor' }[op], [R.Ref(this.coerce(r, 'bigint'))]), 'bigint');
+        return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      if (op === '<<' || op === '>>' || op === '>>>') {
+        const a = this.toInt32Bits(l, op === '>>>' ? 'uint32' : 'int32');
+        const count = r.isConst ? R.Lit(`${(Number(r.c) >>> 0) & 31}u32`) : this.toInt32Bits(r, 'uint32');
+        const res = new Val(R.MethodCall(a, op === '<<' ? 'wrapping_shl' : 'wrapping_shr', [count]), op === '>>>' ? 'uint32' : 'int32');
+        return rt && rt !== res.t ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      const res = new Val(R.Binary(op, this.toInt32Bits(l, 'int32'), this.toInt32Bits(r, 'int32')), 'int32');
+      return rt && rt !== 'int32' ? new Val(this.coerce(res, rt), rt) : res;
+    }
+
+    toInt32Bits(v, as) {
+      const t = canonicalType(v.t) || 'any';
+      const rs = as === 'uint32' ? 'u32' : 'i32';
+      if (v.isConst) {
+        const n = typeof v.c === 'bigint' ? Number(BigInt.asIntN(32, v.c)) : (Number(v.c) | 0);
+        const x = as === 'uint32' ? n >>> 0 : n;
+        return R.Lit(x < 0 ? (x === -2147483648 ? 'i32::MIN' : `(${x}${rs})`) : `${x}${rs}`);
+      }
+      if (t === as) return v.e;
+      if (isIntType(t)) return R.Cast(v.e, rs);
+      if (isFloatType(t)) return R.Cast(R.Call(R.Ident('js_f2i'), [v.e]), rs);
+      return R.Cast(this.coerce(v, 'int64'), rs);
+    }
+
+    power(l, r, rt) {
+      const lt = canonicalType(l.t) || 'any';
+      if (isBigType(lt) || isBigType(rt) || typeof l.c === 'bigint') {
+        const res = new Val(R.MethodCall(this.coerce(l, 'bigint'), 'pow', [R.Ref(this.coerce(r, 'bigint'))]), 'bigint');
+        return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      const p = new Val(R.MethodCall(this.coerce(l, 'float64'), 'powf', [this.coerce(r, 'float64')]), 'float64');
+      return rt && !isFloatType(rt) && isNumericType(rt) ? new Val(this.coerce(p, rt), rt) : p;
+    }
+
+    equality(op, l, r) {
+      const neg = op === '!==' || op === '!=';
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      const isNullV = v => v.t === 'null' || (v.isConst && v.c === null);
+      let e;
+      if (isNullV(l) || isNullV(r)) {
+        const other = isNullV(l) ? r : l;
+        if (isNullV(other)) e = R.Lit('true');
+        else {
+          const rs = this.rustType(other.t);
+          if (rs === 'JsAny' || rs === 'JsObj' || rs.startsWith('JsArr<') || this.model.classOf(other.t)) e = R.MethodCall(other.e, 'is_null', []);
+          else e = R.Lit('false');
+        }
+      } else if (isBigType(lt) || isBigType(rtp)) {
+        e = R.Binary('==', R.MethodCall(this.coerce(l, 'bigint'), 'cmp', [R.Ref(this.coerce(r, 'bigint'))]), R.Lit('0'));
+      } else if (isNumericType(lt) && isNumericType(rtp)) {
+        const w = this.widen(lt, rtp);
+        e = R.Binary('==', this.coerce(l, w), this.coerce(r, w));
+      } else if (isNumericType(lt) && r.isConst && typeof r.c === 'number') {
+        e = R.Binary('==', this.coerce(l, 'float64'), this.coerce(r, 'float64'));
+      } else if (isNumericType(rtp) && l.isConst && typeof l.c === 'number') {
+        e = R.Binary('==', this.coerce(l, 'float64'), this.coerce(r, 'float64'));
+      } else if ((lt === 'string' || rtp === 'string') && (lt === rtp || l.isConst || r.isConst)) {
+        e = R.Binary('==', this.coerce(l, 'string'), this.coerce(r, 'string'));
+      } else if (lt === 'boolean' && rtp === 'boolean') {
+        e = R.Binary('==', l.e, r.e);
+      } else {
+        e = R.Call(R.Ident(op === '===' || op === '!==' ? 'js_strict_equals' : 'js_loose_equals'), [R.Ref(this.coerce(l, 'any')), R.Ref(this.coerce(r, 'any'))]);
+      }
+      return new Val(neg ? R.Unary('!', R.Paren(e)) : e, 'boolean');
+    }
+
+    compare(op, l, r) {
+      const lt = canonicalType(l.t) || 'any';
+      const rtp = canonicalType(r.t) || 'any';
+      if (isBigType(lt) || isBigType(rtp)) return new Val(R.Binary(op, R.MethodCall(this.coerce(l, 'bigint'), 'cmp', [R.Ref(this.coerce(r, 'bigint'))]), R.Lit('0')), 'boolean');
+      if (lt === 'string' && rtp === 'string') return new Val(R.Binary(op, l.e, r.e), 'boolean');
+      let w;
+      if (isNumericType(lt) && isNumericType(rtp)) w = this.widen(lt, rtp);
+      else if (isNumericType(lt) && r.isConst) w = lt;
+      else if (isNumericType(rtp) && l.isConst) w = rtp;
+      else w = 'float64';
+      if (w !== 'float64' && ((l.isConst && !this.fits(l.c, w)) || (r.isConst && !this.fits(r.c, w)))) w = 'float64';
+      return new Val(R.Binary(op, this.coerce(l, w), this.coerce(r, w)), 'boolean');
+    }
+
+    fits(c, t) {
+      if (typeof c !== 'number' || !Number.isInteger(c)) return typeof c === 'bigint';
+      const bits = intBits(t);
+      if (!bits) return true;
+      const min = isSignedInt(t) ? -(2 ** (bits - 1)) : 0;
+      const max = isSignedInt(t) ? 2 ** (bits - 1) - 1 : 2 ** bits - 1;
+      return c >= min && c <= max;
+    }
+
+    instanceOf(l, r) {
+      const cls = r.classRef;
+      if (!cls) return new Val(R.Unary('!', R.MethodCall(R.Call(R.Ident('<JsError>::from_js'), [R.Ref(this.coerce(l, 'any'))]), 'name', [])), 'boolean');
+      const names = [...this.emittedClasses].filter(n => this.model.classes.get(n).isA(cls.name)).map(n => this.className(n));
+      if (!names.length) return new Val(R.Lit('false'), 'boolean');
+      const any = this.coerce(l, 'any');
+      const tmp = this.tmp('i');
+      const test = names.map(n => `${tmp}.downcast::<${n}>().is_some() || ${tmp}.obj().downcast::<${n}>().is_some()`).join(' || ');
+      return new Val(R.BlockExpr([R.Let(tmp, null, any, false)], R.Lit(test)), 'boolean');
+    }
+
+    xLogicalExpression(node) {
+      const rt = this.logicalType(node);
+      const op = node.operator;
+      if (rt === 'boolean' && op !== '??') {
+        const a = this.condition(node.left);
+        const preA = this.flushPre();
+        const b = this.conditionExpr(node.right);
+        this.fn.pre.push(...preA);
+        return new Val(R.Binary(op, a, b), 'boolean');
+      }
+      const left = this.expr(node.left);
+      const { v: right, pre: preB } = this.isolate(() => this.expr(node.right));
+      const tmp = this.tmp('l');
+      const leftVal = new Val(this.cloneOf(R.Ident(tmp), left.t), left.t);
+      let keepLeft;
+      if (op === '||') keepLeft = this.truthy(leftVal);
+      else if (op === '&&') keepLeft = R.Unary('!', this.truthy(leftVal));
+      else keepLeft = R.Unary('!', R.MethodCall(this.coerce(leftVal, 'any'), 'is_null', []));
+      const e = R.BlockExpr([R.Let(tmp, this.rustType(left.t), left.e, false)],
+        R.IfExpr(keepLeft, this.coerce(leftVal, rt), preB.length ? R.BlockExpr(preB, this.coerce(right, rt)) : this.coerce(right, rt)));
+      return new Val(e, rt);
+    }
+
+    xConditionalExpression(node) {
+      const rt = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      const cond = this.condition(node.test);
+      const { v: a, pre: preA } = this.isolate(() => this.expr(node.consequent));
+      const { v: b, pre: preB } = this.isolate(() => this.expr(node.alternate));
+      const ca = this.coerce(a, rt);
+      const cb = this.coerce(b, rt);
+      return new Val(R.IfExpr(cond, preA.length ? R.BlockExpr(preA, ca) : ca, preB.length ? R.BlockExpr(preB, cb) : cb), rt);
+    }
+
+    xUnaryExpression(node) {
+      const op = node.operator;
+      if (op === '++' || op === '--') return this.xUpdateExpression(Object.assign({}, node, { type: 'UpdateExpression', prefix: node.prefix !== false }));
+      const rt = canonicalType(node.resultType);
+      if (op === 'typeof') return this.typeOf(node.argument);
+      if (op === 'delete') return new Val(null, 'boolean', true);
+      const v = this.expr(node.argument);
+      if (op === '!') {
+        if (v.isConst) return new Val(null, 'boolean', !v.c);
+        return new Val(R.Unary('!', R.Paren(this.truthy(v))), 'boolean');
+      }
+      if (op === 'void') { this.fn.pre.push(this.exprStmt(v)); return new Val(R.Call(R.Ident('JsAny::undefined'), []), 'null', null); }
+      const t = canonicalType(v.t) || 'any';
+      if (v.isConst && (typeof v.c === 'number' || typeof v.c === 'bigint')) {
+        if (op === '-') return new Val(null, rt || v.t, -v.c);
+        if (op === '+') return new Val(null, rt || 'float64', Number(v.c));
+        if (op === '~') return new Val(null, rt || 'int32', ~v.c);
+      }
+      if (op === '-') {
+        if (isBigType(t) || isBigType(rt)) return new Val(R.MethodCall(this.coerce(v, 'bigint'), 'neg', []), 'bigint');
+        const target = rt && isNumericType(rt) ? rt : (isNumericType(t) ? t : 'float64');
+        if (isIntType(target)) return new Val(R.MethodCall(this.coerce(v, target), 'wrapping_neg', []), target);
+        return new Val(R.Unary('-', this.coerce(v, target)), target);
+      }
+      if (op === '+') {
+        const target = rt && isNumericType(rt) ? rt : 'float64';
+        return new Val(this.coerce(v, target), target);
+      }
+      if (op === '~') {
+        if (isBigType(t) || isBigType(rt) || ((t === 'uint64' || t === 'int64') && (rt === 'uint64' || rt === 'int64'))) {
+          if (!isBigType(t) && !isBigType(rt)) return new Val(R.Unary('!', this.coerce(v, rt)), rt);
+          const res = new Val(R.MethodCall(this.coerce(v, 'bigint'), 'not', []), 'bigint');
+          return rt && !isBigType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+        }
+        const res = new Val(R.Unary('!', this.toInt32Bits(v, 'int32')), 'int32');
+        return rt && rt !== 'int32' ? new Val(this.coerce(res, rt), rt) : res;
+      }
+      throw new Error(`unary ${op}`);
+    }
+
+    /** Whether a name is declared anywhere the program sees (a local, a module variable, function or class). */
+    isDeclared(name) {
+      return !!(this.lookup(name) || this.model.variables.has(name) || this.model.functions.has(name) || this.model.classes.has(name));
+    }
+
+    typeOf(arg) {
+      // typeof of an undeclared global (require, module, window) is "undefined" in JavaScript
+      if (arg.type === 'Identifier' && !this.isDeclared(arg.name) && !['NaN', 'Infinity', 'undefined'].includes(arg.name)) return new Val(null, 'string', 'undefined');
+      const v = this.expr(arg);
+      const t = canonicalType(v.t) || 'any';
+      const known = isNumericType(t) ? 'number' : isBigType(t) ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean'
+        : (t === 'closure' || t === 'fnref') ? 'function' : (isArrayType(t) || this.isLeafClass(t)) ? 'object' : null;
+      if (known) return new Val(null, 'string', known);
+      return new Val(R.Call(R.Ident('js_type_of'), [R.Ref(this.coerce(v, 'any'))]), 'string');
+    }
+
+    xTypeOfExpression(node) { return this.typeOf(node.argument); }
+
+    xUpdateExpression(node) {
+      const r = this.update(node, true);
+      this.fn.pre.push(...r.stmts);
+      return r.value;
+    }
+
+    xAssignmentExpression(node) {
+      const r = this.assignment(node, true);
+      this.fn.pre.push(...r.stmts);
+      return r.value;
+    }
+
+    xSequenceExpression(node) {
+      const list = node.expressions;
+      for (let i = 0; i < list.length - 1; ++i) this.fn.pre.push(...this.expressionStatement(list[i]));
+      return this.expr(list[list.length - 1]);
+    }
+
+    // ---------------------------------------------------------- calls
+
+    callArgs(argNodes, params) {
+      const out = [];
+      if (argNodes.some(a => a && a.type === 'SpreadElement')) {
+        const list = this.spreadList(argNodes, 'any');
+        const tmp = this.tmp('s');
+        this.fn.pre.push(R.Let(tmp, null, list, false));
+        params.forEach((p, i) => out.push(this.coerce(new Val(R.MethodCall(R.Ident(tmp), 'get', [R.Lit(`${i}usize`)]), 'any'), this.typeOfNullable(p.type, p.nullable))));
+        return out;
+      }
+      params.forEach((p, i) => {
+        const t = this.typeOfNullable(p.type, p.nullable);
+        if (i < argNodes.length) out.push(this.coerce(this.expr(argNodes[i]), t));
+        else if (p.defaultValue) out.push(this.coerce(this.expr(p.defaultValue), t));
+        else out.push(this.zero(t));
+      });
+      for (let i = params.length; i < argNodes.length; ++i) {
+        const v = this.expr(argNodes[i]);
+        if (!v.isConst && (v.e.kind === 'Call' || v.e.kind === 'MethodCall')) this.fn.pre.push(this.exprStmt(v));
+      }
+      return out;
+    }
+
+    /** Values of a list with spreads, as one JsArr expression of the element type. */
+    spreadList(nodes, elT) {
+      const parts = [];
+      let run = [];
+      const flush = () => { if (run.length) { parts.push(R.Call(R.Ident('js_arr'), [R.Macro('vec', run)])); run = []; } };
+      for (const n of nodes) {
+        if (n && n.type === 'SpreadElement') {
+          flush();
+          const v = this.expr(n.argument);
+          parts.push(this.coerce(v, elT + '[]'));
+        } else run.push(this.coerce(this.expr(n), elT));
+      }
+      flush();
+      if (parts.length === 1) return run.length === 0 && parts[0].kind === 'Call' && parts[0].fn.name === 'js_arr' ? parts[0] : R.MethodCall(parts[0], 'copy', []);
+      return R.Call(R.Ident('js_concat'), [R.Macro('vec', parts.length ? parts : [R.Call(R.Ident('JsArr::new'), [])])]);
+    }
+
+    xCallExpression(node) {
+      const callee = node.callee;
+      const rt = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      // f.apply(thisArg, list) and f.call(thisArg, ...args) of a global function: the call itself
+      if (callee.type === 'MemberExpression' && !callee.computed && ['apply', 'call'].includes(propKey(callee.property))
+        && (callee.object.type === 'MemberExpression' || (callee.object.type === 'Identifier' && !this.lookup(callee.object.name) && this.model.functions.has(callee.object.name)))) {
+        const args = node.arguments || [];
+        const direct = propKey(callee.property) === 'apply'
+          ? (args[1] ? [{ type: 'SpreadElement', argument: args[1] }] : [])
+          : args.slice(1);
+        return this.xCallExpression(Object.assign({}, node, { callee: callee.object, arguments: direct }));
+      }
+      if (callee.type === 'Identifier') {
+        const local = this.lookup(callee.name);
+        if (!local) {
+          const special = this.globalCall(callee.name, node, rt);
+          if (special) return special;
+        }
+        const fv = this.xIdentifier(callee);
+        if (fv.sig && !fv.cellFn) return new Val(R.Call(fv.e, this.callArgs(node.arguments || [], fv.sig.params)), fv.sig.ret.type);
+        if (fv.classRef) return this.newObject(fv.classRef, node.arguments || []);
+        const args = (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'));
+        const res = new Val(R.MethodCall(this.coerce(fv, 'any'), 'call', [R.Macro('vec', args)]), 'any');
+        return fv.sig ? new Val(this.coerce(res, fv.sig.ret.type === 'void' ? 'any' : fv.sig.ret.type), fv.sig.ret.type === 'void' ? 'any' : fv.sig.ret.type) : res;
+      }
+      if (callee.type === 'MemberExpression' && !callee.computed) {
+        const key = propKey(callee.property);
+        if (callee.object.type === 'Identifier' && !this.lookup(callee.object.name)) {
+          const special = this.globalMethodCall(callee.object.name, key, node, rt);
+          if (special) return special;
+          const info = this.model.classes.get(callee.object.name);
+          if (info && !this.model.variables.has(callee.object.name)) {
+            for (let c = info; c; c = c.base) {
+              const sm = c.staticMethods.get(key);
+              if (sm) return new Val(R.Call(R.Ident(this.staticName(c.name, key)), this.callArgs(node.arguments || [], Model.functionParams(sm.fn, sm.jsDoc))), this.signatureReturn(sm.fn, sm.jsDoc).type);
+            }
+          }
+        }
+        return this.methodCall(this.expr(callee.object), key, node.arguments || [], rt, node);
+      }
+      if (callee.type === 'MemberExpression' && callee.computed) {
+        const obj = this.expr(callee.object);
+        const key = this.expr(callee.property);
+        const args = (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'));
+        return new Val(R.MethodCall(this.coerce(obj, 'object'), 'call', [R.Ref(R.MethodCall(this.coerce(key, 'any'), 'text', [])), R.Macro('vec', args)]), 'any');
+      }
+      const f = this.expr(callee);
+      if (f.sig && f.t === 'closure') return new Val(R.Call(R.Paren(f.e), this.callArgs(node.arguments || [], f.sig.params)), f.sig.ret.type);
+      const args = (node.arguments || []).map(a => this.coerce(this.expr(a), 'any'));
+      return new Val(R.MethodCall(this.coerce(f, 'any'), 'call', [R.Macro('vec', args)]), 'any');
+    }
+
+    globalCall(name, node, rt) {
+      const args = node.arguments || [];
+      const a = i => this.expr(args[i]);
+      switch (name) {
+        case 'require': return new Val(R.Call(R.Ident('js_require'), [R.Macro('vec', args.map((x, i) => this.coerce(a(i), 'any')))]), 'any');
+        case 'Find': return new Val(R.Call(R.Ident('js_find_algorithm'), [R.Ref(this.coerce(a(0), 'string'))]), 'Algorithm');
+        case 'RegisterAlgorithm': return new Val(R.Call(R.Ident('js_register_algorithm'), [this.coerce(a(0), 'object')]), 'void');
+        case 'Number': {
+          if (!args.length) return new Val(null, 'float64', 0);
+          const v = a(0);
+          const target = rt && isNumericType(rt) ? rt : 'float64';
+          return new Val(this.coerce(v, target), target);
+        }
+        case 'BigInt': {
+          const v = a(0);
+          if (canonicalType(v.t) === 'string') return new Val(R.Call(R.Ident('JsBig::parse'), [R.Ref(v.e)]), 'bigint');
+          return new Val(this.coerce(v, 'bigint'), 'bigint');
+        }
+        case 'String': return new Val(this.coerce(a(0), 'string'), 'string');
+        case 'Boolean': return new Val(this.truthy(a(0)), 'boolean');
+        case 'parseInt': {
+          const v = new Val(R.Call(R.Ident('js_parse_int'), [R.Ref(this.coerce(a(0), 'string')), args[1] ? this.coerce(a(1), 'int64') : R.Lit('10i64')]), 'float64');
+          return rt && isNumericType(rt) && !isFloatType(rt) ? new Val(this.coerce(v, rt), rt) : v;
+        }
+        case 'parseFloat': return new Val(R.Call(R.Ident('js_to_number'), [R.Ref(this.coerce(a(0), 'string'))]), 'float64');
+        case 'isNaN': return new Val(R.MethodCall(this.coerce(a(0), 'float64'), 'is_nan', []), 'boolean');
+        case 'isFinite': return new Val(R.MethodCall(this.coerce(a(0), 'float64'), 'is_finite', []), 'boolean');
+        case 'Error': case 'TypeError': case 'RangeError':
+          return new Val(R.Call(R.Ident('JsError::new'), [R.Lit(rustStringLiteral(name)), args[0] ? R.Ref(this.coerce(a(0), 'string')) : R.Lit('""')]), 'Error');
+      }
+      return null;
+    }
+
+    globalMethodCall(obj, key, node, rt) {
+      const args = node.arguments || [];
+      const a = i => this.expr(args[i]);
+      switch (`${obj}.${key}`) {
+        case 'AlgorithmFramework.Find': return new Val(R.Call(R.Ident('js_find_algorithm'), [R.Ref(this.coerce(a(0), 'string'))]), 'Algorithm');
+        case 'AlgorithmFramework.RegisterAlgorithm': return new Val(R.Call(R.Ident('js_register_algorithm'), [this.coerce(a(0), 'object')]), 'void');
+        case 'Object.keys': return new Val(R.Call(R.Ident('js_keys'), [R.Ref(this.coerce(a(0), 'any'))]), 'string[]');
+        case 'Object.freeze': case 'Object.seal': return a(0);
+        case 'Array.isArray': case 'ArrayBuffer.isView': return new Val(R.Call(R.Ident('js_is_array'), [R.Ref(this.coerce(a(0), 'any'))]), 'boolean');
+        case 'Number.isInteger': case 'Number.isSafeInteger': return new Val(R.Call(R.Ident('js_is_integer'), [R.Ref(this.coerce(a(0), 'any'))]), 'boolean');
+        case 'Number.isFinite': return new Val(R.MethodCall(this.coerce(a(0), 'float64'), 'is_finite', []), 'boolean');
+        case 'Number.isNaN': return new Val(R.MethodCall(this.coerce(a(0), 'float64'), 'is_nan', []), 'boolean');
+        case 'Number.parseInt': return this.globalCall('parseInt', node, rt);
+        case 'String.fromCharCode': return new Val(R.Call(R.Ident('js_from_char_codes'), [R.MethodCall(this.spreadList(args, 'int32'), 'to_vec', [])]), 'string');
+        case 'Math.imul': return new Val(R.Cast(R.MethodCall(this.toInt32Bits(a(0), 'uint32'), 'wrapping_mul', [this.toInt32Bits(a(1), 'uint32')]), 'i32'), 'int32');
+        case 'BigInt.asUintN': case 'BigInt.asIntN': {
+          const res = new Val(R.MethodCall(this.coerce(a(1), 'bigint'), key === 'asUintN' ? 'as_uint_n' : 'as_int_n', [this.coerce(a(0), 'idx')]), 'bigint');
+          return rt && !isBigType(rt) && rt !== 'any' ? new Val(this.coerce(res, rt), rt) : res;
+        }
+        case 'performance.now': return new Val(R.Call(R.Ident('js_performance_now'), []), 'float64');
+        case 'Date.now': return new Val(R.Call(R.Ident('js_date_now'), []), 'float64');
+        case 'console.log': case 'console.warn': case 'console.error': case 'console.info': case 'console.debug':
+          return new Val(R.Call(R.Ident('js_log'), [R.Macro('vec', args.map((x, i) => this.coerce(a(i), 'any')))]), 'void');
+      }
+      if (obj === 'Math') return this.mathCall(key, args.map((x, i) => a(i)), rt);
+      if (obj === 'OpCodes') return this.opCodesCall(key, args, rt, node);
+      return null;
+    }
+
+    mathCall(key, args, rt) {
+      const f64 = i => this.coerce(args[i], 'float64');
+      const unary = { floor: 'floor', ceil: 'ceil', trunc: 'trunc', abs: 'abs', sqrt: 'sqrt', log: 'ln', log2: 'log2', log10: 'log10', exp: 'exp', sin: 'sin', cos: 'cos', tan: 'tan', tanh: 'tanh', atan: 'atan', cbrt: 'cbrt', log1p: 'ln_1p', expm1: 'exp_m1' };
+      let res;
+      if (unary[key]) res = new Val(R.MethodCall(f64(0), unary[key], []), 'float64');
+      else if (key === 'round') res = new Val(R.Call(R.Ident('js_round'), [f64(0)]), 'float64');
+      else if (key === 'sign') res = new Val(R.Call(R.Ident('js_sign'), [f64(0)]), 'float64');
+      else if (key === 'pow') res = new Val(R.MethodCall(f64(0), 'powf', [f64(1)]), 'float64');
+      else if (key === 'atan2') res = new Val(R.MethodCall(f64(0), 'atan2', [f64(1)]), 'float64');
+      else if (key === 'hypot') res = new Val(R.MethodCall(f64(0), 'hypot', [f64(1)]), 'float64');
+      else if (key === 'random') res = new Val(R.Call(R.Ident('js_random'), []), 'float64');
+      else if (key === 'fround') res = new Val(R.Cast(R.Cast(f64(0), 'f32'), 'f64'), 'float64');
+      else if (key === 'clz32') res = new Val(R.Cast(R.MethodCall(this.toInt32Bits(args[0], 'uint32'), 'leading_zeros', []), 'f64'), 'float64');
+      else if (key === 'min' || key === 'max') return this.minMax(key, args, rt);
+      else return null;
+      return rt && isNumericType(rt) && !isFloatType(rt) ? new Val(this.coerce(res, rt), rt) : res;
+    }
+
+    minMax(key, args, rt) {
+      const t = rt && isNumericType(rt) ? rt : 'float64';
+      if (args.every(v => isIntType(canonicalType(v.t)) || v.isConst) && isIntType(t) && args.length >= 1) {
+        let e = this.coerce(args[0], t);
+        for (let i = 1; i < args.length; ++i) e = R.MethodCall(e, key, [this.coerce(args[i], t)]);
+        return new Val(e, t);
+      }
+      const res = new Val(R.Call(R.Ident(key === 'min' ? 'js_min_f' : 'js_max_f'), [R.Ref(R.Macro('vec', args.map(v => this.coerce(v, 'float64'))))]), 'float64');
+      return isFloatType(t) ? res : new Val(this.coerce(res, t), t);
+    }
+
+    methodCall(obj, key, argNodes, rt, node) {
+      const ot = canonicalType(obj.t) || 'any';
+      const info = obj.isThis ? this.fn.cls : (this.isLeafClass(ot) ? this.model.classOf(ot) : null);
+      if (info) {
+        const m = info.effective.methods.get(key);
+        if (m) {
+          const params = Model.functionParams(m.fn, m.jsDoc);
+          return new Val(R.MethodCall(obj.recv || obj.e, this.methodName(key), this.callArgs(argNodes, params)), this.signatureReturn(m.fn, m.jsDoc).type);
+        }
+        if (info.effective.fields.has(key)) {
+          const f = this.memberValue(obj, key, 'any');
+          const args = argNodes.map(a => this.coerce(this.expr(a), 'any'));
+          return new Val(R.MethodCall(this.coerce(f, 'any'), 'call', [R.Macro('vec', args)]), 'any');
+        }
+      }
+      const builtin = this.builtinMethod(obj, ot, key, argNodes, rt, node);
+      if (builtin) return builtin;
+      const args = argNodes.map(a => this.coerce(this.expr(a), 'any'));
+      if (obj.sig && (key === 'call' || key === 'apply')) return new Val(R.MethodCall(this.coerce(obj, 'any'), 'call', [R.Macro('vec', args.slice(1))]), 'any');
+      return new Val(R.MethodCall(this.coerce(obj, 'object'), 'call', [R.Lit(rustStringLiteral(key)), R.Macro('vec', args)]), 'any');
+    }
+
+    builtinMethod(obj, ot, key, argNodes, rt) {
+      const a = i => this.expr(argNodes[i]);
+      const has = i => i < argNodes.length;
+      const s = () => R.Ref(obj.e);
+      if (ot === 'string') {
+        switch (key) {
+          case 'charCodeAt': case 'codePointAt': return new Val(R.Call(R.Ident('js_char_code_at'), [s(), has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64')]), 'int32');
+          case 'charAt': return new Val(R.Call(R.Ident('js_char_at'), [s(), has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64')]), 'string');
+          case 'toUpperCase': case 'toLocaleUpperCase': return new Val(R.Call(R.Ident('js_to_upper'), [s()]), 'string');
+          case 'toLowerCase': case 'toLocaleLowerCase': return new Val(R.Call(R.Ident('js_to_lower'), [s()]), 'string');
+          case 'trim': return new Val(R.MethodCall(R.MethodCall(obj.e, 'trim', []), 'to_string', []), 'string');
+          case 'indexOf': return new Val(R.Call(R.Ident('js_str_index_of'), [s(), R.Ref(this.coerce(a(0), 'string')), has(1) ? this.coerce(a(1), 'int64') : R.Lit('0i64')]), 'int32');
+          case 'lastIndexOf': return new Val(R.Call(R.Ident('js_str_last_index_of'), [s(), R.Ref(this.coerce(a(0), 'string'))]), 'int32');
+          case 'includes': return new Val(R.MethodCall(obj.e, 'contains', [R.MethodCall(this.coerce(a(0), 'string'), 'as_str', [])]), 'boolean');
+          case 'startsWith': return new Val(R.MethodCall(obj.e, 'starts_with', [R.MethodCall(this.coerce(a(0), 'string'), 'as_str', [])]), 'boolean');
+          case 'endsWith': return new Val(R.MethodCall(obj.e, 'ends_with', [R.MethodCall(this.coerce(a(0), 'string'), 'as_str', [])]), 'boolean');
+          case 'substring': return new Val(R.Call(R.Ident('js_substring'), [s(), this.coerce(a(0), 'int64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END')]), 'string');
+          case 'substr': return new Val(R.Call(R.Ident('js_substr'), [s(), this.coerce(a(0), 'int64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END')]), 'string');
+          case 'slice': return new Val(R.Call(R.Ident('js_str_slice'), [s(), has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END')]), 'string');
+          case 'split': {
+            const sep = has(0) ? a(0) : null;
+            if (sep && canonicalType(sep.t) === 'regex') return new Val(R.MethodCall(sep.e, 'split', [s()]), 'string[]');
+            return new Val(R.Call(R.Ident('js_split'), [s(), sep ? R.Ref(this.coerce(sep, 'string')) : R.Lit('"\\u{0}"')]), 'string[]');
+          }
+          case 'repeat': return new Val(R.Call(R.Ident('js_repeat'), [s(), this.coerce(a(0), 'int64')]), 'string');
+          case 'padStart': return new Val(R.Call(R.Ident('js_pad_start'), [s(), this.coerce(a(0), 'int64'), has(1) ? R.Ref(this.coerce(a(1), 'string')) : R.Lit('" "')]), 'string');
+          case 'padEnd': return new Val(R.Call(R.Ident('js_pad_end'), [s(), this.coerce(a(0), 'int64'), has(1) ? R.Ref(this.coerce(a(1), 'string')) : R.Lit('" "')]), 'string');
+          case 'concat': return new Val(R.Macro('format', ['"{}{}"', obj.e, this.coerce(a(0), 'string')]), 'string');
+          case 'toString': case 'valueOf': case 'normalize': return obj;
+          case 'replace': case 'replaceAll': {
+            const x = a(0);
+            if (canonicalType(x.t) === 'string') return new Val(R.MethodCall(obj.e, key === 'replace' ? 'replacen' : 'replace', key === 'replace' ? [R.MethodCall(this.coerce(x, 'string'), 'as_str', []), R.MethodCall(this.coerce(a(1), 'string'), 'as_str', []), R.Lit('1')] : [R.MethodCall(this.coerce(x, 'string'), 'as_str', []), R.MethodCall(this.coerce(a(1), 'string'), 'as_str', [])]), 'string');
+            const re = canonicalType(x.t) === 'regex' ? x.e : R.Call(R.Ident('<JsRegex>::from_js'), [R.Ref(this.coerce(x, 'any'))]);
+            return new Val(R.MethodCall(re, 'replace', [R.Ref(obj.e), R.Ref(this.coerce(a(1), 'string'))]), 'string');
+          }
+        }
+      }
+      if (isArrayType(ot)) {
+        const el = elementType(ot) === 'object' ? 'any' : elementType(ot);
+        switch (key) {
+          case 'push': {
+            if (argNodes.length === 1) return new Val(R.Cast(R.MethodCall(obj.e, 'push', [this.coerce(a(0), el)]), 'i32'), 'int32');
+            const tmp = this.tmp('p');
+            this.fn.pre.push(R.Let(tmp, null, obj.e, false));
+            for (let i = 0; i < argNodes.length; ++i) this.fn.pre.push(R.ExprStmt(R.MethodCall(R.Ident(tmp), 'push', [this.coerce(a(i), el)])));
+            return new Val(R.Cast(R.MethodCall(R.Ident(tmp), 'len', []), 'i32'), 'int32');
+          }
+          case 'slice': return new Val(R.MethodCall(obj.e, 'slice', [has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END')]), ot);
+          case 'join': return new Val(R.MethodCall(obj.e, 'join', [has(0) ? R.Ref(this.coerce(a(0), 'string')) : R.Lit('","')]), 'string');
+          case 'indexOf': return new Val(R.MethodCall(obj.e, 'index_of', [R.Ref(this.coerce(a(0), el)), has(1) ? this.coerce(a(1), 'int64') : R.Lit('0i64')]), 'int32');
+          case 'includes': return new Val(R.Binary('>=', R.MethodCall(obj.e, 'index_of', [R.Ref(this.coerce(a(0), el)), R.Lit('0i64')]), R.Lit('0')), 'boolean');
+          case 'reverse': return new Val(R.MethodCall(obj.e, 'reverse', []), ot);
+          case 'fill': return new Val(R.MethodCall(obj.e, 'fill', [this.coerce(a(0), el), has(1) ? this.coerce(a(1), 'int64') : R.Lit('0i64'), has(2) ? this.coerce(a(2), 'int64') : R.Ident('JS_NO_END')]), ot);
+          case 'concat': return new Val(R.MethodCall(obj.e, 'concat', [R.Ref(R.Macro('vec', argNodes.map((x, i) => { const v = a(i); return isArrayType(canonicalType(v.t)) ? this.coerce(v, ot) : R.Call(R.Ident('js_arr'), [R.Macro('vec', [this.coerce(v, el)])]); })))]), ot);
+          case 'pop': return new Val(R.MethodCall(obj.e, 'pop', []), el);
+          case 'shift': return new Val(R.MethodCall(obj.e, 'shift', []), el);
+          case 'unshift': return new Val(R.Cast(R.MethodCall(obj.e, 'unshift', [R.Macro('vec', argNodes.map((x, i) => this.coerce(a(i), el)))]), 'i32'), 'int32');
+          case 'splice': return new Val(R.MethodCall(obj.e, 'splice', [has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END'), this.itemVec(argNodes.slice(2), el)]), ot);
+          case 'set': return new Val(R.MethodCall(obj.e, 'set_from', [R.Ref(this.coerce(a(0), ot)), has(1) ? this.coerce(a(1), 'idx') : R.Lit('0usize')]), 'void');
+          case 'subarray': return new Val(R.MethodCall(obj.e, 'subarray', [has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END')]), ot);
+          case 'toString': return new Val(R.MethodCall(obj.e, 'join', [R.Lit('","')]), 'string');
+          case 'map': case 'filter': case 'forEach': case 'some': case 'every': case 'find': case 'findIndex': case 'reduce': case 'sort':
+            return this.arrayCallback(obj, ot, key, argNodes, rt);
+        }
+      }
+      if ((isNumericType(ot) || isBigType(ot)) && key === 'toString') {
+        if (isBigType(ot)) return new Val(R.MethodCall(obj.e, 'to_string_radix', [has(0) ? R.Cast(this.coerce(a(0), 'int64'), 'u32') : R.Lit('10')]), 'string');
+        // An integer prints exactly (a 64-bit BigInt held as u64 has no float form)
+        if (isIntType(ot)) return new Val(R.MethodCall(R.Call(R.Ident(isSignedInt(ot) ? 'JsBig::from_i64' : 'JsBig::from_u64'), [R.Cast(obj.e, isSignedInt(ot) ? 'i64' : 'u64')]), 'to_string_radix', [has(0) ? R.Cast(this.coerce(a(0), 'int64'), 'u32') : R.Lit('10')]), 'string');
+        return new Val(R.Call(R.Ident('js_num_to_string'), [this.coerce(obj, 'float64'), has(0) ? this.coerce(a(0), 'int64') : R.Lit('10i64')]), 'string');
+      }
+      if (isNumericType(ot) && key === 'toFixed') return new Val(R.Call(R.Ident('js_to_fixed'), [this.coerce(obj, 'float64'), has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64')]), 'string');
+      if (ot === 'Map') {
+        switch (key) {
+          case 'get': return new Val(R.MethodCall(obj.e, 'map_get', [R.Ref(this.coerce(a(0), 'any'))]), 'any');
+          case 'set': return new Val(R.MethodCall(obj.e, 'map_set', [this.coerce(a(0), 'any'), this.coerce(a(1), 'any')]), 'Map');
+          case 'has': return new Val(R.MethodCall(obj.e, 'map_has', [R.Ref(this.coerce(a(0), 'any'))]), 'boolean');
+          case 'delete': return new Val(R.MethodCall(obj.e, 'map_delete', [R.Ref(this.coerce(a(0), 'any'))]), 'boolean');
+          case 'clear': return new Val(R.MethodCall(obj.e, 'map_clear', []), 'void');
+          case 'keys': return new Val(R.MethodCall(obj.e, 'map_keys', []), 'any[]');
+          case 'values': return new Val(R.MethodCall(obj.e, 'map_values', []), 'any[]');
+        }
+      }
+      if (ot === 'regex' && key === 'test') return new Val(R.MethodCall(obj.e, 'test', [R.Ref(this.coerce(a(0), 'string'))]), 'boolean');
+      if (key === 'toString' && argNodes.length === 0) return new Val(R.MethodCall(this.coerce(obj, 'any'), 'text', []), 'string');
+      return null;
+    }
+
+    arrayCallback(obj, ot, key, argNodes, rt) {
+      const el = elementType(ot) === 'object' ? 'any' : elementType(ot);
+      const cb = this.callbackValue(argNodes[0]);
+      if (!cb) throw new Error(`array ${key} with a callback that is not a function literal`);
+      switch (key) {
+        case 'map': {
+          // What the callback returns is what the array holds (the IL types a map like its source array)
+          const outEl = cb.sig.ret.type !== 'any' && cb.sig.ret.type !== 'void' ? cb.sig.ret.type : (isArrayType(rt) ? elementType(rt) : 'any');
+          return new Val(R.MethodCall(obj.e, 'map', [this.adaptCallback(cb, [el, 'int32'], outEl)]), outEl + '[]');
+        }
+        case 'filter': return new Val(R.MethodCall(obj.e, 'filter', [this.adaptCallback(cb, [el, 'int32'], 'boolean')]), ot);
+        case 'forEach': return new Val(R.MethodCall(obj.e, 'for_each', [this.adaptCallback(cb, [el, 'int32'], 'void')]), 'void');
+        case 'some': return new Val(R.MethodCall(obj.e, 'some', [this.adaptCallback(cb, [el, 'int32'], 'boolean')]), 'boolean');
+        case 'every': return new Val(R.MethodCall(obj.e, 'every', [this.adaptCallback(cb, [el, 'int32'], 'boolean')]), 'boolean');
+        case 'find': return new Val(R.MethodCall(obj.e, 'find', [this.adaptCallback(cb, [el, 'int32'], 'boolean')]), el);
+        case 'findIndex': return new Val(R.MethodCall(obj.e, 'find_index', [this.adaptCallback(cb, [el, 'int32'], 'boolean')]), 'int32');
+        case 'sort': return new Val(R.MethodCall(obj.e, 'sort_by', [this.adaptCallback(cb, [el, el], 'float64')]), ot);
+        case 'reduce': {
+          const accT = rt && rt !== 'any' ? rt : (cb.sig.ret.type || 'any');
+          const init = argNodes[1] ? this.coerce(this.expr(argNodes[1]), accT) : this.zero(accT);
+          return new Val(R.MethodCall(obj.e, 'reduce', [this.adaptCallback(cb, [accT, el, 'int32'], accT), init]), accT);
+        }
+      }
+      return null;
+    }
+
+    callbackValue(node) {
+      if (!node || !['ArrowFunction', 'ArrowFunctionExpression', 'FunctionExpression'].includes(node.type)) return null;
+      return this.funcLit(node, node.jsDoc);
+    }
+
+    /** A closure with exactly the parameter types the runtime passes, calling the transpiled one. */
+    adaptCallback(cb, paramTypes, retType) {
+      const params = cb.sig.params;
+      const f = this.tmp('cb');
+      const args = params.map((p, i) => i < paramTypes.length
+        ? this.coerce(new Val(R.Ident(`a${i}`), paramTypes[i]), this.typeOfNullable(p.type, p.nullable))
+        : this.zero(p.type));
+      const call = R.Call(R.Ident(f), args);
+      let body;
+      if (retType === 'void') body = R.Block([R.ExprStmt(call)]);
+      else if (cb.sig.ret.type === 'void') body = R.Block([R.ExprStmt(call)], this.zero(retType));
+      else body = R.Block([], this.coerce(new Val(call, cb.sig.ret.type), retType));
+      return R.BlockExpr([R.Let(f, null, cb.e, false)], R.Closure(paramTypes.map((t, i) => ({ name: `a${i}`, type: this.rustType(t) })), retType === 'void' ? null : this.rustType(retType), body, true));
+    }
+
+    xThisMethodCall(node) {
+      return this.methodCall(this.thisValue(), node.method, node.arguments || [], this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable), node);
+    }
+
+    xParentMethodCall(node) {
+      const info = this.fn.cls;
+      let m = null;
+      for (let c = info && info.base; c && !m; c = c.base) m = c.methods.get(node.method) || null;
+      // JavaScript throws a TypeError when it calls a base method that does not exist
+      if (!m && !(node.arguments || []).length)
+        return new Val(R.Call(R.Ident('js_throw_error'), [R.Lit('"TypeError"'), R.Lit(rustStringLiteral(`(intermediate value).${node.method} is not a function`))]), canonicalType(node.resultType) || 'void');
+      if (!m) throw new Error(`super.${node.method} has no base method`);
+      const key = `js_super_${m.owner.name}_${node.method}`;
+      if (!this.superCopies.has(key)) this.superCopies.set(key, { cls: info, fn: m.fn, jsDoc: m.jsDoc });
+      return new Val(R.MethodCall(this.selfIdent(), key, this.callArgs(node.arguments || [], Model.functionParams(m.fn, m.jsDoc))), this.signatureReturn(m.fn, m.jsDoc).type);
+    }
+
+    xParentConstructorCall(node) {
+      this.fn.pre.push(...this.parentConstructorCall(node));
+      return new Val(R.Lit('()'), 'void');
+    }
+
+    xNewExpression(node) {
+      // new AlgorithmFramework.X(...) is new X(...)
+      const callee = node.callee;
+      const name = callee && (callee.name || (callee.type === 'MemberExpression' && callee.object && callee.object.name === 'AlgorithmFramework' ? propKey(callee.property) : null));
+      const rt = canonicalType(node.resultType) || 'any';
+      const args = node.arguments || [];
+      if (name && this.model.classes.has(name) && this.emittedClasses.has(name)) return this.newObject(this.model.classes.get(name), args);
+      switch (name) {
+        case 'Error': case 'TypeError': case 'RangeError': case 'SyntaxError':
+          return new Val(R.Call(R.Ident('JsError::new'), [R.Lit(rustStringLiteral(name)), args[0] ? R.Ref(this.coerce(this.expr(args[0]), 'string')) : R.Lit('""')]), 'Error');
+        case 'Array': {
+          const el = isArrayType(rt) ? elementType(rt) : 'any';
+          if (args.length === 1) {
+            const n = this.expr(args[0]);
+            if (isNumericType(canonicalType(n.t))) return new Val(R.Call(R.Ident(`${this.turbofishType(this.rustType(el + '[]'))}::with_len`), [this.coerce(n, 'idx')]), el + '[]');
+          }
+          return new Val(R.Call(R.Ident('js_arr'), [R.Macro('vec', args.map(a => this.coerce(this.expr(a), el)))]), el + '[]');
+        }
+        case 'Map': case 'Set': return new Val(R.Call(R.Ident('js_map_new'), []), 'Map');
+        case 'Object': return new Val(R.Call(R.Ident('js_obj_of'), [R.Macro('vec', [])]), 'object');
+      }
+      if (/^(Uint8|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|Uint8Clamped|BigUint64|BigInt64)Array$/.test(name || '')) return this.typedArray(rt, args[0]);
+      if (name && this.model.classes.has(name)) throw new Error(`new ${name}: the class is abstract here`);
+      return this.unsupported({ type: 'new ' + name, resultType: rt });
+    }
+
+    newObject(info, args) {
+      const ctorOwner = [...info.chain()].reverse().find(c => c.ctor) || null;
+      const params = ctorOwner ? Model.functionParams(ctorOwner.ctor, ctorOwner.ctorDoc) : [];
+      return new Val(R.Call(R.Ident(`${this.className(info.name)}::new`), this.callArgs(args, params)), this.isLeafClass(info.name) ? info.name : '#' + info.name);
+    }
+
+    typedArray(rt, arg) {
+      const t = isArrayType(rt) ? rt : 'uint8[]';
+      const rs = this.rustType(t);
+      if (!arg) return new Val(R.Call(R.Ident(`${this.turbofishType(rs)}::new`), []), t);
+      const v = this.expr(arg);
+      const vt = canonicalType(v.t) || 'any';
+      if (isNumericType(vt)) return new Val(R.Call(R.Ident(`${this.turbofishType(rs)}::with_len`), [this.coerce(v, 'idx')]), t);
+      if (isArrayType(vt)) return this.sameRust(vt, t) ? new Val(R.MethodCall(v.e, 'copy', []), t) : new Val(this.coerce(v, t), t);
+      return new Val(this.coerce(v, t), t);
+    }
+
+    // ---------------------------------------------------------- literals
+
+    xArrayExpression(node) {
+      const rt = canonicalType(node.resultType) || 'any[]';
+      const t = isArrayType(rt) ? rt : 'any[]';
+      const el = elementType(t) === 'object' ? 'any' : elementType(t);
+      const elems = node.elements || [];
+      if (elems.some(e => e && e.type === 'SpreadElement')) return new Val(this.spreadList(elems, el), t);
+      return new Val(R.Call(R.Ident(`js_arr::<${this.rustType(el)}>`), [R.Macro('vec', elems.map(e => e ? this.coerce(this.expr(e), el) : this.zero(el)))]), t);
+    }
+
+    xArrayLiteral(node) { return this.xArrayExpression(node); }
+
+    xObjectLiteral(node) {
+      const entries = [];
+      for (const p of node.properties || []) {
+        if (p.type === 'SpreadElement' || p.type === 'SpreadProperty') throw new Error('object spread');
+        const key = p.computed ? R.MethodCall(R.MethodCall(this.coerce(this.expr(p.key), 'any'), 'text', []), 'as_str', []) : R.Lit(rustStringLiteral(propKey(p.key)));
+        let value;
+        if (p.value && ['FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression'].includes(p.value.type)) value = this.funcLit(p.value, p.value.jsDoc).anyFn;
+        else value = this.coerce(this.expr(p.value), 'any');
+        entries.push(R.Tuple([key, value]));
+      }
+      const rt = canonicalType(node.resultType) || 'object';
+      return new Val(R.Call(R.Ident('js_obj_of'), [R.Macro('vec', entries)]), rt === 'any' || !this.model.classOf(rt) ? 'object' : rt);
+    }
+
+    xObjectExpression(node) { return this.xObjectLiteral(node); }
+    xFunctionExpression(node) { return this.funcLit(node, node.jsDoc); }
+    xArrowFunction(node) { return this.funcLit(node, node.jsDoc); }
+    xArrowFunctionExpression(node) { return this.funcLit(node, node.jsDoc); }
+    xSpreadElement(node) { return this.expr(node.argument); }
+
+    xTemplateLiteral(node) {
+      const parts = [];
+      (node.quasis || []).forEach((q, i) => {
+        const text = q.value && (q.value.cooked !== undefined ? q.value.cooked : q.value.raw);
+        if (text) parts.push(this.coerce(new Val(null, 'string', text), 'string'));
+        if (node.expressions && node.expressions[i]) parts.push(this.coerce(this.expr(node.expressions[i]), 'string'));
+      });
+      return this.concatStrings(parts);
+    }
+
+    concatStrings(parts) {
+      if (!parts.length) return new Val(null, 'string', '');
+      return new Val(R.Macro('format', [`"${'{}'.repeat(parts.length)}"`, ...parts]), 'string');
+    }
+
+    xStringInterpolation(node) {
+      return this.concatStrings((node.parts || []).map(p => p.type === 'StringPart' ? this.coerce(new Val(null, 'string', p.value), 'string') : this.coerce(this.expr(p.expression), 'string')));
+    }
+
+    // ---------------------------------------------------------- IL nodes
+
+    xErrorCreation(node) {
+      const msg = node.message ? this.coerce(this.expr(node.message), 'string') : R.Call(R.Ident('String::new'), []);
+      return new Val(R.Call(R.Ident('JsError::new'), [R.Lit(rustStringLiteral(node.errorType || 'Error')), R.Ref(msg)]), 'Error');
+    }
+
+    xCast(node) {
+      const arg = this.expr(node.arguments[0]);
+      const target = canonicalType(node.targetType === 'int' ? 'int32' : node.targetType) || canonicalType(node.resultType);
+      const method = node.opCodesMethod;
+      const at = canonicalType(arg.t) || 'any';
+      const masks = { ToUint32: ['>>>', 0, 'uint32'], ToDWord: ['>>>', 0, 'uint32'], ToInt: ['|', 0, 'int32'], ToInt32: ['|', 0, 'int32'],
+        ToByte: ['&', 0xFF, 'uint8'], ToUint8: ['&', 0xFF, 'uint8'], ToWord: ['&', 0xFFFF, 'uint16'], ToUint16: ['&', 0xFFFF, 'uint16'] };
+      if (masks[method]) {
+        const [op, k, t] = masks[method];
+        if (isBigType(at)) return new Val(this.coerce(new Val(R.MethodCall(arg.e, 'as_uint_n', [R.Lit('32usize')]), 'bigint'), target || t), target || t);
+        const res = this.bitwise(op, arg, new Val(null, 'int32', k), t, false);
+        return target && target !== res.t ? new Val(this.coerce(res, target), target) : res;
+      }
+      if (method === 'ToQWord') {
+        if (isBigType(at)) return new Val(R.MethodCall(arg.e, 'to_u64', []), 'uint64');
+        if (isFloatType(at)) return new Val(R.Cast(R.Call(R.Ident('js_f2i'), [arg.e]), 'u64'), 'uint64');
+        return new Val(this.coerce(arg, 'uint64'), 'uint64');
+      }
+      return new Val(this.coerce(arg, target || 'any'), target || 'any');
+    }
+
+    xBigIntCast(node) {
+      const v = this.expr(node.argument);
+      const rt = canonicalType(node.resultType) || 'bigint';
+      if (canonicalType(v.t) === 'string') return new Val(R.Call(R.Ident('JsBig::parse'), [R.Ref(v.e)]), 'bigint');
+      if (v.isConst && typeof v.c === 'number') return new Val(null, rt, BigInt(Math.trunc(v.c)));
+      return new Val(this.coerce(v, rt), rt);
+    }
+
+    xHexDecode(node) {
+      const v = this.expr(node.arguments[0]);
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      const fn = { Hex16ToWords: 'js_hex16_to_words', Hex32ToDWords: 'js_hex32_to_dwords' }[node.opCodesMethod] || 'js_hex8_to_bytes';
+      const natural = fn === 'js_hex32_to_dwords' ? 'uint32[]' : fn === 'js_hex16_to_words' ? 'uint16[]' : 'uint8[]';
+      const res = new Val(R.Call(R.Ident(fn), [R.Ref(this.coerce(v, 'string'))]), natural);
+      return rt === natural ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xStringToBytes(node) {
+      const v = this.expr(node.arguments[0]);
+      const fn = { AnsiToBytes: 'js_ansi_to_bytes', AsciiToBytes: 'js_ascii_to_bytes', Utf8ToBytes: 'js_utf8_to_bytes' }[node.opCodesMethod] || (node.encoding === 'utf8' ? 'js_utf8_to_bytes' : 'js_ascii_to_bytes');
+      return new Val(R.Call(R.Ident(fn), [R.Ref(this.coerce(v, 'string'))]), 'uint8[]');
+    }
+
+    xBytesToString(node) {
+      const v = this.expr(node.arguments[0]);
+      const fn = { BytesToAnsi: 'js_bytes_to_ansi', BytesToUtf8: 'js_bytes_to_utf8' }[node.opCodesMethod] || 'js_bytes_to_ascii';
+      return new Val(R.Call(R.Ident(fn), [R.Ref(this.coerce(v, 'uint8[]'))]), 'string');
+    }
+
+    xPackBytes(node) {
+      const bits = node.bits || 32;
+      const le = node.endian === 'little';
+      const rt = canonicalType(node.resultType) || (bits === 16 ? 'uint16' : 'uint32');
+      const args = node.arguments || [];
+      const n = bits / 8;
+      let byteExprs;
+      if (args.length === 1 || args.some(a => a.type === 'SpreadElement')) {
+        const tmp = this.tmp('p');
+        this.fn.pre.push(R.Let(tmp, null, R.MethodCall(this.spreadList(args, 'int32'), 'to_vec', []), false));
+        byteExprs = Array.from({ length: n }, (_, i) => R.Call(R.Ident('js_byte_at'), [R.Ref(R.Ident(tmp)), R.Lit(`${i}usize`)]));
+      } else {
+        byteExprs = args.map(a => this.toInt32Bits(this.expr(a), 'int32'));
+      }
+      const goT = bits === 64 ? 'u64' : 'u32';
+      let acc = null;
+      byteExprs.forEach((b, i) => {
+        const pos = le ? i : n - 1 - i;
+        let part = R.Cast(R.Paren(R.Binary('&', b, R.Lit('0xFF'))), goT);
+        if (pos) part = R.Binary('<<', R.Paren(part), R.Lit(String(pos * 8)));
+        acc = acc ? R.Binary('|', acc, part) : part;
+      });
+      const natural = bits === 16 ? 'int32' : (bits === 64 ? 'uint64' : 'uint32');
+      const res = new Val(bits === 16 ? R.Cast(R.Paren(acc), 'i32') : acc, natural);
+      return rt === natural ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xUnpackBytes(node) {
+      const bits = node.bits || 32;
+      const le = node.endian === 'little';
+      const v = this.expr(node.arguments[0]);
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      let res;
+      if (bits === 64) res = new Val(R.Call(R.Ident(le ? 'js_unpack64_le' : 'js_unpack64_be'), [isBigType(canonicalType(v.t)) ? R.MethodCall(v.e, 'to_u64', []) : this.coerce(v, 'uint64')]), 'uint8[]');
+      else res = new Val(R.Call(R.Ident(`js_unpack${bits}_${le ? 'le' : 'be'}`), [this.toInt32Bits(v, 'uint32')]), 'uint8[]');
+      return rt === 'uint8[]' ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xRotateLeft(node) { return this.rotate(node, true); }
+    xRotateRight(node) { return this.rotate(node, false); }
+
+    rotate(node, left) {
+      const bits = node.bits || 32;
+      const v = this.expr(node.value);
+      const amt = this.expr(node.amount);
+      const rt = canonicalType(node.resultType) || (bits === 64 ? 'uint64' : 'uint32');
+      const m = left ? 'rotate_left' : 'rotate_right';
+      let res;
+      if (bits === 64) {
+        const x = isBigType(canonicalType(v.t)) ? R.MethodCall(v.e, 'to_u64', []) : this.coerce(v, 'uint64');
+        res = new Val(R.MethodCall(x, m, [R.Binary('&', this.toInt32Bits(amt, 'uint32'), R.Lit('63'))]), 'uint64');
+      } else {
+        const rs = bits === 8 ? 'u8' : bits === 16 ? 'u16' : 'u32';
+        const x = bits === 32 ? this.toInt32Bits(v, 'uint32') : R.Cast(this.toInt32Bits(v, 'uint32'), rs);
+        const k = amt.isConst ? R.Lit(`${(Number(amt.c) | 0) & (bits - 1)}u32`) : R.Binary('&', this.toInt32Bits(amt, 'uint32'), R.Lit(String(bits - 1)));
+        res = new Val(R.MethodCall(x, m, [k]), { u8: 'uint8', u16: 'uint16', u32: 'uint32' }[rs]);
+      }
+      return rt === res.t ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xArrayXor(node) {
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      const res = new Val(R.Call(R.Ident('js_xor_arrays'), [R.Ref(this.coerce(this.expr(node.arguments[0]), 'uint8[]')), R.Ref(this.coerce(this.expr(node.arguments[1]), 'uint8[]'))]), 'uint8[]');
+      return rt === 'uint8[]' ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xArrayClear(node) {
+      const a = this.expr(node.arguments[0]);
+      return new Val(R.MethodCall(a.e, 'clear_values', []), 'void');
+    }
+
+    xArrayAppend(node) {
+      const arr = this.expr(node.array);
+      const at = canonicalType(arr.t) || 'any[]';
+      if (!isArrayType(at)) return this.unsupportedVal([R.Lit('"push on a value that is not an array"')], 'int32');
+      const el = elementType(at) === 'object' ? 'any' : elementType(at);
+      const values = node.values || (node.value ? [node.value] : []);
+      const tmp = this.tmp('p');
+      this.fn.pre.push(R.Let(tmp, null, arr.e, false));
+      for (const v of values) {
+        if (v && v.type === 'SpreadElement') this.fn.pre.push(R.ExprStmt(R.MethodCall(R.Ident(tmp), 'push_all', [R.Ref(this.coerce(this.expr(v.argument), at))])));
+        else this.fn.pre.push(R.ExprStmt(R.MethodCall(R.Ident(tmp), 'push', [this.coerce(this.expr(v), el)])));
+      }
+      return new Val(R.Cast(R.MethodCall(R.Ident(tmp), 'len', []), 'i32'), 'int32');
+    }
+
+    xArrayCreation(node) {
+      const rt = canonicalType(node.resultType) || ((node.elementType || 'any') + '[]');
+      const t = isArrayType(rt) ? rt : 'any[]';
+      const rs = this.turbofishType(this.rustType(t));
+      if (!node.size) return new Val(R.Call(R.Ident(`${rs}::new`), []), t);
+      return new Val(R.Call(R.Ident(`${rs}::with_len`), [this.coerce(this.expr(node.size), 'idx')]), t);
+    }
+
+    xTypedArrayCreation(node) {
+      const rt = canonicalType(node.resultType) || 'uint8[]';
+      if (node.buffer) return new Val(this.coerce(this.expr(node.buffer), rt), rt);
+      return this.typedArray(rt, node.size);
+    }
+
+    xBufferCreation(node) {
+      return new Val(R.Call(R.Ident('JsArr::<u8>::with_len'), [this.coerce(this.expr(node.size), 'idx')]), 'uint8[]');
+    }
+
+    xArrayFrom(node) {
+      const rt = canonicalType(node.resultType) || 'any[]';
+      const t = isArrayType(rt) ? rt : 'any[]';
+      const el = elementType(t) === 'object' ? 'any' : elementType(t);
+      const lengthOf = () => {
+        let len = node.length;
+        if (!len && node.iterable && node.iterable.type === 'ObjectLiteral') {
+          const p = node.iterable.properties.find(x => propKey(x.key) === 'length');
+          len = p && p.value;
+        }
+        return len;
+      };
+      if (node.mapFunction) {
+        const cb = this.callbackValue(node.mapFunction);
+        if (!cb) throw new Error('Array.from with a map function that is not a literal');
+        const len = lengthOf();
+        if (len) return new Val(R.MethodCall(R.Call(R.Ident('JsArr::<JsAny>::with_len'), [this.coerce(this.expr(len), 'idx')]), 'map', [this.adaptCallback(cb, ['any', 'int32'], el)]), t);
+        const src = this.expr(node.iterable);
+        const st = canonicalType(src.t) || 'any[]';
+        const s = isArrayType(st) ? src : new Val(this.coerce(src, 'any[]'), 'any[]');
+        const srcEl = isArrayType(st) ? (elementType(st) === 'object' ? 'any' : elementType(st)) : 'any';
+        return new Val(R.MethodCall(s.e, 'map', [this.adaptCallback(cb, [srcEl, 'int32'], el)]), t);
+      }
+      const len = lengthOf();
+      if (len) return new Val(R.Call(R.Ident(`${this.turbofishType(this.rustType(t))}::with_len`), [this.coerce(this.expr(len), 'idx')]), t);
+      const src = this.expr(node.iterable);
+      const st = canonicalType(src.t) || 'any';
+      if (isArrayType(st) && this.sameRust(st, t)) return new Val(R.MethodCall(src.e, 'copy', []), t);
+      if (st === 'string') return new Val(this.coerce(new Val(R.Call(R.Ident('js_string_chars'), [R.Ref(src.e)]), 'string[]'), t), t);
+      return new Val(this.coerce(src, t), t);
+    }
+
+    xArraySlice(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any';
+      const start = node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64');
+      const end = node.end ? this.coerce(this.expr(node.end), 'int64') : R.Ident('JS_NO_END');
+      if (at === 'string') return new Val(R.Call(R.Ident('js_str_slice'), [R.Ref(a.e), start, end]), 'string');
+      const rt = canonicalType(node.resultType) || at;
+      const src = isArrayType(at) ? a : new Val(this.coerce(a, rt), rt);
+      const res = new Val(R.MethodCall(src.e, 'slice', [start, end]), src.t);
+      return this.sameRust(res.t, rt) ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xTypedArraySubarray(node) {
+      const a = this.expr(node.array);
+      return new Val(R.MethodCall(a.e, 'subarray', [node.begin ? this.coerce(this.expr(node.begin), 'int64') : R.Lit('0i64'), node.end ? this.coerce(this.expr(node.end), 'int64') : R.Ident('JS_NO_END')]), canonicalType(a.t));
+    }
+
+    xTypedArraySet(node) {
+      const a = this.expr(node.array);
+      return new Val(R.MethodCall(a.e, 'set_from', [R.Ref(this.coerce(this.expr(node.source), canonicalType(a.t))), node.offset ? this.coerce(this.expr(node.offset), 'idx') : R.Lit('0usize')]), 'void');
+    }
+
+    xArrayConcat(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any[]';
+      const t = isArrayType(at) ? at : (canonicalType(node.resultType) || 'any[]');
+      const el = elementType(t) === 'object' ? 'any' : elementType(t);
+      const parts = (node.arrays || []).map(x => {
+        const v = this.expr(x.type === 'SpreadElement' ? x.argument : x);
+        return isArrayType(canonicalType(v.t)) ? this.coerce(v, t) : R.Call(R.Ident('js_arr'), [R.Macro('vec', [this.coerce(v, el)])]);
+      });
+      return new Val(R.MethodCall(this.coerce(a, t), 'concat', [R.Ref(R.Macro('vec', parts))]), t);
+    }
+
+    xArrayFill(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || canonicalType(node.resultType) || 'any[]';
+      const el = isArrayType(at) ? (elementType(at) === 'object' ? 'any' : elementType(at)) : 'any';
+      return new Val(R.MethodCall(a.e, 'fill', [this.coerce(this.expr(node.value), el), node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64'), node.end ? this.coerce(this.expr(node.end), 'int64') : R.Ident('JS_NO_END')]), at);
+    }
+
+    xArrayIndexOf(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t) || 'any';
+      if (at === 'string') return new Val(R.Call(R.Ident('js_str_index_of'), [R.Ref(a.e), R.Ref(this.coerce(this.expr(node.value), 'string')), node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64')]), 'int32');
+      const arr = isArrayType(at) ? a : new Val(this.coerce(a, 'any[]'), 'any[]');
+      const el = elementType(arr.t) === 'object' ? 'any' : elementType(arr.t);
+      return new Val(R.MethodCall(arr.e, 'index_of', [R.Ref(this.coerce(this.expr(node.value), el)), node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64')]), 'int32');
+    }
+
+    xArrayIncludes(node) {
+      const r = this.xArrayIndexOf(node);
+      return new Val(R.Binary('>=', r.e, R.Lit('0')), 'boolean');
+    }
+
+    xArrayJoin(node) {
+      const a = this.expr(node.array);
+      return new Val(R.MethodCall(a.e, 'join', [node.separator ? R.Ref(this.coerce(this.expr(node.separator), 'string')) : R.Lit('","')]), 'string');
+    }
+
+    xArrayReverse(node) { const a = this.expr(node.array); return new Val(R.MethodCall(a.e, 'reverse', []), canonicalType(a.t)); }
+    xArrayPop(node) { const a = this.expr(node.array); return new Val(R.MethodCall(a.e, 'pop', []), elementType(canonicalType(a.t)) || 'any'); }
+    xArrayShift(node) { const a = this.expr(node.array); return new Val(R.MethodCall(a.e, 'shift', []), elementType(canonicalType(a.t)) || 'any'); }
+
+    xArrayUnshift(node) {
+      const a = this.expr(node.array);
+      const el = elementType(canonicalType(a.t)) || 'any';
+      return new Val(R.Cast(R.MethodCall(a.e, 'unshift', [R.Macro('vec', [this.coerce(this.expr(node.value), el)])]), 'i32'), 'int32');
+    }
+
+    xArraySplice(node) {
+      const a = this.expr(node.array);
+      const at = canonicalType(a.t);
+      const el = elementType(at) || 'any';
+      return new Val(R.MethodCall(a.e, 'splice', [node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64'), node.deleteCount ? this.coerce(this.expr(node.deleteCount), 'int64') : R.Ident('JS_NO_END'), this.itemVec(node.items || [], el)]), at);
+    }
+
+    /** A Vec of items, spread items (...xs) expanded. */
+    itemVec(items, el) {
+      if (items.some(i => i && i.type === 'SpreadElement')) return R.MethodCall(this.spreadList(items, el), 'to_vec', []);
+      return R.Macro('vec', items.map(i => this.coerce(this.expr(i), el)));
+    }
+
+    xArrayMap(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'map', [node.callback], canonicalType(node.resultType)); }
+    xArrayFilter(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'filter', [node.callback], canonicalType(node.resultType)); }
+    xArrayForEach(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'forEach', [node.callback], 'void'); }
+    xArraySort(node) {
+      const a = this.expr(node.array);
+      if (!node.compareFn) return new Val(R.MethodCall(a.e, 'sort_default', []), canonicalType(a.t));
+      return this.arrayCallback(a, canonicalType(a.t), 'sort', [node.compareFn], canonicalType(a.t));
+    }
+
+    xIsArrayCheck(node) {
+      const v = this.expr(node.value);
+      if (isArrayType(canonicalType(v.t))) return new Val(R.Unary('!', R.MethodCall(v.e, 'is_null', [])), 'boolean');
+      return new Val(R.Call(R.Ident('js_is_array'), [R.Ref(this.coerce(v, 'any'))]), 'boolean');
+    }
+
+    xIsIntegerCheck(node) {
+      const v = this.expr(node.value);
+      if (isIntType(canonicalType(v.t))) return new Val(null, 'boolean', true);
+      return new Val(R.Call(R.Ident('js_is_integer'), [R.Ref(this.coerce(v, 'any'))]), 'boolean');
+    }
+
+    xObjectFreeze(node) { return this.expr(node.object); }
+
+    xMapCreation(node) {
+      const m = this.tmp('m');
+      const stmts = [R.Let(m, null, R.Call(R.Ident('js_map_new'), []), false)];
+      for (const e of node.entries || []) {
+        if (e && e.type === 'ArrayExpression' && e.elements.length === 2)
+          stmts.push(R.ExprStmt(R.MethodCall(R.Ident(m), 'map_set', [this.coerce(this.expr(e.elements[0]), 'any'), this.coerce(this.expr(e.elements[1]), 'any')])));
+      }
+      return new Val(R.BlockExpr(stmts, R.Ident(m)), 'Map');
+    }
+
+    xFloor(node) { return this.mathUnary(node, 'floor'); }
+    xCeil(node) { return this.mathUnary(node, 'ceil'); }
+    xRound(node) { return this.mathUnary(node, 'round'); }
+    xTruncate(node) { return this.mathUnary(node, 'trunc'); }
+    xAbs(node) { return this.mathUnary(node, 'abs'); }
+    xSqrt(node) { return this.mathUnary(node, 'sqrt'); }
+    xLog(node) { return this.mathUnary(node, 'ln'); }
+    xLog2(node) { return this.mathUnary(node, 'log2'); }
+    xExp(node) { return this.mathUnary(node, 'exp'); }
+    xSin(node) { return this.mathUnary(node, 'sin'); }
+    xCos(node) { return this.mathUnary(node, 'cos'); }
+    xTanh(node) { return this.mathUnary(node, 'tanh'); }
+
+    mathUnary(node, fn) {
+      const v = this.expr(node.argument);
+      const rt = canonicalType(node.resultType) || 'float64';
+      const vt = canonicalType(v.t);
+      if (isIntType(vt) && ['floor', 'ceil', 'trunc', 'round'].includes(fn)) {
+        const t = rt && isNumericType(rt) ? rt : vt;
+        return new Val(this.coerce(v, t), t);
+      }
+      if (v.isConst && typeof v.c === 'number') {
+        const f = { floor: Math.floor, ceil: Math.ceil, round: Math.round, trunc: Math.trunc, abs: Math.abs, sqrt: Math.sqrt, ln: Math.log, log2: Math.log2, exp: Math.exp, sin: Math.sin, cos: Math.cos, tanh: Math.tanh }[fn];
+        if (f) return new Val(null, rt, f(v.c));
+      }
+      const res = fn === 'round' ? new Val(R.Call(R.Ident('js_round'), [this.coerce(v, 'float64')]), 'float64') : new Val(R.MethodCall(this.coerce(v, 'float64'), fn, []), 'float64');
+      return isFloatType(rt) || !isNumericType(rt) ? res : new Val(this.coerce(res, rt), rt);
+    }
+
+    xMin(node) { return this.minMax('min', (node.arguments || []).map(a => this.expr(a)), canonicalType(node.resultType)); }
+    xMax(node) { return this.minMax('max', (node.arguments || []).map(a => this.expr(a)), canonicalType(node.resultType)); }
+    xPower(node) { return this.power(this.expr(node.base), this.expr(node.exponent), canonicalType(node.resultType)); }
+
+    xMathCall(node) {
+      const args = (node.arguments || []).map(a => this.expr(a));
+      const rt = canonicalType(node.resultType);
+      if (node.method === 'imul') return new Val(R.Cast(R.MethodCall(this.toInt32Bits(args[0], 'uint32'), 'wrapping_mul', [this.toInt32Bits(args[1], 'uint32')]), 'i32'), 'int32');
+      return this.mathCall(node.method, args, rt) || this.unsupported(node);
+    }
+
+    xMathConstant(node) { return new Val(null, 'float64', node.value !== undefined ? node.value : Math[node.name]); }
+    xNumberConstant(node) { return new Val(null, canonicalType(node.resultType) || 'float64', node.value); }
+    xRandom() { return new Val(R.Call(R.Ident('js_random'), []), 'float64'); }
+
+    xCountLeadingZeros(node) {
+      const v = this.expr(node.argument);
+      return new Val(R.Cast(R.MethodCall(this.toInt32Bits(v, 'uint32'), 'leading_zeros', []), 'i32'), 'int32');
+    }
+
+    xStringCharAt(node) {
+      return new Val(R.Call(R.Ident('js_char_at'), [R.Ref(this.coerce(this.expr(node.string), 'string')), this.coerce(this.expr(node.index), 'int64')]), 'string');
+    }
+
+    xStringCharCodeAt(node) {
+      return new Val(R.Call(R.Ident('js_char_code_at'), [R.Ref(this.coerce(this.expr(node.string), 'string')), node.index ? this.coerce(this.expr(node.index), 'int64') : R.Lit('0i64')]), 'int32');
+    }
+
+    xStringFromCharCodes(node) {
+      return new Val(R.Call(R.Ident('js_from_char_codes'), [R.MethodCall(this.spreadList(node.charCodes || [], 'int32'), 'to_vec', [])]), 'string');
+    }
+
+    xStringTransform(node) {
+      const s = this.expr(node.string);
+      return this.builtinMethod(s, 'string', node.method, [], 'string') || this.unsupported(node);
+    }
+
+    xStringRepeat(node) {
+      return new Val(R.Call(R.Ident('js_repeat'), [R.Ref(this.coerce(this.expr(node.string), 'string')), this.coerce(this.expr(node.count), 'int64')]), 'string');
+    }
+
+    xStringReplace(node) {
+      const s = this.expr(node.string);
+      return this.builtinMethod(new Val(this.coerce(s, 'string'), 'string'), 'string', node.method === 'replaceAll' ? 'replaceAll' : 'replace', [node.searchValue, node.replaceValue], 'string') || this.unsupported(node);
+    }
+
+    xStringIndexOf(node) {
+      const s = R.Ref(this.coerce(this.expr(node.string), 'string'));
+      const sub = R.Ref(this.coerce(this.expr(node.searchValue), 'string'));
+      if (node.method === 'lastIndexOf') return new Val(R.Call(R.Ident('js_str_last_index_of'), [s, sub]), 'int32');
+      return new Val(R.Call(R.Ident('js_str_index_of'), [s, sub, node.fromIndex ? this.coerce(this.expr(node.fromIndex), 'int64') : R.Lit('0i64')]), 'int32');
+    }
+
+    xStringIncludes(node) {
+      const s = this.coerce(this.expr(node.string), 'string');
+      const sub = R.MethodCall(this.coerce(this.expr(node.searchValue), 'string'), 'as_str', []);
+      const m = node.method === 'startsWith' ? 'starts_with' : node.method === 'endsWith' ? 'ends_with' : 'contains';
+      return new Val(R.MethodCall(s, m, [sub]), 'boolean');
+    }
+
+    xStringSubstring(node) {
+      const s = R.Ref(this.coerce(this.expr(node.string), 'string'));
+      const start = node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64');
+      if (node.method === 'substr') return new Val(R.Call(R.Ident('js_substr'), [s, start, node.length ? this.coerce(this.expr(node.length), 'int64') : R.Ident('JS_NO_END')]), 'string');
+      if (node.method === 'slice') return new Val(R.Call(R.Ident('js_str_slice'), [s, start, node.end ? this.coerce(this.expr(node.end), 'int64') : R.Ident('JS_NO_END')]), 'string');
+      return new Val(R.Call(R.Ident('js_substring'), [s, start, node.end ? this.coerce(this.expr(node.end), 'int64') : R.Ident('JS_NO_END')]), 'string');
+    }
+
+    xStringSplit(node) {
+      if (node.separator) {
+        const sep = this.expr(node.separator);
+        if (canonicalType(sep.t) === 'regex') return new Val(R.MethodCall(sep.e, 'split', [R.Ref(this.coerce(this.expr(node.string), 'string'))]), 'string[]');
+      }
+      return new Val(R.Call(R.Ident('js_split'), [R.Ref(this.coerce(this.expr(node.string), 'string')), node.separator ? R.Ref(this.coerce(this.expr(node.separator), 'string')) : R.Lit('"\\u{0}"')]), 'string[]');
+    }
+
+    xStringPad(node) {
+      return new Val(R.Call(R.Ident(node.method === 'padEnd' ? 'js_pad_end' : 'js_pad_start'), [R.Ref(this.coerce(this.expr(node.string), 'string')), this.coerce(this.expr(node.targetLength), 'int64'), node.padString ? R.Ref(this.coerce(this.expr(node.padString), 'string')) : R.Lit('" "')]), 'string');
+    }
+
+    xDebugOutput(node) {
+      return new Val(R.Call(R.Ident('js_log'), [R.Macro('vec', (node.arguments || []).map(a => this.coerce(this.expr(a), 'any')))]), 'void');
+    }
+
+    xOpCodesCall(node) {
+      return this.opCodesCall(node.method || node.opCodesMethod, node.arguments || [], this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable), node);
+    }
+
+    opCodesCall(method, argNodes, rt) {
+      const sig = OPCODES_SIGNATURES[method];
+      if (!sig) {
+        this.warnings.push(`OpCodes.${method}`);
+        return this.unsupportedVal([R.Lit(rustStringLiteral('OpCodes.' + method))], rt || 'any');
+      }
+      if (sig.special) return sig.special.call(this, argNodes, rt);
+      const args = sig.params.map((t, i) => {
+        const e = i < argNodes.length ? this.coerce(this.expr(argNodes[i]), t) : this.zero(t);
+        return /^(JsArr|JsBig|String)/.test(this.rustType(t)) ? R.Ref(e) : e;
+      });
+      const res = new Val(R.Call(R.Ident(sig.fn), args), sig.returns);
+      return rt && rt !== 'any' && !this.sameRust(rt, sig.returns) ? new Val(this.coerce(res, rt), rt) : res;
+    }
   }
 
-  // Export
-  const exports = { RustTransformer };
+  /** OpCodes methods the IL leaves as calls: runtime function, JSDoc parameter and return IL types. */
+  const OPCODES_SIGNATURES = {
+    GetByte: { fn: 'op_get_byte', params: ['uint32', 'int32'], returns: 'uint8' },
+    GF256Mul: { fn: 'op_gf256_mul', params: ['int32', 'int32'], returns: 'uint8' },
+    SetBit: { fn: 'op_set_bit', params: ['uint32', 'int32', 'int32'], returns: 'uint32' },
+    GetBit: { fn: 'op_get_bit', params: ['uint32', 'int32'], returns: 'boolean' },
+    BitMask: { fn: 'op_bit_mask', params: ['int32'], returns: 'uint32' },
+    Shr32Signed: { fn: 'op_shr32_signed', params: ['int32', 'int32'], returns: 'int32' },
+    MulHi32: { fn: 'op_mul_hi32', params: ['uint32', 'uint32'], returns: 'uint32' },
+    PopCount: { fn: 'op_pop_count', params: ['uint32'], returns: 'int32' },
+    PopCountFast: { fn: 'op_pop_count', params: ['uint32'], returns: 'int32' },
+    Hex32ToDWords: { fn: 'js_hex32_to_dwords', params: ['string'], returns: 'uint32[]', byRef: true },
+    SecureCompare: { fn: 'op_secure_compare', params: ['uint8[]', 'uint8[]'], returns: 'boolean' },
+    ConstantTimeCompare: { fn: 'op_constant_time_compare', params: ['uint8[]', 'uint8[]', 'int32'], returns: 'boolean' },
+    ArraysEqual: { fn: 'op_secure_compare', params: ['uint8[]', 'uint8[]'], returns: 'boolean' },
+    BytesToChars: { fn: 'op_bytes_to_chars', params: ['uint8[]'], returns: 'string' },
+    RotL64n: { fn: 'op_rot_l64n', params: ['bigint', 'int32'], returns: 'bigint' },
+    RotR64n: { fn: 'op_rot_r64n', params: ['bigint', 'int32'], returns: 'bigint' },
+    GcdN: { fn: 'op_gcd_n', params: ['bigint', 'bigint'], returns: 'bigint' },
+    ModN: { fn: 'op_mod_n', params: ['bigint', 'bigint'], returns: 'bigint' },
+    MulModN: { fn: 'op_mul_mod_n', params: ['bigint', 'bigint', 'bigint'], returns: 'bigint' },
+    ModPowN: { fn: 'op_mod_pow_n', params: ['bigint', 'bigint', 'bigint'], returns: 'bigint' },
+    ModInverseN: { fn: 'op_mod_inverse_n', params: ['bigint', 'bigint'], returns: 'bigint' },
+    SquareModN: { fn: 'op_square_mod_n', params: ['bigint', 'bigint'], returns: 'bigint' },
+    GetBitN: { fn: 'op_get_bit_n', params: ['bigint', 'int32'], returns: 'bigint' },
+    BitCountN: { fn: 'op_bit_count_n', params: ['bigint'], returns: 'int32' },
+    RotL128n: { fn: 'op_rot_l128n', params: ['bigint', 'int32'], returns: 'bigint' },
+    ToLong: { fn: 'op_to_long', params: ['bigint'], returns: 'bigint' },
+    ToShort: { fn: 'op_to_short', params: ['int32'], returns: 'int16' },
+    GFMul: { fn: 'op_gf_mul', params: ['int32', 'int32', 'int32', 'int32'], returns: 'uint32' },
+    Add3L64: { fn: 'op_add3_l64', params: ['uint32', 'uint32', 'uint32'], returns: 'float64' },
+    Add3H64: { fn: 'op_add3_h64', params: ['float64', 'float64', 'float64', 'float64'], returns: 'int32' },
+    EncodeMsgLength64LE: { fn: 'op_encode_msg_length64_le', params: ['float64'], returns: 'uint8[]' },
+    Words32ToBytesBE: { fn: 'op_words32_to_bytes_be', params: ['uint32[]'], returns: 'uint8[]' },
+    BytesToWords32BE: { fn: 'op_bytes_to_words32_be', params: ['uint8[]'], returns: 'uint32[]' },
+    XorArrayWithByte: { fn: 'op_xor_array_with_byte', params: ['uint8[]', 'int32'], returns: 'uint8[]' },
+    GCMIncrement: { fn: 'op_gcm_increment', params: ['uint8[]'], returns: 'uint8[]' },
+    GHashMul: { fn: 'op_ghash_mul', params: ['uint8[]', 'uint8[]'], returns: 'uint8[]' },
+    SecureRandomBytes: { fn: 'op_secure_random_bytes', params: ['int32'], returns: 'uint8[]' },
+    RotL64_HL: { fn: 'op_rot_l64_hl', params: ['uint32', 'uint32', 'int32'], returns: 'object' },
+    Split64: { fn: 'op_split64', params: ['float64'], returns: 'object' },
+    AddMod: { fn: 'op_add_mod', params: ['float64', 'float64', 'float64'], returns: 'float64' },
+    SubMod: { fn: 'op_sub_mod', params: ['float64', 'float64', 'float64'], returns: 'float64' },
+    CreateUint64ArrayFromHex: { fn: 'op_create_uint64_array_from_hex', params: ['string[]'], returns: 'uint32[][]' },
+    CreateArray: {
+      special(argNodes, rt) {
+        const t = rt && isArrayType(rt) ? rt : 'uint8[]';
+        const el = elementType(t) === 'object' ? 'any' : elementType(t);
+        const n = this.coerce(this.expr(argNodes[0]), 'idx');
+        const v = argNodes[1] ? this.coerce(this.expr(argNodes[1]), el) : this.zero(el);
+        return new Val(R.Call(R.Ident(`${this.turbofishType(this.rustType(t))}::filled`), [n, v]), t);
+      }
+    },
+    CopyArray: {
+      special(argNodes, rt) {
+        const v = this.expr(argNodes[0]);
+        const vt = canonicalType(v.t);
+        const res = new Val(R.MethodCall(isArrayType(vt) ? v.e : this.coerce(v, rt || 'uint8[]'), 'copy', []), isArrayType(vt) ? vt : (rt || 'uint8[]'));
+        return rt && rt !== 'any' && !this.sameRust(rt, res.t) ? new Val(this.coerce(res, rt), rt) : res;
+      }
+    },
+    ConcatArrays: {
+      special(argNodes, rt) {
+        const t = rt && isArrayType(rt) ? rt : 'uint8[]';
+        if (argNodes[0].type === 'ArrayExpression') return new Val(R.Call(R.Ident('js_concat'), [R.Macro('vec', argNodes[0].elements.map(e => this.coerce(this.expr(e), t)))]), t);
+        return new Val(R.Call(R.Ident('js_concat'), [R.MethodCall(this.coerce(this.expr(argNodes[0]), t + '[]'), 'to_vec', [])]), t);
+      }
+    },
+    ArraySlice: {
+      special(argNodes) {
+        const v = this.expr(argNodes[0]);
+        return new Val(R.MethodCall(v.e, 'slice', [argNodes[1] ? this.coerce(this.expr(argNodes[1]), 'int64') : R.Lit('0i64'), argNodes[2] ? this.coerce(this.expr(argNodes[2]), 'int64') : R.Ident('JS_NO_END')]), canonicalType(v.t));
+      }
+    }
+  };
 
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = exports;
-  }
-  if (typeof global !== 'undefined') {
-    global.RustTransformer = RustTransformer;
-  }
+  /** The crate attributes and imports every generated program starts with. */
+  const RUST_HEADER = `// Generated Rust code (the JavaScript runtime first, the transpiled algorithm after it)
+#![allow(unused, non_snake_case, non_camel_case_types, non_upper_case_globals, unused_parens, unused_mut, unused_variables,
+         unused_assignments, unreachable_code, dead_code, unused_labels, unused_braces, irrefutable_let_patterns,
+         clippy::all)]
+`;
 
-})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : this);
+  // The JavaScript runtime the generated code calls: exceptions, dynamic values (JsAny/JsObj),
+  // shared arrays (JsArr), objects and Maps, the algorithm registry, numbers, strings, bytes,
+  // BigInt (JsBig, arbitrary precision, no external crate) and the OpCodes helpers
+  const RUST_RUNTIME = String.raw`// ===== JavaScript runtime for transpiled code =====
+#[allow(unused_imports)]
+use std::any::Any;
+#[allow(unused_imports)]
+use std::cell::{Cell, Ref, RefCell, RefMut};
+#[allow(unused_imports)]
+use std::collections::HashMap;
+#[allow(unused_imports)]
+use std::rc::Rc;
+
+// ----- exceptions: a throw is a panic carrying a marker; the value waits in JS_THROWN
+
+thread_local! {
+    static JS_THROWN: RefCell<Option<JsAny>> = RefCell::new(None);
+}
+
+/// The panic payload of a JavaScript throw (the thrown value is in JS_THROWN).
+pub struct JsThrowMarker;
+
+/// throw value
+pub fn js_throw(v: JsAny) -> ! {
+    JS_THROWN.with(|t| *t.borrow_mut() = Some(v));
+    std::panic::panic_any(JsThrowMarker)
+}
+
+pub fn js_throw_error(name: &str, message: &str) -> ! {
+    js_throw(JsAny::new(JsError::new(name, message)))
+}
+
+/// What a catch clause receives: the thrown value, or a TypeError for a fault
+/// of the Rust runtime (an index out of range, a null access).
+pub fn js_caught(payload: Box<dyn Any + Send>) -> JsAny {
+    if payload.is::<JsThrowMarker>() {
+        return JS_THROWN.with(|t| t.borrow_mut().take()).unwrap_or(JsAny::undefined());
+    }
+    let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panic".to_string()
+    };
+    JsAny::new(JsError::new("TypeError", &msg))
+}
+
+/// try { body } catch (e) { handler(e) }
+pub fn js_try<R>(body: impl FnOnce() -> R, handler: impl FnOnce(JsAny) -> R) -> R {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(r) => r,
+        Err(p) => handler(js_caught(p)),
+    }
+}
+
+/// require(): a transpiled program is bundled with every file the reference
+/// loaded, so loading one is a no-op with no exports
+pub fn js_require(_args: Vec<JsAny>) -> JsAny { JsAny::undefined() }
+
+pub fn js_unsupported<T>(what: &str) -> T {
+    js_throw_error("Error", &format!("not transpiled: {}", what))
+}
+
+/// How a try body ended: normally, by a return, or by a jump (break/continue) out of it
+pub enum JsFlow<R> {
+    Normal,
+    Return(R),
+    Jump(usize),
+}
+
+/// A local variable shared with the closures that capture it
+pub struct JsCell<T>(Rc<RefCell<T>>);
+impl<T> Clone for JsCell<T> {
+    fn clone(&self) -> Self { JsCell(self.0.clone()) }
+}
+impl<T: Clone> JsCell<T> {
+    pub fn new(v: T) -> Self { JsCell(Rc::new(RefCell::new(v))) }
+    pub fn get(&self) -> T { self.0.borrow().clone() }
+    pub fn set(&self, v: T) { *self.0.borrow_mut() = v; }
+}
+
+/// BigInt shifts of 64-bit values: a count past the width gives 0, not a masked count
+pub fn js_shl64(x: u64, n: i64) -> u64 { if n < 0 { js_shr64(x, -n) } else if n >= 64 { 0 } else { x << n } }
+pub fn js_shr64(x: u64, n: i64) -> u64 { if n < 0 { js_shl64(x, -n) } else if n >= 64 { 0 } else { x >> n } }
+
+// ----- JsError
+
+#[derive(Clone, Default)]
+pub struct JsError {
+    pub name: String,
+    pub message: String,
+}
+
+impl JsError {
+    pub fn new(name: &str, message: &str) -> JsError {
+        JsError { name: name.to_string(), message: message.to_string() }
+    }
+    pub fn to_js_string(&self) -> String {
+        if self.name.is_empty() { self.message.clone() } else { format!("{}: {}", self.name, self.message) }
+    }
+}
+
+// ----- dynamic values
+
+/// The members every dynamic JavaScript value answers.
+pub trait JsDyn: 'static {
+    fn as_any(&self) -> &dyn Any;
+    fn type_of(&self) -> &'static str { "object" }
+    fn num(&self) -> Option<f64> { None }
+    fn int(&self) -> Option<i64> { None }
+    fn list(&self) -> Option<Vec<JsAny>> { None }
+    fn text(&self) -> String { format!("[object {}]", "Object") }
+    fn obj(&self) -> Option<JsObj> { None }
+    fn big(&self) -> Option<JsBig> { None }
+    fn truthy(&self) -> bool { true }
+    fn ident(&self) -> usize { self as *const Self as *const u8 as usize }
+    fn call(&self, _args: Vec<JsAny>) -> JsAny { js_throw_error("TypeError", "value is not a function") }
+    fn is_func(&self) -> bool { false }
+    /// v[i] = x on the value behind a JsAny (an array); false where it is no array
+    fn set_index(&self, _i: usize, _v: JsAny) -> bool { false }
+    fn get_index(&self, _i: usize) -> Option<JsAny> { None }
+}
+
+/// A JavaScript value of any type; undefined and null are None.
+#[derive(Clone, Default)]
+pub struct JsAny(pub Option<Rc<dyn JsDyn>>);
+
+impl JsAny {
+    pub fn new<T: JsDyn>(v: T) -> JsAny { JsAny(Some(Rc::new(v))) }
+    pub fn undefined() -> JsAny { JsAny(None) }
+    pub fn is_null(&self) -> bool {
+        match &self.0 {
+            None => true,
+            Some(v) => v.obj().map(|o| o.is_null()).unwrap_or(false),
+        }
+    }
+    pub fn downcast<T: Clone + 'static>(&self) -> Option<T> {
+        self.0.as_ref().and_then(|v| v.as_any().downcast_ref::<T>().cloned())
+    }
+    pub fn num(&self) -> f64 {
+        match &self.0 {
+            None => 0.0,
+            Some(v) => v.num().unwrap_or(f64::NAN),
+        }
+    }
+    pub fn text(&self) -> String {
+        match &self.0 {
+            None => "undefined".to_string(),
+            Some(v) => v.text(),
+        }
+    }
+    pub fn truthy(&self) -> bool { self.0.as_ref().map(|v| v.truthy()).unwrap_or(false) }
+    pub fn list(&self) -> Option<Vec<JsAny>> { self.0.as_ref().and_then(|v| v.list()) }
+    pub fn obj(&self) -> JsObj { self.0.as_ref().and_then(|v| v.obj()).unwrap_or_default() }
+    pub fn type_of(&self) -> &'static str { self.0.as_ref().map(|v| v.type_of()).unwrap_or("undefined") }
+    pub fn is_func(&self) -> bool { self.0.as_ref().map(|v| v.is_func()).unwrap_or(false) }
+    pub fn call(&self, args: Vec<JsAny>) -> JsAny {
+        match &self.0 {
+            None => js_throw_error("TypeError", "undefined is not a function"),
+            Some(v) => v.call(args),
+        }
+    }
+}
+
+/// A value as a JsAny.
+pub trait ToJs {
+    fn to_js(&self) -> JsAny;
+}
+
+/// A value from a JsAny, with JavaScript's conversions.
+pub trait FromJs: Sized {
+    fn from_js(v: &JsAny) -> Self;
+}
+
+pub fn js_to<T: FromJs>(v: &JsAny) -> T { T::from_js(v) }
+
+impl ToJs for JsAny {
+    fn to_js(&self) -> JsAny { self.clone() }
+}
+impl FromJs for JsAny {
+    fn from_js(v: &JsAny) -> JsAny { v.clone() }
+}
+
+macro_rules! js_number_type {
+    ($t:ty, $signed:expr) => {
+        impl JsDyn for $t {
+            fn as_any(&self) -> &dyn Any { self }
+            fn type_of(&self) -> &'static str { "number" }
+            fn num(&self) -> Option<f64> { Some(*self as f64) }
+            fn int(&self) -> Option<i64> { Some(*self as i64) }
+            fn text(&self) -> String { js_num_to_string(*self as f64, 10) }
+            fn truthy(&self) -> bool { *self != (0 as $t) }
+        }
+        impl ToJs for $t {
+            fn to_js(&self) -> JsAny { JsAny::new(*self) }
+        }
+        impl FromJs for $t {
+            fn from_js(v: &JsAny) -> $t {
+                match &v.0 {
+                    None => 0 as $t,
+                    Some(d) => match d.int() {
+                        Some(i) => i as $t,
+                        None => js_f2i(d.num().unwrap_or(0.0)) as $t,
+                    },
+                }
+            }
+        }
+    };
+}
+js_number_type!(u8, false);
+js_number_type!(u16, false);
+js_number_type!(u32, false);
+js_number_type!(u64, false);
+js_number_type!(i8, true);
+js_number_type!(i16, true);
+js_number_type!(i32, true);
+js_number_type!(i64, true);
+js_number_type!(usize, false);
+
+impl JsDyn for f64 {
+    fn as_any(&self) -> &dyn Any { self }
+    fn type_of(&self) -> &'static str { "number" }
+    fn num(&self) -> Option<f64> { Some(*self) }
+    fn int(&self) -> Option<i64> { if self.is_finite() && self.fract() == 0.0 && self.abs() < 9.2e18 { Some(*self as i64) } else { None } }
+    fn text(&self) -> String { js_num_to_string(*self, 10) }
+    fn truthy(&self) -> bool { *self != 0.0 && !self.is_nan() }
+}
+impl ToJs for f64 {
+    fn to_js(&self) -> JsAny { JsAny::new(*self) }
+}
+impl FromJs for f64 {
+    fn from_js(v: &JsAny) -> f64 {
+        match &v.0 {
+            None => 0.0,
+            Some(d) => d.num().unwrap_or_else(|| js_to_number(&d.text())),
+        }
+    }
+}
+
+impl JsDyn for bool {
+    fn as_any(&self) -> &dyn Any { self }
+    fn type_of(&self) -> &'static str { "boolean" }
+    fn num(&self) -> Option<f64> { Some(if *self { 1.0 } else { 0.0 }) }
+    fn int(&self) -> Option<i64> { Some(if *self { 1 } else { 0 }) }
+    fn text(&self) -> String { if *self { "true".to_string() } else { "false".to_string() } }
+    fn truthy(&self) -> bool { *self }
+}
+impl ToJs for bool {
+    fn to_js(&self) -> JsAny { JsAny::new(*self) }
+}
+impl FromJs for bool {
+    fn from_js(v: &JsAny) -> bool { v.truthy() }
+}
+
+impl JsDyn for String {
+    fn as_any(&self) -> &dyn Any { self }
+    fn type_of(&self) -> &'static str { "string" }
+    fn num(&self) -> Option<f64> { Some(js_to_number(self)) }
+    fn text(&self) -> String { self.clone() }
+    fn truthy(&self) -> bool { !self.is_empty() }
+    fn list(&self) -> Option<Vec<JsAny>> { Some(self.chars().map(|c| JsAny::new(c.to_string())).collect()) }
+}
+impl ToJs for String {
+    fn to_js(&self) -> JsAny { JsAny::new(self.clone()) }
+}
+impl FromJs for String {
+    fn from_js(v: &JsAny) -> String {
+        match &v.0 {
+            None => String::new(),
+            Some(d) => d.text(),
+        }
+    }
+}
+
+impl JsDyn for JsError {
+    fn as_any(&self) -> &dyn Any { self }
+    fn text(&self) -> String { self.to_js_string() }
+    fn obj(&self) -> Option<JsObj> { Some(JsObj::new(JsErrorObject(self.clone()))) }
+}
+impl ToJs for JsError {
+    fn to_js(&self) -> JsAny { JsAny::new(self.clone()) }
+}
+impl FromJs for JsError {
+    fn from_js(v: &JsAny) -> JsError {
+        v.downcast::<JsError>().unwrap_or_else(|| JsError::new("", &v.text()))
+    }
+}
+
+/// The error as an object (message, name)
+#[derive(Clone)]
+pub struct JsErrorObject(pub JsError);
+impl JsObject for JsErrorObject {
+    fn as_any(&self) -> &dyn Any { self }
+    fn js_get(&self, name: &str) -> JsAny {
+        match name {
+            "message" => self.0.message.to_js(),
+            "name" => self.0.name.to_js(),
+            _ => JsAny::undefined(),
+        }
+    }
+    fn js_set(&self, _name: &str, _value: JsAny) {}
+    fn js_call(&self, name: &str, _args: Vec<JsAny>) -> JsAny {
+        if name == "toString" { return self.0.to_js_string().to_js(); }
+        js_throw_error("TypeError", &format!("Error.{} is not a function", name))
+    }
+    fn js_has(&self, name: &str) -> bool { name == "message" || name == "name" }
+    fn js_has_method(&self, name: &str) -> bool { name == "toString" }
+}
+
+/// A function value
+pub struct JsFunc(pub Rc<dyn Fn(Vec<JsAny>) -> JsAny>);
+impl JsDyn for JsFunc {
+    fn as_any(&self) -> &dyn Any { self }
+    fn type_of(&self) -> &'static str { "function" }
+    fn text(&self) -> String { "function".to_string() }
+    fn call(&self, args: Vec<JsAny>) -> JsAny { (self.0)(args) }
+    fn is_func(&self) -> bool { true }
+}
+pub fn js_func(f: impl Fn(Vec<JsAny>) -> JsAny + 'static) -> JsAny { JsAny::new(JsFunc(Rc::new(f))) }
+pub fn js_arg(args: &[JsAny], i: usize) -> JsAny { args.get(i).cloned().unwrap_or_default() }
+pub fn js_arg_or(args: &[JsAny], i: usize, d: JsAny) -> JsAny {
+    match args.get(i) {
+        Some(v) if v.0.is_some() => v.clone(),
+        _ => d,
+    }
+}
+
+// ----- arrays: shared, growable, null-able (JavaScript arrays are references)
+
+pub struct JsArr<T>(pub Option<Rc<RefCell<Vec<T>>>>);
+
+impl<T> Clone for JsArr<T> {
+    fn clone(&self) -> Self { JsArr(self.0.clone()) }
+}
+impl<T> Default for JsArr<T> {
+    fn default() -> Self { JsArr(None) }
+}
+
+impl<T: Clone + Default + 'static> JsArr<T> {
+    pub fn new() -> Self { JsArr(Some(Rc::new(RefCell::new(Vec::new())))) }
+    pub fn from_vec(v: Vec<T>) -> Self { JsArr(Some(Rc::new(RefCell::new(v)))) }
+    pub fn with_len(n: usize) -> Self { JsArr::from_vec(vec![T::default(); n]) }
+    pub fn filled(n: usize, v: T) -> Self { JsArr::from_vec(vec![v; n]) }
+    pub fn null() -> Self { JsArr(None) }
+    pub fn is_null(&self) -> bool { self.0.is_none() }
+    fn rc(&self) -> &Rc<RefCell<Vec<T>>> {
+        match &self.0 {
+            Some(r) => r,
+            None => js_throw_error("TypeError", "Cannot read properties of null (an array)"),
+        }
+    }
+    pub fn len(&self) -> usize { self.rc().borrow().len() }
+    pub fn get(&self, i: usize) -> T {
+        let r = self.rc().borrow();
+        if i < r.len() { r[i].clone() } else { T::default() }
+    }
+    pub fn set(&self, i: usize, v: T) {
+        let mut r = self.rc().borrow_mut();
+        if i < r.len() {
+            r[i] = v;
+        } else {
+            while r.len() < i { r.push(T::default()); }
+            r.push(v);
+        }
+    }
+    pub fn push(&self, v: T) -> usize {
+        let mut r = self.rc().borrow_mut();
+        r.push(v);
+        r.len()
+    }
+    pub fn push_all(&self, v: &JsArr<T>) -> usize {
+        let items = v.to_vec();
+        let mut r = self.rc().borrow_mut();
+        r.extend(items);
+        r.len()
+    }
+    pub fn pop(&self) -> T { self.rc().borrow_mut().pop().unwrap_or_default() }
+    pub fn shift(&self) -> T {
+        let mut r = self.rc().borrow_mut();
+        if r.is_empty() { T::default() } else { r.remove(0) }
+    }
+    pub fn unshift(&self, items: Vec<T>) -> usize {
+        let mut r = self.rc().borrow_mut();
+        for (k, it) in items.into_iter().enumerate() { r.insert(k, it); }
+        r.len()
+    }
+    pub fn to_vec(&self) -> Vec<T> { self.rc().borrow().clone() }
+    pub fn set_len(&self, n: usize) {
+        let mut r = self.rc().borrow_mut();
+        r.resize(n, T::default());
+    }
+    pub fn slice(&self, start: i64, end: i64) -> JsArr<T> {
+        let r = self.rc().borrow();
+        let (a, b) = js_range(r.len(), start, end);
+        JsArr::from_vec(if a < b { r[a..b].to_vec() } else { Vec::new() })
+    }
+    pub fn copy(&self) -> JsArr<T> {
+        if self.is_null() { return JsArr::null(); }
+        JsArr::from_vec(self.to_vec())
+    }
+    pub fn concat(&self, others: &[JsArr<T>]) -> JsArr<T> {
+        let mut v = self.to_vec();
+        for o in others { v.extend(o.to_vec()); }
+        JsArr::from_vec(v)
+    }
+    pub fn fill(&self, v: T, start: i64, end: i64) -> JsArr<T> {
+        {
+            let mut r = self.rc().borrow_mut();
+            let (a, b) = js_range(r.len(), start, end);
+            for i in a..b { r[i] = v.clone(); }
+        }
+        self.clone()
+    }
+    pub fn reverse(&self) -> JsArr<T> {
+        self.rc().borrow_mut().reverse();
+        self.clone()
+    }
+    pub fn splice(&self, start: i64, delete: i64, items: Vec<T>) -> JsArr<T> {
+        let mut r = self.rc().borrow_mut();
+        let n = r.len();
+        let a = js_index(n, start);
+        let d = if delete == JS_NO_END { n - a } else { (delete.max(0) as usize).min(n - a) };
+        let removed: Vec<T> = r.splice(a..a + d, items).collect();
+        JsArr::from_vec(removed)
+    }
+    /// A view sharing nothing (Rust cannot alias part of a Vec): a copy of the range
+    pub fn subarray(&self, start: i64, end: i64) -> JsArr<T> { self.slice(start, end) }
+    pub fn set_from(&self, src: &JsArr<T>, offset: usize) {
+        let items = src.to_vec();
+        let mut r = self.rc().borrow_mut();
+        if offset + items.len() > r.len() { drop(r); js_throw_error("RangeError", "offset is out of bounds"); }
+        for (k, it) in items.into_iter().enumerate() { r[offset + k] = it; }
+    }
+    pub fn ptr_eq(&self, other: &JsArr<T>) -> bool {
+        match (&self.0, &other.0) {
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+    pub fn clear_values(&self) {
+        let mut r = self.rc().borrow_mut();
+        for x in r.iter_mut() { *x = T::default(); }
+    }
+    pub fn map<U: Clone + Default + 'static>(&self, f: impl Fn(T, i32) -> U) -> JsArr<U> {
+        let v = self.to_vec();
+        JsArr::from_vec(v.into_iter().enumerate().map(|(i, x)| f(x, i as i32)).collect())
+    }
+    pub fn filter(&self, f: impl Fn(T, i32) -> bool) -> JsArr<T> {
+        let v = self.to_vec();
+        JsArr::from_vec(v.into_iter().enumerate().filter(|(i, x)| f(x.clone(), *i as i32)).map(|(_, x)| x).collect())
+    }
+    pub fn for_each(&self, f: impl Fn(T, i32)) {
+        let v = self.to_vec();
+        for (i, x) in v.into_iter().enumerate() { f(x, i as i32); }
+    }
+    pub fn some(&self, f: impl Fn(T, i32) -> bool) -> bool {
+        let v = self.to_vec();
+        v.into_iter().enumerate().any(|(i, x)| f(x, i as i32))
+    }
+    pub fn every(&self, f: impl Fn(T, i32) -> bool) -> bool {
+        let v = self.to_vec();
+        v.into_iter().enumerate().all(|(i, x)| f(x, i as i32))
+    }
+    pub fn find(&self, f: impl Fn(T, i32) -> bool) -> T {
+        let v = self.to_vec();
+        v.into_iter().enumerate().find(|(i, x)| f(x.clone(), *i as i32)).map(|(_, x)| x).unwrap_or_default()
+    }
+    pub fn find_index(&self, f: impl Fn(T, i32) -> bool) -> i32 {
+        let v = self.to_vec();
+        v.into_iter().enumerate().position(|(i, x)| f(x, i as i32)).map(|p| p as i32).unwrap_or(-1)
+    }
+    pub fn reduce<R>(&self, f: impl Fn(R, T, i32) -> R, init: R) -> R {
+        let v = self.to_vec();
+        let mut acc = init;
+        for (i, x) in v.into_iter().enumerate() { acc = f(acc, x, i as i32); }
+        acc
+    }
+    pub fn sort_by(&self, f: impl Fn(T, T) -> f64) -> JsArr<T> {
+        let mut v = self.to_vec();
+        v.sort_by(|a, b| {
+            let c = f(a.clone(), b.clone());
+            if c < 0.0 { std::cmp::Ordering::Less } else if c > 0.0 { std::cmp::Ordering::Greater } else { std::cmp::Ordering::Equal }
+        });
+        *self.rc().borrow_mut() = v;
+        self.clone()
+    }
+}
+
+impl<T: Clone + Default + ToJs + 'static> JsArr<T> {
+    pub fn index_of(&self, v: &T, from: i64) -> i32 {
+        let items = self.to_vec();
+        let start = if from < 0 { (items.len() as i64 + from).max(0) as usize } else { from as usize };
+        let target = v.to_js();
+        for i in start..items.len() {
+            if js_strict_equals(&items[i].to_js(), &target) { return i as i32; }
+        }
+        -1
+    }
+    pub fn join(&self, sep: &str) -> String {
+        self.to_vec().iter().map(|x| { let a = x.to_js(); if a.is_null() { String::new() } else { a.text() } }).collect::<Vec<_>>().join(sep)
+    }
+    pub fn sort_default(&self) -> JsArr<T> {
+        let mut v = self.to_vec();
+        v.sort_by(|a, b| a.to_js().text().cmp(&b.to_js().text()));
+        *self.rc().borrow_mut() = v;
+        self.clone()
+    }
+}
+
+impl<T: Clone + Default + ToJs + FromJs + 'static> JsDyn for JsArr<T> {
+    fn as_any(&self) -> &dyn Any { self }
+    fn set_index(&self, i: usize, v: JsAny) -> bool { if self.is_null() { return false; } self.set(i, T::from_js(&v)); true }
+    fn get_index(&self, i: usize) -> Option<JsAny> { if self.is_null() { None } else { Some(self.get(i).to_js()) } }
+    fn list(&self) -> Option<Vec<JsAny>> { if self.is_null() { None } else { Some(self.to_vec().iter().map(|x| x.to_js()).collect()) } }
+    fn text(&self) -> String { self.join(",") }
+    fn truthy(&self) -> bool { !self.is_null() }
+    fn ident(&self) -> usize { self.0.as_ref().map(|r| Rc::as_ptr(r) as *const u8 as usize).unwrap_or(0) }
+}
+impl<T: Clone + Default + ToJs + FromJs + 'static> ToJs for JsArr<T> {
+    fn to_js(&self) -> JsAny { if self.is_null() { JsAny::undefined() } else { JsAny::new(self.clone()) } }
+}
+impl<T: Clone + Default + ToJs + FromJs + 'static> FromJs for JsArr<T> {
+    fn from_js(v: &JsAny) -> JsArr<T> {
+        if let Some(a) = v.downcast::<JsArr<T>>() { return a; }
+        match v.list() {
+            Some(items) => JsArr::from_vec(items.iter().map(|x| T::from_js(x)).collect()),
+            None => JsArr::null(),
+        }
+    }
+}
+
+/// An array of another element type, converted element by element
+pub fn js_arr_conv<A: Clone + Default + ToJs + 'static, B: Clone + Default + FromJs + 'static>(a: &JsArr<A>) -> JsArr<B> {
+    if a.is_null() { return JsArr::null(); }
+    JsArr::from_vec(a.to_vec().iter().map(|x| B::from_js(&x.to_js())).collect())
+}
+
+pub const JS_NO_END: i64 = i64::MAX;
+
+pub fn js_index(n: usize, i: i64) -> usize {
+    if i < 0 { (n as i64 + i).max(0) as usize } else { (i as usize).min(n) }
+}
+
+pub fn js_range(n: usize, start: i64, end: i64) -> (usize, usize) {
+    let a = js_index(n, start);
+    let b = if end == JS_NO_END { n } else { js_index(n, end) };
+    (a, b)
+}
+
+pub fn js_arr<T: Clone + Default + 'static>(v: Vec<T>) -> JsArr<T> { JsArr::from_vec(v) }
+
+pub fn js_concat<T: Clone + Default + 'static>(parts: Vec<JsArr<T>>) -> JsArr<T> {
+    let mut v = Vec::new();
+    for p in parts { v.extend(p.to_vec()); }
+    JsArr::from_vec(v)
+}
+
+// ----- objects: members by name
+
+pub trait JsObject: 'static {
+    fn as_any(&self) -> &dyn Any;
+    fn js_get(&self, name: &str) -> JsAny;
+    fn js_set(&self, name: &str, value: JsAny);
+    fn js_call(&self, name: &str, args: Vec<JsAny>) -> JsAny;
+    fn js_has(&self, name: &str) -> bool;
+    fn js_has_method(&self, name: &str) -> bool;
+    fn js_ident(&self) -> usize { self as *const Self as *const u8 as usize }
+    fn js_is_null(&self) -> bool { false }
+    fn js_keys(&self) -> Vec<String> { Vec::new() }
+}
+
+/// Any JavaScript object (or null).
+#[derive(Clone, Default)]
+pub struct JsObj(pub Option<Rc<dyn JsObject>>);
+
+impl JsObj {
+    pub fn new<T: JsObject>(o: T) -> JsObj { JsObj(Some(Rc::new(o))) }
+    pub fn null() -> JsObj { JsObj(None) }
+    pub fn is_null(&self) -> bool { self.0.as_ref().map(|o| o.js_is_null()).unwrap_or(true) }
+    fn o(&self) -> &Rc<dyn JsObject> {
+        match &self.0 {
+            Some(o) => o,
+            None => js_throw_error("TypeError", "Cannot read properties of null"),
+        }
+    }
+    pub fn get(&self, name: &str) -> JsAny { self.o().js_get(name) }
+    pub fn set(&self, name: &str, v: JsAny) { self.o().js_set(name, v) }
+    pub fn call(&self, name: &str, args: Vec<JsAny>) -> JsAny { self.o().js_call(name, args) }
+    pub fn has(&self, name: &str) -> bool { self.0.as_ref().map(|o| o.js_has(name)).unwrap_or(false) }
+    pub fn has_method(&self, name: &str) -> bool { self.0.as_ref().map(|o| o.js_has_method(name)).unwrap_or(false) }
+    pub fn downcast<T: Clone + 'static>(&self) -> Option<T> { self.0.as_ref().and_then(|o| o.as_any().downcast_ref::<T>().cloned()) }
+    pub fn ident(&self) -> usize { self.0.as_ref().map(|o| o.js_ident()).unwrap_or(0) }
+    pub fn keys(&self) -> Vec<String> { self.0.as_ref().map(|o| o.js_keys()).unwrap_or_default() }
+}
+
+impl JsDyn for JsObj {
+    fn as_any(&self) -> &dyn Any { self }
+    fn obj(&self) -> Option<JsObj> { Some(self.clone()) }
+    fn truthy(&self) -> bool { !self.is_null() }
+    fn ident(&self) -> usize { JsObj::ident(self) }
+    fn text(&self) -> String {
+        if let Some(e) = self.downcast::<JsErrorObject>() { return e.0.to_js_string(); }
+        format!("[object {}]", "Object")
+    }
+}
+impl ToJs for JsObj {
+    fn to_js(&self) -> JsAny { if self.0.is_none() { JsAny::undefined() } else { JsAny::new(self.clone()) } }
+}
+impl FromJs for JsObj {
+    fn from_js(v: &JsAny) -> JsObj { v.obj() }
+}
+
+/// A JavaScript object literal (string keys) or Map (any keys), in insertion order
+#[derive(Clone, Default)]
+pub struct JsMap(pub Rc<RefCell<JsMapData>>);
+
+#[derive(Default)]
+pub struct JsMapData {
+    keys: Vec<(String, JsAny)>,
+    vals: HashMap<String, JsAny>,
+}
+
+/// The identity of a Map key: numbers by value, strings by content, objects by reference
+fn js_map_key(k: &JsAny) -> String {
+    match &k.0 {
+        None => "u:".to_string(),
+        Some(d) => match d.type_of() {
+            "number" => format!("n:{}", d.num().unwrap_or(f64::NAN)),
+            "string" => format!("s:{}", d.text()),
+            "boolean" => format!("b:{}", d.text()),
+            _ => format!("o:{}", d.ident()),
+        },
+    }
+}
+
+impl JsMap {
+    pub fn new() -> JsMap { JsMap::default() }
+    pub fn of(kv: Vec<(&str, JsAny)>) -> JsMap {
+        let m = JsMap::new();
+        for (k, v) in kv { m.js_set(k, v); }
+        m
+    }
+    pub fn map_get(&self, k: &JsAny) -> JsAny { self.0.borrow().vals.get(&js_map_key(k)).cloned().unwrap_or_default() }
+    pub fn map_set(&self, k: JsAny, v: JsAny) -> JsMap {
+        let key = js_map_key(&k);
+        let mut d = self.0.borrow_mut();
+        if !d.vals.contains_key(&key) { d.keys.push((key.clone(), k)); }
+        d.vals.insert(key, v);
+        drop(d);
+        self.clone()
+    }
+    pub fn map_has(&self, k: &JsAny) -> bool { self.0.borrow().vals.contains_key(&js_map_key(k)) }
+    pub fn map_delete(&self, k: &JsAny) -> bool {
+        let key = js_map_key(k);
+        let mut d = self.0.borrow_mut();
+        if d.vals.remove(&key).is_none() { return false; }
+        d.keys.retain(|(x, _)| *x != key);
+        true
+    }
+    pub fn map_clear(&self) { let mut d = self.0.borrow_mut(); d.keys.clear(); d.vals.clear(); }
+    pub fn map_keys(&self) -> JsArr<JsAny> { JsArr::from_vec(self.0.borrow().keys.iter().map(|(_, k)| k.clone()).collect()) }
+    pub fn map_values(&self) -> JsArr<JsAny> {
+        let d = self.0.borrow();
+        JsArr::from_vec(d.keys.iter().map(|(k, _)| d.vals.get(k).cloned().unwrap_or_default()).collect())
+    }
+    pub fn size(&self) -> i32 { self.0.borrow().keys.len() as i32 }
+}
+
+impl FromJs for JsMap {
+    fn from_js(v: &JsAny) -> JsMap { v.downcast::<JsMap>().or_else(|| v.obj().downcast::<JsMap>()).unwrap_or_default() }
+}
+impl ToJs for JsMap {
+    fn to_js(&self) -> JsAny { JsAny::new(JsObj::new(self.clone())) }
+}
+
+impl JsObject for JsMap {
+    fn as_any(&self) -> &dyn Any { self }
+    fn js_get(&self, name: &str) -> JsAny {
+        let v = self.0.borrow().vals.get(&format!("s:{}", name)).cloned();
+        match v {
+            Some(v) => v,
+            None if name == "size" => self.size().to_js(),
+            None => JsAny::undefined(),
+        }
+    }
+    fn js_set(&self, name: &str, value: JsAny) { self.map_set(name.to_string().to_js(), value); }
+    fn js_call(&self, name: &str, args: Vec<JsAny>) -> JsAny {
+        let f = self.js_get(name);
+        if f.is_func() { return f.call(args); }
+        match name {
+            "get" => self.map_get(&js_arg(&args, 0)),
+            "set" => { self.map_set(js_arg(&args, 0), js_arg(&args, 1)); JsAny::new(JsObj::new(self.clone())) }
+            "has" | "hasOwnProperty" => self.map_has(&js_arg(&args, 0)).to_js(),
+            "delete" => self.map_delete(&js_arg(&args, 0)).to_js(),
+            _ => js_throw_error("TypeError", &format!("object.{} is not a function", name)),
+        }
+    }
+    fn js_has(&self, name: &str) -> bool { self.0.borrow().vals.contains_key(&format!("s:{}", name)) }
+    fn js_has_method(&self, name: &str) -> bool { self.js_get(name).is_func() }
+    fn js_ident(&self) -> usize { Rc::as_ptr(&self.0) as *const u8 as usize }
+    fn js_keys(&self) -> Vec<String> { self.0.borrow().keys.iter().map(|(_, k)| k.text()).collect() }
+}
+
+pub fn js_obj_of(kv: Vec<(&str, JsAny)>) -> JsObj { JsObj::new(JsMap::of(kv)) }
+pub fn js_map_new() -> JsMap { JsMap::new() }
+
+// ----- the algorithm registry
+
+thread_local! {
+    pub static JS_ALGORITHMS: RefCell<Vec<JsObj>> = RefCell::new(Vec::new());
+}
+
+pub fn js_register_algorithm(a: JsObj) {
+    if a.is_null() { js_throw_error("Error", "RegisterAlgorithm: Invalid algorithm object"); }
+    JS_ALGORITHMS.with(|r| r.borrow_mut().push(a));
+}
+
+pub fn js_find_algorithm(name: &str) -> JsObj {
+    let all = JS_ALGORITHMS.with(|r| r.borrow().clone());
+    for a in all.iter().rev() {
+        if a.get("name").text() == name { return a.clone(); }
+    }
+    JsObj::null()
+}
+
+// ----- numbers
+
+/// A float truncated and wrapped to 64 bits, as ToInt32/ToUint32 do before narrowing.
+pub fn js_f2i(f: f64) -> i64 {
+    if !f.is_finite() { return 0; }
+    let t = f.trunc();
+    if t >= -9.223372036854775e18 && t < 9.223372036854775e18 { return t as i64; }
+    let m = t.rem_euclid(18446744073709551616.0);
+    (m as u64) as i64
+}
+
+pub fn js_b2i(b: bool) -> i64 { if b { 1 } else { 0 } }
+
+pub fn js_truthy_f64(f: f64) -> bool { f != 0.0 && !f.is_nan() }
+
+pub fn js_to_number(s: &str) -> f64 {
+    let t = s.trim();
+    if t.is_empty() { return 0.0; }
+    if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        return u64::from_str_radix(h, 16).map(|v| v as f64).unwrap_or(f64::NAN);
+    }
+    match t {
+        "Infinity" | "+Infinity" => return f64::INFINITY,
+        "-Infinity" => return f64::NEG_INFINITY,
+        _ => {}
+    }
+    t.parse::<f64>().unwrap_or(f64::NAN)
+}
+
+pub fn js_parse_int(s: &str, radix: i64) -> f64 {
+    let mut t = s.trim();
+    let mut neg = false;
+    if let Some(r) = t.strip_prefix('-') { neg = true; t = r; } else if let Some(r) = t.strip_prefix('+') { t = r; }
+    let radix = if radix == 0 { 10 } else { radix as u32 };
+    if radix == 16 { if let Some(r) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) { t = r; } }
+    let mut r = 0.0f64;
+    let mut any = false;
+    for c in t.chars() {
+        match c.to_digit(radix) {
+            Some(d) => { r = r * radix as f64 + d as f64; any = true; }
+            None => break,
+        }
+    }
+    if !any { return f64::NAN; }
+    if neg { -r } else { r }
+}
+
+pub fn js_num_to_string(f: f64, radix: i64) -> String {
+    if f.is_nan() { return "NaN".to_string(); }
+    if f.is_infinite() { return if f > 0.0 { "Infinity".to_string() } else { "-Infinity".to_string() }; }
+    if radix != 10 && f.fract() == 0.0 {
+        let neg = f < 0.0;
+        let mut v = f.abs() as u128;
+        if v == 0 { return "0".to_string(); }
+        let mut digits = Vec::new();
+        while v > 0 { digits.push(std::char::from_digit((v % radix as u128) as u32, radix as u32).unwrap()); v /= radix as u128; }
+        if neg { digits.push('-'); }
+        return digits.iter().rev().collect();
+    }
+    if f.fract() == 0.0 && f.abs() < 1e21 { return format!("{}", f as i128); }
+    let s = format!("{:e}", f);
+    if f.abs() >= 1e21 || f.abs() < 1e-6 {
+        // JavaScript: 1e+21, 1.5e-7
+        let (m, e) = s.split_once('e').unwrap();
+        return if e.starts_with('-') { format!("{}e{}", m, e) } else { format!("{}e+{}", m, e) };
+    }
+    format!("{}", f)
+}
+
+pub fn js_to_fixed(f: f64, digits: i64) -> String { format!("{:.*}", digits.max(0) as usize, f) }
+pub fn js_round(f: f64) -> f64 { (f + 0.5).floor() }
+pub fn js_sign(f: f64) -> f64 { if f > 0.0 { 1.0 } else if f < 0.0 { -1.0 } else { f } }
+pub fn js_min_f(xs: &[f64]) -> f64 {
+    let mut r = f64::INFINITY;
+    for &x in xs { if x.is_nan() { return x; } if x < r { r = x; } }
+    r
+}
+pub fn js_max_f(xs: &[f64]) -> f64 {
+    let mut r = f64::NEG_INFINITY;
+    for &x in xs { if x.is_nan() { return x; } if x > r { r = x; } }
+    r
+}
+pub fn js_is_integer(v: &JsAny) -> bool {
+    match &v.0 { Some(d) if d.type_of() == "number" => { let f = d.num().unwrap_or(f64::NAN); f.is_finite() && f.fract() == 0.0 } _ => false }
+}
+
+thread_local! {
+    static JS_RAND: Cell<u64> = Cell::new(0x9E3779B97F4A7C15);
+}
+pub fn js_random() -> f64 {
+    JS_RAND.with(|s| {
+        let mut x = s.get();
+        x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+        s.set(x);
+        (x >> 11) as f64 / 9007199254740992.0
+    })
+}
+
+// ----- equality, truthiness, typeof
+
+pub fn js_strict_equals(a: &JsAny, b: &JsAny) -> bool {
+    match (&a.0, &b.0) {
+        (None, None) => true,
+        (None, Some(_)) | (Some(_), None) => a.is_null() && b.is_null(),
+        (Some(x), Some(y)) => {
+            let (tx, ty) = (x.type_of(), y.type_of());
+            if tx != ty { return false; }
+            match tx {
+                "number" => x.num() == y.num(),
+                "string" | "boolean" => x.text() == y.text(),
+                "bigint" => x.big().map(|p| p.cmp(&y.big().unwrap()) == 0).unwrap_or(false),
+                _ => x.ident() == y.ident(),
+            }
+        }
+    }
+}
+
+pub fn js_loose_equals(a: &JsAny, b: &JsAny) -> bool {
+    if a.is_null() || b.is_null() { return a.is_null() && b.is_null(); }
+    if js_strict_equals(a, b) { return true; }
+    let prim = |t: &str| t == "number" || t == "string" || t == "boolean";
+    if prim(a.type_of()) && prim(b.type_of()) { return a.num() == b.num(); }
+    false
+}
+
+pub fn js_type_of(v: &JsAny) -> String { v.type_of().to_string() }
+
+pub fn js_is_array(v: &JsAny) -> bool { v.type_of() == "object" && v.list().is_some() }
+
+pub fn js_keys(v: &JsAny) -> JsArr<String> {
+    if let Some(items) = v.list() { return JsArr::from_vec((0..items.len()).map(|i| i.to_string()).collect()); }
+    JsArr::from_vec(v.obj().keys())
+}
+
+/// o[key] of a value of no one type: an array element, a character, an object member
+pub fn js_get_elem(o: &JsAny, key: &JsAny) -> JsAny {
+    match &o.0 {
+        None => js_throw_error("TypeError", &format!("Cannot read properties of null (reading '{}')", key.text())),
+        Some(d) => {
+            if key.type_of() == "number" {
+                if let Some(v) = d.get_index(key.num() as usize) { return v; }
+                if d.type_of() == "string" { return js_char_at(&d.text(), key.num() as i64).to_js(); }
+            }
+            js_get_prop(o, &key.text())
+        }
+    }
+}
+
+/// o[key] = v of a value of no one type
+pub fn js_set_elem(o: &JsAny, key: &JsAny, v: JsAny) {
+    match &o.0 {
+        None => js_throw_error("TypeError", &format!("Cannot set properties of null (setting '{}')", key.text())),
+        Some(d) => {
+            if key.type_of() == "number" && d.set_index(key.num() as usize, v.clone()) { return; }
+            o.obj().set(&key.text(), v);
+        }
+    }
+}
+
+pub fn js_set_prop(o: &JsAny, name: &str, v: JsAny) { js_set_elem(o, &name.to_string().to_js(), v) }
+
+pub fn js_get_prop(v: &JsAny, name: &str) -> JsAny {
+    if let Some(items) = v.list() {
+        if name == "length" { return (items.len() as i32).to_js(); }
+        if let Ok(i) = name.parse::<usize>() { return items.get(i).cloned().unwrap_or_default(); }
+        return JsAny::undefined();
+    }
+    v.obj().get(name)
+}
+
+pub fn js_in(key: &str, v: &JsAny) -> bool {
+    if let Some(items) = v.list() { return key == "length" || key.parse::<usize>().map(|i| i < items.len()).unwrap_or(false); }
+    v.obj().has(key)
+}
+
+pub fn js_length(v: &JsAny) -> i32 {
+    if let Some(items) = v.list() { return items.len() as i32; }
+    if v.type_of() == "string" { return v.text().chars().count() as i32; }
+    i32::from_js(&v.obj().get("length"))
+}
+
+thread_local! { static JS_START_TIME: std::time::Instant = std::time::Instant::now(); }
+
+/// performance.now(): milliseconds since the program started
+pub fn js_performance_now() -> f64 { JS_START_TIME.with(|t| t.elapsed().as_secs_f64() * 1000.0) }
+
+/// Date.now(): whole milliseconds since the Unix epoch
+pub fn js_date_now() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
+}
+
+pub fn js_log(args: Vec<JsAny>) {
+    eprintln!("{}", args.iter().map(|a| a.text()).collect::<Vec<_>>().join(" "));
+}
+
+// ----- strings (one char per JavaScript character code below 256)
+
+pub fn js_str_len(s: &str) -> i32 { if s.is_ascii() { s.len() as i32 } else { s.chars().count() as i32 } }
+
+pub fn js_char_code_at(s: &str, i: i64) -> i32 {
+    if i < 0 { return 0; }
+    if s.is_ascii() { return s.as_bytes().get(i as usize).map(|&b| b as i32).unwrap_or(0); }
+    s.chars().nth(i as usize).map(|c| c as i32).unwrap_or(0)
+}
+
+pub fn js_char_at(s: &str, i: i64) -> String {
+    if i < 0 { return String::new(); }
+    s.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default()
+}
+
+pub fn js_from_char_codes(codes: Vec<i32>) -> String {
+    codes.iter().map(|&c| char::from_u32((c as u32) & 0xFFFF).unwrap_or('?')).collect()
+}
+
+fn js_chars(s: &str) -> Vec<char> { s.chars().collect() }
+
+pub fn js_substring(s: &str, a: i64, b: i64) -> String {
+    let c = js_chars(s);
+    let n = c.len() as i64;
+    let b = if b == JS_NO_END { n } else { b };
+    let mut a = a.max(0).min(n);
+    let mut b = b.max(0).min(n);
+    if a > b { std::mem::swap(&mut a, &mut b); }
+    c[a as usize..b as usize].iter().collect()
+}
+
+pub fn js_substr(s: &str, a: i64, len: i64) -> String {
+    let c = js_chars(s);
+    let n = c.len();
+    let a = js_index(n, a);
+    let l = if len == JS_NO_END || len < 0 { n - a } else { (len as usize).min(n - a) };
+    c[a..a + l].iter().collect()
+}
+
+pub fn js_str_slice(s: &str, a: i64, b: i64) -> String {
+    let c = js_chars(s);
+    let (a, b) = js_range(c.len(), a, b);
+    if a >= b { String::new() } else { c[a..b].iter().collect() }
+}
+
+pub fn js_str_index_of(s: &str, sub: &str, from: i64) -> i32 {
+    let c = js_chars(s);
+    let p = js_chars(sub);
+    let start = from.max(0) as usize;
+    if p.is_empty() { return start.min(c.len()) as i32; }
+    if p.len() > c.len() { return -1; }
+    for i in start..=(c.len() - p.len()) {
+        if c[i..i + p.len()] == p[..] { return i as i32; }
+    }
+    -1
+}
+
+pub fn js_str_last_index_of(s: &str, sub: &str) -> i32 {
+    let c = js_chars(s);
+    let p = js_chars(sub);
+    if p.len() > c.len() { return -1; }
+    for i in (0..=(c.len() - p.len())).rev() {
+        if c[i..i + p.len()] == p[..] { return i as i32; }
+    }
+    -1
+}
+
+pub fn js_to_upper(s: &str) -> String { s.chars().map(|c| if c.is_ascii_lowercase() { c.to_ascii_uppercase() } else { c }).collect() }
+pub fn js_to_lower(s: &str) -> String { s.chars().map(|c| if c.is_ascii_uppercase() { c.to_ascii_lowercase() } else { c }).collect() }
+
+pub fn js_split(s: &str, sep: &str) -> JsArr<String> {
+    if sep.is_empty() { return JsArr::from_vec(s.chars().map(|c| c.to_string()).collect()); }
+    JsArr::from_vec(s.split(sep).map(|x| x.to_string()).collect())
+}
+
+pub fn js_pad_start(s: &str, n: i64, pad: &str) -> String {
+    let len = js_str_len(s) as i64;
+    if len >= n || pad.is_empty() { return s.to_string(); }
+    let need = (n - len) as usize;
+    let p: String = pad.chars().cycle().take(need).collect();
+    p + s
+}
+
+pub fn js_pad_end(s: &str, n: i64, pad: &str) -> String {
+    let len = js_str_len(s) as i64;
+    if len >= n || pad.is_empty() { return s.to_string(); }
+    let need = (n - len) as usize;
+    let p: String = pad.chars().cycle().take(need).collect();
+    s.to_string() + &p
+}
+
+pub fn js_repeat(s: &str, n: i64) -> String { s.repeat(n.max(0) as usize) }
+
+pub fn js_string_chars(s: &str) -> JsArr<String> { JsArr::from_vec(s.chars().map(|c| c.to_string()).collect()) }
+
+// ----- bytes (OpCodes conversions)
+
+pub fn js_hex8_to_bytes(s: &str) -> JsArr<u8> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len() / 2);
+    let mut i = 0;
+    while i + 1 < b.len() {
+        let h = (b[i] as char).to_digit(16);
+        let l = (b[i + 1] as char).to_digit(16);
+        match (h, l) {
+            (Some(h), Some(l)) => out.push((h * 16 + l) as u8),
+            _ => js_throw_error("Error", "Hex8ToBytes: Invalid hex characters found"),
+        }
+        i += 2;
+    }
+    JsArr::from_vec(out)
+}
+
+pub fn js_hex16_to_words(s: &str) -> JsArr<u16> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 4 <= s.len() { out.push(u16::from_str_radix(&s[i..i + 4], 16).unwrap_or(0)); i += 4; }
+    JsArr::from_vec(out)
+}
+
+pub fn js_hex32_to_dwords(s: &str) -> JsArr<u32> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < s.len() { let e = (i + 8).min(s.len()); out.push(u32::from_str_radix(&s[i..e], 16).unwrap_or(0)); i += 8; }
+    JsArr::from_vec(out)
+}
+
+pub fn js_ansi_to_bytes(s: &str) -> JsArr<u8> { JsArr::from_vec(s.chars().map(|c| (c as u32 & 0x7F) as u8).collect()) }
+pub fn js_ascii_to_bytes(s: &str) -> JsArr<u8> { JsArr::from_vec(s.chars().map(|c| (c as u32 & 0xFF) as u8).collect()) }
+pub fn js_utf8_to_bytes(s: &str) -> JsArr<u8> { JsArr::from_vec(s.as_bytes().to_vec()) }
+pub fn js_bytes_to_ansi(b: &JsArr<u8>) -> String { b.to_vec().iter().map(|&c| (c & 0x7F) as char).collect() }
+pub fn js_bytes_to_ascii(b: &JsArr<u8>) -> String { b.to_vec().iter().map(|&c| c as char).collect() }
+pub fn js_bytes_to_utf8(b: &JsArr<u8>) -> String { String::from_utf8_lossy(&b.to_vec()).to_string() }
+
+pub fn js_unpack16_be(w: u32) -> JsArr<u8> { JsArr::from_vec(vec![(w >> 8) as u8, w as u8]) }
+pub fn js_unpack16_le(w: u32) -> JsArr<u8> { JsArr::from_vec(vec![w as u8, (w >> 8) as u8]) }
+pub fn js_unpack32_be(w: u32) -> JsArr<u8> { JsArr::from_vec(w.to_be_bytes().to_vec()) }
+pub fn js_unpack32_le(w: u32) -> JsArr<u8> { JsArr::from_vec(w.to_le_bytes().to_vec()) }
+pub fn js_unpack64_be(w: u64) -> JsArr<u8> { JsArr::from_vec(w.to_be_bytes().to_vec()) }
+pub fn js_unpack64_le(w: u64) -> JsArr<u8> { JsArr::from_vec(w.to_le_bytes().to_vec()) }
+
+pub fn js_xor_arrays(a: &JsArr<u8>, b: &JsArr<u8>) -> JsArr<u8> {
+    let (x, y) = (a.to_vec(), b.to_vec());
+    JsArr::from_vec(x.iter().zip(y.iter()).map(|(p, q)| p ^ q).collect())
+}
+
+pub fn js_byte_at(a: &[i32], i: usize) -> i32 { a.get(i).cloned().unwrap_or(0) }
+
+// ----- BigInt: arbitrary precision, sign and magnitude (little-endian 32-bit limbs)
+
+#[derive(Clone, Default, Debug)]
+pub struct JsBig {
+    neg: bool,
+    mag: Vec<u32>,
+}
+
+fn big_trim(v: &mut Vec<u32>) { while let Some(&0) = v.last() { v.pop(); } }
+
+fn mag_cmp(a: &[u32], b: &[u32]) -> std::cmp::Ordering {
+    if a.len() != b.len() { return a.len().cmp(&b.len()); }
+    for i in (0..a.len()).rev() { if a[i] != b[i] { return a[i].cmp(&b[i]); } }
+    std::cmp::Ordering::Equal
+}
+
+fn mag_add(a: &[u32], b: &[u32]) -> Vec<u32> {
+    let n = a.len().max(b.len());
+    let mut out = Vec::with_capacity(n + 1);
+    let mut carry = 0u64;
+    for i in 0..n {
+        let s = *a.get(i).unwrap_or(&0) as u64 + *b.get(i).unwrap_or(&0) as u64 + carry;
+        out.push(s as u32);
+        carry = s >> 32;
+    }
+    if carry != 0 { out.push(carry as u32); }
+    out
+}
+
+/// a - b for |a| >= |b|
+fn mag_sub(a: &[u32], b: &[u32]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(a.len());
+    let mut borrow = 0i64;
+    for i in 0..a.len() {
+        let mut d = a[i] as i64 - *b.get(i).unwrap_or(&0) as i64 - borrow;
+        if d < 0 { d += 1 << 32; borrow = 1; } else { borrow = 0; }
+        out.push(d as u32);
+    }
+    big_trim(&mut out);
+    out
+}
+
+fn mag_mul(a: &[u32], b: &[u32]) -> Vec<u32> {
+    if a.is_empty() || b.is_empty() { return Vec::new(); }
+    let mut out = vec![0u32; a.len() + b.len()];
+    for i in 0..a.len() {
+        let mut carry = 0u64;
+        let ai = a[i] as u64;
+        if ai == 0 { continue; }
+        for j in 0..b.len() {
+            let t = ai * b[j] as u64 + out[i + j] as u64 + carry;
+            out[i + j] = t as u32;
+            carry = t >> 32;
+        }
+        let mut k = i + b.len();
+        while carry != 0 {
+            let t = out[k] as u64 + carry;
+            out[k] = t as u32;
+            carry = t >> 32;
+            k += 1;
+        }
+    }
+    big_trim(&mut out);
+    out
+}
+
+fn mag_shl(a: &[u32], n: usize) -> Vec<u32> {
+    if a.is_empty() { return Vec::new(); }
+    let (w, b) = (n / 32, n % 32);
+    let mut out = vec![0u32; w];
+    if b == 0 { out.extend_from_slice(a); } else {
+        let mut carry = 0u32;
+        for &x in a { out.push((x << b) | carry); carry = x >> (32 - b); }
+        if carry != 0 { out.push(carry); }
+    }
+    big_trim(&mut out);
+    out
+}
+
+fn mag_shr(a: &[u32], n: usize) -> Vec<u32> {
+    let (w, b) = (n / 32, n % 32);
+    if w >= a.len() { return Vec::new(); }
+    let src = &a[w..];
+    let mut out = Vec::with_capacity(src.len());
+    for i in 0..src.len() {
+        let lo = src[i] >> b;
+        let hi = if b == 0 { 0 } else { src.get(i + 1).map(|&x| x << (32 - b)).unwrap_or(0) };
+        out.push(lo | hi);
+    }
+    big_trim(&mut out);
+    out
+}
+
+/// Knuth's algorithm D: (quotient, remainder) of magnitudes, b non-empty
+fn mag_divmod(a: &[u32], b: &[u32]) -> (Vec<u32>, Vec<u32>) {
+    if mag_cmp(a, b) == std::cmp::Ordering::Less { return (Vec::new(), a.to_vec()); }
+    if b.len() == 1 {
+        let d = b[0] as u64;
+        let mut q = vec![0u32; a.len()];
+        let mut r = 0u64;
+        for i in (0..a.len()).rev() {
+            let cur = (r << 32) | a[i] as u64;
+            q[i] = (cur / d) as u32;
+            r = cur % d;
+        }
+        big_trim(&mut q);
+        let mut rv = vec![r as u32];
+        big_trim(&mut rv);
+        return (q, rv);
+    }
+    let s = b[b.len() - 1].leading_zeros() as usize;
+    let bn = mag_shl(b, s);
+    let mut an = mag_shl(a, s);
+    if an.len() == a.len() { an.push(0); }
+    while an.len() < a.len() + 1 { an.push(0); }
+    let n = bn.len();
+    let m = an.len() - n;
+    let mut q = vec![0u32; m];
+    let btop = bn[n - 1] as u64;
+    let bsec = bn[n - 2] as u64;
+    for j in (0..m).rev() {
+        let num = ((an[j + n] as u64) << 32) | an[j + n - 1] as u64;
+        let mut qhat = num / btop;
+        let mut rhat = num % btop;
+        while qhat >= (1 << 32) || qhat * bsec > ((rhat << 32) | an[j + n - 2] as u64) {
+            qhat -= 1;
+            rhat += btop;
+            if rhat >= (1 << 32) { break; }
+        }
+        let mut borrow = 0i64;
+        let mut carry = 0u64;
+        for i in 0..n {
+            let p = qhat * bn[i] as u64 + carry;
+            carry = p >> 32;
+            let t = an[i + j] as i64 - (p & 0xFFFF_FFFF) as i64 - borrow;
+            if t < 0 { an[i + j] = (t + (1 << 32)) as u32; borrow = 1; } else { an[i + j] = t as u32; borrow = 0; }
+        }
+        let t = an[j + n] as i64 - carry as i64 - borrow;
+        if t < 0 {
+            an[j + n] = (t + (1 << 32)) as u32;
+            qhat -= 1;
+            let mut c = 0u64;
+            for i in 0..n {
+                let s2 = an[i + j] as u64 + bn[i] as u64 + c;
+                an[i + j] = s2 as u32;
+                c = s2 >> 32;
+            }
+            an[j + n] = (an[j + n] as u64 + c) as u32;
+        } else {
+            an[j + n] = t as u32;
+        }
+        q[j] = qhat as u32;
+    }
+    big_trim(&mut q);
+    an.truncate(n);
+    big_trim(&mut an);
+    (q, mag_shr(&an, s))
+}
+
+impl JsBig {
+    pub fn zero() -> JsBig { JsBig::default() }
+    fn from_parts(neg: bool, mut mag: Vec<u32>) -> JsBig {
+        big_trim(&mut mag);
+        let neg = neg && !mag.is_empty();
+        JsBig { neg, mag }
+    }
+    pub fn from_u64(v: u64) -> JsBig { JsBig::from_parts(false, vec![v as u32, (v >> 32) as u32]) }
+    pub fn from_i64(v: i64) -> JsBig { JsBig::from_parts(v < 0, { let u = v.unsigned_abs(); vec![u as u32, (u >> 32) as u32] }) }
+    pub fn from_u128(v: u128) -> JsBig { JsBig::from_parts(false, vec![v as u32, (v >> 32) as u32, (v >> 64) as u32, (v >> 96) as u32]) }
+    pub fn from_f64(f: f64) -> JsBig {
+        if !f.is_finite() || f.fract() != 0.0 { js_throw_error("RangeError", "The number cannot be converted to a BigInt because it is not an integer"); }
+        if f.abs() < 1.8e19 { return if f < 0.0 { JsBig::from_i64(f as i64) } else { JsBig::from_u64(f as u64) }; }
+        let bits = f.abs().to_bits();
+        let exp = ((bits >> 52) & 0x7FF) as i64 - 1075;
+        let mant = (bits & ((1 << 52) - 1)) | (1 << 52);
+        let m = JsBig::from_u64(mant);
+        let r = if exp >= 0 { m.shl(exp as usize) } else { m.shr((-exp) as usize) };
+        if f < 0.0 { r.neg() } else { r }
+    }
+    pub fn parse(s: &str) -> JsBig {
+        let t = s.trim();
+        let (neg, t) = if let Some(r) = t.strip_prefix('-') { (true, r) } else { (false, t) };
+        let (radix, digits) = if let Some(r) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) { (16, r) }
+            else if let Some(r) = t.strip_prefix("0b").or_else(|| t.strip_prefix("0B")) { (2, r) }
+            else if let Some(r) = t.strip_prefix("0o").or_else(|| t.strip_prefix("0O")) { (8, r) } else { (10, t) };
+        let mut mag: Vec<u32> = Vec::new();
+        for c in digits.chars() {
+            let d = match c.to_digit(radix) { Some(d) => d, None => js_throw_error("SyntaxError", &format!("Cannot convert {} to a BigInt", s)) };
+            mag = mag_add(&mag_mul(&mag, &[radix]), &[d]);
+        }
+        JsBig::from_parts(neg, mag)
+    }
+    pub fn is_zero(&self) -> bool { self.mag.is_empty() }
+    pub fn is_neg(&self) -> bool { self.neg }
+    pub fn cmp(&self, o: &JsBig) -> i32 {
+        use std::cmp::Ordering::*;
+        match (self.neg, o.neg) {
+            (false, true) => 1,
+            (true, false) => -1,
+            (n, _) => {
+                let c = mag_cmp(&self.mag, &o.mag);
+                let c = if n { c.reverse() } else { c };
+                match c { Less => -1, Equal => 0, Greater => 1 }
+            }
+        }
+    }
+    pub fn neg(&self) -> JsBig { JsBig::from_parts(!self.neg, self.mag.clone()) }
+    pub fn add(&self, o: &JsBig) -> JsBig {
+        if self.neg == o.neg { return JsBig::from_parts(self.neg, mag_add(&self.mag, &o.mag)); }
+        if mag_cmp(&self.mag, &o.mag) != std::cmp::Ordering::Less { JsBig::from_parts(self.neg, mag_sub(&self.mag, &o.mag)) }
+        else { JsBig::from_parts(o.neg, mag_sub(&o.mag, &self.mag)) }
+    }
+    pub fn sub(&self, o: &JsBig) -> JsBig { self.add(&o.neg()) }
+    pub fn mul(&self, o: &JsBig) -> JsBig { JsBig::from_parts(self.neg != o.neg, mag_mul(&self.mag, &o.mag)) }
+    /// Truncating division and the remainder with the dividend's sign (JavaScript's / and %)
+    pub fn divmod(&self, o: &JsBig) -> (JsBig, JsBig) {
+        if o.is_zero() { js_throw_error("RangeError", "Division by zero"); }
+        let (q, r) = mag_divmod(&self.mag, &o.mag);
+        (JsBig::from_parts(self.neg != o.neg, q), JsBig::from_parts(self.neg, r))
+    }
+    pub fn div(&self, o: &JsBig) -> JsBig { self.divmod(o).0 }
+    pub fn rem(&self, o: &JsBig) -> JsBig { self.divmod(o).1 }
+    pub fn pow(&self, e: &JsBig) -> JsBig {
+        if e.neg { js_throw_error("RangeError", "Exponent must be non-negative"); }
+        let mut result = JsBig::from_u64(1);
+        let mut base = self.clone();
+        let bits = e.bit_length();
+        for i in 0..bits {
+            if e.bit(i) { result = result.mul(&base); }
+            if i + 1 < bits { base = base.mul(&base); }
+        }
+        result
+    }
+    pub fn mod_pow(&self, e: &JsBig, m: &JsBig) -> JsBig {
+        let mut result = JsBig::from_u64(1).modulo(m);
+        let mut base = self.modulo(m);
+        let bits = e.bit_length();
+        for i in 0..bits {
+            if e.bit(i) { result = result.mul(&base).modulo(m); }
+            base = base.mul(&base).modulo(m);
+        }
+        result
+    }
+    /// The non-negative remainder (mathematical modulo)
+    pub fn modulo(&self, m: &JsBig) -> JsBig {
+        let r = self.rem(m);
+        if r.neg { r.add(&JsBig::from_parts(false, m.mag.clone())) } else { r }
+    }
+    pub fn bit_length(&self) -> usize {
+        match self.mag.last() { None => 0, Some(&top) => self.mag.len() * 32 - top.leading_zeros() as usize }
+    }
+    /// Bit i of the magnitude
+    pub fn bit(&self, i: usize) -> bool { self.mag.get(i / 32).map(|w| (w >> (i % 32)) & 1 == 1).unwrap_or(false) }
+    pub fn shl(&self, n: usize) -> JsBig { JsBig::from_parts(self.neg, mag_shl(&self.mag, n)) }
+    /// Arithmetic shift right (floor division by 2^n, as JavaScript's >>)
+    pub fn shr(&self, n: usize) -> JsBig {
+        if !self.neg { return JsBig::from_parts(false, mag_shr(&self.mag, n)); }
+        // floor for negatives: -((|a| - 1) >> n) - 1
+        let m1 = mag_sub(&self.mag, &[1]);
+        JsBig::from_parts(true, mag_add(&mag_shr(&m1, n), &[1]))
+    }
+    pub fn shift(&self, n: i64) -> JsBig { if n >= 0 { self.shl(n as usize) } else { self.shr((-n) as usize) } }
+    /// Two's complement limbs over len limbs
+    fn twos(&self, len: usize) -> Vec<u32> {
+        let mut v = self.mag.clone();
+        v.resize(len, 0);
+        if self.neg {
+            for x in v.iter_mut() { *x = !*x; }
+            let mut i = 0;
+            loop { let (s, o) = v[i].overflowing_add(1); v[i] = s; if !o { break; } i += 1; if i == len { break; } }
+        }
+        v
+    }
+    fn from_twos(mut v: Vec<u32>) -> JsBig {
+        let neg = v.last().map(|&t| t & 0x8000_0000 != 0).unwrap_or(false);
+        if neg {
+            for x in v.iter_mut() { *x = !*x; }
+            let mut i = 0;
+            loop { let (s, o) = v[i].overflowing_add(1); v[i] = s; if !o { break; } i += 1; if i == v.len() { break; } }
+        }
+        JsBig::from_parts(neg, v)
+    }
+    fn bitop(&self, o: &JsBig, f: impl Fn(u32, u32) -> u32) -> JsBig {
+        let len = self.mag.len().max(o.mag.len()) + 1;
+        let (a, b) = (self.twos(len), o.twos(len));
+        JsBig::from_twos(a.iter().zip(b.iter()).map(|(x, y)| f(*x, *y)).collect())
+    }
+    pub fn and(&self, o: &JsBig) -> JsBig { self.bitop(o, |x, y| x & y) }
+    pub fn or(&self, o: &JsBig) -> JsBig { self.bitop(o, |x, y| x | y) }
+    pub fn xor(&self, o: &JsBig) -> JsBig { self.bitop(o, |x, y| x ^ y) }
+    pub fn not(&self) -> JsBig { self.neg().sub(&JsBig::from_u64(1)) }
+    pub fn as_uint_n(&self, n: usize) -> JsBig {
+        let len = n / 32 + 2;
+        let mut v = self.twos(len.max(self.mag.len() + 1));
+        let words = (n + 31) / 32;
+        v.truncate(words);
+        if n % 32 != 0 { if let Some(t) = v.last_mut() { *t &= (1u32 << (n % 32)) - 1; } }
+        JsBig::from_parts(false, v)
+    }
+    pub fn as_int_n(&self, n: usize) -> JsBig {
+        let u = self.as_uint_n(n);
+        if n > 0 && u.bit(n - 1) { u.sub(&JsBig::from_u64(1).shl(n)) } else { u }
+    }
+    pub fn to_u64(&self) -> u64 {
+        let v = self.twos(self.mag.len().max(2) + 1);
+        v[0] as u64 | (v[1] as u64) << 32
+    }
+    pub fn to_i64(&self) -> i64 { self.to_u64() as i64 }
+    pub fn to_f64(&self) -> f64 {
+        let mut f = 0.0f64;
+        for &w in self.mag.iter().rev() { f = f * 4294967296.0 + w as f64; }
+        if self.neg { -f } else { f }
+    }
+    pub fn to_string_radix(&self, radix: u32) -> String {
+        if self.mag.is_empty() { return "0".to_string(); }
+        let mut digits = Vec::new();
+        let mut m = self.mag.clone();
+        while !m.is_empty() {
+            let (q, r) = mag_divmod(&m, &[radix]);
+            digits.push(std::char::from_digit(*r.first().unwrap_or(&0), radix).unwrap());
+            m = q;
+        }
+        if self.neg { digits.push('-'); }
+        digits.iter().rev().collect()
+    }
+    pub fn gcd(&self, o: &JsBig) -> JsBig {
+        let mut a = JsBig::from_parts(false, self.mag.clone());
+        let mut b = JsBig::from_parts(false, o.mag.clone());
+        while !b.is_zero() { let r = a.rem(&b); a = b; b = r; }
+        a
+    }
+    pub fn mod_inverse(&self, m: &JsBig) -> JsBig {
+        let (mut old_r, mut r) = (self.modulo(m), m.clone());
+        let (mut old_s, mut s) = (JsBig::from_u64(1), JsBig::zero());
+        while !r.is_zero() {
+            let q = old_r.div(&r);
+            let nr = old_r.sub(&q.mul(&r)); old_r = r; r = nr;
+            let ns = old_s.sub(&q.mul(&s)); old_s = s; s = ns;
+        }
+        if old_r.cmp(&JsBig::from_u64(1)) != 0 { js_throw_error("Error", "Modular inverse does not exist"); }
+        old_s.modulo(m)
+    }
+}
+
+impl JsDyn for JsBig {
+    fn as_any(&self) -> &dyn Any { self }
+    fn type_of(&self) -> &'static str { "bigint" }
+    fn num(&self) -> Option<f64> { Some(self.to_f64()) }
+    fn int(&self) -> Option<i64> { Some(self.to_i64()) }
+    fn big(&self) -> Option<JsBig> { Some(self.clone()) }
+    fn text(&self) -> String { self.to_string_radix(10) }
+    fn truthy(&self) -> bool { !self.is_zero() }
+}
+impl ToJs for JsBig {
+    fn to_js(&self) -> JsAny { JsAny::new(self.clone()) }
+}
+impl FromJs for JsBig {
+    fn from_js(v: &JsAny) -> JsBig {
+        match &v.0 {
+            None => JsBig::zero(),
+            Some(d) => match d.big() {
+                Some(b) => b,
+                None => match d.type_of() {
+                    "string" => JsBig::parse(&d.text()),
+                    _ => match d.int() { Some(i) => JsBig::from_i64(i), None => JsBig::from_f64(d.num().unwrap_or(0.0)) },
+                },
+            },
+        }
+    }
+}
+
+pub fn js_big_lit(s: &str) -> JsBig { JsBig::parse(s) }
+
+// ----- regular expressions: the subset the algorithms use (classes, escapes,
+// quantifiers ? * +, anchors ^ $; no groups or alternation), by backtracking
+
+#[derive(Clone, Debug)]
+enum JsReAtom {
+    Char(char),
+    Any,
+    Class(Vec<(char, char)>, bool),
+}
+
+#[derive(Clone, Debug)]
+pub struct JsRegex {
+    atoms: Vec<(JsReAtom, usize, usize)>,
+    start: bool,
+    end: bool,
+    pub global: bool,
+    icase: bool,
+}
+
+fn js_re_escape_class(c: char) -> Option<Vec<(char, char)>> {
+    match c {
+        'd' => Some(vec![('0', '9')]),
+        'w' => Some(vec![('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')]),
+        's' => Some(vec![(' ', ' '), ('\t', '\r'), ('\u{a0}', '\u{a0}')]),
+        _ => None,
+    }
+}
+
+impl JsRegex {
+    pub fn new(pattern: &str, flags: &str) -> JsRegex {
+        let p: Vec<char> = pattern.chars().collect();
+        let mut atoms = Vec::new();
+        let mut i = 0;
+        let mut start = false;
+        let mut end = false;
+        while i < p.len() {
+            let c = p[i];
+            let atom = match c {
+                '^' if i == 0 => { start = true; i += 1; continue; }
+                '$' if i == p.len() - 1 => { end = true; i += 1; continue; }
+                '.' => { i += 1; JsReAtom::Any }
+                '\\' => {
+                    let e = p[i + 1];
+                    i += 2;
+                    if e == 'p' && i < p.len() && p[i] == '{' {
+                        while i < p.len() && p[i] != '}' { i += 1; }
+                        i += 1;
+                        JsReAtom::Class(vec![('a', 'z'), ('A', 'Z'), ('\u{c0}', '\u{24f}')], false)
+                    } else if let Some(r) = js_re_escape_class(e.to_ascii_lowercase()) {
+                        JsReAtom::Class(r, e.is_ascii_uppercase())
+                    } else {
+                        JsReAtom::Char(match e { 'n' => '\n', 't' => '\t', 'r' => '\r', other => other })
+                    }
+                }
+                '[' => {
+                    i += 1;
+                    let neg = p.get(i) == Some(&'^');
+                    if neg { i += 1; }
+                    let mut ranges = Vec::new();
+                    while i < p.len() && p[i] != ']' {
+                        let mut lo = p[i];
+                        if lo == '\\' {
+                            let e = p[i + 1];
+                            i += 2;
+                            if let Some(r) = js_re_escape_class(e) { ranges.extend(r); continue; }
+                            lo = match e { 'n' => '\n', 't' => '\t', 'r' => '\r', other => other };
+                        } else {
+                            i += 1;
+                        }
+                        if i + 1 < p.len() && p[i] == '-' && p[i + 1] != ']' {
+                            let mut hi = p[i + 1];
+                            i += 2;
+                            if hi == '\\' { hi = p[i]; i += 1; }
+                            ranges.push((lo, hi));
+                        } else {
+                            ranges.push((lo, lo));
+                        }
+                    }
+                    i += 1;
+                    JsReAtom::Class(ranges, neg)
+                }
+                other => { i += 1; JsReAtom::Char(other) }
+            };
+            let (mut min, mut max) = (1usize, 1usize);
+            if i < p.len() {
+                match p[i] {
+                    '?' => { min = 0; max = 1; i += 1; }
+                    '*' => { min = 0; max = usize::MAX; i += 1; }
+                    '+' => { min = 1; max = usize::MAX; i += 1; }
+                    _ => {}
+                }
+            }
+            atoms.push((atom, min, max));
+        }
+        JsRegex { atoms, start, end, global: flags.contains('g'), icase: flags.contains('i') }
+    }
+
+    fn matches_atom(&self, atom: &JsReAtom, c: char) -> bool {
+        let fold = |x: char| if self.icase { x.to_ascii_lowercase() } else { x };
+        match atom {
+            JsReAtom::Any => c != '\n',
+            JsReAtom::Char(x) => fold(*x) == fold(c),
+            JsReAtom::Class(ranges, neg) => {
+                let hit = ranges.iter().any(|&(lo, hi)| (c >= lo && c <= hi) || (self.icase && ((fold(c) >= fold(lo) && fold(c) <= fold(hi)) || (c.to_ascii_uppercase() >= lo && c.to_ascii_uppercase() <= hi))));
+                hit != *neg
+            }
+        }
+    }
+
+    /// The end of a match of atoms[k..] starting at text[pos], or None
+    fn match_here(&self, text: &[char], pos: usize, k: usize) -> Option<usize> {
+        if k == self.atoms.len() {
+            return if self.end && pos != text.len() { None } else { Some(pos) };
+        }
+        let (atom, min, max) = &self.atoms[k];
+        let mut n = 0;
+        while n < *max && pos + n < text.len() && self.matches_atom(atom, text[pos + n]) { n += 1; }
+        loop {
+            if n >= *min {
+                if let Some(e) = self.match_here(text, pos + n, k + 1) { return Some(e); }
+            }
+            if n == 0 || n <= *min { return None; }
+            n -= 1;
+        }
+    }
+
+    /// The first match at or after from: (start, end)
+    pub fn find(&self, text: &[char], from: usize) -> Option<(usize, usize)> {
+        for s in from..=text.len() {
+            if self.start && s != 0 { return None; }
+            if let Some(e) = self.match_here(text, s, 0) { return Some((s, e)); }
+        }
+        None
+    }
+
+    pub fn test(&self, s: &str) -> bool { let t: Vec<char> = s.chars().collect(); self.find(&t, 0).is_some() }
+
+    pub fn replace(&self, s: &str, repl: &str) -> String {
+        let t: Vec<char> = s.chars().collect();
+        let mut out = String::new();
+        let mut pos = 0;
+        while pos <= t.len() {
+            match self.find(&t, pos) {
+                None => break,
+                Some((a, b)) => {
+                    out.extend(&t[pos..a]);
+                    out.push_str(&repl.replace("$&", &t[a..b].iter().collect::<String>()));
+                    pos = if b > a { b } else { if a < t.len() { out.push(t[a]); } a + 1 };
+                    if !self.global { break; }
+                }
+            }
+        }
+        if pos < t.len() { out.extend(&t[pos..]); }
+        out
+    }
+
+    pub fn split(&self, s: &str) -> JsArr<String> {
+        let t: Vec<char> = s.chars().collect();
+        let mut out = Vec::new();
+        let mut pos = 0;
+        let mut seg = 0;
+        while pos < t.len() {
+            match self.find(&t, pos) {
+                Some((a, b)) if b > a => { out.push(t[seg..a].iter().collect()); seg = b; pos = b; }
+                Some((a, _)) => { pos = a + 1; }
+                None => break,
+            }
+        }
+        out.push(t[seg..].iter().collect());
+        JsArr::from_vec(out)
+    }
+}
+
+impl JsDyn for JsRegex {
+    fn as_any(&self) -> &dyn Any { self }
+    fn text(&self) -> String { "/regex/".to_string() }
+}
+impl ToJs for JsRegex {
+    fn to_js(&self) -> JsAny { JsAny::new(self.clone()) }
+}
+impl FromJs for JsRegex {
+    fn from_js(v: &JsAny) -> JsRegex { v.downcast::<JsRegex>().unwrap_or_else(|| JsRegex::new(&regex_escape(&v.text()), "")) }
+}
+impl Default for JsRegex {
+    fn default() -> Self { JsRegex::new("", "") }
+}
+
+fn regex_escape(s: &str) -> String {
+    s.chars().map(|c| if "\\^$.[]?*+(){}|".contains(c) { format!("\\{}", c) } else { c.to_string() }).collect()
+}
+
+// ----- OpCodes methods the IL keeps as calls
+
+pub fn op_get_byte(word: u32, n: i32) -> u8 { (word >> ((n.wrapping_mul(8)) as u32 & 31)) as u8 }
+pub fn op_gf256_mul(a: i32, b: i32) -> u8 {
+    let (mut x, mut y, mut r) = (a as u8, b as u8, 0u8);
+    for _ in 0..8 {
+        if y & 1 != 0 { r ^= x; }
+        let hi = x & 0x80;
+        x <<= 1;
+        if hi != 0 { x ^= 0x1B; }
+        y >>= 1;
+    }
+    r
+}
+pub fn op_set_bit(v: u32, bit: i32, on: i32) -> u32 { if on != 0 { v | (1u32 << (bit as u32 & 31)) } else { v & !(1u32 << (bit as u32 & 31)) } }
+pub fn op_get_bit(v: u32, bit: i32) -> bool { (v >> (bit as u32 & 31)) & 1 != 0 }
+pub fn op_bit_mask(n: i32) -> u32 { if n >= 32 { 0xFFFF_FFFF } else if n <= 0 { 0 } else { (1u32 << n) - 1 } }
+pub fn op_shr32_signed(v: i32, n: i32) -> i32 { v >> (n as u32 & 31) }
+pub fn op_mul_hi32(a: u32, b: u32) -> u32 { ((a as u64 * b as u64) >> 32) as u32 }
+pub fn op_pop_count(v: u32) -> i32 { v.count_ones() as i32 }
+pub fn op_secure_compare(a: &JsArr<u8>, b: &JsArr<u8>) -> bool { a.to_vec() == b.to_vec() }
+pub fn op_constant_time_compare(a: &JsArr<u8>, b: &JsArr<u8>, n: i32) -> bool {
+    let (x, y) = (a.to_vec(), b.to_vec());
+    let l = if n == 0 { x.len().min(y.len()) } else { n as usize };
+    let mut r = 0u32;
+    for i in 0..l { r |= (x.get(i).cloned().unwrap_or(0) ^ y.get(i).cloned().unwrap_or(0)) as u32; }
+    r |= (x.len() ^ y.len()) as u32;
+    r == 0
+}
+pub fn op_bytes_to_chars(b: &JsArr<u8>) -> String { js_bytes_to_ascii(b) }
+pub fn op_rot_l64n(v: &JsBig, n: i32) -> JsBig { JsBig::from_u64(v.as_uint_n(64).to_u64().rotate_left((n & 63) as u32)) }
+pub fn op_rot_r64n(v: &JsBig, n: i32) -> JsBig { JsBig::from_u64(v.as_uint_n(64).to_u64().rotate_right((n & 63) as u32)) }
+pub fn op_mod_n(a: &JsBig, m: &JsBig) -> JsBig {
+    if m.cmp(&JsBig::zero()) <= 0 { js_throw_error("RangeError", "ModN requires a positive modulus"); }
+    a.modulo(m)
+}
+/// ((a % m) * (b % m)) % m with JavaScript's remainder (the dividend's sign)
+pub fn op_mul_mod_n(a: &JsBig, b: &JsBig, m: &JsBig) -> JsBig { a.rem(m).mul(&b.rem(m)).rem(m) }
+pub fn op_square_mod_n(a: &JsBig, m: &JsBig) -> JsBig { let r = a.rem(m); r.mul(&r).rem(m) }
+pub fn op_mod_pow_n(base: &JsBig, exp: &JsBig, m: &JsBig) -> JsBig {
+    if m.cmp(&JsBig::from_u64(1)) == 0 { return JsBig::zero(); }
+    if exp.is_zero() { return JsBig::from_u64(1); }
+    let mut result = JsBig::from_u64(1);
+    let mut b = base.rem(m);
+    let mut e = exp.clone();
+    while e.cmp(&JsBig::zero()) > 0 {
+        if e.bit(0) { result = result.mul(&b).rem(m); }
+        e = e.shr(1);
+        b = b.mul(&b).rem(m);
+    }
+    result
+}
+pub fn op_mod_inverse_n(a: &JsBig, m: &JsBig) -> JsBig {
+    let mut old_r = op_mod_n(a, m);
+    let mut r = m.clone();
+    let (mut old_s, mut s) = (JsBig::from_u64(1), JsBig::zero());
+    while !r.is_zero() {
+        let q = old_r.div(&r);
+        let nr = old_r.sub(&q.mul(&r)); old_r = r; r = nr;
+        let ns = old_s.sub(&q.mul(&s)); old_s = s; s = ns;
+    }
+    if old_r.cmp(&JsBig::from_u64(1)) != 0 { js_throw_error("RangeError", "ModInverseN: value has no inverse modulo m"); }
+    op_mod_n(&old_s, m)
+}
+pub fn op_gcd_n(a: &JsBig, b: &JsBig) -> JsBig { a.gcd(b) }
+pub fn op_get_bit_n(v: &JsBig, i: i32) -> JsBig { v.shr(i.max(0) as usize).and(&JsBig::from_u64(1)) }
+/// The bit length (1 for zero), as OpCodes.BitCountN counts it
+pub fn op_bit_count_n(v: &JsBig) -> i32 { if v.is_zero() { 1 } else { v.bit_length() as i32 } }
+pub fn op_rot_l128n(v: &JsBig, n: i32) -> JsBig {
+    let m = v.as_uint_n(128);
+    let k = (n & 127) as usize;
+    if k == 0 { return m; }
+    m.shl(k).or(&m.shr(128 - k)).as_uint_n(128)
+}
+pub fn op_to_long(v: &JsBig) -> JsBig { v.as_int_n(64) }
+pub fn op_to_short(v: i32) -> i16 { let x = v & 0xFFFF; (if x > 32767 { x - 65536 } else { x }) as i16 }
+pub fn op_gf_mul(a: i32, b: i32, irreducible: i32, width: i32) -> u32 {
+    let (mut a, mut b, mut result) = (a, b, 0i32);
+    let mask = 1i32.wrapping_shl(width as u32).wrapping_sub(1);
+    while b != 0 {
+        if b & 1 != 0 { result ^= a; }
+        a = a.wrapping_shl(1);
+        if a & 1i32.wrapping_shl(width as u32) != 0 { a ^= irreducible; }
+        a &= mask;
+        b = ((b as u32) >> 1) as i32;
+    }
+    result as u32
+}
+pub fn op_add3_l64(a: u32, b: u32, c: u32) -> f64 { a as f64 + b as f64 + c as f64 }
+pub fn op_add3_h64(low_sum: f64, a: f64, b: f64, c: f64) -> i32 {
+    js_f2i(a + b + c + (js_f2i(low_sum / 4294967296.0) as i32) as f64) as i32
+}
+pub fn op_encode_msg_length64_le(bit_length: f64) -> JsArr<u8> {
+    let low = js_f2i(bit_length) as u32;
+    let high = js_f2i((bit_length / 4294967296.0).floor()) as u32;
+    let mut v = low.to_le_bytes().to_vec();
+    v.extend(high.to_le_bytes());
+    JsArr::from_vec(v)
+}
+pub fn op_words32_to_bytes_be(w: &JsArr<u32>) -> JsArr<u8> { JsArr::from_vec(w.to_vec().iter().flat_map(|x| x.to_be_bytes()).collect()) }
+pub fn op_bytes_to_words32_be(b: &JsArr<u8>) -> JsArr<u32> {
+    let v = b.to_vec();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < v.len() {
+        let g = |k: usize| *v.get(k).unwrap_or(&0) as u32;
+        out.push(g(i) << 24 | g(i + 1) << 16 | g(i + 2) << 8 | g(i + 3));
+        i += 4;
+    }
+    JsArr::from_vec(out)
+}
+pub fn op_xor_array_with_byte(a: &JsArr<u8>, v: i32) -> JsArr<u8> { JsArr::from_vec(a.to_vec().iter().map(|x| x ^ (v as u8)).collect()) }
+pub fn op_gcm_increment(counter: &JsArr<u8>) -> JsArr<u8> {
+    if counter.is_null() || counter.len() != 16 { js_throw_error("Error", "GCMIncrement requires 16-byte counter"); }
+    let mut carry = 1u32;
+    for i in (12..16).rev() {
+        let sum = counter.get(i) as u32 + carry;
+        counter.set(i, (sum & 0xFF) as u8);
+        carry = sum >> 8;
+    }
+    counter.clone()
+}
+pub fn op_ghash_mul(x: &JsArr<u8>, y: &JsArr<u8>) -> JsArr<u8> {
+    let (xv, mut v) = (x.to_vec(), y.to_vec());
+    if xv.len() != 16 || v.len() != 16 { js_throw_error("Error", "GHashMul requires 16-byte arrays"); }
+    let mut z = vec![0u8; 16];
+    for i in 0..128 {
+        if (xv[i >> 3] >> (7 - (i & 7))) & 1 != 0 { for j in 0..16 { z[j] ^= v[j]; } }
+        let lsb = v[15] & 1;
+        for j in (1..16).rev() { v[j] = (v[j] >> 1) | (v[j - 1] << 7); }
+        v[0] >>= 1;
+        if lsb != 0 { v[0] ^= 0xE1; }
+    }
+    JsArr::from_vec(z)
+}
+pub fn op_secure_random_bytes(n: i32) -> JsArr<u8> { JsArr::from_vec((0..n.max(0)).map(|_| (js_random() * 256.0) as u8).collect()) }
+pub fn op_rot_l64_hl(high: u32, low: u32, n: i32) -> JsObj {
+    let x = ((high as u64) << 32 | low as u64).rotate_left((n & 63) as u32);
+    js_obj_of(vec![("h", ((x >> 32) as u32).to_js()), ("l", (x as u32).to_js())])
+}
+pub fn op_split64(v: f64) -> JsObj {
+    js_obj_of(vec![("high32", ((v / 4294967296.0).floor() as u32).to_js()), ("low32", (js_f2i(v) as i32).to_js())])
+}
+pub fn op_add_mod(a: f64, b: f64, m: f64) -> f64 { ((a % m) + (b % m)) % m }
+pub fn op_sub_mod(a: f64, b: f64, m: f64) -> f64 { ((a % m) - (b % m) + m) % m }
+pub fn op_create_uint64_array_from_hex(values: &JsArr<String>) -> JsArr<JsArr<u32>> {
+    JsArr::from_vec(values.to_vec().iter().map(|h| {
+        let s = h.trim_start_matches("0x").trim_start_matches("0X");
+        let p = format!("{:0>16}", s);
+        js_arr(vec![u32::from_str_radix(&p[0..8], 16).unwrap_or(0), u32::from_str_radix(&p[8..16], 16).unwrap_or(0)])
+    }).collect())
+}
+
+// ===== end of the runtime =====
+`;
+
+  const exported = { RustTransformer, RUST_RUNTIME, RUST_HEADER, OPCODES_SIGNATURES, rustStringLiteral };
+  if (typeof module !== 'undefined' && module.exports) module.exports = exported;
+  if (global) { global.RustTransformer = RustTransformer; global.RustTransformerModule = exported; }
+})(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this));

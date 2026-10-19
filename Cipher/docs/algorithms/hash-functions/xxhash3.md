@@ -9,10 +9,10 @@
 | Category | Hash Functions |
 | Sub-category | Fast Hash |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Yann Collet |
 | Year | 2019 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/hash/xxhash3.js`](../../../algorithms/hash/xxhash3.js) |
 
 ## Parameters

@@ -252,7 +252,7 @@
         }
         const prev = w[i - NK];
         /** @type {uint8[]} */
-        const nextWord = [OpCodes.Xor32(prev[0], temp[0]), OpCodes.Xor32(prev[1], temp[1]), OpCodes.Xor32(prev[2], temp[2]), OpCodes.Xor32(prev[3], temp[3])];
+        const nextWord = [OpCodes.Xor8(prev[0], temp[0]), OpCodes.Xor8(prev[1], temp[1]), OpCodes.Xor8(prev[2], temp[2]), OpCodes.Xor8(prev[3], temp[3])];
         w[i] = nextWord;
       }
       return w;

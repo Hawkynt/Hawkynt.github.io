@@ -164,7 +164,7 @@
     const x = CS_SBOX_INV[OpCodes.Xor32(u, k1)];
     const y = CS_SBOX_INV[OpCodes.Xor32(v, k2)];
     const a = CS_M_INV[OpCodes.Xor32(x, y)];
-    const b = OpCodes.Xor32(x, CS_L0[a]);
+    const b = OpCodes.Xor8(x, CS_L0[a]);
     return [a, b];
   }
 

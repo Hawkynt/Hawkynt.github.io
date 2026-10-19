@@ -8,8 +8,8 @@
 | --- | --- |
 | Category | Stream Ciphers |
 | Sub-category | LFSR Stream Cipher |
-| Security status | Not classified |
-| Complexity | Not specified |
+| Security status | ❌ Broken |
+| Complexity | Beginner |
 | Inventor | Harold Geffe |
 | Year | 1973 |
 | Origin | 🇺🇸 United States |
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

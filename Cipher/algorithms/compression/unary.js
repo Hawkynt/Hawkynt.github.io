@@ -67,7 +67,7 @@
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Universal";
         this.securityStatus = null;
-        this.complexity = ComplexityType.ELEMENTARY;
+        this.complexity = ComplexityType.BEGINNER;
         this.country = CountryCode.UNKNOWN;
 
         // Documentation and references
