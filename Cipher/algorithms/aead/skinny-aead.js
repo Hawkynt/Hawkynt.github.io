@@ -53,11 +53,17 @@
           AeadAlgorithm, IAeadInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // Domain separation prefixes for SKINNY-AEAD variants
+  /** @type {uint8} */
   const DOMAIN_SEP_M1 = 0x00;
+  /** @type {uint8} */
   const DOMAIN_SEP_M2 = 0x10;
+  /** @type {uint8} */
   const DOMAIN_SEP_M3 = 0x08;
+  /** @type {uint8} */
   const DOMAIN_SEP_M4 = 0x18;
+  /** @type {uint8} */
   const DOMAIN_SEP_M5 = 0x10;
+  /** @type {uint8} */
   const DOMAIN_SEP_M6 = 0x18;
 
   // ==========================================================================

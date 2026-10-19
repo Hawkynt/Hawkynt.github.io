@@ -401,11 +401,11 @@
       /** @type {uint8[]} */
       const p = [
         1, 2, 1,
-        OpCodes.And32(OpCodes.Shr32(this.radix, 16), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(this.radix, 8), 0xFF),
-        OpCodes.And32(this.radix, 0xFF),
+        OpCodes.GetByte(this.radix, 2),
+        OpCodes.GetByte(this.radix, 1),
+        OpCodes.ToByte(this.radix),
         10,
-        u % 256,
+        OpCodes.ToByte(u),
         nBytes[0], nBytes[1], nBytes[2], nBytes[3],
         tBytes[0], tBytes[1], tBytes[2], tBytes[3]
       ];

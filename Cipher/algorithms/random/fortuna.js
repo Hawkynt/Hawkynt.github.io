@@ -675,7 +675,7 @@
       }
 
       // Format: source (1 byte) || length (1 byte) || data
-      const header = [OpCodes.And32(source, 0xff), OpCodes.And32(chunk.length, 0xff)];
+      const header = [OpCodes.ToByte(source), OpCodes.ToByte(chunk.length)];
       this.pools[targetPool].process(header);
       this.pools[targetPool].process(chunk);
 

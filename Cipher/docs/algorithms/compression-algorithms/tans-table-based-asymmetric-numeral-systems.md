@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Jarek Duda |
 | Year | 2013 |
-| Origin | Not specified |
+| Origin | 🇵🇱 Poland |
 | Source | [`algorithms/compression/tans.js`](../../../algorithms/compression/tans.js) |
 
 ## Security

@@ -271,8 +271,8 @@
    */
   function u32bytes(v) {
     return [
-      OpCodes.And32(OpCodes.Shr32(v, 24), 0xff), OpCodes.And32(OpCodes.Shr32(v, 16), 0xff),
-      OpCodes.And32(OpCodes.Shr32(v, 8), 0xff), OpCodes.And32(v, 0xff)
+      OpCodes.GetByte(v, 3), OpCodes.GetByte(v, 2),
+      OpCodes.GetByte(v, 1), OpCodes.ToByte(v)
     ];
   }
 
@@ -283,8 +283,8 @@
    */
   function M5(x) {
     return [
-      OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]),
-      OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[2]), OpCodes.Xor32(x[1], x[3])
+      OpCodes.Xor8(x[0], x[2]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[1]), x[3]),
+      OpCodes.Xor8(OpCodes.Xor8(x[0], x[1]), x[2]), OpCodes.Xor8(x[1], x[3])
     ];
   }
   // MB-function (spec 3.3.10)
@@ -294,8 +294,8 @@
    */
   function MB(x) {
     return [
-      OpCodes.Xor32(x[1], x[3]), OpCodes.Xor32(x[0], x[2]),
-      OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[2]), x[3])
+      OpCodes.Xor8(x[1], x[3]), OpCodes.Xor8(x[0], x[2]),
+      OpCodes.Xor8(OpCodes.Xor8(x[0], x[1]), x[3]), OpCodes.Xor8(OpCodes.Xor8(x[0], x[2]), x[3])
     ];
   }
 

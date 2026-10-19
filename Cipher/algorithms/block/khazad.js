@@ -738,14 +738,14 @@
      */
     _extractBytes(hi, lo) {
       return [
-        OpCodes.And32(OpCodes.Shr32(hi, 24), 0xff),
-        OpCodes.And32(OpCodes.Shr32(hi, 16), 0xff),
-        OpCodes.And32(OpCodes.Shr32(hi, 8), 0xff),
-        OpCodes.And32(hi, 0xff),
-        OpCodes.And32(OpCodes.Shr32(lo, 24), 0xff),
-        OpCodes.And32(OpCodes.Shr32(lo, 16), 0xff),
-        OpCodes.And32(OpCodes.Shr32(lo, 8), 0xff),
-        OpCodes.And32(lo, 0xff)
+        OpCodes.GetByte(hi, 3),
+        OpCodes.GetByte(hi, 2),
+        OpCodes.GetByte(hi, 1),
+        OpCodes.ToByte(hi),
+        OpCodes.GetByte(lo, 3),
+        OpCodes.GetByte(lo, 2),
+        OpCodes.GetByte(lo, 1),
+        OpCodes.ToByte(lo)
       ];
     }
   }

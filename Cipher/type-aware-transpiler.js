@@ -417,6 +417,7 @@
       // These are populated by loadTypesFromSource() when available
       this.frameworkTypes = {};
       this.frameworkEnums = new Set();      // CategoryType, SecurityStatus, ...
+      this.frameworkEnumMembers = new Map(); // enum name -> Set of its member names (US, BROKEN, ...)
       this.frameworkFunctions = {};         // exported free functions: name -> { params, returns }
 
       // Enhanced cryptographic patterns with precise types
@@ -618,7 +619,24 @@
       // Exported enums (`const CategoryType = Object.freeze({...})`) and free
       // functions (`function Find(name)`) are framework members too.
       const enumPattern = /const\s+([A-Za-z_$][\w$]*)\s*=\s*Object\.freeze\(\s*\{/g;
-      while ((match = enumPattern.exec(source)) !== null) this.frameworkEnums.add(match[1]);
+      while ((match = enumPattern.exec(source)) !== null) {
+        this.frameworkEnums.add(match[1]);
+        // Its members are the keys at the top level of the frozen object.
+        const members = new Set();
+        let depth = 1, at = enumPattern.lastIndex, keyStart = at;
+        for (; at < source.length && depth > 0; ++at) {
+          const c = source[at];
+          if (c === '{' || c === '(' || c === '[') ++depth;
+          else if (c === '}' || c === ')' || c === ']') --depth;
+          else if (c === ',' && depth === 1) keyStart = at + 1;
+          else if (c === ':' && depth === 1) {
+            const key = source.slice(keyStart, at).replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '').trim().replace(/^['"]|['"]$/g, '');
+            if (/^[A-Za-z_$][\w$]*$/.test(key)) members.add(key);
+            keyStart = source.length;     // the value follows; the next key starts after ','
+          }
+        }
+        this.frameworkEnumMembers.set(match[1], members);
+      }
       const functionPattern = /^[ \t]*function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
       while ((match = functionPattern.exec(source)) !== null) {
         const doc = precedingJSDoc(match.index);
@@ -2776,7 +2794,8 @@
       if (name === 'Infinity' || name === 'NaN') {
         resultType = 'float64';
       } else if (name === 'undefined') {
-        resultType = 'void';
+        // The global `undefined` is the undefined literal, however it was parsed.
+        return this._transformLiteral({ type: 'Literal', value: undefined, raw: 'undefined', ...(node.loc ? { loc: node.loc } : {}), ...(node.range ? { range: node.range } : {}) }, context);
       } else {
         // Look up variable type from scope - no name-based fallback
         resultType = this.lookupVariableType(name);
@@ -2955,6 +2974,12 @@
         TypeAwareJSASTParser._typeNullableBranches(ilNode);
         return;
       }
+      // Object.freeze(x) is x: the declared type applies to what it freezes.
+      if (ilNode.type === 'ObjectFreeze' && ilNode.object && typeof ilNode.object === 'object') {
+        this._applyContextualType(ilNode.object, type);
+        if (ilNode.object.resultType) ilNode.resultType = ilNode.object.resultType;
+        return;
+      }
       if (type === 'float64' && this._retypeAsDouble(ilNode)) return;
       // `{ k1, k2, k3 }` stored where a record type (@typedef {Object}) is
       // declared is that record; each property value takes its field's type.
@@ -2974,19 +2999,64 @@
       if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
         ilNode.resultType = type;
         delete ilNode.typeGuess;
+      } else if (ilNode.type === 'Literal' && typeof ilNode.value === 'bigint' && /^(bigint|BigInt)$/.test(type)) {
+        // `let t = 1n` where a BigInt is declared: a BigInt of any width and
+        // sign, not the uint64 its magnitude alone suggests.
+        ilNode.resultType = 'bigint';
       } else if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]')) {
         const elementType = type.slice(0, -2);
         const numericElements = isNumericType(elementType);
-        const literalsOnly = (ilNode.elements || []).every(e => !e || e.type === 'Literal' || e.ilNodeType === 'ArrayLiteral');
-        if (!literalsOnly) return;
+        // An element the context types: a literal, a nested array literal, or
+        // `c ? 1 : 0` (a choice between such literals). Any other element
+        // must already be of the element type, or the array keeps its own type
+        // (a mismatch TYPES reports).
+        const numberChoice = e => e && ((e.type === 'Literal' && typeof e.value === 'number') ||
+          (e.type === 'ConditionalExpression' && numberChoice(e.consequent) && numberChoice(e.alternate)));
+        // A fresh array is built element by element, so an element of a type
+        // that converts without loss (uint8 into int32, uint64 into BigInt)
+        // is stored as the element type, as every typed target does implicitly.
+        // a nested literal, frozen or not, takes the element type in turn
+        const nested = e => e && (e.ilNodeType === 'ArrayLiteral' ||
+          (e.type === 'ObjectFreeze' && e.object && e.object.ilNodeType === 'ArrayLiteral'));
+        const fits = e => !e || nested(e) ||
+          (e.type === 'Literal' && (typeof e.value !== 'bigint' || /^(u?int64|bigint|BigInt)$/.test(elementType))) ||
+          (numericElements && numberChoice(e)) || TypeAwareJSASTParser._widensTo(e.resultType, elementType) ||
+          // `...a` copies a's elements one by one
+          (e.type === 'SpreadElement' && e.argument && typeof e.argument.resultType === 'string' &&
+           e.argument.resultType.endsWith('[]') && TypeAwareJSASTParser._widensTo(e.argument.resultType.slice(0, -2), elementType));
+        if (!(ilNode.elements || []).every(fits)) return;
         for (const element of ilNode.elements || []) {
           if (!element) continue;
-          if (element.ilNodeType === 'ArrayLiteral') this._applyContextualType(element, elementType);
+          if (nested(element)) this._applyContextualType(element, elementType);
+          else if (element.type === 'ConditionalExpression') { if (numericElements) this._applyContextualType(element, elementType); }
+          else if (element.type === 'SpreadElement') continue;
+          else if (element.type !== 'Literal') element.contextType = elementType;
           else if (numericElements && typeof element.value === 'number') element.resultType = elementType;
         }
         ilNode.elementType = elementType;
         ilNode.resultType = type;
         delete ilNode.typeGuess;
+      } else if (ilNode.opCodesMethod === 'CreateArray' && ilNode.type === 'OpCodesCall' && type.endsWith('[]') &&
+                 isNumericType(type.slice(0, -2))) {
+        // OpCodes.CreateArray(n, 0) is a fresh array filled with a constant:
+        // its JSDoc describes the byte case, and the declared type of the
+        // target is the array's type, its fill converted (as for
+        // `new Array(n).fill(0)`).
+        const elementType = type.slice(0, -2);
+        const fill = (ilNode.arguments || [])[1];
+        // a number literal, or `c ? 1 : 0` between number literals
+        const numberChoice = e => e && ((e.type === 'Literal' && typeof e.value === 'number') ||
+          (e.type === 'ConditionalExpression' && numberChoice(e.consequent) && numberChoice(e.alternate)));
+        const bigFill = fill && fill.type === 'Literal' && typeof fill.value === 'bigint';
+        if (fill && !bigFill && !numberChoice(fill)) return;
+        if (fill && bigFill !== /^(u?int64|bigint|BigInt)$/.test(elementType)) return;
+        ilNode.resultType = type;
+        if (fill && fill.type === 'ConditionalExpression') this._applyContextualType(fill, elementType);
+        else if (fill) { fill.resultType = elementType; fill.contextType = elementType; }
+      } else if (ilNode.type === 'ArrayCreation' && type.endsWith('[]') && !ilNode.resultType) {
+        // `new Array(n)` (holes, filled later) is the array its target declares.
+        ilNode.elementType = type.slice(0, -2);
+        ilNode.resultType = type;
       } else if (ilNode.type === 'ArrayFill' && type.endsWith('[]') && ilNode.array &&
                  ilNode.array.type === 'ArrayCreation' && !ilNode.array.resultType) {
         // `new Array(n).fill(v)` is a fresh array: its element type was only a
@@ -3621,13 +3691,15 @@
       if (TypeAwareJSASTParser.TYPE_PRESERVING_OPCODES.has(methodName) && source &&
           typeof source.resultType === 'string' && source.resultType.endsWith('[]')) {
         result.resultType = source.resultType;
-        source.contextType = source.resultType;
+        // The argument the call node carries (a copy of the source) is
+        // expected as what it is, not as the bytes the JSDoc describes.
+        for (const n of new Set([source, (result.arguments || [])[0]])) if (n && typeof n === 'object') n.contextType = source.resultType;
       }
       // ConcatArrays([a, b, ...]) joins arrays of any one element type.
       if (methodName === 'ConcatArrays' && source && typeof source.resultType === 'string' &&
           source.resultType.endsWith('[][]')) {
         result.resultType = source.resultType.slice(0, -2);
-        source.contextType = source.resultType;
+        for (const n of new Set([source, (result.arguments || [])[0]])) if (n && typeof n === 'object') n.contextType = source.resultType;
       }
       // CreateArray(n, v) is filled with v: a BigInt or out-of-byte-range v
       // makes an array of v's type, not the bytes its JSDoc describes.
@@ -3693,6 +3765,16 @@
      * OpCodes helpers whose result is a copy of their first (array) argument.
      */
     static TYPE_PRESERVING_OPCODES = new Set(['CopyArray', 'ArraySlice']);
+
+    /** Spellings of IL types and their IL names (see _canonicalIL). */
+    static IL_ALIASES = {
+      byte: 'uint8', word: 'uint16', dword: 'uint32', qword: 'uint64', sbyte: 'int8', short: 'int16',
+      int: 'int32', long: 'int64', bool: 'boolean', Boolean: 'boolean', String: 'string',
+      float: 'float32', double: 'float64', BigInt: 'bigint', Number: 'number',
+      Uint8Array: 'uint8[]', Uint8ClampedArray: 'uint8[]', Int8Array: 'int8[]', Uint16Array: 'uint16[]', Int16Array: 'int16[]',
+      Uint32Array: 'uint32[]', Int32Array: 'int32[]', Float32Array: 'float32[]', Float64Array: 'float64[]',
+      BigUint64Array: 'uint64[]', BigInt64Array: 'int64[]'
+    };
 
     /**
      * Key and value type of a keyed collection type: 'Map<K,V>' or 'Object<K,V>'
@@ -5099,11 +5181,20 @@
         return access;
       }
 
-      // arr.length → ArrayLength
+      // arr.length → ArrayLength; but x.length of a local class or record
+      // that declares a `length` field of its own is a read of that field.
       if (propertyName === 'length' && !node.computed) {
+        const array = this._transformNode(object, context);
+        let ownerType = array?.resultType;
+        if (!ownerType && object?.type === 'Identifier' && object.name) ownerType = this.lookupVariableType(object.name);
+        const ownsLength = typeof ownerType === 'string' && /^[A-Za-z_$][\w$]*$/.test(ownerType) &&
+          (this.localClassNames.has(ownerType) || (this.recordTypes && this.recordTypes.has(ownerType)));
+        const fieldType = ownsLength ? this.lookupClassFieldType(ownerType, 'length') : null;
+        if (fieldType)
+          return { ...node, object: array, resultType: fieldType, ilNodeType: 'MemberExpression' };
         return {
           type: 'ArrayLength',
-          array: this._transformNode(object, context),
+          array,
           resultType: 'int32',
           ilNodeType: 'ArrayLength'
         };
@@ -5217,6 +5308,16 @@
         resultType,
         ilNodeType: 'MemberExpression'
       };
+      // CountryCode.XY (or AlgorithmFramework.CountryCode.XY) that the enum
+      // does not declare reads undefined: recorded for TYPES and SOUNDNESS.
+      // (A member of an enum value, CategoryType.BLOCK.name, is no enum read.)
+      const enumName = object?.type === 'Identifier' && object.name === objectType &&
+          this.typeKnowledge.frameworkEnums && this.typeKnowledge.frameworkEnums.has(objectType) ? objectType
+        : object?.type === 'MemberExpression' && !object.computed && object.object?.type === 'Identifier' &&
+          object.object.name === 'AlgorithmFramework' && object.property?.name ? object.property.name : null;
+      const enumMembers = enumName && this.typeKnowledge.frameworkEnumMembers ? this.typeKnowledge.frameworkEnumMembers.get(enumName) : null;
+      if (enumMembers && enumMembers.size > 0 && propertyName && !node.computed && !enumMembers.has(propertyName))
+        member.missingEnumMember = `${enumName}.${propertyName}`;
       if (resultType && typeof objectType === 'string' && propertyName && !node.computed &&
           this.recordTypes && this.recordTypes.has(objectType) && this.lookupDeclaredFieldNullable(objectType, propertyName))
         member.nullable = true;
@@ -5640,8 +5741,12 @@
         resultType = 'boolean';
       } else if (value === null) {
         resultType = 'null';
-      } else if (value === undefined) {
-        resultType = 'void';
+      } else if (value === undefined && !node.regex) {
+        // `undefined` is a value: the absent reference every target spells
+        // as its null (null, None, nil, nullptr, ...). It is typed like null
+        // and marked, so a consumer tells it from null without reading
+        // `value` (an undefined property does not survive serialization).
+        return { ...node, value: undefined, raw: 'undefined', isUndefined: true, resultType: 'null', ilNodeType: 'Literal' };
       } else if (node.regex) {
         // Regex literal
         resultType = 'regex';
@@ -5668,8 +5773,10 @@
      */
     static _tupleTypeOf(elements) {
       if (!elements || elements.length < 2) return null;
+      // A 64-bit integer is a Number or a BigInt: it shares a kind with either.
       const kind = t => typeof t !== 'string' ? null :
-        /^(u?int(8|16|32|64)|float(32|64)|number)$/.test(t) ? 'number' :
+        /^u?int64$/.test(t) ? 'wide' :
+        /^(u?int(8|16|32)|float(32|64)|number)$/.test(t) ? 'number' :
         t === 'bigint' || t === 'BigInt' ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean' :
         t.endsWith('[]') ? 'array' : TypeAwareJSASTParser._tupleElements(t) ? 'tuple' : null;
       const types = [];
@@ -5683,6 +5790,7 @@
         kinds.add(k);
         types.push(t);
       }
+      if (kinds.has('wide') && (kinds.has('number') || kinds.has('bigint'))) kinds.delete('wide');
       return kinds.size > 1 ? `[${types.join(',')}]` : null;
     }
 
@@ -5704,6 +5812,48 @@
       if (depth !== 0) return null;
       parts.push(type.slice(start, type.length - 1));
       return parts.every(p => p.length > 0) ? parts : null;
+    }
+
+    /**
+     * An IL type in one spelling: the JSDoc aliases (byte, int, BigInt, ...)
+     * as their IL names, a typed array as its element type's array
+     * ('Uint32Array' is 'uint32[]'), every level of an array likewise.
+     * @param {*} type - IL type
+     * @returns {string} canonical name ('' for none)
+     */
+    static _canonicalIL(type) {
+      if (typeof type !== 'string') return '';
+      let base = type.trim(), suffix = '';
+      while (base.endsWith('[]')) { base = base.slice(0, -2).trim(); suffix += '[]'; }
+      const generic = base.match(/^Array<(.+)>$/);
+      if (generic) return TypeAwareJSASTParser._canonicalIL(generic[1]) + '[]' + suffix;
+      return (TypeAwareJSASTParser.IL_ALIASES[base] || base) + suffix;
+    }
+
+    /**
+     * Does a value of one IL type convert to another without loss: the same
+     * type, an integer into a wider integer that holds its whole range, a
+     * 64-bit or narrower integer into a BigInt, an integer of up to 32 bits
+     * into a double?
+     * @param {*} from - value type
+     * @param {*} to - target type
+     * @returns {boolean} true when every value of `from` is a value of `to`
+     */
+    static _widensTo(from, to) {
+      const a = TypeAwareJSASTParser._canonicalIL(from), b = TypeAwareJSASTParser._canonicalIL(to);
+      if (!a || !b) return false;
+      if (a === b) return true;
+      const RANGES = {
+        uint8: [0n, 0xFFn], int8: [-0x80n, 0x7Fn], uint16: [0n, 0xFFFFn], int16: [-0x8000n, 0x7FFFn],
+        uint32: [0n, 0xFFFFFFFFn], int32: [-0x80000000n, 0x7FFFFFFFn],
+        uint64: [0n, 0xFFFFFFFFFFFFFFFFn], int64: [-0x8000000000000000n, 0x7FFFFFFFFFFFFFFFn]
+      };
+      const ra = RANGES[a];
+      if (!ra) return false;
+      if (b === 'bigint') return true;
+      if (b === 'float64') return ra[0] >= -0x80000000n && ra[1] <= 0xFFFFFFFFn;
+      const rb = RANGES[b];
+      return !!rb && rb[0] <= ra[0] && ra[1] <= rb[1];
     }
 
     /**

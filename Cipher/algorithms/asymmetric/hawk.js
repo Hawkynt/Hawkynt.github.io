@@ -860,6 +860,7 @@
     /** @type {int32[]} */
     const rev = new Array(n);
     for (let i = 0; i < n; ++i) {
+      /** @type {int32} */
       let r = 0;
       let x = i;
       for (let b = 0; b < logn; ++b) {
@@ -1303,6 +1304,7 @@
     for (let k = 1; k < 1024; ++k) {
       const j = Math.floor(Math.log2(k));
       const off = k - Math.pow(2, j);
+      /** @type {int32} */
       let r = 0;
       let x = off;
       for (let b = 0; b < j; ++b) {
@@ -1375,6 +1377,7 @@
       const m = Math.pow(2, lm);
       const ht = t / 2;
       const hm = m / 2;
+      /** @type {int32} */
       let j0 = 0;
       for (let i = 0; i < hm; ++i) {
         const sre = GM64.re[m + i];
@@ -1405,6 +1408,7 @@
       const m = Math.pow(2, lm);
       const t = ht * 2;
       const hm = m / 2;
+      /** @type {int32} */
       let j0 = 0;
       for (let i = 0; i < hm; ++i) {
         const sre = GM64.re[m + i];
@@ -1921,11 +1925,13 @@
     const g = new Array(n);
     /** @type {int32} */
     const bits = FG_BITS[P.logn - 8];
+    /** @type {int32} */
     const perChunk = 64 / bits;
+    /** @type {int32} */
     const step = 4 * perChunk;
     for (let j = 0; j < 4; ++j) {
       /** @type {uint8[]} */
-      const index = [j];
+      const index = [OpCodes.ToByte(j)];
       /** @type {Shake256} */
       const sc = new Shake256().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += step) {
@@ -2071,6 +2077,7 @@
 
     const mask = Math.pow(2, low) - 1;
     for (let u = 0; u < n; u += 8) {
+      /** @type {int32} */
       let acc = 0;
       let accLen = 0;
       for (let v = 0; v < 8; ++v) {
@@ -2086,7 +2093,9 @@
     }
 
     let left = room - (pos - off);
+    /** @type {int32} */
     let acc = 0;
+    /** @type {int32} */
     let accLen = 0;
     for (let u = 0; u < n; ++u) {
       const w = values[u] < 0 ? -values[u] - 1 : values[u];
@@ -2165,6 +2174,7 @@
     const mask = Math.pow(2, low) - 1;
     for (let u = 0; u < n; u += 8) {
       const sbb = buf[off + u / 8];
+      /** @type {int32} */
       let bitsAcc = 0;
       let bitsLen = 0;
       let byteIndex = 0;
@@ -2313,7 +2323,7 @@
 
     for (let j = 0; j < 4; ++j) {
       /** @type {uint8[]} */
-      const index = [j];
+      const index = [OpCodes.ToByte(j)];
       /** @type {Shake256} */
       const sc = base.Clone().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += 16) {
@@ -2527,6 +2537,7 @@
       const m = Math.pow(2, lm);
       const ht = t / 2;
       const hm = m / 2;
+      /** @type {int32} */
       let j0 = 0;
       for (let i = 0; i < hm; ++i) {
         const sre = GM32.re[i + m];
@@ -2560,6 +2571,7 @@
       const m = Math.pow(2, lm);
       const t = ht * 2;
       const hm = m / 2;
+      /** @type {int32} */
       let j0 = 0;
       for (let i = 0; i < hm; ++i) {
         const sre = GM32.re[i + m];

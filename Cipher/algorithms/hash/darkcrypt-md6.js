@@ -300,6 +300,7 @@
      * @returns {void}
      */
     update(dataBytes) {
+      /** @type {int32} */
       let j = 0;
       while (j < dataBytes.length) {
         const bytesFree = (B_WORDS * 8) - (this.bits[1] / 8);

@@ -3211,6 +3211,7 @@
      * @returns {SqiSignature} Result
      */
     function decodeSignature(bytes) {
+      /** @type {int32} */
       let offset = 0;
       const sig = new SqiSignature();
       sig.auxA = FieldDecode(F, bytes, offset);

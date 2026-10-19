@@ -8,7 +8,7 @@
 | --- | --- |
 | Category | Block Ciphers |
 | Sub-category | Block Cipher |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Advanced |
 | Inventor | Michael Jacobson Jr., Klaus Huber |
 | Year | 1998 |
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

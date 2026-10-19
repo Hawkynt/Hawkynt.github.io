@@ -38,13 +38,21 @@
           HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // SPARKLE round constants from specification
+  /** @type {uint32} */
   const RC_0 = 0xB7E15162;
+  /** @type {uint32} */
   const RC_1 = 0xBF715880;
+  /** @type {uint32} */
   const RC_2 = 0x38B4DA56;
+  /** @type {uint32} */
   const RC_3 = 0x324E7738;
+  /** @type {uint32} */
   const RC_4 = 0xBB1185EB;
+  /** @type {uint32} */
   const RC_5 = 0x4F7C7B57;
+  /** @type {uint32} */
   const RC_6 = 0xCFBFA1C8;
+  /** @type {uint32} */
   const RC_7 = 0xC2B3293D;
 
   /** @type {uint32[]} */

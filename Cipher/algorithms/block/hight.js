@@ -437,13 +437,13 @@
 
         // Final transformation (lines 285-294)
         return [
-          OpCodes.And32(OpCodes.Sub32(xx[0], this.roundKeys[0]), 0xFF),
+          OpCodes.ToByte(OpCodes.Sub32(xx[0], this.roundKeys[0])),
           xx[1],
-          OpCodes.Xor32(xx[2], this.roundKeys[1]),
+          OpCodes.Xor8(xx[2], this.roundKeys[1]),
           xx[3],
-          OpCodes.And32(OpCodes.Sub32(xx[4], this.roundKeys[2]), 0xFF),
+          OpCodes.ToByte(OpCodes.Sub32(xx[4], this.roundKeys[2])),
           xx[5],
-          OpCodes.Xor32(xx[6], this.roundKeys[3]),
+          OpCodes.Xor8(xx[6], this.roundKeys[3]),
           xx[7]
         ];
       } else {
@@ -496,13 +496,13 @@
 
         // Final transformation (lines 205-214)
         return [
-          OpCodes.And32(OpCodes.Add32(xx[1], this.roundKeys[4]), 0xFF),
+          OpCodes.ToByte(OpCodes.Add32(xx[1], this.roundKeys[4])),
           xx[2],
-          OpCodes.Xor32(xx[3], this.roundKeys[5]),
+          OpCodes.Xor8(xx[3], this.roundKeys[5]),
           xx[4],
-          OpCodes.And32(OpCodes.Add32(xx[5], this.roundKeys[6]), 0xFF),
+          OpCodes.ToByte(OpCodes.Add32(xx[5], this.roundKeys[6])),
           xx[6],
-          OpCodes.Xor32(xx[7], this.roundKeys[7]),
+          OpCodes.Xor8(xx[7], this.roundKeys[7]),
           xx[0]
         ];
       }

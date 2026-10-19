@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Markus F.X.J. Oberhumer, Dave Rodgman |
 | Year | 2018 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/compression/lzrle.js`](../../../algorithms/compression/lzrle.js) |
 
 ## Security

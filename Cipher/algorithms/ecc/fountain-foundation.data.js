@@ -552,6 +552,7 @@
       const R = c * Math.log(this.k / delta) * Math.sqrt(this.k);
 
       // Tau function
+      /** @type {float64} */
       let tau = 0;
       for (let i = 1; i <= this.k; i++) {
         if (i <= this.k / R) {
@@ -562,6 +563,7 @@
       }
 
       // Calculate tau for specific degree
+      /** @type {float64} */
       let tauDegree = 0;
       if (degree <= this.k / R) {
         tauDegree = R / (degree * this.k);
@@ -586,6 +588,7 @@
     sampleDegree(c = 0.1, delta = 0.5, rng = null) {
       /** @type {float64} */
       const rand = rng ? rng.next() : Math.random();
+      /** @type {float64} */
       let cumulative = 0;
 
       for (let degree = 1; degree <= this.k; degree++) {
@@ -606,6 +609,7 @@
     buildCumulativeDistribution(c = 0.1, delta = 0.5) {
       /** @type {float64[]} */
       const cdf = new Array(this.k + 1);
+      /** @type {float64} */
       let cumulative = 0;
 
       for (let degree = 1; degree <= this.k; degree++) {
@@ -703,7 +707,7 @@
    */
   class PerformanceProfiler {
     constructor() {
-      /** @type {Map<string, float64>} */
+      /** @type {Map<string, float64>} Start time of each running timer, in milliseconds */
       this.timers = new Map();
       /** @type {Map<string, int32>} */
       this.counters = new Map();
@@ -714,7 +718,9 @@
      * @returns {void}
      */
     startTimer(name) {
-      this.timers.set(name, performance.now());
+      /** @type {float64} */
+      const now = performance.now();
+      this.timers.set(name, now);
     }
 
     /**
@@ -724,9 +730,11 @@
     endTimer(name) {
       const start = this.timers.get(name);
       if (start === undefined) {
-        throw new Error(`Timer ${name} was not started`);
+        throw new Error('Timer ' + name + ' was not started');
       }
-      const duration = performance.now() - start;
+      /** @type {float64} */
+      const now = performance.now();
+      const duration = now - start;
       this.timers.delete(name);
       return duration;
     }
@@ -747,13 +755,6 @@
      */
     getCounter(name) {
       return this.counters.get(name) || 0;
-    }
-
-    getReport() {
-      return {
-        counters: Object.fromEntries(this.counters),
-        activeTimers: Array.from(this.timers.keys())
-      };
     }
 
     /**

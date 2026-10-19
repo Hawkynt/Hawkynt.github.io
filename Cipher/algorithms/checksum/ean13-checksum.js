@@ -178,6 +178,7 @@
         sum += this.digits[i] * weight;
       }
 
+      /** @type {uint8} */
       const checkDigit = (10 - (sum % 10)) % 10;
       this.digits = [];
       return [checkDigit];

@@ -9,7 +9,7 @@
 | Category | Block Ciphers |
 | Sub-category | Block Cipher |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Andrey Bogdanov, Lars R. Knudsen, Gregor Leander, Christof Paar, Axel Poschmann, Matthew J.B. Robshaw, Yannick Seurin, C. Vikkelsoe |
 | Year | 2007 |
 | Origin | 🇩🇪 Germany |

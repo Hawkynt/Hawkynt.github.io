@@ -8,7 +8,7 @@
 | --- | --- |
 | Category | Checksums |
 | Sub-category | Legacy Checksum |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Beginner |
 | Inventor | Bell Labs |
 | Year | 1971 |
@@ -17,7 +17,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

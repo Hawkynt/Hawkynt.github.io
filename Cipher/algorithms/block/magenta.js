@@ -74,7 +74,7 @@
       this.year = 1998;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = SecurityStatus.INSECURE;
+      this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.DE;
 

@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Hongjun Wu, Bart Preneel |
 | Year | 2016 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/stream/aegis-128.js`](../../../algorithms/stream/aegis-128.js) |
 
 ## Parameters

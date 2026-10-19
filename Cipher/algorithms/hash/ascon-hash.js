@@ -323,7 +323,7 @@
       this.subCategory = "Lightweight Hash";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.AUSTRIA;
+      this.country = CountryCode.AT;
 
       this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 

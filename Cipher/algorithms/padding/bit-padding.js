@@ -60,8 +60,8 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Bit Padding";
       this.securityStatus = SecurityStatus.SECURE; // Unambiguous padding
-      this.complexity = ComplexityType.SIMPLE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       this.documentation = [
         new LinkItem("Merkle-Damgård Construction", "https://en.wikipedia.org/wiki/Merkle%E2%80%93Damg%C3%A5rd_construction"),

@@ -214,7 +214,7 @@
         this.capacity = 256;  // 2 × 128 (security level) in bits
         this.rate = 168;  // (1600 - 256) / 8 = 168 bytes (1344 bits)
         this.securityLevel = 128;
-        this.securityStatus = SecurityStatus.ACTIVE;
+        this.securityStatus = null;
         this.tests = [
           {
             text: "SHAKE128 Empty String - 16 bytes output",

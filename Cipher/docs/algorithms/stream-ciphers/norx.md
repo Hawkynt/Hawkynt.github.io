@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Jean-Philippe Aumasson, Philipp Jovanovic, Samuel Neves |
 | Year | 2014 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/stream/norx.js`](../../../algorithms/stream/norx.js) |
 
 ## Parameters

@@ -702,10 +702,10 @@
 
       // Convert back to bytes
       return [
-        OpCodes.And32(OpCodes.Shr32(words[0], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[0], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[0], 8), 0xff), OpCodes.And32(words[0], 0xff),
-        OpCodes.And32(OpCodes.Shr32(words[1], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[1], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[1], 8), 0xff), OpCodes.And32(words[1], 0xff),
-        OpCodes.And32(OpCodes.Shr32(words[2], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[2], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[2], 8), 0xff), OpCodes.And32(words[2], 0xff),
-        OpCodes.And32(OpCodes.Shr32(words[3], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[3], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[3], 8), 0xff), OpCodes.And32(words[3], 0xff)
+        OpCodes.GetByte(words[0], 3), OpCodes.GetByte(words[0], 2), OpCodes.GetByte(words[0], 1), OpCodes.ToByte(words[0]),
+        OpCodes.GetByte(words[1], 3), OpCodes.GetByte(words[1], 2), OpCodes.GetByte(words[1], 1), OpCodes.ToByte(words[1]),
+        OpCodes.GetByte(words[2], 3), OpCodes.GetByte(words[2], 2), OpCodes.GetByte(words[2], 1), OpCodes.ToByte(words[2]),
+        OpCodes.GetByte(words[3], 3), OpCodes.GetByte(words[3], 2), OpCodes.GetByte(words[3], 1), OpCodes.ToByte(words[3])
       ];
     }
 
@@ -754,10 +754,10 @@
 
       // Convert back to bytes
       return [
-        OpCodes.And32(OpCodes.Shr32(words[0], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[0], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[0], 8), 0xff), OpCodes.And32(words[0], 0xff),
-        OpCodes.And32(OpCodes.Shr32(words[1], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[1], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[1], 8), 0xff), OpCodes.And32(words[1], 0xff),
-        OpCodes.And32(OpCodes.Shr32(words[2], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[2], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[2], 8), 0xff), OpCodes.And32(words[2], 0xff),
-        OpCodes.And32(OpCodes.Shr32(words[3], 24), 0xff), OpCodes.And32(OpCodes.Shr32(words[3], 16), 0xff), OpCodes.And32(OpCodes.Shr32(words[3], 8), 0xff), OpCodes.And32(words[3], 0xff)
+        OpCodes.GetByte(words[0], 3), OpCodes.GetByte(words[0], 2), OpCodes.GetByte(words[0], 1), OpCodes.ToByte(words[0]),
+        OpCodes.GetByte(words[1], 3), OpCodes.GetByte(words[1], 2), OpCodes.GetByte(words[1], 1), OpCodes.ToByte(words[1]),
+        OpCodes.GetByte(words[2], 3), OpCodes.GetByte(words[2], 2), OpCodes.GetByte(words[2], 1), OpCodes.ToByte(words[2]),
+        OpCodes.GetByte(words[3], 3), OpCodes.GetByte(words[3], 2), OpCodes.GetByte(words[3], 1), OpCodes.ToByte(words[3])
       ];
     }
 

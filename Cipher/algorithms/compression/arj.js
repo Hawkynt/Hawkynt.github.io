@@ -344,7 +344,7 @@
     /** @type {int32[]} */
     const right = zeroArray(2 * n);
     /** @type {float64[]} */
-    const nodeFreq = zeroArray(2 * n);
+    const nodeFreq = OpCodes.CreateArray(2 * n, 0);
     for (let i = 0; i < n; ++i) {
       nodeFreq[i] = freq[i];
     }

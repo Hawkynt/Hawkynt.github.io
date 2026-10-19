@@ -9,7 +9,7 @@
 | Category | Classical Ciphers |
 | Sub-category | Classical Cipher |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Freemasons/Rosicrucians |
 | Year | 1700 |
 | Origin | 🌐 International |

@@ -164,6 +164,7 @@
    */
 
     Result() {
+      /** @type {uint8} */
       const result = this.sum % 10;
       this.sum = 0;
       return [result];
@@ -312,6 +313,7 @@
       }
 
       // Check digit calculation: (11 - sum mod 11) mod 11
+      /** @type {uint8} */
       const checkDigit = (11 - (sum % 11)) % 11;
 
       this.digits = [];
@@ -464,7 +466,7 @@
       }
 
       this.digitString = '';
-      return [remainder];
+      return [OpCodes.ToByte(remainder)];
     }
   }
 

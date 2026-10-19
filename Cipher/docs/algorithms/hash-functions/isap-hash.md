@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Christoph Dobraunig, Maria Eichlseder, Stefan Mangard, Florian Mendel, Robert Primas |
 | Year | 2017 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/hash/isap-hash.js`](../../../algorithms/hash/isap-hash.js) |
 
 ## Parameters

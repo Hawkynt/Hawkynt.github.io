@@ -10925,6 +10925,12 @@
 
         // Handle special properties
         if (member === 'length') {
+          // The IL keeps `x.length` a member read only when x's class or
+          // record declares a length field of its own: that is a hash key.
+          const ownerType = node.object && node.object.resultType;
+          if (typeof ownerType === 'string' && (ownerType === 'object' ||
+              (/^[A-Z][A-Za-z0-9_]*$/.test(ownerType) && !NON_CLASS_TYPE_NAMES.has(ownerType))))
+            return new PerlSubscript(object, PerlLiteral.String('length', "'"), 'hash', true);
           // @array in scalar context or length($string)
           return new PerlUnaryExpression('scalar', object);
         }

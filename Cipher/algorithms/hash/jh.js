@@ -326,7 +326,7 @@
       this.category = CategoryType.HASH;
       this.subCategory = "SHA-3 Candidate";
       this.securityStatus = null;
-      this.complexity = ComplexityType.HIGH;
+      this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.CN;
 
       this.SupportedOutputSizes = [new KeySize(digestSize, digestSize, 1)];

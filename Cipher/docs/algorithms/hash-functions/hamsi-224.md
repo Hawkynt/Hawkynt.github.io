@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Özgül Küçük |
 | Year | 2008 |
-| Origin | Not specified |
+| Origin | 🇹🇷 Turkey |
 | Source | [`algorithms/hash/hamsi.js`](../../../algorithms/hash/hamsi.js) |
 
 ## Parameters

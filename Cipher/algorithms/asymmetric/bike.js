@@ -1206,8 +1206,8 @@
    * Encapsulate. The error vector is derived from the message, so the receiver
    * can check the ciphertext by recomputing it.
    * @param {BikeParams} set - the parameter set
-   * @param {int32[]} pk - the public key
-   * @param {int32[]} m - the 32 octet message
+   * @param {uint8[]} pk - the public key
+   * @param {uint8[]} m - the 32 octet message
    * @returns {BikeEncapsulation} the ciphertext and the shared secret
    */
   function Encapsulate(set, pk, m) {
@@ -1236,9 +1236,9 @@
    * message: a ciphertext whose two do not agree gets the rejection secret
    * derived from the secret key's own seed rather than an error.
    * @param {BikeParams} set - the parameter set
-   * @param {int32[]} ciphertext - the ciphertext
-   * @param {int32[]} sk - the secret key
-   * @returns {int32[]} the shared secret
+   * @param {uint8[]} ciphertext - the ciphertext
+   * @param {uint8[]} sk - the secret key
+   * @returns {uint8[]} the shared secret
    */
   function Decapsulate(set, ciphertext, sk) {
     const c0 = ciphertext.slice(0, set.rBytes);
@@ -2005,7 +2005,7 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding the whole.
-     * @param {int32[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
@@ -2026,7 +2026,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {int32[]} the result bytes
+     * @returns {uint8[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;

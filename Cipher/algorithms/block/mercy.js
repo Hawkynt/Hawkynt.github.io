@@ -328,7 +328,7 @@
       this.subCategory = "Block Cipher";
       this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.UK;
+      this.country = CountryCode.GB;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [

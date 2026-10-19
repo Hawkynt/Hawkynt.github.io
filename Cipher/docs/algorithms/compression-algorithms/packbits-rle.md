@@ -9,7 +9,7 @@
 | Category | Compression Algorithms |
 | Sub-category | Run-Length Encoding |
 | Security status | Not classified |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Apple Computer |
 | Year | 1984 |
 | Origin | 🇺🇸 United States |

@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | RFC 3657 Authors, based on Camellia by NTT/Mitsubishi |
 | Year | 2003 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/crypto/camelliawrap.js`](../../../algorithms/crypto/camelliawrap.js) |
 
 ## Parameters

@@ -322,10 +322,15 @@
           workingData = newData;
         }
 
+        // Every pair code is expanded: what remains are the original bytes.
+        /** @type {uint8[]} */
+        const output = new Array(workingData.length);
+        for (let k = 0; k < workingData.length; k++) output[k] = OpCodes.ToByte(workingData[k]);
+
         /** @type {uint8[]} */
         const fresh = [];
         this.inputBuffer = fresh;
-        return workingData;
+        return output;
       }
 
       /**

@@ -186,6 +186,7 @@
       }
 
       // Check digit is sum mod 11
+      /** @type {uint8} */
       const checkDigit = sum % 11;
 
       this.values = [];

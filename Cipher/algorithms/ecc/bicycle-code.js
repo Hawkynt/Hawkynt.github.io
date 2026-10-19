@@ -228,7 +228,7 @@
       this.subCategory = "Quantum Code";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.UK;
+      this.country = CountryCode.GB;
 
       // Algorithm capabilities
       this.SupportedBlockSizes = [new KeySize(2, 2, 1)]; // 2 logical qubits per block

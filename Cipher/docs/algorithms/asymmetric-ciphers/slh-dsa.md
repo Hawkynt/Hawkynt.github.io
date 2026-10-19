@@ -12,7 +12,7 @@
 | Complexity | Expert |
 | Inventor | Daniel J. Bernstein, Andreas Hülsing, Stefan Kölbl, Ruben Niederhagen, Joost Rijneveld, Peter Schwabe |
 | Year | 2024 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/asymmetric/slh-dsa.js`](../../../algorithms/asymmetric/slh-dsa.js) |
 
 ## Parameters

@@ -9,10 +9,10 @@
 | Category | Hash Functions |
 | Sub-category | Cryptographic Hash |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Advanced |
 | Inventor | Praveen Gauravaram, Lars R. Knudsen, Krystian Matusiewicz, et al. |
 | Year | 2011 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/hash/groestl.js`](../../../algorithms/hash/groestl.js) |
 
 ## Security

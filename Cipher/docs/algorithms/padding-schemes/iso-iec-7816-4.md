@@ -9,10 +9,10 @@
 | Category | Padding Schemes |
 | Sub-category | Smart Card Padding |
 | Security status | 🛡️ Secure |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | ISO/IEC |
 | Year | 2005 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/padding/iso7816-4.js`](../../../algorithms/padding/iso7816-4.js) |
 
 ## Capabilities

@@ -277,7 +277,7 @@
       this.subCategory = "Keyed Hash MAC";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.INT;
+      this.country = CountryCode.INTL;
 
       // MAC-specific metadata
       this.SupportedKeySizes = [new KeySize(1, 64, 1)]; // 1-64 bytes

@@ -13,7 +13,7 @@
 | Complexity | Advanced |
 | Inventor | Samuel Neves, Filipe Araujo |
 | Year | 2011 |
-| Origin | Not specified |
+| Origin | 🇵🇹 Portugal |
 | Source | [`algorithms/random/chacha.js`](../../../algorithms/random/chacha.js) |
 
 ## Parameters

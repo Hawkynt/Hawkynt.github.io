@@ -58,7 +58,7 @@
       this.category = CategoryType.HASH;
       this.subCategory = "Fast Hash";
       this.securityStatus = SecurityStatus.EDUCATIONAL; // Non-cryptographic
-      this.complexity = ComplexityType.LOW;
+      this.complexity = ComplexityType.BEGINNER;
 
       // Algorithm properties
       this.inventor = "Austin Appleby";

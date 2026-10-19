@@ -79,7 +79,7 @@
       this.subCategory = "Bit Padding";
       this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.BEGINNER;
-      this.country = CountryCode.INT;
+      this.country = CountryCode.INTL;
 
       // Documentation links
       this.documentation = [

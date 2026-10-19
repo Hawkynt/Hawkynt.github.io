@@ -64,8 +64,8 @@
       // byte rather than counting it as a defect.
       this.restrictedInputDomain = "data whose last byte is not zero";
       this.securityStatus = SecurityStatus.EDUCATIONAL; // Ambiguous padding removal
-      this.complexity = ComplexityType.TRIVIAL;
-      this.country = CountryCode.INTERNATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       this.documentation = [
         new LinkItem("ISO/IEC 9797-1", "https://www.iso.org/standard/31136.html"),

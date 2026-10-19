@@ -319,7 +319,13 @@
           const parsedShares = this._parseShares(sharesData);
           return this._reconstructFromShares(parsedShares);
         } else {
-          return sharesData;
+          // The output is bytes: a share value is an element of GF(257), and
+          // the one value no byte holds (256) leaves as its low byte (0), as
+          // every statically typed target stores it.
+          /** @type {uint8[]} */
+          const output = new Array(sharesData.length);
+          for (let i = 0; i < sharesData.length; i++) output[i] = OpCodes.ToByte(sharesData[i]);
+          return output;
         }
       }
     }

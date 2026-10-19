@@ -9,10 +9,10 @@
 | Category | Padding Schemes |
 | Sub-category | No Padding |
 | Security status | Not classified |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | N/A |
 | Year | 1970 |
-| Origin | Not specified |
+| Origin | 🌐 International |
 | Source | [`algorithms/padding/no-padding.js`](../../../algorithms/padding/no-padding.js) |
 
 ## Capabilities

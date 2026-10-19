@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Jarek Duda |
 | Year | 2009 |
-| Origin | Not specified |
+| Origin | 🇵🇱 Poland |
 | Source | [`algorithms/compression/ans.js`](../../../algorithms/compression/ans.js) |
 
 ## Security

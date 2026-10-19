@@ -83,8 +83,8 @@
    * Resolving on demand leaves sha3.js to register itself when the walk
    * reaches it.
    *
-   * @param {int32[]} data - input bytes
-   * @returns {int32[]} 32 digest bytes
+   * @param {uint8[]} data - input bytes
+   * @returns {uint8[]} 32 digest bytes
    */
   function sha3_256(data) {
     if (!sha3Algorithm) {
@@ -229,9 +229,10 @@
 
   /**
    * Append every element of source to target.
-   * @param {int32[]} target - array appended to, modified in place
-   * @param {int32[]} source - array read from
-   * @returns {int32[]} target
+   * @template T
+   * @param {T[]} target - array appended to, modified in place
+   * @param {T[]} source - array read from
+   * @returns {T[]} target
    */
   function appendAll(target, source) {
     for (let i = 0; i < source.length; i++) target.push(source[i]);
@@ -625,10 +626,10 @@
    * Pack ternary coefficients, five to a byte, base three.
    * @param {int32[]} a - n coefficients in {0, 1, 2}
    * @param {NtruParams} P - parameter set
-   * @returns {int32[]} trinaryBytes bytes
+   * @returns {uint8[]} trinaryBytes bytes
    */
   function s3ToBytes(a, P) {
-    const out = zeros(P.trinaryBytes);
+    const out = OpCodes.CreateArray(P.trinaryBytes, 0);
     const whole = Math.floor(P.packDeg / 5);
 
     for (let i = 0; i < whole; i++) {
@@ -648,7 +649,7 @@
 
   /**
    * Unpack ternary coefficients written by s3ToBytes.
-   * @param {int32[]} msg - packed bytes
+   * @param {uint8[]} msg - packed bytes
    * @param {NtruParams} P - parameter set
    * @returns {int32[]} n coefficients
    */
@@ -681,10 +682,10 @@
    * @param {int32[]} a - coefficients
    * @param {int32} count - how many to write
    * @param {int32} bits - width of each
-   * @returns {int32[]} the packed bytes
+   * @returns {uint8[]} the packed bytes
    */
   function packCoefficients(a, count, bits) {
-    const out = zeros(Math.floor((count * bits + 7) / 8));
+    const out = OpCodes.CreateArray(Math.floor((count * bits + 7) / 8), 0);
     let bitPosition = 0;
 
     for (let i = 0; i < count; i++) {
@@ -702,7 +703,7 @@
 
   /**
    * Read back a bit stream written by packCoefficients.
-   * @param {int32[]} bytes - packed bytes
+   * @param {uint8[]} bytes - packed bytes
    * @param {int32} count - how many coefficients to read
    * @param {int32} bits - width of each
    * @returns {int32[]} the coefficients
@@ -732,7 +733,7 @@
    * Pack an S_q element.
    * @param {int32[]} a - n coefficients
    * @param {NtruParams} P - parameter set
-   * @returns {int32[]} packed bytes
+   * @returns {uint8[]} packed bytes
    */
   function sqToBytes(a, P) {
     return packCoefficients(a, P.packDeg, P.logq);
@@ -740,7 +741,7 @@
 
   /**
    * Unpack an S_q element.
-   * @param {int32[]} bytes - packed bytes
+   * @param {uint8[]} bytes - packed bytes
    * @param {NtruParams} P - parameter set
    * @returns {int32[]} n coefficients, the last zero
    */
@@ -756,7 +757,7 @@
    * Pack an R_q element whose coefficients sum to zero; the last is implied.
    * @param {int32[]} a - n coefficients
    * @param {NtruParams} P - parameter set
-   * @returns {int32[]} packed bytes
+   * @returns {uint8[]} packed bytes
    */
   function rqSumZeroToBytes(a, P) {
     return packCoefficients(a, P.packDeg, P.logq);
@@ -765,7 +766,7 @@
   /**
    * Unpack an R_q element whose coefficients are known to sum to zero, so that
    * the final coefficient need not be transmitted.
-   * @param {int32[]} bytes - packed bytes
+   * @param {uint8[]} bytes - packed bytes
    * @param {NtruParams} P - parameter set
    * @returns {int32[]} n coefficients
    */
@@ -787,7 +788,7 @@
 
   /**
    * Sample_iid: a ternary polynomial, one coefficient per input byte.
-   * @param {int32[]} bytes - source bytes
+   * @param {uint8[]} bytes - source bytes
    * @param {int32} offset - where to start reading
    * @param {NtruParams} P - parameter set
    * @returns {int32[]} n coefficients, the last zero
@@ -803,7 +804,7 @@
    * Sample_fixed_type: a ternary polynomial with exactly weight/2 coefficients
    * equal to 1 and weight/2 equal to -1, obtained by tagging the low two bits
    * of thirty bit random words and sorting.
-   * @param {int32[]} u - source bytes
+   * @param {uint8[]} u - source bytes
    * @param {int32} offset - where to start reading
    * @param {NtruParams} P - parameter set
    * @returns {int32[]} n coefficients, the last zero
@@ -855,7 +856,7 @@
 
   /**
    * Sample_fg: the two key polynomials.
-   * @param {int32[]} bytes - keySeedSize bytes
+   * @param {uint8[]} bytes - keySeedSize bytes
    * @param {NtruParams} P - parameter set
    * @returns {NtruFg} { f, g }
    */
@@ -865,7 +866,7 @@
 
   /**
    * Sample_rm: the blinding polynomial and the message polynomial.
-   * @param {int32[]} bytes - messageSeedSize bytes
+   * @param {uint8[]} bytes - messageSeedSize bytes
    * @param {NtruParams} P - parameter set
    * @returns {NtruRm} { r, m }
    */
@@ -903,37 +904,37 @@
 
   class NtruKeyPair {
     /**
-     * @param {int32[]} publicKey - encoded public key
-     * @param {int32[]} secretKey - encoded secret key
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} secretKey - encoded secret key
      */
     constructor(publicKey, secretKey) {
-      /** @type {int32[]} */
+      /** @type {uint8[]} */
       this.publicKey = publicKey;
-      /** @type {int32[]} */
+      /** @type {uint8[]} */
       this.secretKey = secretKey;
     }
   }
 
   class NtruEncapsulation {
     /**
-     * @param {int32[]} ciphertext - the ciphertext
-     * @param {int32[]} sharedSecret - the 32 byte shared secret
+     * @param {uint8[]} ciphertext - the ciphertext
+     * @param {uint8[]} sharedSecret - the 32 byte shared secret
      */
     constructor(ciphertext, sharedSecret) {
-      /** @type {int32[]} */
+      /** @type {uint8[]} */
       this.ciphertext = ciphertext;
-      /** @type {int32[]} */
+      /** @type {uint8[]} */
       this.sharedSecret = sharedSecret;
     }
   }
 
   class NtruDecryption {
     /**
-     * @param {int32[]} rm - packed r and m
+     * @param {uint8[]} rm - packed r and m
      * @param {int32} fail - 1 when the ciphertext was not a genuine encryption
      */
     constructor(rm, fail) {
-      /** @type {int32[]} */
+      /** @type {uint8[]} */
       this.rm = rm;
       /** @type {int32} */
       this.fail = fail;
@@ -948,7 +949,7 @@
    * h = g/f and its inverse f/g are both formed from one inversion of g*f,
    * which is why a single modular inverse in R_q suffices.
    *
-   * @param {int32[]} seed - keySeedSize bytes
+   * @param {uint8[]} seed - keySeedSize bytes
    * @param {NtruParams} P - parameter set
    * @returns {NtruKeyPair|null} { publicKey, secretKey }, or null when f or g*f is
    *                        not invertible and the seed must be rejected
@@ -987,9 +988,9 @@
    * Encrypt under the one-way CPA scheme: c = r*h + Lift(m).
    * @param {int32[]} r - blinding polynomial, already in Z_q
    * @param {int32[]} m - message polynomial, ternary
-   * @param {int32[]} pk - public key bytes
+   * @param {uint8[]} pk - public key bytes
    * @param {NtruParams} P - parameter set
-   * @returns {int32[]} the ciphertext
+   * @returns {uint8[]} the ciphertext
    */
   function owcpaEncrypt(r, m, pk, P) {
     const h = rqSumZeroFromBytes(pk, P);
@@ -1003,7 +1004,7 @@
   /**
    * Are the bits past the last packed coefficient of the final ciphertext byte
    * clear? A ciphertext that carries anything there is not a valid encoding.
-   * @param {int32[]} ciphertext - the ciphertext
+   * @param {uint8[]} ciphertext - the ciphertext
    * @param {NtruParams} P - parameter set
    * @returns {int32} 0 when well formed, 1 otherwise
    */
@@ -1056,8 +1057,8 @@
    * a genuine encryption. Recovering r as (c - Lift(m))/h modulo Phi_n and
    * checking that r and m lie in their spaces is equivalent to re-encrypting,
    * which is what makes the KEM around it chosen-ciphertext secure.
-   * @param {int32[]} ciphertext - the ciphertext
-   * @param {int32[]} secretKey - the secret key
+   * @param {uint8[]} ciphertext - the ciphertext
+   * @param {uint8[]} secretKey - the secret key
    * @param {NtruParams} P - parameter set
    * @returns {NtruDecryption} { rm, fail }
    */
@@ -1091,8 +1092,8 @@
 
   /**
    * Generate a KEM key pair.
-   * @param {int32[]} seed - keySeedSize bytes
-   * @param {int32[]} prfKey - 32 bytes used for implicit rejection
+   * @param {uint8[]} seed - keySeedSize bytes
+   * @param {uint8[]} prfKey - 32 bytes used for implicit rejection
    * @param {NtruParams} P - parameter set
    * @returns {NtruKeyPair|null} { publicKey, secretKey }, or null for a rejected seed
    */
@@ -1110,8 +1111,8 @@
 
   /**
    * Encapsulate to a ciphertext and a shared secret.
-   * @param {int32[]} pk - the public key
-   * @param {int32[]} seed - messageSeedSize bytes
+   * @param {uint8[]} pk - the public key
+   * @param {uint8[]} seed - messageSeedSize bytes
    * @param {NtruParams} P - parameter set
    * @returns {NtruEncapsulation} { ciphertext, sharedSecret }
    */
@@ -1138,10 +1139,10 @@
    * derived from the rejection key instead of an error, so that a decapsulating
    * party reveals nothing about why it failed.
    *
-   * @param {int32[]} ciphertext - the ciphertext
-   * @param {int32[]} secretKey - the secret key
+   * @param {uint8[]} ciphertext - the ciphertext
+   * @param {uint8[]} secretKey - the secret key
    * @param {NtruParams} P - parameter set
-   * @returns {int32[]} the 32 byte shared secret
+   * @returns {uint8[]} the 32 byte shared secret
    */
   function kemDecapsulate(ciphertext, secretKey, P) {
     if (secretKey.length !== P.privateKeySize)
@@ -1785,7 +1786,8 @@
       this.keyGeneration = false;
       this.keyGenerationOutput = 'publicKey';
       this.encapsulationOutput = 'ciphertext';
-      this.rejectionKey = zeros(32);
+      /** @type {uint8[]} 32 byte key of the implicit rejection */
+      this.rejectionKey = OpCodes.CreateArray(32, 0);
     }
 
     // ---- configuration ----
@@ -1807,7 +1809,7 @@
     /**
      * The public key. Its length selects the parameter set, the encoded
      * lengths across the three sets being pairwise distinct.
-     * @param {int32[]} keyBytes - the encoded public key; falsy clears it
+     * @param {uint8[]} keyBytes - the encoded public key; falsy clears it
      */
     set publicKey(keyBytes) {
       if (!keyBytes) {
@@ -1829,7 +1831,7 @@
 
     /**
      * The secret key. Its length selects the parameter set.
-     * @param {int32[]} keyBytes - the encoded secret key; falsy clears it
+     * @param {uint8[]} keyBytes - the encoded secret key; falsy clears it
      */
     set privateKey(keyBytes) {
       if (!keyBytes) {
@@ -1854,7 +1856,7 @@
      * Result report agreement as [1] or [0] rather than returning the secret,
      * so that a vector can assert a rejection without naming the value the
      * rejection produces.
-     * @param {int32[]} secretBytes - the expected secret; falsy clears it
+     * @param {uint8[]} secretBytes - the expected secret; falsy clears it
      */
     set sharedSecret(secretBytes) {
       this._sharedSecret = secretBytes ? secretBytes.slice() : null;
@@ -1882,7 +1884,7 @@
       if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid NTRU key data format');
 
-      /** @type {int32[]} */
+      /** @type {uint8[]} */
       const bytes = Array.from(keyData);
 
       if (parameterSetByLength(bytes.length, 'privateKeySize')) {
@@ -1910,7 +1912,7 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding whole.
-     * @param {int32[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
@@ -1931,7 +1933,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {int32[]} the result bytes
+     * @returns {uint8[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
@@ -1966,8 +1968,8 @@
 
     /**
      * Generate a key pair from an expanded seed.
-     * @param {int32[]} seed - keySeedSize bytes
-     * @param {int32[]} [prfKey] - 32 byte rejection key
+     * @param {uint8[]} seed - keySeedSize bytes
+     * @param {uint8[]} [prfKey] - 32 byte rejection key
      * @returns {NtruKeyPair} { publicKey, secretKey }
      */
     GenerateKeyPair(seed, prfKey) {
@@ -1981,7 +1983,7 @@
 
     /**
      * Encapsulate to the configured public key.
-     * @param {int32[]} seed - messageSeedSize bytes
+     * @param {uint8[]} seed - messageSeedSize bytes
      * @returns {NtruEncapsulation} { ciphertext, sharedSecret }
      */
     Encapsulate(seed) {
@@ -1991,8 +1993,8 @@
 
     /**
      * Decapsulate with the configured secret key.
-     * @param {int32[]} ciphertext - the ciphertext
-     * @returns {int32[]} the shared secret
+     * @param {uint8[]} ciphertext - the ciphertext
+     * @returns {uint8[]} the shared secret
      */
     Decapsulate(ciphertext) {
       if (!this._privateKey) throw new Error('NTRU decapsulation needs a secret key');

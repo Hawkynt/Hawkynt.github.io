@@ -60,7 +60,7 @@
         this.inventor = "Thomas Jefferson";
         this.year = 1795;
         this.country = CountryCode.US;
-        this.complexity = ComplexityType.MEDIUM;
+        this.complexity = ComplexityType.INTERMEDIATE;
 
         this.documentation = [
           new LinkItem("Jefferson Papers at Library of Congress", "https://www.loc.gov/collections/thomas-jefferson-papers/"),

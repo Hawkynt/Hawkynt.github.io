@@ -9,7 +9,7 @@
 | Category | Block Ciphers |
 | Sub-category | Block Cipher |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | Koo, Roh, Kim, Jung, Lee, and Kwon |
 | Year | 2017 |
 | Origin | 🇰🇷 South Korea |

@@ -60,7 +60,7 @@
         this.inventor = "Freemasons/Rosicrucians";
         this.year = 1700;
         this.country = CountryCode.INTL;
-        this.complexity = ComplexityType.LOW;
+        this.complexity = ComplexityType.BEGINNER;
 
         this.documentation = [
           new LinkItem("Freemason History", "https://freemasonry.bcy.ca/texts/pigpen.html"),

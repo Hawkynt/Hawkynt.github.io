@@ -9,7 +9,7 @@
 | Category | Hash Functions |
 | Sub-category | Fast Hash |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Intermediate |
 | Inventor | Geoff Pike, Jyrki Alakuijala |
 | Year | 2011 |
 | Origin | 🇺🇸 United States |

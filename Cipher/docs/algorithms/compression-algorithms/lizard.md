@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Przemysław Skibiński, Yann Collet |
 | Year | 2016 |
-| Origin | Not specified |
+| Origin | 🇵🇱 Poland |
 | Source | [`algorithms/compression/lizard.js`](../../../algorithms/compression/lizard.js) |
 
 ## Security

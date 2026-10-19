@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Ariya Hidayat |
 | Year | 2007 |
-| Origin | Not specified |
+| Origin | 🇮🇩 Indonesia |
 | Source | [`algorithms/compression/fastlz.js`](../../../algorithms/compression/fastlz.js) |
 
 ## Security

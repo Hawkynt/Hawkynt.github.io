@@ -884,8 +884,8 @@
       this.category = CategoryType.HASH;
       this.subCategory = "Fast Hash";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.complexity = ComplexityType.LOW;
-      this.country = CountryCode.MULTI;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
 
       // Hash-specific metadata
       this.SupportedOutputSizes = [new KeySize(8, 8, 1), new KeySize(16, 16, 1)]; // 64 and 128 bits

@@ -3008,7 +3008,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {int32[]} the result bytes
+     * @returns {uint8[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
@@ -3057,7 +3057,7 @@
      * Read the input as either the 48 byte entropy of a Known Answer Test
      * record, which the NIST generator expands, or as the 32 byte seed key
      * generation takes directly.
-     * @param {int32[]} input - the fed bytes
+     * @param {uint8[]} input - the fed bytes
      * @param {McElieceParams} set - the parameter set
      * @returns {McElieceSeed} { delta, reader }
      */
@@ -3075,7 +3075,7 @@
 
     /**
      * Generate a key pair from a seed.
-     * @param {int32[]} seed - 48 byte KAT entropy or a 32 byte seed
+     * @param {uint8[]} seed - 48 byte KAT entropy or a 32 byte seed
      * @returns {McElieceKeyPair} { publicKey, privateKey }
      */
     GenerateKeyPair(seed) {
@@ -3088,7 +3088,7 @@
 
     /**
      * Encapsulate to the configured public key.
-     * @param {int32[]} seed - 48 byte entropy for the error vector
+     * @param {uint8[]} seed - 48 byte entropy for the error vector
      * @returns {McElieceEncapsulation} { ciphertext, sharedSecret, errorVector }
      */
     Encapsulate(seed) {
@@ -3098,8 +3098,8 @@
 
     /**
      * Decapsulate with the configured private key.
-     * @param {int32[]} ciphertext - the syndrome
-     * @returns {int32[]} the shared secret
+     * @param {uint8[]} ciphertext - the syndrome
+     * @returns {uint8[]} the shared secret
      */
     Decapsulate(ciphertext) {
       if (!this._privateKey) throw new Error('Classic McEliece decapsulation needs a private key');

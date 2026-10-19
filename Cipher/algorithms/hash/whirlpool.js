@@ -193,7 +193,7 @@
       this.subCategory = "AES-Based Hash";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.MULTI;
+      this.country = CountryCode.INTL;
 
       // Hash-specific metadata
       this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits

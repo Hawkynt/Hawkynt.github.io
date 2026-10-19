@@ -62,9 +62,11 @@ OpCodes argument and result), **2.** the AlgorithmFramework interfaces (`Feed`,
 (`@type` on constants, tables and `this.field` assignments, `@param`/`@returns` on
 helpers and methods); a sibling data module the file requires (`./x.data.js`) is typed
 by its own JSDoc the same way, so its classes, functions and `@type` tables keep their
-types where the file destructures them. Anything else is a guess: a table typed by its literal
-magnitudes, `data || []`, raw `a + b` on fixed-width values, `OpCodes.XorN` (BigInt)
-applied to numbers, an unannotated parameter.
+types where the file destructures them; TYPES and SOUNDNESS therefore check the data
+modules as well (SOUNDNESS the values their own loading computes). Anything else is a
+guess: a table typed by its literal magnitudes, `data || []`, raw `a + b` on fixed-width
+values, `OpCodes.XorN` (BigInt) applied to numbers, an unannotated parameter, a variable
+typed only by its integer literal (`let tau = 0`) that is later given a fraction.
 
 `TypeCoverage.js` parses a file into the same typed IL AST the language emitters use
 and counts those sites (value positions only; declaration names, keys, callees,
@@ -73,8 +75,14 @@ is. A type that states no width counts as none, its array forms too (`any`, `any
 `number[]`, `Array<*>`). Besides values it counts storage and kinds: every variable
 (`let a, b;` included), parameter and field whose type is missing or weak; a value of
 one kind where its context declares another (a number for a `boolean` parameter, a
-BigInt literal for a `uint8`); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
-and an accessor whose setter takes another type than its getter returns. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
+BigInt literal for a `uint8`); an array whose element type differs from the array type
+its context declares (an `int32[]` or a `Uint32Array` passed where `uint8[]` is declared:
+a typed language converts a scalar, never an array; arrays of classes are not judged, an
+array literal takes the declared type when each element converts without loss, and
+`OpCodes.CreateArray(n, 0)` is the fresh array its target declares); a boolean used as a number (`n += OpCodes.GetBit(x, i)`);
+an accessor whose setter takes another type than its getter returns; and a read of a
+framework enum member the enum does not declare (`CountryCode.XY` reads undefined), in
+any position. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
 rises above it, a budget of 0 means the file is policy-clean, and
 `--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
 given as well to raise one or add a file). `--verbose` lists every site with file, line,
@@ -93,9 +101,14 @@ name, runs its algorithms' vectors and checks every value against the IL type of
 site: integer range and integrality, Number or BigInt, boolean, string, an array's
 typed-array kind and sampled elements, an instance of a declared class (by its
 prototype chain; object literals stand for `TestCase`), a member of a declared
-framework enum, and no primitive where another reference type is declared. A value
+framework enum (or null, never undefined), and no primitive where another reference
+type is declared. Every read of a framework enum member the enum does not declare is a
+mismatch too, whether or not a vector reaches it. A value
 passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
-checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not. For an assignment the type checked is the
+checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not; a
+64-bit parameter takes a Number or a BigInt bit pattern, but no BigInt wider than 64 bits;
+an array argument's sampled elements must fit the declared element type, range included,
+since no call converts them. A `T` of a generic helper (`@template T`) is not checked. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares
 it. A site checks its first 256 values and 16 more per later vector, so a hot loop
 costs a compare once its budget is spent; `Math.random` is seeded, so counts repeat.

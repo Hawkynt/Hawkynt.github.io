@@ -139,7 +139,7 @@
       this.category = CategoryType.HASH;
       this.subCategory = "Fast Hash";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.complexity = ComplexityType.LOW;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.FR;
 
       // Hash-specific metadata

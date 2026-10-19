@@ -378,7 +378,7 @@
       // SLH-DSA; this is here to read and verify the round-3 vectors against.
       this.securityStatus = SecurityStatus.DEPRECATED;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.INTERNATIONAL;
+      this.country = CountryCode.INTL;
 
       this.SupportedKeySizes = [
         new KeySize(64, 64, 1),    // n=16 parameter sets: 4n-byte private key

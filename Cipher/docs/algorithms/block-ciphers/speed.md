@@ -8,7 +8,7 @@
 | --- | --- |
 | Category | Block Ciphers |
 | Sub-category | Block Cipher |
-| Security status | Not classified |
+| Security status | ❌ Broken |
 | Complexity | Intermediate |
 | Inventor | Yuliang Zheng |
 | Year | 1997 |
@@ -24,7 +24,7 @@
 
 ## Security
 
-**Status:** not classified — treat as unverified.
+**Status:** ❌ Broken
 
 ### Known vulnerabilities
 

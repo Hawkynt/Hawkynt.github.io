@@ -12,7 +12,7 @@
 | Complexity | Advanced |
 | Inventor | Simeon Maltchev |
 | Year | 2002 |
-| Origin | Not specified |
+| Origin | 🇧🇬 Bulgaria |
 | Source | [`algorithms/stream/darkcrypt-sn3.js`](../../../algorithms/stream/darkcrypt-sn3.js) |
 
 ## Parameters

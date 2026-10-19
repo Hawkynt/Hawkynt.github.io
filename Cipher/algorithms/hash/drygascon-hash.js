@@ -439,7 +439,7 @@
       this.subCategory = "Lightweight Hash";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.FRANCE;
+      this.country = CountryCode.FR;
 
       this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
@@ -631,7 +631,7 @@
       this.subCategory = "Lightweight Hash";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.FRANCE;
+      this.country = CountryCode.FR;
 
       this.SupportedOutputSizes = [new KeySize(64, 64, 1)];
 

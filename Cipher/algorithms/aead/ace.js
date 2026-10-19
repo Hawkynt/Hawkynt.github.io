@@ -203,7 +203,7 @@
       this.subCategory = "Lightweight Cryptography";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.SINGAPORE;
+      this.country = CountryCode.SG;
 
       this.SupportedKeySizes = [new KeySize(16, 16, 1)];
       this.SupportedBlockSizes = [new KeySize(8, 8, 1)]; // Rate

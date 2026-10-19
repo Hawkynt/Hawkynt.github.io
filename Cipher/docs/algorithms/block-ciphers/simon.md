@@ -9,7 +9,7 @@
 | Category | Block Ciphers |
 | Sub-category | Block Cipher |
 | Security status | 🎓 Educational Only |
-| Complexity | Not specified |
+| Complexity | Beginner |
 | Inventor | NSA (National Security Agency) |
 | Year | 2013 |
 | Origin | 🇺🇸 United States |

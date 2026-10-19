@@ -227,10 +227,10 @@
 
       // Output with wr and wl swapped
       return [
-        OpCodes.And32(OpCodes.Shr32(wr, 8), 0xFF),
-        OpCodes.And32(wr, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(wl, 8), 0xFF),
-        OpCodes.And32(wl, 0xFF)
+        OpCodes.GetByte(wr, 1),
+        OpCodes.ToByte(wr),
+        OpCodes.GetByte(wl, 1),
+        OpCodes.ToByte(wl)
       ];
     }
 
@@ -254,10 +254,10 @@
 
       // Output with wr and wl swapped
       return [
-        OpCodes.And32(OpCodes.Shr32(wr, 8), 0xFF),
-        OpCodes.And32(wr, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(wl, 8), 0xFF),
-        OpCodes.And32(wl, 0xFF)
+        OpCodes.GetByte(wr, 1),
+        OpCodes.ToByte(wr),
+        OpCodes.GetByte(wl, 1),
+        OpCodes.ToByte(wl)
       ];
     }
 

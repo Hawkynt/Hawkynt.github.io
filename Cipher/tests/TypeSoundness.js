@@ -43,11 +43,16 @@
  *   a class                      an instance of it (its prototype chain names
  *                                the class): no primitive, array, plain
  *                                object or instance of another class
- *   a framework enum             one of the enum's members (CountryCode.US)
+ *   a framework enum             one of the enum's members (CountryCode.US) or
+ *                                null, never undefined (what a member the enum
+ *                                does not declare reads)
  *   any other reference type     no primitive (a typedef, Map, Object, ...)
  *
+ * Every read of a framework enum member the enum does not declare
+ * (`CountryCode.XY`) is a mismatch as well, whether or not a vector reaches it.
+ *
  * null and undefined are
- * accepted for arrays, strings and references and rejected for numbers and
+ * accepted for arrays, strings and other references and rejected for numbers and
  * booleans - unless the IL marks the value type nullable (`nullable: true`,
  * from `{int32|null}`, `{?uint32}`, ...), checked here as 'T?'. A store
  * into a typed array converts the value (JS truncates silently), so for
@@ -182,8 +187,11 @@ function buildChecker(raw) {
   const whole = v => !Number.isFinite(v) ? (Number.isNaN(v) ? 'nan' : 'infinite') : v !== Math.floor(v) ? 'fraction' : null;
   if (INT_RANGES[type] && kindOnly)
     return v => typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
+  // A 64-bit parameter takes a uint64 or an int64 bit pattern alike; a BigInt
+  // wider than 64 bits fits neither (no typed target's 64-bit integer holds it).
   if (WIDE_RANGES[type] && kindOnly)
-    return v => typeof v === 'bigint' ? null : typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
+    return v => typeof v === 'bigint' ? (v < WIDE_RANGES.int64[0] ? 'below-range' : v > WIDE_RANGES.uint64[1] ? 'above-range' : null)
+      : typeof v !== 'number' ? wrongPrimitive(v) : whole(v);
   if (INT_RANGES[type]) {
     const [lo, hi] = INT_RANGES[type];
     return v => {
@@ -238,7 +246,9 @@ function buildChecker(raw) {
   }
   if (type.endsWith('[]')) {
     const elementType = type.slice(0, -2);
-    const element = sub(elementType);
+    // A call converts a scalar argument, never the elements of an array: an
+    // array passed where T[] is declared holds T, range included.
+    const element = checkerFor(elementType);
     const elementName = ALIASES[elementType] || elementType;
     return v => {
       if (v === null || v === undefined) return null;
@@ -319,7 +329,10 @@ function referenceChecker(type) {
     case 'enum': {
       const members = new Set(Object.values(global.AlgorithmFramework[type]));
       return v => {
-        if (v === null || v === undefined) return null;
+        // null states no member; undefined is what a member the enum does not
+        // declare reads (CountryCode.XY)
+        if (v === undefined) return 'undefined-enum-member';
+        if (v === null) return null;
         const bad = notAReference(v);
         return bad || (members.has(v) ? null : 'not-enum-member');
       };
@@ -409,9 +422,20 @@ function collectSites(parser, ast) {
 
   const hasRange = n => n && Array.isArray(n.range) && n.range[1] > n.range[0];
   const isFunction = n => n && FUNCTION_TYPES.has(n.type);
+  // The type parameters of the file's generic functions (`@template T`): a
+  // `T` or `T[]` stands for whatever a call binds, so it states nothing to check.
+  const templates = new Set();
+  (function gather(n, seen) {
+    if (!n || typeof n !== 'object' || seen.has(n)) return;
+    seen.add(n);
+    if (Array.isArray(n)) { for (const x of n) gather(x, seen); return; }
+    if (n.typeInfo && Array.isArray(n.typeInfo.templates)) for (const t of n.typeInfo.templates) templates.add(t);
+    for (const key of Object.keys(n)) if (!SKIP_KEYS.has(key) || key === 'typeInfo') { if (key !== 'typeInfo') gather(n[key], seen); }
+  })(ast, new Set());
+  const isTemplate = name => templates.size > 0 && name.split(/[^A-Za-z0-9_$]+/).some(part => templates.has(part));
   const ilType = t => {
     const name = typeName(t);
-    return name && checkerFor(name) ? name : null;
+    return name && !isTemplate(name) && checkerFor(name) ? name : null;
   };
   // The type of an IL node's value: its resultType, 'T?' when the IL marks it nullable.
   const nodeType = n => {
@@ -599,8 +623,8 @@ function collectSites(parser, ast) {
         break;
       case 'ArrayAppend': {
         const arrayType = typeName(node.array && node.array.resultType);
-        const element = arrayType.endsWith('[]') ? arrayType.slice(0, -2) : null;
-        if (element && checkerFor(element))
+        const element = arrayType.endsWith('[]') ? ilType(arrayType.slice(0, -2)) : null;
+        if (element)
           for (const value of node.values || [])
             if (value && value.type !== 'SpreadElement')
               add(value, 'value', [{ type: element, role: 'element', origin: valueOrigin(node.array, here) }]);
@@ -617,6 +641,27 @@ function collectSites(parser, ast) {
 
   walk(ast, { className: null, fn: null, pendingMethod: null, scope: { parent: null, declared: new Map(), types: new Map() } });
   return mergeSites(sites);
+}
+
+/**
+ * The reads of framework enum members the enum does not declare (the IL marks
+ * them `missingEnumMember`), test vectors included.
+ * @param {Object} ast - IL AST
+ * @returns {Object[]} IL nodes
+ */
+function missingEnumMembers(ast) {
+  const found = [];
+  const seen = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (typeof node.missingEnumMember === 'string') found.push(node);
+    for (const key of Object.keys(node))
+      if (!SKIP_KEYS.has(key)) walk(node[key]);
+  };
+  walk(ast);
+  return found;
 }
 
 /**
@@ -937,11 +982,23 @@ async function checkFile(filePath, options = {}) {
   const absolute = path.resolve(filePath);
   const source = typeof options.source === 'string' ? options.source : fs.readFileSync(absolute, 'utf8');
   const parsed = options.parsed && options.parsed.parser ? options.parsed : parseSource(source, absolute);
-  const done = (result) => ({ ...result, timeMs: Number(process.hrtime.bigint() - start) / 1e6 });
+  const absent = [];
+  const done = (result) => ({ ...result, mismatches: absent.concat(result.mismatches), timeMs: Number(process.hrtime.bigint() - start) / 1e6 });
   if (!parsed.parser) return done({ sites: 0, hitSites: 0, mismatches: [], error: `unparsed: ${parsed.error}` });
 
   const sites = collectSites(parsed.parser, parsed.ast);
   const text = parsed.parser.normalizedCode;
+  // A framework enum member the file reads but the enum does not declare is
+  // undefined wherever it flows, whether or not a vector reaches it.
+  for (const node of missingEnumMembers(parsed.ast)) {
+    const [enumName] = node.missingEnumMember.split('.');
+    absent.push({
+      line: (node.loc && node.loc.line) || 0,
+      expression: node.range ? text.slice(node.range[0], node.range[1]).replace(/\s+/g, ' ').trim() : node.missingEnumMember,
+      role: 'value', type: enumName, origin: 'framework', kind: 'missing-enum-member',
+      kinds: { 'missing-enum-member': 1 }, observed: ['undefined'], count: 1, hits: 0
+    });
+  }
   const hit = `__typeSoundness${++fileCounter}`;
   const code = instrument(text, sites, hit);
   try {

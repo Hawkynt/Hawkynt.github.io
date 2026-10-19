@@ -26,9 +26,16 @@
  *     counted site is not counted twice);
  *   - a value of one kind where its context declares another: a number where a
  *     `boolean` parameter is declared, a BigInt literal for a `uint8`, ...;
+ *   - an array of one element type where its context declares an array of
+ *     another (`int32[]` or a `Uint32Array` where `uint8[]` is declared): a
+ *     typed language converts a scalar, never an array;
  *   - a boolean used as a number (`n += OpCodes.GetBit(x, i)`, `1 - flag`);
+ *   - a variable typed only by its integer literal (`let tau = 0`, no JSDoc)
+ *     that a later assignment gives a float64 (`tau += R / k`);
  *   - an accessor whose setter takes another type than its getter returns (a
- *     property no typed language declares with one type).
+ *     property no typed language declares with one type);
+ *   - a read of a framework enum member that does not exist (`CountryCode.XY`
+ *     reads undefined), in any position.
  *
  * `number` versus float: the IL names a genuine floating-point value
  * 'float64'/'float32' (fractional literals, `/`, Math.sqrt, ...). A bare
@@ -155,6 +162,33 @@ function kindsDiffer(a, b) {
   return true;
 }
 
+/** Element types an array of one cannot be passed for an array of another. */
+const VALUE_ELEMENTS = /^(u?int(8|16|32|64)|float(32|64)|bigint|boolean|string)$/;
+
+/**
+ * Do an array value and the array type its context declares hold different
+ * value types (an int32[] where uint8[] is declared, a Uint32Array where
+ * uint8[] is, uint8[] where uint8[][] is)? A typed language converts a
+ * scalar at a call, but never an array: its element type is part of its
+ * type. Arrays of class or record types (covariant in the targets),
+ * tuples and types without a width are not judged.
+ * @param {string} value - the value's type
+ * @param {string} declared - the context's type
+ * @returns {boolean} true when the element types differ
+ */
+function elementTypesDiffer(value, declared) {
+  const canonical = parserClass()._canonicalIL;
+  const split = t => {
+    let base = canonical(t), depth = 0;
+    while (base.endsWith('[]')) { base = base.slice(0, -2); ++depth; }
+    return { base, depth };
+  };
+  const v = split(value), d = split(declared);
+  if (v.depth === 0 || d.depth === 0) return false;
+  if (!VALUE_ELEMENTS.test(v.base) || !VALUE_ELEMENTS.test(d.base)) return false;
+  return v.base !== d.base || v.depth !== d.depth;
+}
+
 /** Operators that treat their operands as numbers. */
 const NUMERIC_OPERATORS = new Set(['+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', '>>>']);
 
@@ -254,6 +288,10 @@ function analyzeSource(code, filePath) {
       record(node, where, `a ${kind === 'bigint' ? 'BigInt' : t} value where ${context} is declared; convert it explicitly`, 'local');
       return;
     }
+    if (context && elementTypesDiffer(t, context)) {
+      record(node, where, `a ${t} value where ${context} is declared; an array is not converted, so declare the type it holds or convert its elements`, 'local');
+      return;
+    }
     if (!isWeakType(t) || node.contextType) return;
     let tier = 'local';
     let reason = t === 'number'
@@ -289,11 +327,21 @@ function analyzeSource(code, filePath) {
       line: (node.loc && node.loc.line) || where.line,
       range: node.range || where.range,
       className: where.className,
-      inCondition: where.inCondition
+      inCondition: where.inCondition,
+      scope: where.scope
     };
     if ((node.type === 'ClassDeclaration' || node.type === 'ClassExpression') && node.id && node.id.name)
       here.className = node.id.name;
+    // Each function has its own variables (for the literal-initialised check below).
+    if (FUNCTION_DECLARATIONS.has(node.type) || node.type === 'MethodDefinition')
+      here.scope = { parent: where.scope, vars: new Map() };
 
+    // CountryCode.XY that the framework enum does not declare reads undefined,
+    // wherever it is read (a condition included).
+    if (node.missingEnumMember && !seen.has(node)) {
+      seen.add(node);
+      record(node, here, `framework enum member ${node.missingEnumMember} does not exist; it reads undefined`, 'local');
+    }
     if (isValue && node.type && !NOT_VALUES.has(node.type) && !(node.type === 'Literal' && node.regex))
       judge(node, here);
 
@@ -356,7 +404,27 @@ function analyzeSource(code, filePath) {
         record(o, { ...where, line: (o.loc && o.loc.line) || where.line, range: o.range || where.range },
           'a boolean used as a number; convert it with `? 1 : 0`', 'local');
   };
+  // `let tau = 0` declares no type: the IL types it by its integer literal.
+  // A later fraction stored into it (`tau += R / k`) does not fit that type,
+  // and no typed target stores a double in an integer silently.
+  const literalTyped = (node, where) => {
+    if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' && where.scope) {
+      const init = node.init;
+      const integerLiteral = init && init.type === 'Literal' && typeof init.value === 'number' && Number.isInteger(init.value);
+      where.scope.vars.set(node.id.name, { literalTyped: integerLiteral && !node.declaredType, node: node.id, reported: false });
+      return;
+    }
+    if (node.type !== 'AssignmentExpression' || !node.left || node.left.type !== 'Identifier' || !node.right) return;
+    let entry = null;
+    for (let s = where.scope; s && !entry; s = s.parent) entry = s.vars.get(node.left.name) || null;
+    if (!entry || !entry.literalTyped || entry.reported) return;
+    if (!/^float(32|64)$/.test(typeName(node.right.resultType))) return;
+    entry.reported = true;
+    record(entry.node, { ...where, line: (entry.node.loc && entry.node.loc.line) || where.line, range: entry.node.range || where.range },
+      `variable '${node.left.name}' is typed by its integer literal but line ${(node.loc && node.loc.line) || where.line} stores a ${typeName(node.right.resultType)} into it; declare its type`, 'local');
+  };
   const storage = (node, where) => {
+    literalTyped(node, where);
     booleanArithmetic(node, where);
     // set p(v: S) beside get p(): G with S != G - a property of no one type
     if (node.type === 'MethodDefinition' && node.kind === 'set' && where.className && node.key && parser.accessorTypeConflict) {
@@ -398,7 +466,7 @@ function analyzeSource(code, filePath) {
     }
   };
 
-  walk(ast, false, { line: 0, range: null, className: null, inCondition: false });
+  walk(ast, false, { line: 0, range: null, className: null, inCondition: false, scope: { parent: null, vars: new Map() } });
   sites.sort((a, b) => a.line - b.line);
   // The parse is handed on (TypeSoundness.js checks the same IL AST).
   return { sites, parseError: null, parsed: { parser, ast } };

@@ -12,7 +12,7 @@
 | Complexity | Intermediate |
 | Inventor | Markus F.X.J. Oberhumer |
 | Year | 1996 |
-| Origin | Not specified |
+| Origin | 🇦🇹 Austria |
 | Source | [`algorithms/compression/lzo.js`](../../../algorithms/compression/lzo.js) |
 
 ## Security

@@ -411,10 +411,10 @@
         // Convert keystream word to bytes (big-endian)
         /** @type {uint8[]} */
         const keystreamBytes = [
-          OpCodes.And32(OpCodes.Shr32(keystreamWord, 24), 0xFF),
-          OpCodes.And32(OpCodes.Shr32(keystreamWord, 16), 0xFF),
-          OpCodes.And32(OpCodes.Shr32(keystreamWord, 8), 0xFF),
-          OpCodes.And32(keystreamWord, 0xFF)
+          OpCodes.GetByte(keystreamWord, 3),
+          OpCodes.GetByte(keystreamWord, 2),
+          OpCodes.GetByte(keystreamWord, 1),
+          OpCodes.ToByte(keystreamWord)
         ];
 
         // XOR with input data

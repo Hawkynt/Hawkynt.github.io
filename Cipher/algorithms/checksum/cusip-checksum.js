@@ -196,6 +196,7 @@
       }
 
       // Check digit calculation
+      /** @type {uint8} */
       const checkDigit = (10 - (sum % 10)) % 10;
 
       this.chars = [];

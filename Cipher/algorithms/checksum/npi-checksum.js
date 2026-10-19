@@ -166,7 +166,7 @@
    */
 
     Result() {
-      /** @type {int32} */
+      /** @type {uint8} */
       let checkDigit = 0;
 
       if (this.digits.length > 0) {

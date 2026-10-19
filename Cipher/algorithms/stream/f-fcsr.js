@@ -136,9 +136,9 @@
       this.year = 2005;
       this.category = CategoryType.STREAM;
       this.subCategory = "FCSR Stream Cipher";
-      this.securityStatus = SecurityStatus.INSECURE;
+      this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.FRANCE;
+      this.country = CountryCode.FR;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [

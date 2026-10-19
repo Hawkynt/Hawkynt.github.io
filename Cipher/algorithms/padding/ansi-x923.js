@@ -60,7 +60,7 @@
       this.category = CategoryType.PADDING;
       this.subCategory = "Block Padding";
       this.securityStatus = SecurityStatus.SECURE; // Standard padding scheme
-      this.complexity = ComplexityType.SIMPLE;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       this.documentation = [

@@ -332,7 +332,7 @@ class TypeScriptPlugin extends LanguagePlugin {
     out += source.slice(at);
     // A placeholder method that only throws would return void, and the
     // overrides that implement it could then return nothing else
-    out = out.replace(/^(\s*\w+\([^)]*\))(\s*\{\s*throw\s+'[^']*'\s*\})/gm, '$1: any$2');
+    out = out.replace(/^(\s*\w+\([^)]*\))(\s*\{\s*throw\s+'[^']*'\s*;?\s*\})/gm, '$1: any$2');
     // The enums: frozen objects whose members are looked up by name; one an
     // algorithm names that does not exist is undefined, as in JavaScript
     return out.replace(/const\s+(\w+)\s*=\s*Object\.freeze\(\{/g, 'const $1: { readonly [member: string]: any } = Object.freeze({');

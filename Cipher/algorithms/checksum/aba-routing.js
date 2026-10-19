@@ -172,6 +172,7 @@
       }
 
       // Check digit calculation: (10 - sum mod 10) mod 10
+      /** @type {uint8} */
       const checkDigit = (10 - (sum % 10)) % 10;
 
       this.digits = [];

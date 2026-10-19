@@ -12,7 +12,7 @@
 | Complexity | Expert |
 | Inventor | Jyrki Joutsenlahti, Timo Knuutila |
 | Year | 2005 |
-| Origin | Not specified |
+| Origin | 🇫🇮 Finland |
 | Source | [`algorithms/stream/tsc-4.js`](../../../algorithms/stream/tsc-4.js) |
 
 ## Parameters
