@@ -26,9 +26,9 @@ function fakeCtx() {
 let canvasCount = 0;
 global.document = { createElement: () => { ++canvasCount; return { width: 0, height: 0, getContext: () => fakeCtx() }; } };
 
-require('../puzzle-core.js');
-require('../levels-data.js');
-require('../board-art.js');
+require('../js/core/puzzle-core.js');
+require('../js/data/levels-data.js');
+require('../js/art/board-art.js');
 
 const Board = window.SZ.PuzzleBoard;
 const Core = window.SZ.PuzzleCore;
@@ -48,7 +48,7 @@ check('module registered', !!Board && typeof Board.create === 'function' && type
 check('export frozen', Object.isFrozen(Board), 'SZ.PuzzleBoard is not frozen');
 check('five realm styles', Board.STYLES.length === 5, Board.STYLES.length + ' styles');
 
-const src = fs.readFileSync(require.resolve('../board-art.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/art/board-art.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 for (let realm = 0; realm < 5; ++realm) {

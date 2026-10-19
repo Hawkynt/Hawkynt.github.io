@@ -1,8 +1,8 @@
 'use strict';
 
 global.window = {};
-require('../puzzle-core.js');
-require('../levels-data.js');
+require('../js/core/puzzle-core.js');
+require('../js/data/levels-data.js');
 
 const core = window.SZ.PuzzleCore;
 const data = window.SZ.PuzzleLevels;

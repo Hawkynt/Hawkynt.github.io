@@ -38,7 +38,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../scene-art.js');
+require('../js/art/scene-art.js');
 
 const Art = window.SZ.PuzzleScene;
 const EXPORTS = ['REALM_SCENES', 'create', 'drawElementIcon', 'drawSpell'];
@@ -83,7 +83,7 @@ check('export frozen', !!(Art && Object.isFrozen(Art)), 'SZ.PuzzleScene is not f
 const keys = Art ? Object.keys(Art.REALM_SCENES).sort() : [];
 check('REALM_SCENES has the five realm keys', keys.join(',') === '0,1,2,3,4', 'got ' + keys.join(','));
 
-const source = fs.readFileSync(require.resolve('../scene-art.js'), 'utf8');
+const source = fs.readFileSync(require.resolve('../js/art/scene-art.js'), 'utf8');
 check('no shadowBlur in the source', source.indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 for (let r = 0; r < REALMS.length; ++r) {

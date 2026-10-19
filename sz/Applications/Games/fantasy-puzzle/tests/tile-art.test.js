@@ -31,7 +31,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../tile-art.js');
+require('../js/art/tile-art.js');
 
 const Art = window.SZ.PuzzleArt;
 const EXPORTS = ['TILE', 'THEMES', 'getTile', 'drawTile', 'drawHero', 'drawRuneGlow', 'drawPortal'];
@@ -137,7 +137,7 @@ drawCheck('drawRuneGlow collected', ctx => Art.drawRuneGlow(ctx, 4, 130, 90, 2.5
 drawCheck('drawPortal', ctx => Art.drawPortal(ctx, 1, 130, 90, 1.25, false), 2);
 drawCheck('drawPortal open', ctx => Art.drawPortal(ctx, 3, 130, 90, 2.5, true), 2);
 
-const src = fs.readFileSync(require.resolve('../tile-art.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/art/tile-art.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') === -1, 'shadowBlur found in tile-art.js');
 
 console.log(failures === 0 ? 'ALL PASS (' + canvasCount + ' sprites built)' : failures + ' FAILURES');

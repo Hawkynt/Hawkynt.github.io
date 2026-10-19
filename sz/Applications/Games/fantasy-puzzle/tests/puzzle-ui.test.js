@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../puzzle-ui.js');
+require('../js/ui/puzzle-ui.js');
 
 let failures = 0;
 

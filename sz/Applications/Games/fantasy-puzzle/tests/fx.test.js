@@ -22,7 +22,7 @@ function fakeCtx() {
 let canvasCount = 0;
 global.document = { createElement: () => { ++canvasCount; return { width: 0, height: 0, getContext: () => fakeCtx() }; } };
 
-require('../fx.js');
+require('../js/render/fx.js');
 
 const Fx = window.SZ.PuzzleFx;
 let failures = 0;
@@ -38,7 +38,7 @@ function check(name, ok, details) {
 
 check('module registered', !!Fx && typeof Fx.create === 'function', 'SZ.PuzzleFx missing');
 check('export frozen', Object.isFrozen(Fx), 'SZ.PuzzleFx is not frozen');
-const src = fs.readFileSync(require.resolve('../fx.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/render/fx.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 /* every preset runs and stays under the cap however hard it is driven */

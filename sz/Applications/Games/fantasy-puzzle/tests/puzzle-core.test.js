@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../puzzle-core.js');
+require('../js/core/puzzle-core.js');
 
 const core = window.SZ.PuzzleCore;
 const T = core.T;

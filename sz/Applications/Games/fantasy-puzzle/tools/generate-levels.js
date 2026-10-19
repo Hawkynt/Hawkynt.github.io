@@ -24,7 +24,7 @@
  */
 
 global.window = {};
-require('../puzzle-core.js');
+require('../js/core/puzzle-core.js');
 const core = window.SZ.PuzzleCore;
 
 const MAX_STATES = 300000;
@@ -534,7 +534,7 @@ function writeData(campaign, bonus) {
     '  const BONUS = Object.freeze([\n' + bonus.map(levelSrc).join(',\n') + '\n  ]);\n\n' +
     '  SZ.PuzzleLevels = Object.freeze({ REALMS, CAMPAIGN, BONUS });\n' +
     '})();\n';
-  require('fs').writeFileSync(require('path').join(__dirname, '..', 'levels-data.js'), out);
+  require('fs').writeFileSync(require('path').join(__dirname, '..', 'js', 'data', 'levels-data.js'), out);
 }
 
 function summarize(title, levels) {
