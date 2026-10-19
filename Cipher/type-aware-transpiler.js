@@ -6094,7 +6094,24 @@
      * @private
      */
     _transformBinaryExpression(node, context) {
-      const left = this._transformNode(node.left, context);
+      // A long left-nested chain (a data table spelled as thousands of
+      // concatenated pieces) is transformed from its innermost operation
+      // outwards by a loop: one call per level overflowed the stack.
+      const transformedLefts = this._transformedLefts || (this._transformedLefts = new WeakMap());
+      if (!transformedLefts.has(node)) {
+        const spine = [];
+        for (let n = node.left; n?.type === 'BinaryExpression' && !transformedLefts.has(n); n = n.left) spine.push(n);
+        if (spine.length > 64) {
+          let il = this._transformNode(spine[spine.length - 1], context);
+          for (let i = spine.length - 2; i >= 0; --i) {
+            transformedLefts.set(spine[i], il);
+            il = this._transformNode(spine[i], context);
+          }
+          transformedLefts.set(node, il);
+        }
+      }
+      const left = transformedLefts.has(node) ? transformedLefts.get(node) : this._transformNode(node.left, context);
+      transformedLefts.delete(node);
       const right = this._transformNode(node.right, context);
       const op = node.operator;
 
