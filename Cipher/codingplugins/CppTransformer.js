@@ -545,7 +545,7 @@
             if (n.declaredType && target && target.type === 'ThisPropertyAccess' && !target.computed && !inStatic) add(target.property, n.declaredType, true);
             // a field set to undefined: a number or boolean field then holds undefined as well
             if (n.type === 'AssignmentExpression' && n.operator === '=' && target && target.type === 'ThisPropertyAccess' && !target.computed && !inStatic &&
-                n.right && n.right.resultType === 'void' && (n.right.type === 'Literal' || (n.right.type === 'Identifier' && n.right.name === 'undefined')))
+                n.right && (n.right.isUndefined || n.right.resultType === 'void' && (n.right.type === 'Literal' || (n.right.type === 'Identifier' && n.right.name === 'undefined'))))
               undefinedFields.add(target.property);
           }
           if (n.type === 'ClassDeclaration' || n.type === 'ClassExpression') return;
