@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../kitchen-data.js');
+require('../js/data/kitchen-data.js');
 
 let failures = 0;
 

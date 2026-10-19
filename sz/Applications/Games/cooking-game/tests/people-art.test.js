@@ -31,7 +31,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../people-art.js');
+require('../js/art/people-art.js');
 
 const Art = window.SZ.PeopleArt;
 const EXPORTS = ['randomLook', 'drawCustomer', 'drawChef', 'drawMood'];
@@ -134,7 +134,7 @@ for (let m = 0; m < MOODS.length; ++m)
 blitCheck('drawMood default size', c => Art.drawMood(c, 30, 40, 'love'));
 blitCheck('drawMood unknown falls back', c => Art.drawMood(c, 30, 40, 'hungry', 32));
 
-const src = fs.readFileSync(require.resolve('../people-art.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/art/people-art.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') === -1, 'shadowBlur found in people-art.js');
 
 console.log(failures === 0 ? 'ALL PASS (' + canvasCount + ' sprites built)' : failures + ' FAILURES');

@@ -37,7 +37,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../scene-art.js');
+require('../js/art/scene-art.js');
 
 const Art = window.SZ.KitchenScene;
 const NAMES = ['truck', 'diner', 'bistro', 'sushi', 'hotel'];
@@ -77,7 +77,7 @@ check('export frozen', !!(Art && Object.isFrozen(Art)), 'SZ.KitchenScene is not 
 const keys = Art ? Object.keys(Art.THEMES).sort() : [];
 check('THEMES has the five location keys', keys.join(',') === NAMES.slice().sort().join(','), 'got ' + keys.join(','));
 
-const source = fs.readFileSync(__dirname + '/../scene-art.js', 'utf8');
+const source = fs.readFileSync(__dirname + '/../js/art/scene-art.js', 'utf8');
 check('no shadowBlur in the source', source.indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 for (let i = 0; i < NAMES.length; ++i) {

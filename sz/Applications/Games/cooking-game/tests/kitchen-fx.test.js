@@ -24,7 +24,7 @@ function fakeCtx() {
 let canvasCount = 0;
 global.document = { createElement: () => { ++canvasCount; return { width: 0, height: 0, getContext: () => fakeCtx() }; } };
 
-require('../kitchen-fx.js');
+require('../js/render/kitchen-fx.js');
 
 const FX = window.SZ.KitchenFX;
 let failures = 0;
@@ -83,7 +83,7 @@ fx.emit('spark', 0, 0, 5);
 fx.clear();
 check('clear', fx.count === 0, 'count ' + fx.count);
 
-const src = fs.readFileSync(require.resolve('../kitchen-fx.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/render/kitchen-fx.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') === -1, 'shadowBlur found in kitchen-fx.js');
 
 console.log(failures === 0 ? 'ALL PASS (' + canvasCount + ' sprites built)' : failures + ' FAILURES');

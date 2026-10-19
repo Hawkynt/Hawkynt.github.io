@@ -31,7 +31,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../food-art.js');
+require('../js/art/food-art.js');
 
 const Art = window.SZ.FoodArt;
 const EXPORTS = ['DISHES', 'getDish', 'drawDish', 'drawStation', 'drawStationFx', 'drawHalo', 'drawStepIcon'];
@@ -127,7 +127,7 @@ for (let s = 0; s < STATIONS.length; ++s)
     drawCheck('drawStationFx ' + STATIONS[s] + ' ' + STATES[t], c => Art.drawStationFx(c, STATIONS[s], 0, 0, STATES[t], 1.3, 0.7), 16);
 drawCheck('drawHalo', c => Art.drawHalo(c, 50, 50, 200, 120, 'green', 0.6), 1);
 
-const src = fs.readFileSync(require.resolve('../food-art.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/art/food-art.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') === -1, 'shadowBlur found in food-art.js');
 
 console.log(failures === 0 ? 'ALL PASS (' + canvasCount + ' sprites built)' : failures + ' FAILURES');
