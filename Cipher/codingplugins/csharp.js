@@ -414,14 +414,20 @@ class CSharpPlugin extends LanguagePlugin {
       const members = new Set();
       const methods = new Set();
       const virtuals = new Set();
-      const memberPattern = /public\s+((?:virtual\s+|override\s+|static\s+)*)[\w<>\[\],?. ]+?\s+(\w+)\s*(\{|=>|=|;|\()/g;
+      // The return type of each method, null where overloads disagree
+      const returns = new Map();
+      const memberPattern = /public\s+((?:virtual\s+|override\s+|static\s+)*)([\w<>\[\],?. ]+?)\s+(\w+)\s*(\{|=>|=|;|\()/g;
       let member;
       while ((member = memberPattern.exec(body)) !== null) {
-        members.add(member[2]);
-        if (member[3] === '(') methods.add(member[2]);
-        if (/virtual|override/.test(member[1])) virtuals.add(member[2]);
+        members.add(member[3]);
+        if (member[4] === '(') {
+          methods.add(member[3]);
+          const type = member[2].trim();
+          returns.set(member[3], returns.has(member[3]) && returns.get(member[3]) !== type ? null : type);
+        }
+        if (/virtual|override/.test(member[1])) virtuals.add(member[3]);
       }
-      this._stubMembers.set(match[1], { base: match[2] || null, members, methods, virtuals });
+      this._stubMembers.set(match[1], { base: match[2] || null, members, methods, virtuals, returns });
     }
     // Enums are types too, without members to inherit
     for (const enumMatch of stubs.matchAll(/public\s+enum\s+(\w+)/g))
@@ -510,7 +516,7 @@ namespace ${namespace}
     // scope to edit this round, so the stub absorbs the mismatch instead.
     public enum CategoryType { CHECKSUM, BLOCK, STREAM, HASH, MAC, KDF, AEAD, ASYMMETRIC, COMPRESSION, ENCODING, CLASSICAL, ECC, RANDOM, MODES, MODE, CRYPTO, SPECIAL, PADDING, PQC }
     public enum SecurityStatus { SECURE, EDUCATIONAL, DEPRECATED, BROKEN, EXPERIMENTAL, OBSOLETE, INSECURE, ACTIVE }
-    public enum CountryCode { US, DE, JP, FR, GB, CN, RU, BE, KR, IL, CH, AU, NL, AT, FI, SE, NO, DK, IT, ES, CA, OTHER, INTERNATIONAL, ANCIENT, AUSTRIA, BR, CR, EU, FRANCE, GR, ID, IN, INT, INTL, MULTI, NETHERLANDS, PL, PT, SG, SINGAPORE, TR, UA, UK, UNKNOWN, ZA }
+    public enum CountryCode { US, DE, JP, FR, GB, CN, RU, BE, KR, IL, CH, AU, NL, AT, FI, SE, NO, DK, IT, ES, CA, OTHER, INTERNATIONAL, ANCIENT, AUSTRIA, BR, CR, EU, FRANCE, GR, ID, IN, INT, INTL, MULTI, NETHERLANDS, PL, PT, SG, SINGAPORE, TR, UA, UK, UNKNOWN, ZA, BG, NZ }
     public enum ComplexityType { BEGINNER, INTERMEDIATE, ADVANCED, EXPERT, RESEARCH, BASIC = BEGINNER, ELEMENTARY = BEGINNER, TRIVIAL = BEGINNER, SIMPLE = BEGINNER, LOW = BEGINNER, MEDIUM = INTERMEDIATE, HIGH = ADVANCED }
 
     // Base classes
@@ -812,7 +818,8 @@ namespace ${namespace}
 
         public int BlockSize => _blockSize;
         public int Pending => _pending;
-        public long Length => _length;
+        // uint64, as AlgorithmFramework.js documents it
+        public ulong Length => (ulong)_length;
 
         public void Absorb(byte[] data)
         {
@@ -835,9 +842,9 @@ namespace ${namespace}
 
         private byte[] Tail() => _held.Take(_pending).ToArray();
         public T Finish<T>(Func<byte[], int, T> finalize) => finalize(Tail(), _pending);
-        public T Finish<T>(Func<byte[], int, long, T> finalize) => finalize(Tail(), _pending, _length);
+        public T Finish<T>(Func<byte[], int, ulong, T> finalize) => finalize(Tail(), _pending, (ulong)_length);
         public void Finish(Action<byte[], int> finalize) => finalize(Tail(), _pending);
-        public void Finish(Action<byte[], int, long> finalize) => finalize(Tail(), _pending, _length);
+        public void Finish(Action<byte[], int, ulong> finalize) => finalize(Tail(), _pending, (ulong)_length);
 
         public void Reset()
         {
@@ -855,19 +862,28 @@ namespace ${namespace}
         private static List<Algorithm> registry;
         private static bool scanning;
 
-        private static List<Algorithm> Scan()
+        // A registry still being initialized (its Algorithms field reads null while
+        // the module registering them runs) makes a scan incomplete
+        private static List<Algorithm> Scan(out bool complete)
         {
             var found = new List<Algorithm>();
+            complete = true;
             foreach (var type in typeof(AlgorithmFramework).Assembly.GetTypes())
             {
-                var field = type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                // The registry is Algorithms, or RegisteredAlgorithms where a module
+                // constant of the module holds that name
+                var field = type.GetField("RegisteredAlgorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                    ?? type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (field == null || field.FieldType != typeof(Algorithm[])) continue;
                 try
                 {
                     if (field.GetValue(null) is Algorithm[] algorithms)
+                    {
                         foreach (var algorithm in algorithms) if (algorithm != null) found.Add(algorithm);
+                    }
+                    else complete = false;
                 }
-                catch (Exception) { }
+                catch (Exception) { complete = false; }
             }
             return found;
         }
@@ -877,9 +893,15 @@ namespace ${namespace}
             if (registry != null) return registry;
             // A lookup while the registry is being built (a module constant looking up
             // another algorithm during its own initialization) sees what exists so far
-            if (scanning) return Scan();
+            if (scanning) return Scan(out _);
             scanning = true;
-            try { registry = Scan(); } finally { scanning = false; }
+            try
+            {
+                var found = Scan(out var complete);
+                if (!complete) return found;
+                registry = found;
+            }
+            finally { scanning = false; }
             return registry;
         }
 
@@ -970,6 +992,91 @@ namespace ${namespace}
             return atStart ? padding + s : s + padding;
         }
 
+        // JavaScript multiplies numbers as doubles: a product past 2^53 is rounded,
+        // then wrapped to the C# result type as ToInt32/ToUint32 would
+        public static int JsMul(int a, int b) => unchecked((int)JsProductBits((double)a * b));
+        public static uint JsMul(uint a, uint b) => unchecked((uint)JsProductBits((double)a * b));
+        public static long JsMul(long a, long b) => JsProductBits((double)a * b);
+        // (a fraction among the factors: the double product)
+        public static double JsMul(double a, double b) => a * b;
+        private static long JsProductBits(double product)
+        {
+            const double two63 = 9223372036854775808.0, two64 = 18446744073709551616.0;
+            if (product >= -two63 && product < two63) return (long)product;
+            double rest = product % two64;
+            if (rest >= two63) rest -= two64;
+            else if (rest < -two63) rest += two64;
+            return (long)rest;
+        }
+
+        // JavaScript's string.slice: a negative bound counts from the end, both clamp
+        // JavaScript typeof: a 64-bit integer stands for a BigInt, the narrower ones and
+        // floating point for a number, a missing value (null) for undefined
+        public static string JsTypeOf(object value) => value switch
+        {
+            null => "undefined",
+            bool => "boolean",
+            string or char => "string",
+            System.Numerics.BigInteger or long or ulong => "bigint",
+            byte or sbyte or short or ushort or int or uint or float or double or decimal => "number",
+            System.Delegate => "function",
+            _ => "object"
+        };
+        // A converted copy of an array, converted back to the element type of the array
+        // it was made from (like), as a JavaScript array holding the same numbers
+        public static T[] ArrayAs<T, S>(S[] source, T[] like) => source?.Select(v => JsNumberAs<T>(v)).ToArray();
+        // A dynamic value as an array of T: itself when it is one, else its elements
+        // converted (a byte[] given where an int32[] is declared)
+        public static T[] AsArrayOf<T>(object value) => value switch
+        {
+            null => null,
+            T[] same => same,
+            System.Collections.IEnumerable items => items.Cast<object>().Select(JsNumberAs<T>).ToArray(),
+            _ => throw new System.InvalidCastException(value.GetType().Name + " is no array")
+        };
+        // A JavaScript number as T, keeping the low bits for a narrower unsigned T
+        static T JsNumberAs<T>(object v) =>
+            v is T same ? same : (T)System.Convert.ChangeType(System.Convert.ToInt64(v) & (typeof(T) == typeof(byte) ? 0xFF : typeof(T) == typeof(ushort) ? 0xFFFF : typeof(T) == typeof(uint) ? 0xFFFFFFFFL : -1L), typeof(T));
+        // obj[name] on an object: its property or field of that name (as declared,
+        // or PascalCased as C# declares it); undefined (null) when it has none
+        public static dynamic JsMember(object obj, string name)
+        {
+            if (obj == null || string.IsNullOrEmpty(name)) return null;
+            var type = obj.GetType();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            foreach (var candidate in new[] { name, char.ToUpperInvariant(name[0]) + name.Substring(1) })
+            {
+                var property = type.GetProperty(candidate, flags);
+                if (property != null && property.GetIndexParameters().Length == 0) return property.GetValue(obj);
+                var field = type.GetField(candidate, flags);
+                if (field != null) return field.GetValue(obj);
+            }
+            return null;
+        }
+        public static string JsSlice(string s, int start) => JsSlice(s, start, s.Length);
+        public static string JsSlice(string s, int start, int end)
+        {
+            int from = start < 0 ? Math.Max(s.Length + start, 0) : Math.Min(start, s.Length);
+            int to = end < 0 ? Math.Max(s.Length + end, 0) : Math.Min(end, s.Length);
+            return to > from ? s.Substring(from, to - from) : "";
+        }
+
+        // JavaScript's string.substr(start, length)
+        public static string JsSubstr(string s, int start, int length)
+        {
+            int from = start < 0 ? Math.Max(s.Length + start, 0) : Math.Min(start, s.Length);
+            return s.Substring(from, Math.Max(Math.Min(length, s.Length - from), 0));
+        }
+
+        // JavaScript's string.split: an empty separator gives the characters
+        public static string[] JsSplit(string s, object separator)
+        {
+            if (separator == null) return new[] { s };
+            string text = separator.ToString();
+            if (text.Length == 0) return s.Select(c => c.ToString()).ToArray();
+            return s.Split(text);
+        }
+
         // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
         public static string ToRadixString(BigInteger value, long radix)
         {
@@ -994,6 +1101,10 @@ namespace ${namespace}
             var value = property?.GetValue(options);
             return value == null ? fallback : (T)Convert.ChangeType(value, typeof(T));
         }
+
+        // totalLength is a uint64 in AlgorithmFramework.js (BlockAbsorber.Finish hands one over)
+        public static byte[][] MerkleDamgardBlocks(byte[] held, long pending, ulong totalLength, object options)
+            => MerkleDamgardBlocks(held, pending, (long)Math.Min(totalLength, (ulong)long.MaxValue), options);
 
         public static byte[][] MerkleDamgardBlocks(byte[] held, long pending, long totalLength, object options)
         {
@@ -1296,18 +1407,19 @@ namespace ${namespace}
             }
             return result;
         }
-        public static byte[] SliceArray(byte[] arr, int start, int end) {
-            var result = new byte[end - start];
-            System.Array.Copy(arr, start, result, 0, result.Length);
-            return result;
-        }
+        // Array.prototype.slice: a negative bound counts from the end, both are
+        // clamped to the array, and an end before the start gives nothing.
+        public static byte[] SliceArray(byte[] arr, int start, int end) => SliceArray<byte>(arr, start, end);
         // Generic fallback for non-byte element arrays (e.g. uint[] bit/word arrays -
         // common in permutation-heavy ciphers like DES). The non-generic byte[]
         // overload above is still preferred by C# overload resolution for byte[]
         // arguments, so this only ever applies where no byte[] overload matches.
         public static T[] SliceArray<T>(T[] arr, int start, int end) {
-            var result = new T[end - start];
-            System.Array.Copy(arr, start, result, 0, result.Length);
+            int length = arr.Length;
+            int from = start < 0 ? Math.Max(length + start, 0) : Math.Min(start, length);
+            int to = end < 0 ? Math.Max(length + end, 0) : Math.Min(end, length);
+            var result = new T[Math.Max(to - from, 0)];
+            System.Array.Copy(arr, from, result, 0, result.Length);
             return result;
         }
         public static uint ToDWord(long v) => (uint)(v & 0xFFFFFFFF);
@@ -1327,8 +1439,15 @@ namespace ${namespace}
             for (int i = 0; i < a.Length; ++i) diff |= a[i] ^ b[i];
             return diff == 0;
         }
-        // Alias for SecureCompare
-        public static bool ConstantTimeCompare(byte[] a, byte[] b) => SecureCompare(a, b);
+        // OpCodes.ConstantTimeCompare: the first length elements (0: the shorter
+        // array's length), missing ones as 0, and the lengths must match too
+        public static bool ConstantTimeCompare(byte[] a, byte[] b, int length = 0) {
+            if (length == 0) length = Math.Min(a.Length, b.Length);
+            int diff = 0;
+            for (int i = 0; i < length; ++i) diff |= (i < a.Length ? a[i] : 0) ^ (i < b.Length ? b[i] : 0);
+            diff |= a.Length ^ b.Length;
+            return diff == 0;
+        }
         // Fill array with value
         public static void Fill(byte[] arr, byte value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
         public static void Fill(uint[] arr, uint value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
@@ -1544,7 +1663,48 @@ namespace ${namespace}
         public static int ToInt(dynamic value) => (int)value;
         public static ushort ToUint16(dynamic value) => (ushort)(long)value;
         public static ushort ToWord(dynamic value) => (ushort)(long)value;
-        public static ulong UInt64(dynamic value) => System.Convert.ToUInt64(value);
+        public static short ToShort(long value) => (short)(value & 0xFFFF);
+        public static System.Numerics.BigInteger ToLong(System.Numerics.BigInteger value) => (long)(ulong)(value & ulong.MaxValue);
+        // [high32, low32] pairs from 64-bit hex strings (an optional 0x prefix is stripped)
+        public static uint[][] CreateUint64ArrayFromHex(string[] hexValues) {
+            var result = new uint[hexValues.Length][];
+            for (var i = 0; i < hexValues.Length; ++i) {
+                var hex = hexValues[i];
+                if (hex.StartsWith("0x") || hex.StartsWith("0X")) hex = hex.Substring(2);
+                hex = hex.PadLeft(16, '0');
+                if (hex.Length != 16) throw new System.ArgumentException("CreateUint64ArrayFromHex: Hex string must represent 64-bit value: " + hexValues[i]);
+                result[i] = new uint[] { System.Convert.ToUInt32(hex.Substring(0, 8), 16), System.Convert.ToUInt32(hex.Substring(8, 8), 16) };
+            }
+            return result;
+        }
+        // OpCodes.UInt64: 64-bit values as [high32, low32] pairs
+        public static class UInt64 {
+            static ulong Of(uint[] a) => ((ulong)a[0] << 32) | a[1];
+            static uint[] To(ulong v) => new uint[] { (uint)(v >> 32), (uint)v };
+            public static uint[] Create(long high, long low) => new uint[] { (uint)high, (uint)low };
+            public static uint[] FromBytes(byte[] bytes) {
+                var padded = new byte[8];
+                System.Array.Copy(bytes, 0, padded, 8 - System.Math.Min(8, bytes.Length), System.Math.Min(8, bytes.Length));
+                return To(System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(padded));
+            }
+            public static byte[] ToBytes(uint[] a) {
+                var bytes = new byte[8];
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(bytes, Of(a));
+                return bytes;
+            }
+            public static uint[] Add(uint[] a, uint[] b) => To(Of(a) + Of(b));
+            public static uint[] Sub(uint[] a, uint[] b) => To(Of(a) - Of(b));
+            public static uint[] Mul(uint[] a, uint[] b) => To(Of(a) * Of(b));
+            public static uint[] Rotr(uint[] a, int n) => n == 0 ? a : To(System.Numerics.BitOperations.RotateRight(Of(a), n % 64));
+            public static uint[] Rotl(uint[] a, int n) => n == 0 ? a : To(System.Numerics.BitOperations.RotateLeft(Of(a), n % 64));
+            public static uint[] Shr(uint[] a, int n) => n == 0 ? a : To(Of(a) >> n);
+            public static uint[] Shl(uint[] a, int n) => n == 0 ? a : To(Of(a) << n);
+            public static uint[] Xor(uint[] a, uint[] b) => new uint[] { a[0] ^ b[0], a[1] ^ b[1] };
+            public static uint[] And(uint[] a, uint[] b) => new uint[] { a[0] & b[0], a[1] & b[1] };
+            public static uint[] Or(uint[] a, uint[] b) => new uint[] { a[0] | b[0], a[1] | b[1] };
+            public static uint[] Not(uint[] a) => new uint[] { ~a[0], ~a[1] };
+            public static uint[] Clone(uint[] a) => new uint[] { a[0], a[1] };
+        }
         // Generic array copy (mirrors OpCodes.js's CopyArray) - works for any element
         // type (byte[], uint[], ...), unlike the byte[]-specific helpers above.
         public static T[] CopyArray<T>(T[] arr) => arr == null ? null : (T[])arr.Clone();
@@ -1724,6 +1884,13 @@ namespace ${namespace}
         public static T[] Grown<T>(T[] arr, int index) {
             if (arr == null) return new T[index + 1];
             if (index >= arr.Length) Array.Resize(ref arr, index + 1);
+            return arr;
+        }
+        // Stored - the array, grown to hold the index, with the value stored there
+        // (for a field store whose index has a side effect, evaluated once)
+        public static T[] Stored<T>(T[] arr, int index, T value) {
+            arr = Grown(arr, index);
+            arr[index] = value;
             return arr;
         }
         public static T[] CreateArray<T>(int length, T value) {
@@ -1992,6 +2159,7 @@ namespace ${namespace}
             return data.TryGetValue(key, out var v) ? v : 0;
         }
 
+        public void Set(double row, double col, double value) => Set((long)row, (long)col, (long)value);
         public void Set(long row, long col, long value)
         {
             var key = row + "," + col;
@@ -2012,6 +2180,7 @@ namespace ${namespace}
 
         public int GetRowDegree(long row) => rowNonZeros[(int)row].Count;
         public int GetColDegree(long col) => colNonZeros[(int)col].Count;
+        public int NonZeroCount() => data.Count;
         public int[] GetRowNonZeros(long row) => rowNonZeros[(int)row].ToArray();
         public int[] GetColNonZeros(long col) => colNonZeros[(int)col].ToArray();
 
