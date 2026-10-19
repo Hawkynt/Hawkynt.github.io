@@ -66,6 +66,7 @@ const CATEGORIES = [
   { key: 'python', label: 'PYTHON', title: 'Python transpilation regressions', module: './PythonTranspileRegressions' },
   { key: 'rubybasic', label: 'RUBYBASIC', title: 'Ruby and FreeBASIC transpilation regressions', module: './RubyBasicTranspileRegressions' },
   { key: 'rustgo', label: 'RUSTGO', title: 'Go and Rust transpilation regressions', module: './RustGoTranspileRegressions' },
+  { key: 'c', label: 'C', title: 'C and C++ transpilation regressions', module: './CTranspileRegressions' },
   { key: 'tsphp', label: 'TSPHP', title: 'TypeScript and PHP transpilation regressions', module: './TsPhpTranspileRegressions' },
   { key: 'perl', label: 'PERL', title: 'Perl transpilation regressions', module: './PerlTranspileRegressions' },
   { key: 'jvm', label: 'JVM', title: 'Java and Kotlin transpilation regressions', module: './JvmTranspileRegressions' },

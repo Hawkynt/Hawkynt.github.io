@@ -82,6 +82,8 @@ function resolveTool(name) {
   // A compiled program is started by its own path
   if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   if (resolvedTools.has(name)) return resolvedTools.get(name);
+  // A program the validation built itself (a compiled harness) is started as it is
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
     if (process.platform !== 'win32') {
@@ -457,7 +459,7 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust', 'cpp', 'c']);
 // TypeScript is JavaScript with types: it bundles the way JavaScript does
 const JS_BUNDLING = new Set(['javascript', 'typescript']);
 // Languages whose dependencies are transpiled without the runtime prelude and
@@ -599,6 +601,20 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
     }
     if (language === 'basic') {
       code += basicLibraryBinding(libSrc, libCode, exported, paramName, libPath);
+      continue;
+    }
+    // C++: the library records what it exports when it initialises; the
+    // parameter's name is bound to that, for the algorithm to look up
+    if (language === 'cpp') {
+      const bound = exported.single ? `js::lastModuleExports().get(js::String(u"${exported.single}"))` : 'js::lastModuleExports()';
+      code += `${libCode}\nstatic js::ModuleInit __bind_${paramName}([] { js::bindModule(u"${paramName}", ${bound}); });\n\n`;
+      continue;
+    }
+    // C: likewise, a module of its own after the library's binds the name
+    if (language === 'c') {
+      const bound = exported.single ? `js_get(js_last_exports, js_atom_c("${exported.single}"))` : 'js_last_exports';
+      code += `${libCode}\nstatic void js_bind_${paramName}(void) { js_bind_module("${paramName}", ${bound}); }\n` +
+        `static js_module_node js_mod_bind_${paramName} = { js_bind_${paramName}, JS_MODULE_LIST };\n#undef JS_MODULE_LIST\n#define JS_MODULE_LIST (&js_mod_bind_${paramName})\n\n`;
       continue;
     }
     // A library assigning module.exports from its own IIFE keeps its names
@@ -1040,8 +1056,8 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
       if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
       prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
     }
-  } else if (['python', 'perl', 'ruby', 'basic'].includes(language)) {
-    // Python, Perl, Ruby and FreeBASIC: the library's code goes ahead of the
+  } else if (['python', 'perl', 'ruby', 'basic', 'cpp', 'c'].includes(language)) {
+    // Python, Perl, Ruby, FreeBASIC, C++ and C: the library's code goes ahead of the
     // algorithm, and the factory parameter is bound to an object holding what it exports
     const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
     if (bundled.error) return { success: false, error: bundled.error };
@@ -1097,7 +1113,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust', 'delphi']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust', 'delphi', 'cpp', 'c']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -1141,9 +1157,9 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'csharp':
       return generateCSharpTestHarness(algorithmCode, spec, algorithmName);
     case 'c':
-      return generateCTestHarness(algorithmCode, vector, algorithmName);
+      return generateCTestHarness(algorithmCode, spec, algorithmName);
     case 'cpp':
-      return generateCppTestHarness(algorithmCode, vector, algorithmName);
+      return generateCppTestHarness(algorithmCode, spec, algorithmName);
     case 'python':
       return generatePythonTestHarness(algorithmCode, spec, algorithmName);
     case 'php':
@@ -1274,64 +1290,18 @@ function generateCSharpTestHarness(algorithmCode, spec, algorithmName) {
   return { success: true, code: `${cleanedCode}\n${harness}` };
 }
 
-// C Test Harness
-function generateCTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '';
-
-  return {
-    success: true,
-    code: `#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
-
-${algorithmCode}
-
-int main(void) {
-    printf("Testing ${algorithmName}...\\n");
-
-    uint8_t input[${inputLen || 1}] = { ${inputBytes || '0'} };
-    uint8_t expected[${expectedLen || 1}] = { ${expectedBytes || '0'} };
-
-    printf("Input length: %d\\n", ${inputLen});
-    printf("Expected length: %d\\n", ${expectedLen});
-    printf("COMPILE_OK\\n");
-    return 0;
-}`
-  };
+// C vector harness (tests/validation-harness/harness.c): the transpiled code
+// carries the runtime and the framework registry; the spec is a C string literal of JSON.
+function generateCTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.c').replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)));
+  return { success: true, code: `/* Validation of ${algorithmName} */\n${algorithmCode}\n${harness}` };
 }
 
-// C++ Test Harness
-function generateCppTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '';
-
-  return {
-    success: true,
-    code: `#include <iostream>
-#include <cstdint>
-#include <cstring>
-#include <vector>
-
-${algorithmCode}
-
-int main() {
-    std::cout << "Testing ${algorithmName}..." << std::endl;
-
-    std::vector<uint8_t> input = { ${inputBytes || '0'} };
-    std::vector<uint8_t> expected = { ${expectedBytes || '0'} };
-
-    std::cout << "Input length: " << input.size() << std::endl;
-    std::cout << "Expected length: " << expected.size() << std::endl;
-    std::cout << "COMPILE_OK" << std::endl;
-    return 0;
-}`
-  };
+// C++ vector harness (tests/validation-harness/harness.cpp): the transpiled code
+// carries the runtime and its registry; the spec is a C string literal of JSON.
+function generateCppTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.cpp').replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)));
+  return { success: true, code: `// Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
 // Python vector harness (tests/validation-harness/harness.py); the spec is
@@ -1542,7 +1512,8 @@ function testCCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.c');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only'], {
+  // An executable for the vector harness (GNU C: statement expressions, __builtin_setjmp)
+  const result = spawnTool('gcc', [srcFile, '-std=gnu17', '-O1', '-w', '-o', path.join(outputDir, 'test.exe'), '-lm'], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1559,7 +1530,8 @@ function testCppCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.cpp');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only'], {
+  // An executable for the vector harness; -fwrapv is JavaScript's integer wrap-around
+  const result = spawnTool('g++', [srcFile, '-std=gnu++20', '-O1', '-fwrapv', '-w', '-o', path.join(outputDir, 'test.exe')], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1864,6 +1836,8 @@ function executeCode(language, outputDir) {
     case 'java': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'classes'), javaMainClass(outputDir)], { cwd: outputDir });
     case 'kotlin': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'test.jar'), kotlinMainClass(outputDir)], { cwd: outputDir });
     case 'delphi': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
+    case 'cpp': return runProcess(path.join(outputDir, 'test.exe'), [], { cwd: outputDir });
+    case 'c': return runProcess(path.join(outputDir, 'test.exe'), [], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }
