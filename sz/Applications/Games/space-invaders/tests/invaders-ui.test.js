@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../invaders-ui.js');
+require('../js/ui/invaders-ui.js');
 
 let failures = 0;
 

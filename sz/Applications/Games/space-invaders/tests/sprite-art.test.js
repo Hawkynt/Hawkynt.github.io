@@ -31,7 +31,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../sprite-art.js');
+require('../js/art/sprite-art.js');
 
 const Art = window.SZ.InvaderArt;
 const EXPORTS = ['ALIENS', 'SHIPS', 'BOSSES', 'getAlien', 'drawAlien', 'getShip', 'drawShip', 'drawDrone', 'drawUfo',
@@ -160,7 +160,7 @@ const FLARE_COLORS = ['white', 'orange', 'cyan', 'purple'];
 for (let i = 0; i < FLARE_COLORS.length; ++i)
   drawCheck('drawFlare ' + FLARE_COLORS[i], c => Art.drawFlare(c, FLARE_COLORS[i], 80, 90, 40, 0.8));
 
-const src = fs.readFileSync(require.resolve('../sprite-art.js'), 'utf8');
+const src = fs.readFileSync(require.resolve('../js/art/sprite-art.js'), 'utf8');
 check('no shadowBlur in source', src.indexOf('shadowBlur') === -1, 'shadowBlur found in sprite-art.js');
 
 console.log(failures === 0 ? 'ALL PASS (' + canvasCount + ' sprites built)' : failures + ' FAILURES');

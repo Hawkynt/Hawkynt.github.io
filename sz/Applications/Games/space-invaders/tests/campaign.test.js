@@ -1,7 +1,7 @@
 'use strict';
 
 global.window = {};
-require('../campaign.js');
+require('../js/core/campaign.js');
 
 let failures = 0;
 

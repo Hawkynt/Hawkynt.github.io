@@ -45,12 +45,12 @@ The game code lives in `js/` as small modules on the `SZ.SpaceInvaders` namespac
 - **`js/ui/status-bar.js`** -- Window status bar and the High Scores dialog
 - **`js/ui/input.js`** -- Keyboard and pointer input, playing keys, menu navigation and clicks, auto-pause
 - **`js/app.js`** -- The fixed 60 Hz game loop, menu bar actions and start-up
-- **`campaign.js`** -- Pure campaign data and rules: six sectors, 30 stages with per-stage difficulty, star and unlock rules, credit rewards, seeded RNG and daily seeds (no DOM, unit-tested in node)
-- **`sprite-art.js`** -- Pre-painted sprite kit: six alien species (two frames + hit flash), five ships (thrust steps), drone, UFO, six bosses (normal + damaged), player/alien/laser/orb bullets, power-up capsules, explosion flares
-- **`backdrop-art.js`** -- Six sector backdrops painted once per theme into cached 1280 x 720 canvases with a seeded rng; scrolling star layers, drifting asteroids, shooting stars; an optional view covers the whole visible canvas
-- **`invaders-ui.js`** -- Shared drawing kit: panels, auto-fitting text, chips, keycaps, meters, headlines
+- **`js/core/campaign.js`** -- Pure campaign data and rules: six sectors, 30 stages with per-stage difficulty, star and unlock rules, credit rewards, seeded RNG and daily seeds (no DOM, unit-tested in node)
+- **`js/art/sprite-art.js`** -- Pre-painted sprite kit: six alien species (two frames + hit flash), five ships (thrust steps), drone, UFO, six bosses (normal + damaged), player/alien/laser/orb bullets, power-up capsules, explosion flares
+- **`js/art/backdrop-art.js`** -- Six sector backdrops painted once per theme into cached 1280 x 720 canvases with a seeded rng; scrolling star layers, drifting asteroids, shooting stars; an optional view covers the whole visible canvas
+- **`js/ui/invaders-ui.js`** -- Shared drawing kit: panels, auto-fitting text, chips, keycaps, meters, headlines
 - **`styles.css`** -- Game layout and visual styling
-- **`tests/`** -- Node-runnable tests for `campaign.js`, `sprite-art.js`, `backdrop-art.js` and `invaders-ui.js`
+- **`tests/`** -- Node-runnable tests for `js/core/campaign.js`, `js/art/sprite-art.js`, `js/art/backdrop-art.js` and `js/ui/invaders-ui.js`
 - **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js` (particles, screen shake, floating text, confetti), `game-autopause.js`, `game-audio.js` (synthesized sound effects, mute button)
 
 ## User Stories

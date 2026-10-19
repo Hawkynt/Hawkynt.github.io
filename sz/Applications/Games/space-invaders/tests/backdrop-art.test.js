@@ -38,7 +38,7 @@ function fakeCanvas() {
 
 global.document = { createElement: () => fakeCanvas() };
 
-require('../backdrop-art.js');
+require('../js/art/backdrop-art.js');
 
 const Art = window.SZ.InvaderBackdrop;
 const NAMES = ['moon', 'mars', 'asteroids', 'jupiter', 'saturn', 'mothership'];
@@ -100,7 +100,7 @@ check('module exports THEMES and create', !!(Art && Art.THEMES && typeof Art.cre
 const keys = Art ? Object.keys(Art.THEMES).sort() : [];
 check('THEMES has the six sector keys', keys.join(',') === NAMES.slice().sort().join(','), 'got ' + keys.join(','));
 
-const source = fs.readFileSync(__dirname + '/../backdrop-art.js', 'utf8');
+const source = fs.readFileSync(__dirname + '/../js/art/backdrop-art.js', 'utf8');
 check('no shadowBlur in the source', source.indexOf('shadowBlur') < 0, 'shadowBlur found');
 
 for (let i = 0; i < NAMES.length; ++i) {
