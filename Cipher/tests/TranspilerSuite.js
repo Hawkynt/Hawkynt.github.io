@@ -65,6 +65,7 @@ const CATEGORIES = [
   { key: 'harness', label: 'HARNESS', title: 'The cross-language validation harness', module: './TranspilerValidationTests' },
   { key: 'python', label: 'PYTHON', title: 'Python transpilation regressions', module: './PythonTranspileRegressions' },
   { key: 'rubybasic', label: 'RUBYBASIC', title: 'Ruby and FreeBASIC transpilation regressions', module: './RubyBasicTranspileRegressions' },
+  { key: 'rustgo', label: 'RUSTGO', title: 'Go and Rust transpilation regressions', module: './RustGoTranspileRegressions' },
   { key: 'tsphp', label: 'TSPHP', title: 'TypeScript and PHP transpilation regressions', module: './TsPhpTranspileRegressions' },
   { key: 'perl', label: 'PERL', title: 'Perl transpilation regressions', module: './PerlTranspileRegressions' },
   { key: 'jvm', label: 'JVM', title: 'Java and Kotlin transpilation regressions', module: './JvmTranspileRegressions' },

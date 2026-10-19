@@ -358,6 +358,7 @@
      * @returns {byte[]}
      */
     function _encodeLength(value, byteCount, littleEndian) {
+      /** @type {byte[]} */
       const encoded = new Array(byteCount).fill(0);
       let remaining = Math.max(0, Math.trunc(value));
       for (let i = 0; i < byteCount; i++) {
@@ -505,7 +506,9 @@
       if (pending < 0 || pending > rate)
         throw new Error(`SpongePadBlocks: pending ${pending} outside 0..${rate}`);
 
+      /** @type {byte[][]} */
       const blocks = [];
+      /** @type {byte[]} */
       let block = new Array(rate).fill(0);
       for (let i = 0; i < pending; i++) block[i] = _byte(held[i]);
 
@@ -550,13 +553,17 @@
      * @returns {byte[][]} the blocks still to be compressed, in order
      */
     function MerkleDamgardBlocks(held, pending, totalLength, options) {
-      const settings = options || {};
+      /** @type {MerkleDamgardOptions} */
+      const settings = options || {}
+      /** @type {int} */
       const blockSize = settings.blockSize;
       if (!(blockSize > 0)) throw new Error('MerkleDamgardBlocks: blockSize must be positive');
       if (pending < 0 || pending > blockSize)
         throw new Error(`MerkleDamgardBlocks: pending ${pending} outside 0..${blockSize}`);
 
+      /** @type {int} */
       const padByte = settings.padByte === undefined ? 0x80 : settings.padByte;
+      /** @type {int} */
       const lengthBytes = settings.lengthBytes === undefined ? 8 : settings.lengthBytes;
       const littleEndian = settings.lengthLittleEndian === true;
       const inBits = settings.lengthInBits !== false;
@@ -564,7 +571,9 @@
       if (lengthBytes < 0 || lengthBytes >= blockSize)
         throw new Error(`MerkleDamgardBlocks: lengthBytes ${lengthBytes} does not fit a ${blockSize}-byte block`);
 
+      /** @type {byte[][]} */
       const blocks = [];
+      /** @type {byte[]} */
       let block = new Array(blockSize).fill(0);
       for (let i = 0; i < pending; i++) block[i] = _byte(held[i]);
 
@@ -958,6 +967,7 @@
         const blockSize = this.BlockSize;
         this.RequireBlockMultiple(blockSize);
 
+        /** @type {byte[]} */
         const output = [];
         for (let offset = 0; offset < this.inputBuffer.length; offset += blockSize) {
           const block = this.inputBuffer.slice(offset, offset + blockSize);

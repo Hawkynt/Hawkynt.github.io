@@ -79,6 +79,8 @@ const resolvedTools = new Map();
  * @returns {{command: string, shell: boolean}|null} null when it is not on PATH
  */
 function resolveTool(name) {
+  // A compiled program is started by its own path
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   if (resolvedTools.has(name)) return resolvedTools.get(name);
   // A program the validation built (a FreeBASIC harness) runs from its own path
   if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
@@ -457,12 +459,15 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust']);
 // TypeScript is JavaScript with types: it bundles the way JavaScript does
 const JS_BUNDLING = new Set(['javascript', 'typescript']);
 // Languages whose dependencies are transpiled without the runtime prelude and
 // go between the main file's prelude and its code
 const PRELUDE_SPLICING = new Set(['javascript', 'typescript', 'php']);
+// Languages whose dependencies are transpiled as a library: only their own
+// declarations, top-level names prefixed apart, no runtime (the main file has it)
+const LIBRARY_BUNDLE_LANGUAGES = new Set(['go', 'rust']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -830,6 +835,30 @@ function jvmLibraries(source, algorithmFile) {
 }
 
 /**
+ * The .data libraries an algorithm takes through its third factory parameter,
+ * parsed, with the names they export - for the languages whose transpiler
+ * merges them into the program (Go, Rust).
+ * @returns {{param: string, ast: Object, names: string[], single: string|null}[]}
+ */
+function parsedLibraries(source, algorithmFile, parserOptions) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!param) return [];
+  const libraries = [];
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (!libPath) continue;
+    const libSrc = fs.readFileSync(libPath, 'utf-8');
+    const exported = libraryExportNames(libSrc);
+    if (!exported) continue;
+    const Parser = loadTranspiler();
+    libraries.push({ param, ast: new Parser(libSrc, parserOptions).parse(), names: exported.names, single: exported.single });
+  }
+  return libraries;
+}
+
+/**
  * The PHP expression of what a file transpiled as `name` (php.js gives it the
  * namespace CipherValidation\<name>Generated) exports: the names its source
  * returns from its factory or assigns to module.exports, each reached in that
@@ -875,13 +904,17 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // them too: its runtime reads require as undefined, and the files they load
   // are bundled. So do Ruby and FreeBASIC: their runtime is a browser without
   // require(), so a loader guarded by `typeof require` returns and the bundled
-  // dependencies serve instead.
-  const parserOptions = PRELUDE_SPLICING.has(language) || language === 'ruby' || language === 'basic' ? { keepModuleLoaderFunctions: true } : undefined;
+  // dependencies serve instead. Go and Rust as well: their bundle holds every
+  // file a loader would require(), so a loader is a no-op.
+  const parserOptions = PRELUDE_SPLICING.has(language) || LIBRARY_BUNDLE_LANGUAGES.has(language) || language === 'ruby' || language === 'basic' ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
   let code;
   try {
-    code = transpileOne(source, plugin, algoName, language === 'java' || language === 'kotlin' ? { libraries: jvmLibraries(source, algorithmFile) } : undefined, parserOptions);
+    // Java, Kotlin, Go and Rust merge the .data libraries the factory takes into the program itself
+    const libraryOptions = language === 'java' || language === 'kotlin' ? { libraries: jvmLibraries(source, algorithmFile) }
+      : LIBRARY_BUNDLE_LANGUAGES.has(language) ? { libraries: parsedLibraries(source, algorithmFile, parserOptions) } : undefined;
+    code = transpileOne(source, plugin, algoName, libraryOptions, parserOptions);
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -903,7 +936,8 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
     try {
       const depSource = fs.readFileSync(depPath, 'utf-8');
-      const depCode = transpileOne(depSource, plugin, depName, noPreludeOptions, parserOptions);
+      const depOptions = LIBRARY_BUNDLE_LANGUAGES.has(language) ? { library: true, symbolPrefix: (/^[0-9]/.test(depName) ? '_' : '') + depName + '_' } : noPreludeOptions;
+      const depCode = transpileOne(depSource, plugin, depName, depOptions, parserOptions);
       if (JS_BUNDLING.has(language)) {
         const variable = '__validation_' + depName;
         depExports.set(path.resolve(depPath).toLowerCase(), variable);
@@ -1016,7 +1050,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -1072,11 +1106,11 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'java':
       return generateJavaTestHarness(algorithmCode, spec, algorithmName);
     case 'go':
-      return generateGoTestHarness(algorithmCode, vector, algorithmName);
+      return generateGoTestHarness(algorithmCode, spec, algorithmName);
     case 'ruby':
       return generateRubyTestHarness(algorithmCode, spec, algorithmName);
     case 'rust':
-      return generateRustTestHarness(algorithmCode, vector, algorithmName);
+      return generateRustTestHarness(algorithmCode, spec, algorithmName);
     case 'javascript':
       return generateJavaScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'typescript':
@@ -1321,45 +1355,24 @@ function generateJavaTestHarness(algorithmCode, spec, algorithmName) {
   return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
-// Go Test Harness
-function generateGoTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'go');
-  const expected = bytesToArrayLiteral(vector.expected, 'go');
-  const cleanedCode = stripMainFunction(algorithmCode, 'go');
-  // Also strip package/import declarations since we add them in the harness
-  const codeWithoutPkg = cleanedCode
-    .replace(/^package\s+\w+\s*\n?/gm, '')  // Remove all package declarations
-    .replace(/^import\s+"[^"]+"\s*\n?/gm, '')  // Remove single-line imports
-    .replace(/^import\s+\([^)]*\)\s*\n?/gms, '');  // Remove multi-line import blocks (use 's' flag for dotAll)
-
-  // The code's own imports, and fmt for the harness. Guessing imports from
-  // the code would hide an import the emitter forgot.
-  const imports = new Set(['"fmt"']);
-  for (const m of cleanedCode.matchAll(/^import\s+("[^"]+")/gm)) imports.add(m[1]);
-  for (const m of cleanedCode.matchAll(/^import\s+\(([^)]*)\)/gm))
-    for (const spec of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(spec);
-  imports.delete('');
-
+// Go vector harness (tests/validation-harness/harness.go), appended to the
+// program. Bundled dependencies come first, so their init() registers first;
+// the package clause and imports (the transpiled ones, and encoding/json for
+// the spec) move to the top of the file.
+function generateGoTestHarness(algorithmCode, spec, algorithmName) {
+  const code = stripMainFunction(algorithmCode, 'go');
+  const imports = new Set(['fmt', 'encoding/json', 'math', 'os', 'reflect', 'regexp', 'runtime/debug', 'strings']);
+  for (const m of code.matchAll(/^import\s+"([^"]+)"/gm)) imports.add(m[1]);
+  for (const m of code.matchAll(/^import\s+\(([^)]*)\)/gm))
+    for (const line of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(line.replace(/^"|"$/g, ''));
+  const body = code
+    .replace(/^package\s+\w+\s*$/gm, '')
+    .replace(/^import\s+"[^"]+"\s*$/gm, '')
+    .replace(/^import\s+\([^)]*\)/gm, '');
+  const harness = readHarness('harness.go').replace('__SPEC_JSON__', () => asciiJson(spec).replace(/`/g, '\\u0060'));
   return {
     success: true,
-    code: `package main
-
-import (
-\t${[...imports].join('\n\t')}
-)
-
-${codeWithoutPkg}
-
-func main() {
-    fmt.Println("Testing ${algorithmName}...")
-
-    input := ${input}
-    expected := ${expected}
-
-    fmt.Printf("Input length: %d\\n", len(input))
-    fmt.Printf("Expected length: %d\\n", len(expected))
-    fmt.Println("COMPILE_OK")
-}`
+    code: `// Validation of ${algorithmName}\npackage main\n\nimport (\n${[...imports].sort().map(i => `\t"${i}"`).join('\n')}\n)\n\n${body}\n${harness}`
   };
 }
 
@@ -1371,27 +1384,23 @@ function generateRubyTestHarness(algorithmCode, spec, algorithmName) {
   return { success: true, code: `# Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
-// Rust Test Harness
-function generateRustTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'rust');
-  const expected = bytesToArrayLiteral(vector.expected, 'rust');
-  const cleanedCode = stripMainFunction(algorithmCode, 'rust');
-
-  return {
-    success: true,
-    code: `${cleanedCode}
-
-fn main() {
-    println!("Testing ${algorithmName}...");
-
-    let input: Vec<u8> = ${input};
-    let expected: Vec<u8> = ${expected};
-
-    println!("Input length: {}", input.len());
-    println!("Expected length: {}", expected.len());
-    println!("COMPILE_OK");
-}`
-  };
+// Rust vector harness (tests/validation-harness/harness.rs): the spec becomes
+// Rust values, and main() runs the module initializers in the order the files
+// were bundled (dependencies first, so they register first). The crate's inner
+// attributes move to the top of the file.
+function generateRustTestHarness(algorithmCode, spec, algorithmName) {
+  const code = stripMainFunction(algorithmCode, 'rust');
+  const attributes = [];
+  const body = code.replace(/^#!\[[^\]]*\]\s*$/gms, m => { attributes.push(m.trim()); return ''; });
+  const inits = [...code.matchAll(/^\s*pub fn (\w*js_module_init)\(\)/gm)].map(m => `${m[1]}();`);
+  const str = s => JSON.stringify(String(s)).replace(/[^\x00-\x7e]/g, c => `\\u{${c.charCodeAt(0).toString(16)}}`);
+  const plan = p => `VhPlan { fields: vec![${p.fields.map(str).join(', ')}], steps: vec![${p.steps.map(s =>
+    `VhStep { field: ${str(s.field)}, setter: ${str(s.setter || '')}, kind: ${str(s.kind || '')} }`).join(', ')}], mode: ${p.mode
+    ? `Some(VhMode { cipher: ${p.mode.cipher === null ? 'None' : `Some(${str(p.mode.cipher)})`}, key_truthy: ${p.mode.keyTruthy}, iv_truthy: ${p.mode.ivTruthy} })`
+    : 'None'}, inverse: ${p.inverse}, expect: ${p.expect}, rt: ${str(p.rt || '')} }`;
+  const specCode = `vec![${spec.algorithms.map(a => `VhAlgorithm { name: ${str(a.name)}, is_mode: ${!!a.isMode}, multi_key: ${!!a.multiKey}, vectors: vec![${a.vectors.map(plan).join(', ')}] }`).join(', ')}]`;
+  const harness = readHarness('harness.rs').replace('__SPEC__', () => specCode).replace('__MODULE_INITS__', () => inits.join(' '));
+  return { success: true, code: `// Validation of ${algorithmName}\n${attributes.join('\n')}\n${body}\n${harness}` };
 }
 
 // TypeScript vector harness (tests/validation-harness/harness.ts), compiled
@@ -1645,11 +1654,9 @@ function testGoCompilation(code, outputDir) {
   const modFile = path.join(outputDir, 'go.mod');
   fs.writeFileSync(modFile, 'module test\n\ngo 1.21\n');
 
-  // Use NUL on Windows, /dev/null on Unix
-  const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null';
-
-  // Build from the output directory (required for go.mod to be found)
-  const result = spawnTool('go', ['build', '-o', nullDevice, '.'], {
+  // Build the executable the vector harness runs (from the output directory, for go.mod)
+  const exeFile = 'test' + (process.platform === 'win32' ? '.exe' : '');
+  const result = spawnTool('go', ['build', '-o', exeFile, '.'], {
     cwd: outputDir,
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
@@ -1668,8 +1675,8 @@ function testRustCompilation(code, outputDir) {
   const exeFile = path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : ''));
   fs.writeFileSync(srcFile, code);
 
-  // Compile to actual executable (works on all platforms)
-  const result = spawnTool('rustc', [srcFile, '-o', exeFile], {
+  // The executable the vector harness runs (optimized: an unoptimized build runs the ciphers' loops many times slower)
+  const result = spawnTool('rustc', ['-A', 'warnings', '-C', 'opt-level=1', '-C', 'overflow-checks=on', srcFile, '-o', exeFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1818,6 +1825,7 @@ function executeCode(language, outputDir) {
     case 'ruby': return runProcess('ruby', [path.join(outputDir, 'test.rb')], { cwd: outputDir });
     case 'basic': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'go': case 'rust': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     case 'typescript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
     case 'php': return runProcess('php', phpRunArguments().concat([path.join(outputDir, 'test.php')]), { cwd: outputDir });
     case 'java': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'classes'), javaMainClass(outputDir)], { cwd: outputDir });
