@@ -26278,7 +26278,9 @@
         'int64': CSharpType.Long()
       };
 
-      const csharpType = typeMap[elementType] || CSharpType.UInt();
+      // Any other element type the IL declares (a class: adaptive-huffman.js's
+      // `new Array(256)` of FgkNode) is that type
+      const csharpType = typeMap[elementType] || (node.elementType && this.mapILType(elementType)) || CSharpType.UInt();
       return new CSharpArrayCreation(csharpType, size);
     }
 

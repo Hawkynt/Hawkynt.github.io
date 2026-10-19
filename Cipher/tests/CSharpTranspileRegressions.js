@@ -1175,7 +1175,12 @@ check('maps: a module Map declared Map<K, V> is created with exactly those types
     'function lookup(key) {\n  const cached = CACHE.get(key);\n  if (cached) return cached;\n  const pair = new Pair(1);\n  CACHE.set(key >>> 0, pair);\n  return pair;\n}');
   expectMatch(code, /Dictionary<int, Pair> CACHE = new Dictionary<int, Pair>\(\)/, 'Dictionary<int, Pair> on both sides');
 });
-const SAME_NAMED_CALLS = '/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
+check('arrays: new Array(n) declared an array of a class is created as that class (CS0029)', () => {
+  const code = transpile('class Node {\n  constructor() {\n    /** @type {int32} */\n    this.w = 0;\n  }\n}\n' +
+    'class Tree {\n  constructor() {\n    /** @type {Node[]} */\n    this.nodes = new Array(256);\n  }\n}');
+  expectMatch(code, /this\.Nodes = new Node\[256\];/, 'new Node[256]');
+});
+const SAME_NAMED_CALLS ='/**\n * @param {uint8[]} c - ciphertext\n * @returns {uint8[]} r\n */\nfunction Decapsulate(c) { return c.slice(0, 2); }\n' +
   'class Kem {\n  /**\n   * @param {int32[]} ciphertext - ciphertext\n   * @returns {int32[]} the secret\n   */\n' +
   '  Decapsulate(ciphertext) { return Decapsulate(ciphertext); }\n}';
 check('calls: a bare call is typed by the module function, not a same-named method', () => {
