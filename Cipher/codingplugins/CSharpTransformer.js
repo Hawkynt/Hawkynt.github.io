@@ -1520,13 +1520,15 @@
      * ORed against that artifact-`long` with no common type, CS0019). A plain
      * variable/field reference has no such promotion step of its own - its
      * registered type (e.g. from a prior OpCodes.ToQWord/ToLong mask - see
-     * detectQWordMaskedParams) is real, direct evidence.
+     * detectQWordMaskedParams) is real, direct evidence. So is an explicit
+     * OpCodes.ToQWord/ToLong (a Cast to uint64/int64): it is 64-bit by definition.
      * @param {Object} node
      * @returns {boolean}
      */
     isReliableBigIntCastSkipSource(node) {
       if (!node) return false;
       if (node.type === 'Identifier') return true;
+      if (node.type === 'Cast' && ['uint64', 'int64'].includes(node.targetType)) return true;
       if (node.type === 'ThisPropertyAccess') return true;
       if (node.type === 'MemberExpression' && !node.computed &&
           (node.object?.type === 'ThisExpression' || node.object?.name === 'this')) return true;
@@ -7502,7 +7504,7 @@
       // value member starting undefined is nullable (see inferPropertyType)
       this.undefinedTestedMembers = new Set();
       const isUndefined = n => (n?.type === 'Identifier' && n.name === 'undefined') ||
-        (n?.type === 'Literal' && n.value === undefined && n.resultType === 'void');
+        (n?.type === 'Literal' && (n.isUndefined || n.value === undefined && n.resultType === 'void'));
       const memberName = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name)
         : n?.type === 'MemberExpression' && !n.computed ? (n.property?.name || n.property?.value) : null;
       this._walkAstNodes(jsAst.body, n => {
@@ -8140,7 +8142,7 @@
           // (nullable where it starts undefined - see inferPropertyType)
           const right = assignment.right;
           if (type && !type.isArray && CSHARP_VALUE_TYPES.has(type.name) && this.undefinedTestedMembers?.has(fieldName) &&
-              (right?.type === 'Literal' && right.value === undefined && right.resultType === 'void' || right?.type === 'Identifier' && right.name === 'undefined'))
+              (right?.type === 'Literal' && (right.isUndefined || right.value === undefined && right.resultType === 'void') || right?.type === 'Identifier' && right.name === 'undefined'))
             type = new CSharpType(type.name, { isNullable: true });
           if (type && type.name !== 'object') this.setClassFieldType(node.id.name, pascalName, type);
         }
@@ -20673,7 +20675,7 @@
       // ...as nullable where it starts undefined (space-time-block-code.js's optional
       // STBCConfig members, tested `!== undefined`): 0 would read as a given value
       const startsUndefined = (initialValue?.type === 'Identifier' && initialValue.name === 'undefined') ||
-        (initialValue?.type === 'Literal' && initialValue.value === undefined && initialValue.resultType === 'void');
+        (initialValue?.type === 'Literal' && (initialValue.isUndefined || initialValue.value === undefined && initialValue.resultType === 'void'));
       if (ilType && startsUndefined && this.undefinedTestedMembers?.has(propName) && !ilType.isArray && CSHARP_VALUE_TYPES.has(ilType.name) && !ilType.isNullable)
         return new CSharpType(ilType.name, { isNullable: true });
       if (ilType) return ilType;
