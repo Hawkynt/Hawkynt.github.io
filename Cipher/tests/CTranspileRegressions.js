@@ -244,6 +244,16 @@ check('C++ functions as values: a missing argument takes the parameter default',
   return expectOutput(runCpp(js, 'print(viaValue());'), ['3']);
 });
 
+check('C++ functions: a var bound to a typed function expression is that typed function', () => {
+  const js = '/**\n * @param {int32} n - count\n * @returns {int32} r\n */\nfunction sum(n) {\n' +
+    '  /**\n   * @param {int32} x - x\n   * @param {int32} y - y\n   * @returns {int32} r\n   */\n  var index = function(x, y) { return x + y * 5; };\n' +
+    '  var total = 0;\n  for (var i = 0; i < n; ++i) total += index(i, 1);\n  return total;\n}';
+  // Given a hoisted var holding a function expression whose parameters are typed
+  // When it is called
+  // Then it compiles as the typed function it holds and computes the sum
+  return expectOutput(runCpp(js, 'print(sum(3));'), ['18']);
+});
+
 check('C++ classes: a number field set to undefined can be undefined', () => {
   const js = 'class Cfg {\n  constructor() {\n    /** @type {int32} */\n    this.count = undefined;\n  }\n}\n' +
     'function given(c) { return c.count !== undefined; }';

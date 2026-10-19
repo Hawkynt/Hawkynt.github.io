@@ -1065,8 +1065,12 @@
             if (!d.id || d.id.type !== 'Identifier' || seen.has(d.id.name)) continue;
             seen.add(d.id.name);
             if (this.lookup(d.id.name) && this.scopes[this.scopes.length - 1].has(d.id.name)) continue; // a parameter
-            const t = this.localArrayType(d.id.name, this.declType(d));
-            const v = this.declare(d.id.name, t, { hoisted: true });
+            // a typed function bound to it (`var index = function (x, y) {...}`) makes it
+            // the typed std::function its later assignment stores
+            const fn = d.init && /^(ArrowFunction|ArrowFunctionExpression|FunctionExpression)$/.test(d.init.type) && this.functionNodeTyped(d.init) ? d.init : null;
+            const sig = fn ? { params: this.paramsOf(fn), ret: this.returnTypeOf(fn, null) } : null;
+            const t = sig ? T.sfn(sig.params.map(p => p.type), sig.ret) : this.localArrayType(d.id.name, this.declType(d));
+            const v = this.declare(d.id.name, t, sig ? { hoisted: true, sig } : { hoisted: true });
             out.push(new CppVariableDeclaration(this.cpp(t), v.cpp, null));
           }
         }
