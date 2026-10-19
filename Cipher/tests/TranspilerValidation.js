@@ -82,8 +82,6 @@ function resolveTool(name) {
   // A compiled program is started by its own path
   if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   if (resolvedTools.has(name)) return resolvedTools.get(name);
-  // A program the validation built (a FreeBASIC harness) runs from its own path
-  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
     if (process.platform !== 'win32') {
@@ -519,6 +517,51 @@ function libraryExportNames(source) {
   return { names, single: null };
 }
 
+// Delphi bundles a file with the files it depends on and its .data libraries
+// as Pascal units of their own over one shared runtime unit; the units are
+// joined by this marker and split again by the harness.
+const DELPHI_RUNTIME_UNIT = 'CipherRuntime';
+const DELPHI_UNIT_MARK = '{ ==== next unit ==== }';
+
+/** The .data libraries a file receives as its third factory parameter: [{ param, name, source }]. */
+function delphiLibraries(source, file) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!param) return [];
+  const libs = [];
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(file), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (libPath && !libs.some(l => l.path === libPath))
+      libs.push({ param, path: libPath, name: path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib', source: fs.readFileSync(libPath, 'utf-8') });
+  }
+  return libs;
+}
+
+function transpileDelphiBundle(source, algorithmFile, plugin, dependencies, parserOptions) {
+  const Parser = loadTranspiler();
+  const units = [plugin.GetRuntimeUnit(DELPHI_RUNTIME_UNIT)];
+  const emittedLibraries = new Set();
+  const unitOf = (src, file, name) => {
+    const libraries = delphiLibraries(src, file).map(l => {
+      if (!emittedLibraries.has(l.path)) {
+        emittedLibraries.add(l.path);
+        units.push(transpileOne(l.source, plugin, l.name, { runtimeUnit: DELPHI_RUNTIME_UNIT, library: true }, parserOptions));
+      }
+      return { param: l.param, unit: l.name + 'Generated', ast: new Parser(l.source, parserOptions).parse() };
+    });
+    units.push(transpileOne(src, plugin, name, { runtimeUnit: DELPHI_RUNTIME_UNIT, libraries }, parserOptions));
+  };
+  try {
+    for (const dep of dependencies)
+      unitOf(fs.readFileSync(dep, 'utf-8'), dep, path.basename(dep, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep');
+    unitOf(source, algorithmFile, path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_'));
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+  return { success: true, code: units.join('\n' + DELPHI_UNIT_MARK + '\n') };
+}
+
 /** The Python transpiler's snake_case of a name (all-capitals names are kept). */
 function pythonSnake(name) {
   if (name === name.toUpperCase()) return name;
@@ -909,6 +952,10 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   const parserOptions = PRELUDE_SPLICING.has(language) || LIBRARY_BUNDLE_LANGUAGES.has(language) || language === 'ruby' || language === 'basic' ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
+  // A Delphi bundle links the files a loader would require(), so a loader
+  // guarded by `typeof require` stays: the target folds it to a no-op.
+  if (language === 'delphi' && (dependencies.length || delphiLibraries(source, algorithmFile).length))
+    return transpileDelphiBundle(source, algorithmFile, plugin, dependencies, { keepModuleLoaderFunctions: true });
   let code;
   try {
     // Java, Kotlin, Go and Rust merge the .data libraries the factory takes into the program itself
@@ -1050,7 +1097,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript', 'php', 'java', 'kotlin', 'ruby', 'basic', 'go', 'rust', 'delphi']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -1118,7 +1165,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'basic':
       return generateBasicTestHarness(algorithmCode, spec, algorithmName);
     case 'delphi':
-      return generateDelphiTestHarness(algorithmCode, vector, algorithmName);
+      return generateDelphiTestHarness(algorithmCode, spec, algorithmName);
     case 'kotlin':
       return generateKotlinTestHarness(algorithmCode, spec, algorithmName);
     default:
@@ -1427,36 +1474,22 @@ function generateBasicTestHarness(algorithmCode, spec, algorithmName) {
   return { success: true, code: `' Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
-// Delphi/Pascal (FreePascal) Test Harness
-function generateDelphiTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
-
-  // The plugin emits a unit: it is compiled from a file of its name, used by the program
-  const unit = algorithmCode.match(/^\s*unit\s+(\w+)\s*;/m);
+// Delphi/Free Pascal vector harness (tests/validation-harness/harness.pas). The
+// plugin emits a unit, compiled from a file of its name and used by the
+// program; the spec is read from spec.json beside the program.
+function generateDelphiTestHarness(algorithmCode, spec, algorithmName) {
+  const extraFiles = { 'spec.json': JSON.stringify(spec) };
+  const names = [];
+  for (const text of algorithmCode.split(DELPHI_UNIT_MARK)) {
+    const unit = text.match(/^\s*unit\s+(\w+)\s*;/m);
+    if (!unit) return { success: false, error: 'the Delphi plugin emitted no unit' };
+    extraFiles[unit[1] + '.pas'] = text;
+    names.push(unit[1]);
+  }
   return {
     success: true,
-    extraFiles: unit ? { [unit[1] + '.pas']: algorithmCode } : undefined,
-    code: `program TestHarness;
-{$MODE DELPHI}
-
-uses SysUtils${unit ? ', ' + unit[1] : ''};
-
-${unit ? '' : algorithmCode}
-
-const
-  InputData: array[0..${inputLen > 0 ? inputLen - 1 : 0}] of Byte = (${inputBytes || '0'});
-  ExpectedData: array[0..${expectedLen > 0 ? expectedLen - 1 : 0}] of Byte = (${expectedBytes || '0'});
-
-begin
-  WriteLn('Testing ${algorithmName}...');
-  WriteLn('Input length: ', ${inputLen});
-  WriteLn('Expected length: ', ${expectedLen});
-  WriteLn('COMPILE_OK');
-end.
-`
+    extraFiles,
+    code: `{ Validation of ${algorithmName} }\n` + readHarness('harness.pas').replace('__UNIT__', () => names.join(', '))
   };
 }
 
@@ -1744,9 +1777,9 @@ function testDelphiCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.pas');
   fs.writeFileSync(srcFile, code);
 
-  // FreePascal: -Cn = syntax check only (no code generation)
-  // -Mdelphi = Delphi compatibility mode
-  const result = spawnTool('fpc', ['-Cn', '-Mdelphi', srcFile], {
+  // Free Pascal, Delphi mode, optimized and linked: the vector harness runs it.
+  // -ve reports errors only; the units' own directives set the dialect.
+  const result = spawnTool('fpc', ['-Mdelphi', '-O2', '-ve', srcFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
@@ -1830,6 +1863,7 @@ function executeCode(language, outputDir) {
     case 'php': return runProcess('php', phpRunArguments().concat([path.join(outputDir, 'test.php')]), { cwd: outputDir });
     case 'java': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'classes'), javaMainClass(outputDir)], { cwd: outputDir });
     case 'kotlin': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'test.jar'), kotlinMainClass(outputDir)], { cwd: outputDir });
+    case 'delphi': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }

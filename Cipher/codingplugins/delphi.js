@@ -11,7 +11,7 @@
   'use strict';
 
   // Use local variables to avoid global conflicts
-  let LanguagePlugin, LanguagePlugins, DelphiAST, DelphiTransformer, DelphiEmitter;
+  let LanguagePlugin, LanguagePlugins, DelphiAST, DelphiTransformer, DelphiEmitter, DelphiEmitterModule;
 
   if (typeof require !== 'undefined') {
     // Node.js environment
@@ -25,6 +25,7 @@
     const emitterModule = require('./DelphiEmitter.js');
     DelphiTransformer = transformerModule.DelphiTransformer;
     DelphiEmitter = emitterModule.DelphiEmitter;
+    DelphiEmitterModule = emitterModule;
   } else {
     // Browser environment - use globals
     LanguagePlugin = window.LanguagePlugin;
@@ -32,6 +33,7 @@
     DelphiAST = window.DelphiAST;
     DelphiTransformer = window.DelphiTransformer?.DelphiTransformer || window.DelphiTransformer;
     DelphiEmitter = window.DelphiEmitter?.DelphiEmitter || window.DelphiEmitter;
+    DelphiEmitterModule = window.DelphiEmitterModule;
   }
 
   /**
@@ -145,11 +147,19 @@
         }
 
         // Stage 1: Transform JS AST to Delphi AST
+        // The unit is named by the caller: unitName, else the class name it asks for
+        // runtimeUnit: use a shared runtime unit (GetRuntimeUnit) instead of embedding it;
+        // library: export the declarations; libraries: [{ param, unit, ast }] the
+        // .data libraries the file receives as factory parameters, each its own unit
         const transformer = new DelphiTransformer({
-          unitName: mergedOptions.unitName || 'GeneratedUnit',
+          unitName: options.unitName || options.className || mergedOptions.unitName || 'GeneratedUnit',
           dialect: mergedOptions.dialect || 'delphi',
           useGenerics: mergedOptions.useGenerics,
-          typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge
+          typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge,
+          runtimeUnit: options.runtimeUnit || null,
+          library: !!options.library,
+          libraries: options.libraries || [],
+          strict: !!options.strict
         });
 
         const delphiAst = transformer.transform(ast);
@@ -180,8 +190,21 @@
         return this.CreateSuccessResult(code, dependencies, warnings);
 
       } catch (error) {
+        // A construct the target does not support is reported as such; anything else is a defect
+        if (DelphiTransformer.TranspileError && error instanceof DelphiTransformer.TranspileError)
+          return this.CreateErrorResult('Delphi: ' + error.message);
         return this.CreateErrorResult('Code generation failed: ' + error.message + '\n' + error.stack);
       }
+    }
+
+    /**
+     * The Pascal runtime as a unit of its own, for several generated units
+     * (an algorithm and the ones it depends on) that run together.
+     * @param {string} [name='CipherRuntime'] - unit name
+     * @returns {string} Pascal source of the unit
+     */
+    GetRuntimeUnit(name = 'CipherRuntime') {
+      return DelphiEmitterModule.runtimeUnit(name);
     }
 
     /**
