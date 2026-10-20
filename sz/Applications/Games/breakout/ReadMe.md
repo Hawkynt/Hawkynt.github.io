@@ -11,8 +11,12 @@ Canvas-based game with two playfield sizes (small 480x560, large 1200x840) and H
 ## Architecture
 
 - **`index.html`** -- Menu bar (Game/View/Help), canvas, status bar, dialogs (High Scores, Controls, About)
-- **`levels.js`** -- Level layout definitions (12 hand-crafted levels + procedural generator)
-- **`controller.js`** -- IIFE with game states, electric paddle, brick types, power-ups, collision, rendering
+- **`js/core/`** -- namespace, constants, shared state, canvas view, effect instances, field sizes, collision rules
+- **`js/data/levels-data.js`** -- Level layout definitions (12 hand-crafted levels + procedural generator)
+- **`js/systems/`** -- balls, bricks, power-ups, lasers, game run, fixed-step simulation
+- **`js/render/`** -- brick, paddle, power-up and scene drawing
+- **`js/ui/`** -- high scores, menu bar, keyboard/mouse input
+- **`js/app.js`** -- Bootstrap: game loop, window resize handling, start-up
 - **`styles.css`** -- Game layout and visual styling
 - **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
 
