@@ -67,6 +67,19 @@ A gravity-manipulation puzzle game set in deep space. Launch a probe through gra
 | Escape | Pause / Resume |
 | F2 | New Game |
 
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `js/` -- the game under `SZ.SpacePuzzle`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- flight/rating tunables, state names, storage keys; `js/core/state.js` -- the one shared state object and the seeded starfield; `js/core/dom.js` -- canvas/context, particle/shake/text singletons, status refs; `js/core/rules.js` -- star rating from moves against par
+  - `js/data/levels.js` -- the 12 handcrafted levels: start, goal, wells, asteroids, par, repair component
+  - `js/systems/physics.js` -- gravity, motion, trail, goal/asteroid/well/bounds detection; `js/systems/game.js` -- level loading, probe reset, solved scoring and celebration, pause, restart, window title
+  - `js/render/sky.js` -- nebula, twinkling stars, shooting stars; `js/render/scene.js` -- wells, asteroids, goal, trail, ship, aim arrow; `js/render/hud.js` -- HUD bar, status bar, overlays; `js/render/board.js` -- one frame in order
+  - `js/ui/highscores.js` -- high-score persistence and dialog; `js/ui/menu.js` -- menu bar, dialog wiring, OS window hooks; `js/ui/input.js` -- drag-launch pointer gesture and keyboard
+  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+
 ## SEO Keywords
 
 space puzzle game, gravity puzzle, physics puzzle, browser game, online puzzle game, gravity wells, asteroid field, spacecraft repair, drag and launch, orbital mechanics, free puzzle game, space navigation, gravity manipulation, web game, HTML5 canvas game
