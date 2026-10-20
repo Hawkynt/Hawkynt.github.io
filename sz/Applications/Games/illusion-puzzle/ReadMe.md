@@ -6,6 +6,19 @@ An isometric impossible-geometry puzzle game for the SynthelicZ Desktop, inspire
 
 Each level is a 5x5 isometric grid with tiles at different elevations: floor, raised platforms, Penrose stair cells, goal tiles, and void spaces. The player moves one tile at a time in cardinal directions. Penrose stair tiles contain illusion links that only activate at specific perspective angles. When the player steps onto a Penrose tile whose illusion link matches the current perspective, they are teleported to a connected location. Rotating the perspective (4 angles, cycling with Q/E) changes which Penrose paths are walkable and which teleports are active. The goal is to collect all gems on the level and reach the goal tile. The game tracks move count and level progress, with high scores ranked by fewest moves.
 
+## Architecture
+
+- **`index.html`** -- Menu bar (Game/Help), canvas, status bar (level/gems/moves), dialogs (High Scores, Controls, About)
+- **`js/`** -- the game under `SZ.IllusionPuzzle`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- canvas/tile geometry, state names, storage keys; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas and status refs, canvas setup; `js/core/effects.js` -- particle/shake/text singletons; `js/core/iso.js` -- isometric projection and easing; `js/core/rules.js` -- walkability and illusion links
+  - `js/data/levels.js` -- the 16 level definitions with grids, starts, collectibles and illusion links
+  - `js/systems/perspective.js` -- the four-view rotation and its morph; `js/systems/player.js` -- tile movement, warps and the move animation; `js/systems/objectives.js` -- gem pickups and the goal check; `js/systems/persistence.js` -- progress and high-score storage; `js/systems/level.js` -- level loading, completion and advancement; `js/systems/game.js` -- pause, restart and the per-frame update; `js/systems/os.js` -- window title and resize/theme messages
+  - `js/render/palette.js` -- colors, block depth and the star field; `js/render/shapes.js` -- panels, text and shading; `js/render/background.js` -- sky, stars and glow; `js/render/tiles.js` -- the isometric blocks, stairs and the goal arch; `js/render/entities.js` -- trail, gems and the figure; `js/render/hud.js` -- title screen, cards and overlays; `js/render/board.js` -- the back-to-front board pass and the frame composition
+  - `js/ui/highscores.js` -- the high-score table; `js/ui/statusbar.js` -- the status bar; `js/ui/menu.js` -- the menu bar; `js/ui/input.js` -- keyboard and pointer input
+  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
+- **`styles.css`** -- Game layout, status bar, dialog tables
+- **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`, `game-audio.js`, `touch-controls.js`
+
 ## User Stories
 
 ### Core Movement
