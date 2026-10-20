@@ -11,7 +11,12 @@ Canvas-based game with HiDPI support. The snake moves on a fixed-interval tick s
 ## Architecture
 
 - **`index.html`** -- Menu bar (Game/Help), canvas, status bar (score/length/level/effects), dialogs (Options, High Scores, Controls, About)
-- **`controller.js`** -- IIFE with game config system, tick-based movement, AI pathfinding (BFS), power-up engine, obstacle generation, interpolated rendering
+- **`js/`** -- the game under `SZ.Snake`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- cell/field/speed tables, colors, presets; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas and status refs, canvas setup; `js/core/effects.js` -- particle/shake/text/audio singletons; `js/core/rules.js` -- pure rules, occupancy and interpolation math
+  - `js/systems/obstacles.js` -- random/maze/growing obstacles; `js/systems/ai.js` -- AI snakes with BFS pathfinding; `js/systems/powerups.js` -- power-up engine; `js/systems/game.js` -- tick-based movement, eating, death, pause, new game
+  - `js/render/themes.js` -- zen leaves and maze brick/torch/coin decorations; `js/render/snake.js` -- snake bodies and Tron riders; `js/render/board.js` -- grid, food, overlays, frame composition, status bar
+  - `js/ui/highscores.js` -- high-score table and dialog; `js/ui/options.js` -- options dialog and config persistence; `js/ui/menu.js` -- menu bar; `js/ui/input.js` -- keyboard and pointer input
+  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
 - **`styles.css`** -- Game layout, options dialog fieldsets, status bar
 - **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
 
