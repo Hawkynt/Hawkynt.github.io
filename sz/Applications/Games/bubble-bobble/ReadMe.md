@@ -102,7 +102,12 @@ The player controls a character on a 512x448 canvas with platforming physics (gr
 ## Architecture
 
 - `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
-- `controller.js` -- IIFE game engine: player physics, bubble mechanics, enemy AI, level generation, power-ups, scoring, effects
+- `js/` -- the game under `SZ.BubbleBobble`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- physics/scoring tables, state names, storage keys, tutorial pages; `js/core/state.js` -- the one shared state object and the seeded background sparkles; `js/core/view.js` -- canvas/context, particle/shake/text singletons, status refs, window handle; `js/core/rules.js` -- bounding-box and one-way platform collision; `js/core/os.js` -- resize handler and window-procedure registration
+  - `js/systems/level.js` -- procedural level generation, level-clear check and level-complete; `js/systems/player.js` -- movement, jumping, firing, death and collection; `js/systems/bubbles.js` -- bubble shooting, float/trap/pop physics and fruit drops; `js/systems/enemies.js` -- patrolling and trapped enemies; `js/systems/items.js` -- falling fruit items; `js/systems/flow.js` -- per-frame update, pause/resume, new-game reset and auto-pause
+  - `js/render/scene.js` -- background, platforms, bubbles, enemies, HUD, overlays and tutorial; `js/render/playerview.js` -- the dinosaur player sprite
+  - `js/ui/highscores.js` -- high-score persistence and dialog; `js/ui/menu.js` -- menu bar; `js/ui/input.js` -- keyboard and pointer input
+  - `js/app.js` -- loaded last: the window title, the requestAnimationFrame game loop and start-up
 - `styles.css` -- Layout and theming
 - `icon.svg` -- Desktop icon
 
