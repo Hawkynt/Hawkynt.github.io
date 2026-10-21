@@ -79,6 +79,19 @@ A space mining and economy game for the SynthelicZ Desktop. Pilot your mining ri
 | F2 | New Game |
 | H | Toggle tutorial overlay |
 
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `js/` -- the game under `SZ.SpaceMining`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- ship/drill/cargo/powerup tunables, world and station geometry, state names, storage keys; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas/context, particle/shake/text singletons, status and dialog refs, window handle; `js/core/os.js` -- window-procedure registration and resize handling
+  - `js/data/tables.js` -- ore types, asteroid yields, upgrade and powerup definitions, tutorial pages
+  - `js/systems/world.js` -- star layers, nebulae, background asteroids, shooting stars, camera; `js/systems/economy.js` -- market prices, cargo, selling and shop math; `js/systems/mining.js` -- asteroid spawn/respawn, drill targeting and extraction, break-apart; `js/systems/ship.js` -- thrust navigation, drag, clamping and thruster particles; `js/systems/powerups.js` -- spawn, lifetime, magnet pull and active effects; `js/systems/hints.js` -- one-shot contextual hints; `js/systems/flow.js` -- per-frame update, pause/resume, new-game reset and auto-pause
+  - `js/render/background.js` -- nebula, parallax stars, shooting stars, far asteroids; `js/render/entities.js` -- asteroids with ore glow and scanner overlays, powerups, station, ship, minimap; `js/render/hud.js` -- cargo/hull bars, credits, powerup meters, hint banner; `js/render/overlays.js` -- shop panel, tutorial pages, title/pause/game-over screens; `js/render/scene.js` -- one frame in order
+  - `js/ui/input.js` -- keyboard and click-and-hold pointer control; `js/ui/highscores.js` -- high-score persistence and dialog; `js/ui/menu.js` -- menu bar and dialog wiring
+  - `js/app.js` -- loaded last: the status bar, the window title, the requestAnimationFrame game loop and start-up
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+
 ## SEO Keywords
 
 space mining game, asteroid mining browser game, free online mining game, ore extraction game, space economy game, browser mining simulator, SynthelicZ game, web-based space game, asteroid drilling game, resource management space game
