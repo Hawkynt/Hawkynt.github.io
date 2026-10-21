@@ -11,7 +11,14 @@ Canvas-based game with selectable field sizes (520 to 1600) and HiDPI support. T
 ## Architecture
 
 - **`index.html`** -- Menu bar (Game/Help), canvas, status bar, dialogs (High Scores, Controls, About)
-- **`controller.js`** -- IIFE with game loop, entity management (asteroids, enemies, allies, zones), collision detection, rendering, powerup/combo/mode/warp/rock-type/enemy/ally systems
+- **`js/`** -- the game under `SZ.Asteroids`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- field sizes, ship/bullet physics, rock and effect tunables, simulation clock; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas/context, particle/shake/text singletons, status refs; `js/core/os.js` -- field setup, canvas scaling, window resize and field-size cycling; `js/core/rules.js` -- wrapping distance, level scaling, shape/crater/crack generation
+  - `js/data/tables.js` -- mode configs, rock types and palettes, enemy and powerup definitions, star colors
+  - `js/systems/entities.js` -- ship, asteroid, bullet, enemy, ally, powerup and zone factories; `js/systems/zones.js` -- ice/lava/mine zones and mine detonation; `js/systems/powerups.js` -- activation, timers, nuke and drops; `js/systems/combo.js` -- kill chain and multiplier; `js/systems/shockwaves.js` -- rings and screen flash; `js/systems/warp.js` -- level-transition warp; `js/systems/shooting.js` -- player fire, enemy fire and hyperspace; `js/systems/destruction.js` -- asteroid splits with rock-type death effects, ship loss, enemy/ally deaths, bonus lives; `js/systems/collision.js` -- the per-step collision pass; `js/systems/spawn.js` -- level-gated enemy selection; `js/systems/homing.js` -- homing bullet steering; `js/systems/background.js` -- nebula background and star drift; `js/systems/flow.js` -- the fixed-step update, level start/advance, pause and game over
+  - `js/render/` -- `starfield.js`, `ship.js`, `asteroids.js`, `bullets.js`, `enemies.js`, `powerups.js`, `zones.js`, `effects.js`, `hud.js`, `screens.js` (mode select, game over, pause) and `scene.js` for one frame in draw order
+  - `js/ui/status.js` -- score/lives/level cells with mode-dependent labels; `js/ui/highscores.js` -- persistence and results dialog; `js/ui/menu.js` -- menu bar actions; `js/ui/input.js` -- keyboard and mouse/touch control
+  - `js/app.js` -- loaded last: the requestAnimationFrame loop with fixed simulation steps, mode select/new-game resets and start-up
+- **`tests/`** -- behavior-pinning harness: a scripted session recorded against the game, digest-checked for exact behavioral equality
 - **`styles.css`** -- Game layout (flex for resizable window), status bar, dialog styling, powerup/rock/enemy icon styles
 - **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
 
