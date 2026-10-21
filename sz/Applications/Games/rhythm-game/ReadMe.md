@@ -90,6 +90,20 @@ A rhythm action game where you hit falling notes in time with music using the D/
 5. Build combos for higher score multipliers
 6. After the song ends, receive a letter grade (S/A/B/C/D)
 
+## Architecture
+
+- `index.html` -- Page structure, canvas, menu bar and dialogs
+- `js/` -- the game under `SZ.RhythmGame`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- canvas size, lane geometry, timing windows, neon palettes, state names, storage keys; `js/core/state.js` -- the one shared state object with counters, lane flash and effect timers; `js/core/dom.js` -- canvas/context and the particle/shake/text singletons; `js/core/os.js` -- canvas scaling, window-title updates and the window-procedure plus resize registration
+  - `js/data/songs.js` -- the song table with scales and per-song note frequencies
+  - `js/systems/audio.js` -- the Web Audio synth engine: music voices, hit sounds, mute sync; `js/systems/scoring.js` -- hit judgement and miss handling with combo and multiplier effects; `js/systems/song.js` -- song start/end, selection and the new-game reset; `js/systems/flow.js` -- the per-frame playing update: note spawning, scrolling and miss expiry
+  - `js/core/rules.js` -- note generation, lane positions, multiplier and grade math; `js/render/lanes.js` -- lane background and hit zone; `js/render/notes.js` -- falling notes, glow rings and the combo display; `js/render/screens.js` -- song select, results and pause overlay; `js/render/board.js` -- one frame in order
+  - `js/ui/highscores.js` -- high-score persistence and dialog; `js/ui/status.js` -- the status bar; `js/ui/input.js` -- auto-pause, keyboard and pointer control; `js/ui/menu.js` -- menu bar and dialog wiring
+  - `js/app.js` -- loaded last: canvas setup, mute sync, the reset to song select and the requestAnimationFrame game loop
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+- `tests/` -- a Node harness runs the whole page in a recorded fake DOM with a seeded RNG and a virtual clock; the boot test pins the entire session (song select, a full played song, pause, results, menu actions) by effect digest
+
 ## SEO Keywords
 
 rhythm game, music game, note highway, timing game, beat game, D/F/J/K keys, combo system, score multiplier, letter grade, browser game, web game, canvas game, SynthelicZ, WebOS game, rhythm action
