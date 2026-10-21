@@ -157,3 +157,17 @@ A faithful recreation of the classic Windows Minesweeper (winmine.exe) from Wind
 - [x] As a user, I can see the game frame with a floating drop shadow
 - [x] As a user, I can exit the game from the Game menu
 - [ ] As a user, I can see the board use custom mine and flag images matching the skin
+
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, minefield, LED counters, dialogs
+- `js/` -- the game under `SZ.Minesweeper`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- difficulty tables, storage keys, number classes, face names; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- the element refs queried once at load time
+  - `js/data/tables.js` -- difficulty theme palettes, inline SVG icon set and its data-URI encoder
+  - `js/systems/store.js` -- best-time and statistics persistence with resets; `js/systems/timer.js` -- the one-second game timer; `js/systems/grid.js` -- bounds and neighbor iteration; `js/systems/mines.js` -- first-click-safe placement and adjacency; `js/systems/reveal.js` -- flood-fill reveal and chord; `js/systems/gameover.js` -- win check, confetti celebration and the multi-phase death animation; `js/systems/game.js` -- the new-game reset
+  - `js/render/effects.js` -- canvas particle/shake layer and its animation loop; `js/render/field.js` -- cell grid build and per-cell painting
+  - `js/ui/menu.js` -- menu bar, action dispatch and difficulty checks; `js/ui/scale.js` -- aspect-ratio frame scaling with ResizeObserver; `js/ui/marks.js` -- question-mark toggle; `js/ui/icons.js` -- SVG icon injection; `js/ui/dialogs.js` -- best times, statistics, custom field and about dialogs; `js/ui/led.js` -- LED counter formatting; `js/ui/flash.js` -- full-field color flash; `js/ui/smiley.js` -- smiley button and face states; `js/ui/input.js` -- keyboard and pointer/touch reveal, flag and chord
+  - `js/app.js` -- loaded last: the start-up sequence
+- `tests/` -- deterministic sandbox harness and boot test pinning the whole session by effect digest
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
