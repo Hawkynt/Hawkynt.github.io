@@ -122,6 +122,19 @@ Hovering over any building or upgrade shows a detailed tooltip with:
 | Antimatter Condenser | 170,000,000,000,000 | 430,000,000 | Condenses antimatter into cookies |
 | Prism | 2,100,000,000,000,000 | 2,900,000,000 | Converts light into cookies |
 
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `js/` -- the game under `SZ.CookieClicker`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- storage key, canvas size, cost scaling, offline window, panel layout, milestone thresholds, cookie geometry; `js/core/state.js` -- the one shared state object, the count/multiplier/purchased/unlocked maps and the seeded background crumbs; `js/core/dom.js` -- canvas/context, status refs, particle and floating-text singletons, DPR canvas setup; `js/core/format.js` -- suffix number formatting and the CPS variant
+  - `js/data/buildings.js` -- the 14 building definitions; `js/data/upgrades.js` -- the upgrade table with reveal conditions; `js/data/achievements.js` -- the achievement table with unlock conditions
+  - `js/systems/economy.js` -- global bonus stacking, CPS recalculation and what-if previews, click value, exponential building costs; `js/systems/purchasing.js` -- building and upgrade purchases and the cookie click; `js/systems/achievements.js` -- achievement unlock sweeps and milestone confetti; `js/systems/prestige.js` -- heavenly chips and the prestige reset; `js/systems/saveload.js` -- localStorage save, load with offline progress, New Game reset
+  - `js/render/draw.js` -- cookie, buildings panel, upgrade grid, stats header, tooltip box; `js/render/tooltips.js` -- tooltip content and hover hit-testing
+  - `js/ui/status.js` -- the desktop status bar; `js/ui/input.js` -- canvas pointer input, wheel scrolling, keyboard and the listener registration; `js/ui/menu.js` -- menu bar actions, dialog wiring, OS window procedure, save on blur
+  - `js/app.js` -- loaded last: the requestAnimationFrame game loop (production ticks, timers, sweeps, redraw) and start-up
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+
 ## SEO Keywords
 
 cookie clicker, idle game, incremental game, clicker game, browser idle game, cookie game, clicking game, prestige game, HTML5 clicker, casual idle game, building game, auto-generate cookies
