@@ -6,6 +6,18 @@ A fast-paced auto-runner game for the SynthelicZ Desktop. Sprint through procedu
 
 The player character runs forward automatically at an ever-increasing speed. The road is divided into three lanes. Obstacles spawn procedurally ahead, always leaving at least one safe lane. The player avoids obstacles by switching lanes, jumping over low barriers, or sliding under high barriers. Coins and power-ups appear along the way. The run ends on collision with an obstacle (unless a shield is active). Distance traveled and coins collected form the score. Speed increases continuously from 8 m/s up to a cap of 24 m/s, and the entire visual theme transitions through four tiers as speed climbs.
 
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `js/` -- the game under `SZ.EndlessRunner`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- lanes, player, speed tiers, obstacle/coin/power-up tables, storage keys, state names, tutorial pages; `js/core/state.js` -- the one shared state object; `js/core/view.js` -- canvas/context, particle/shake/text singletons, status refs, canvas sizing; `js/core/rules.js` -- lane centers, player position/height curves and the current speed tier
+  - `js/systems/spawn.js` -- obstacle groups, coins, power-ups and speed lines; `js/systems/collision.js` -- obstacle hits with jump/slide/shield rules, coin and power-up pickup; `js/systems/flow.js` -- per-frame update, tier change, scrolling, death and the new-game reset
+  - `js/render/background.js` -- sky, parallax skyline, ground, grass, road, lane markings and guardrails; `js/render/entities.js` -- obstacle reflections, obstacles, coins, power-ups, the player sprite and speed lines; `js/render/hud.js` -- HUD, power-up indicators, ready/paused/game-over overlays and the tutorial page; `js/render/scene.js` -- orchestrates one frame top to bottom
+  - `js/ui/status.js` -- status bar text; `js/ui/highscores.js` -- high-score and coin persistence; `js/ui/input.js` -- keyboard, canvas tap-to-steer, pause toggle and auto-pause; `js/ui/menu.js` -- menu bar actions and dialogs
+  - `js/app.js` -- loaded last: the window title, the requestAnimationFrame game loop and start-up
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+
 ## User Stories
 
 ### Core Gameplay
