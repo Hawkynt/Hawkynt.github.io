@@ -91,6 +91,20 @@ Each match pits the player against an AI opponent. Both sides start with 50 HP, 
 | F2 | New Game / Restart |
 | Escape | Pause / Resume |
 
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `js/` -- the game under `SZ.FantasyCards`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- canvas, timing and storage tunables; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas/context, particle/shake/text singletons, status refs; `js/core/util.js` -- small shared helpers; `js/core/os.js` -- window title, window procedure and resize handling
+  - `js/data/tables.js` -- the 55 card definitions, element types and combo data
+  - `js/systems/deck.js` -- shuffle, draw, discard and reshuffle; `js/systems/game.js` -- battle setup, turn resolution and win/lose flow; `js/systems/turn.js` -- player and enemy turn sequencing; `js/systems/ai.js` -- enemy decision making with timed card plays; `js/systems/deckbuilder.js` -- deck selection and building; `js/systems/storage.js` -- localStorage persistence
+  - `js/render/cards.js` -- card faces with cost/power glyphs; `js/render/hud.js` -- mana, health, piles and log; `js/render/screens.js` -- title, deck select, game-over screens; `js/render/scene.js` -- one frame in order
+  - `js/ui/status.js` -- status bar cells; `js/ui/menu.js` -- menu bar actions; `js/ui/input.js` -- click and keyboard handling
+  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
+- `tests/` -- behavior-pinning harness: a scripted session recorded against the game, digest-checked for exact behavioral equality
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+
 ## Technical Details
 
 - Canvas-based rendering at 800x560 logical pixels with devicePixelRatio scaling
