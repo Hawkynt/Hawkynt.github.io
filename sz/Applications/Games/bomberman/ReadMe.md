@@ -76,6 +76,19 @@ A grid-based arcade game for the SynthelicZ Desktop. Navigate arenas, place bomb
 | F2 | New Game |
 | H | Toggle tutorial overlay |
 
+## Architecture
+
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `js/` -- the game under `SZ.Bomberman`, one module per domain, loaded in dependency order:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- grid/tile/cell tunables, bomb and player physics, power-up names, state names, storage keys, sprite-sheet geometry; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas/context, particle/shake/text singletons, status refs, sprite sheets and canvas setup; `js/core/os.js` -- window-procedure registration and the window title
+  - `js/data/tables.js` -- weighted power-up table, level-gated enemy definitions, tutorial pages and their lookups
+  - `js/systems/arena.js` -- level layout and hidden power-up generation, walkability per actor, enemy spawning; `js/systems/enemies.js` -- wander and chaser AI, ghost phasing, tile-to-tile motion; `js/systems/bombs.js` -- placement, blast arms, chain detonation, throw and slide; `js/systems/player.js` -- movement with bomb interactions, power-up collection and effects; `js/systems/damage.js` -- fire damage, player death, enemy kills and level advance; `js/systems/flow.js` -- per-frame update order, game loop, status bar, pause and auto-pause
+  - `js/render/sprites.js` -- sprite blits with the mirrored left-facing variant; `js/render/scene.js` -- one frame in order: terrain, power-ups, bombs, fire, enemies, player, overlays; `js/render/tutorial.js` -- the tutorial overlay pages
+  - `js/ui/input.js` -- keyboard, tap-to-start and resize hooks; `js/ui/highscores.js` -- high-score persistence; `js/ui/menu.js` -- menu bar and dialog wiring
+  - `js/app.js` -- loaded last: stored data, first round, mute button, touch controls, tutorial greeting and the requestAnimationFrame start
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon
+
 ## SEO Keywords
 
 bomberman, browser game, free online game, grid game, bomb game, arcade game, SynthelicZ, WebOS game, HTML5 game, canvas game, puzzle action, power-ups
