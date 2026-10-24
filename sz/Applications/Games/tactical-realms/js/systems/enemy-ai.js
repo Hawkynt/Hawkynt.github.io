@@ -111,7 +111,7 @@
 
       if (isDamage || (!isBuff && !isHeal)) {
         // Offensive spell: target party
-        const range = typeof spell.range === 'number' ? spell.range : 4;
+        const range = TR.Spells.rangeTiles(spell.range);
         for (const pu of partyUnits) {
           if (!pu.isAlive) continue;
           const tPos = pu.position;
@@ -144,7 +144,7 @@
 
       if ((isHeal || isBuff) && aiTier >= 3) {
         // Defensive/buff spell: target allies
-        const range = typeof spell.range === 'number' ? spell.range : 1;
+        const range = TR.Spells.rangeTiles(spell.range);
         const allies = allEnemyUnits || [];
         for (const ally of allies) {
           if (!ally.isAlive || ally.id === unit.id) continue;
@@ -180,7 +180,7 @@
       const tPos = pu.position;
 
       // Already adjacent: attack in place
-      if (D20.isAdjacent(pos, tPos)) {
+      if (D20.isAdjacent(pos, tPos, D20.attackReach(unit.character))) {
         let score = scoreTarget(unit, pu, weights) + 5; // base melee bonus
         if (weights.flanking > 0 && wouldFlank(grid, pos, tPos, unit.faction))
           score += weights.flanking * 3;
@@ -440,7 +440,7 @@
 
         const targetPos = target.position;
 
-        if (D20.isAdjacent(pos, targetPos))
+        if (D20.isAdjacent(pos, targetPos, D20.attackReach(unit.character)))
           return { type: 'attack', target: target.id };
 
         const moveRange = Pathfinding.movementRange(grid, pos, unit.speedTiles, unit.faction, unit.passMode);
@@ -482,7 +482,7 @@
             const spell = TR.Spells.byId(spellId);
             if (!spell || !unit.canCastSpell(spell)) continue;
             if (spell.target !== 'enemy') continue;
-            const range = typeof spell.range === 'number' ? spell.range : 4;
+            const range = TR.Spells.rangeTiles(spell.range);
             for (const pu of partyUnits) {
               if (!pu.isAlive) continue;
               if (!TR.Spells.isInRange(c, r, pu.position.col, pu.position.row, range)) continue;

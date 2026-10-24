@@ -131,6 +131,14 @@
     return result;
   }
 
+  const RANGE_TILES = Object.freeze({
+    personal: 0,
+    touch: 1,
+    close: 5,
+    medium: 20,
+    long: 40,
+  });
+
   const Spells = Object.freeze({
     SpellTarget,
     SpellSchool,
@@ -286,6 +294,20 @@
       return chosen;
     },
 
+    /* A range as written in the book -- 'touch', 'close', a number of feet -- in the
+       same 5 foot squares the battle grid and movement use. */
+    rangeTiles(range) {
+      if (typeof range === 'number') {
+        if (range <= 0)
+          return 0;
+        /* the tables taken from the book write feet, the spells this game ships
+           with write squares outright */
+        return range <= 8 ? range : Math.max(1, Math.round(range / 5));
+      }
+      const named = RANGE_TILES[range];
+      return named === undefined ? RANGE_TILES.close : named;
+    },
+
     isInRange(casterCol, casterRow, targetCol, targetRow, range) {
       const dc = Math.abs(casterCol - targetCol);
       const dr = Math.abs(casterRow - targetRow);
@@ -296,6 +318,7 @@
       if (spell.range === 0 && spell.target === SpellTarget.SELF)
         return [casterPos];
 
+      const reach = Spells.rangeTiles(spell.range);
       const targets = [];
       for (const u of units) {
         if (!u.isAlive)
@@ -304,7 +327,7 @@
           continue;
         if (spell.target === SpellTarget.ALLY && u.faction !== casterFaction)
           continue;
-        if (Spells.isInRange(casterPos.col, casterPos.row, u.position.col, u.position.row, spell.range))
+        if (Spells.isInRange(casterPos.col, casterPos.row, u.position.col, u.position.row, reach))
           targets.push(u.id);
       }
       return targets;

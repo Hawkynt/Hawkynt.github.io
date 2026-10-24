@@ -241,7 +241,7 @@
       for (const other of this._units) {
         if (other.faction === unit.faction || !other.isAlive)
           continue;
-        if (D20.isAdjacent(pos, other.position))
+        if (D20.isAdjacent(pos, other.position, D20.attackReach(unit.character)))
           targets.push(other.id);
       }
       return targets;

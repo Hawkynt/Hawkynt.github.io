@@ -222,11 +222,28 @@ async function main() {
     const g = combatGeom(eng, crawlCombat);
     const ex = g.ox + best.position.col * g.ts + g.ts / 2;
     const ey = g.oy + best.position.row * g.ts + g.ts / 2;
+    TR.__ctrl._contextMenu = null; /* observe whether *this* right-click opens one */
     rightClick(game, ex, ey);
     game.frames(1);
+    const menu = TR.__ctrl._contextMenu;
+    if (process.env.TRTRACE)
+      console.log('TRACE turn=' + turn + ' cur=' + cur.id + ' foe=' + best.id + ' menu=' +
+        (menu ? menu.items.map((i) => i.label).join(',') : 'none') + ' | ' + game.log.slice(-4).join(' | '));
+    if (!menu || !menu.items.length) {
+      /* nothing this creature may do to that foe from any tile it can reach this
+         turn -- walls and bodies in the way: a player would let the turn pass */
+      eng.selectWait();
+      eng.nextTurn();
+      game.frames(20);
+      continue;
+    }
     const mx = Math.min(ex, 1280 - 200 - 4), my = Math.min(ey, 720 - 176 - 4);
     const wantSpell = (cur.spells || []).length > 0 && turn % 2 === 1;
-    click(game, mx + 100, my + 4 + (wantSpell ? 1 : 0) * 28 + 14);
+    const wanted = wantSpell ? 'spell' : 'attack';
+    let idx = menu.items.findIndex((i) => i.action === wanted);
+    if (idx < 0) idx = menu.items.findIndex((i) => i.action !== 'attack');
+    if (idx < 0) idx = 0;
+    click(game, mx + 100, my + 4 + idx * 28 + 14);
     game.frames(1);
   }
 

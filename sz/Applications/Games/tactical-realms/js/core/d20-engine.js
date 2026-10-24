@@ -85,6 +85,15 @@
       return isAllyUnit(oppositeUnitId, attackerFaction);
     },
 
+    /* how far a swing carries, in squares: a reach weapon keeps its wielder one
+       square further back and still lands the hit */
+    attackReach(character) {
+      const eq = character && character.equipment;
+      const weapon = eq && eq.mainHand;
+      const props = weapon && weapon.properties;
+      return props && props.includes('reach') ? 2 : 1;
+    },
+
     isAdjacent(pos1, pos2, reach) {
       const dist = Math.abs(pos1.col - pos2.col) + Math.abs(pos1.row - pos2.row);
       const maxDist = reach || 1;

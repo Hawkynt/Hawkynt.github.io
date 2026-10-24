@@ -88,7 +88,7 @@
           return false;
         if (d.type === 'attack' || d.type === 'move_and_attack') {
           const from = d.moveTo || unit.position;
-          if (!D20.isAdjacent(from, t.position))
+          if (!D20.isAdjacent(from, t.position, D20.attackReach(unit.character)))
             return false;
         }
       }
@@ -112,7 +112,8 @@
       if (!a || !foes.length)
         return null;
       const friends = this._units.filter(u => u.faction === unit.faction && u.isAlive);
-      const adjacent = foes.some(f => D20.isAdjacent(unit.position, f.position));
+      const reach = D20.attackReach(unit.character);
+      const adjacent = foes.some(f => D20.isAdjacent(unit.position, f.position, reach));
       const near = (range, pred = () => true) => foes
         .filter(f => MA.distance(unit.position, f.position) <= range && pred(f))
         .sort((x, y) => MA.distance(unit.position, x.position) - MA.distance(unit.position, y.position));

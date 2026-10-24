@@ -166,6 +166,61 @@
       }
     },
 
+    /* the square to stand on to act against a creature: only squares the action is
+       legal from, and of those the one furthest away -- a reach weapon or a spell
+       stops at the edge of its own reach instead of walking into the enemy's face.
+       The cheaper walk breaks a tie, and standing still wins once it is legal. */
+    _findApproachTile(eng, unit, fromPos, targetPos, legal) {
+      const moveRange = Pathfinding.movementRange(eng.grid, fromPos, unit.speedTiles, unit.faction, unit.passMode);
+      let best = null;
+      for (const [key, cost] of moveRange) {
+        const [c, r] = key.split(',').map(Number);
+        if (eng.grid.isOccupied(c, r) && eng.grid.unitAt(c, r) !== unit.id)
+          continue;
+        if (!legal(c, r))
+          continue;
+        const dist = Math.abs(c - targetPos.col) + Math.abs(r - targetPos.row);
+        if (!best || dist > best.dist || (dist === best.dist && cost < best.cost))
+          best = { col: c, row: r, cost, dist };
+      }
+      return best;
+    },
+
+    /* nothing reachable this turn is in reach of the action: take the square that
+       gets closest and let the action wait for the next turn */
+    _closestApproachTile(eng, unit, targetPos) {
+      const moveRange = Pathfinding.movementRange(eng.grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
+      let best = null;
+      for (const [key] of moveRange) {
+        const [c, r] = key.split(',').map(Number);
+        if (eng.grid.isOccupied(c, r) && eng.grid.unitAt(c, r) !== unit.id)
+          continue;
+        const dist = Math.abs(c - targetPos.col) + Math.abs(r - targetPos.row);
+        if (!best || dist < best.dist)
+          best = { col: c, row: r, dist };
+      }
+      return best;
+    },
+
+    /* walk to a square, then run `then` on arrival */
+    _walkAndThen(eng, unit, tile, then) {
+      const from = { ...unit.position };
+      this._combatMoveStart = from;
+      eng.selectMoveTile(tile.col, tile.row);
+      eng.confirmMove();
+      const path = from.col === tile.col && from.row === tile.row
+        ? null : Pathfinding.findPath(eng.grid, from, tile, 'party');
+      if (path && path.length > 1) {
+        this._combatMovePath = path.slice(1);
+        this._combatMoveUnit = unit.id;
+        this._combatMoveIdx = 0;
+        this._combatMoveProgress = 0;
+        this._combatMoveCallback = then;
+        return;
+      }
+      then();
+    },
+
     _approachAndAttack(target) {
       const eng = this._combatEngine;
       const unit = eng.currentUnit;
@@ -174,81 +229,23 @@
         this._commitTentativeMove();
 
       const tp = target.position;
-      const adjacent = [
-        { col: tp.col - 1, row: tp.row },
-        { col: tp.col + 1, row: tp.row },
-        { col: tp.col, row: tp.row - 1 },
-        { col: tp.col, row: tp.row + 1 },
-      ];
+      const reach = D20.attackReach(unit.character);
+      const tile = this._findApproachTile(eng, unit, unit.position, tp,
+        (c, r) => D20.isAdjacent({ col: c, row: r }, tp, reach));
 
-      let bestTile = null;
-      let bestCost = Infinity;
-      for (const adj of adjacent) {
-        const key = `${adj.col},${adj.row}`;
-        if (!eng.moveRange.has(key)) continue;
-        if (eng.grid.isOccupied(adj.col, adj.row) && eng.grid.unitAt(adj.col, adj.row) !== unit.id) continue;
-        const cost = eng.moveRange.get(key);
-        if (cost < bestCost) {
-          bestCost = cost;
-          bestTile = adj;
-        }
-      }
-
-      if (!bestTile) {
-        let closestTile = null;
-        let closestDist = Infinity;
-        for (const [key] of eng.moveRange) {
-          const [c, r] = key.split(',').map(Number);
-          if (eng.grid.isOccupied(c, r) && eng.grid.unitAt(c, r) !== unit.id) continue;
-          const dist = Math.abs(c - tp.col) + Math.abs(r - tp.row);
-          if (dist < closestDist) {
-            closestDist = dist;
-            closestTile = { col: c, row: r };
-          }
-        }
-        if (closestTile && (closestTile.col !== unit.position.col || closestTile.row !== unit.position.row)) {
-          const prevPos = { ...unit.position };
-          this._combatMoveStart = prevPos;
-          eng.selectMoveTile(closestTile.col, closestTile.row);
-          eng.confirmMove();
-          const path = Pathfinding.findPath(eng.grid, prevPos, closestTile, 'party');
-          if (path && path.length > 1) {
-            this._combatMovePath = path.slice(1);
-            this._combatMoveUnit = unit.id;
-            this._combatMoveIdx = 0;
-            this._combatMoveProgress = 0;
-            this._combatMoveCallback = null;
-          }
-        }
+      if (!tile) {
+        const step = this._closestApproachTile(eng, unit, tp);
+        if (step && (step.col !== unit.position.col || step.row !== unit.position.row))
+          this._walkAndThen(eng, unit, step, () => {});
         return;
       }
 
-      const prevPos = { ...unit.position };
-      this._combatMoveStart = prevPos;
-      eng.selectMoveTile(bestTile.col, bestTile.row);
-      eng.confirmMove();
-
-      const afterMove = () => {
+      this._walkAndThen(eng, unit, tile, () => {
         eng.selectAttack();
-        const attackerId = unit.id;
-        const targetId = target.id;
         const result = eng.selectTarget(tp.col, tp.row);
         if (result)
-          this._startAttackAnim(attackerId, targetId, result);
-      };
-
-      if (prevPos.col !== bestTile.col || prevPos.row !== bestTile.row) {
-        const path = Pathfinding.findPath(eng.grid, prevPos, bestTile, 'party');
-        if (path && path.length > 1) {
-          this._combatMovePath = path.slice(1);
-          this._combatMoveUnit = unit.id;
-          this._combatMoveIdx = 0;
-          this._combatMoveProgress = 0;
-          this._combatMoveCallback = afterMove;
-          return;
-        }
-      }
-      afterMove();
+          this._startAttackAnim(unit.id, target.id, result);
+      });
     },
 
     _getAttackTargetsFromPos(eng, unit, pos) {
@@ -256,7 +253,7 @@
       for (const other of eng.units) {
         if (other.faction === unit.faction || !other.isAlive)
           continue;
-        if (D20.isAdjacent(pos, other.position))
+        if (D20.isAdjacent(pos, other.position, D20.attackReach(unit.character)))
           targets.push(other.id);
       }
       return targets;
@@ -478,23 +475,6 @@
       return items;
     },
 
-    // Find the closest tile in moveRange that satisfies a predicate, returning {col,row,cost} or null
-    _findClosestReachableTile(eng, unit, effectivePos, predicate) {
-      const moveRange = Pathfinding.movementRange(eng.grid, effectivePos, unit.speedTiles, unit.faction);
-      let best = null;
-      let bestCost = Infinity;
-      for (const [key, cost] of moveRange) {
-        const [c, r] = key.split(',').map(Number);
-        if (eng.grid.isOccupied(c, r) && !(c === effectivePos.col && r === effectivePos.row))
-          continue;
-        if (predicate(c, r) && cost < bestCost) {
-          bestCost = cost;
-          best = { col: c, row: r, cost };
-        }
-      }
-      return best;
-    },
-
     _buildContextMenuItems(eng, unit, target, effectivePos) {
       const items = [];
       const tPos = target.position;
@@ -502,12 +482,12 @@
 
       // --- Melee Attack ---
       if (isEnemy) {
-        if (D20.isAdjacent(effectivePos, tPos)) {
+        const reach = D20.attackReach(unit.character);
+        if (D20.isAdjacent(effectivePos, tPos, reach)) {
           items.push({ label: 'Attack', action: 'attack' });
         } else {
-          // Can we walk to an adjacent tile?
-          const walkTo = this._findClosestReachableTile(eng, unit, effectivePos,
-            (c, r) => D20.isAdjacent({ col: c, row: r }, tPos));
+          const walkTo = this._findApproachTile(eng, unit, effectivePos, tPos,
+            (c, r) => D20.isAdjacent({ col: c, row: r }, tPos, reach));
           if (walkTo)
             items.push({ label: `Attack (move ${walkTo.cost})`, action: 'attack', walkTo });
         }
@@ -523,7 +503,7 @@
           if (spell.target === 'ally' && isEnemy) continue;
           if (spell.target === 'self' && target.id !== unit.id) continue;
 
-          const range = typeof spell.range === 'number' ? spell.range : 4;
+          const range = Spells.rangeTiles(spell.range);
           const aoeTag = (spell.aoe && spell.aoe > 0) ? ' (AoE)' : '';
 
           if (Spells.isInRange(effectivePos.col, effectivePos.row, tPos.col, tPos.row, range)) {
@@ -531,7 +511,7 @@
             items.push({ label: `${spell.name}${aoeTag}`, action: 'spell', spellId: spell.id });
           } else {
             // Can we walk into range?
-            const walkTo = this._findClosestReachableTile(eng, unit, effectivePos,
+            const walkTo = this._findApproachTile(eng, unit, effectivePos, tPos,
               (c, r) => Spells.isInRange(c, r, tPos.col, tPos.row, range));
             if (walkTo)
               items.push({ label: `${spell.name}${aoeTag} (move ${walkTo.cost})`, action: 'spell', spellId: spell.id, walkTo });
