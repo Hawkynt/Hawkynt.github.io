@@ -200,7 +200,7 @@
         for (const [key] of eng.moveRange) {
           const [c, r] = key.split(',').map(Number);
           if (eng.grid.isOccupied(c, r) && eng.grid.unitAt(c, r) !== unit.id) continue;
-          const dist = Math.abs(c - tp.col) + Math.abs(c - tp.row);
+          const dist = Math.abs(c - tp.col) + Math.abs(r - tp.row);
           if (dist < closestDist) {
             closestDist = dist;
             closestTile = { col: c, row: r };

@@ -213,6 +213,12 @@ load('js/dungeon/dungeon-art.js');
 load('js/dungeon/dungeon-view.js');
 load('js/ui/debug-console.js');
 
+// The controller: the class first, then the domain parts that attach to it
+load('js/app/app-constants.js');
+load('js/app/controller.js');
+for (const part of ['combat', 'combat-ui', 'crawl', 'overworld', 'render', 'screens', 'status'])
+  load('js/app/controller-' + part + '.js');
+
 // Load test suites
 function loadTest(file) {
   eval(fs.readFileSync(path.join(__dirname, file), 'utf8'));
@@ -237,6 +243,7 @@ loadTest('test-d20-engine.js');
 loadTest('test-combat-unit.js');
 loadTest('test-enemy-ai.js');
 loadTest('test-combat-engine.js');
+loadTest('test-approach-attack.js');
 loadTest('test-monster-spawn.js');
 loadTest('test-monster-attacks.js');
 loadTest('test-monster-abilities.js');
