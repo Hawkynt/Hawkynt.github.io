@@ -51,158 +51,162 @@ function load(file) {
 eval(fs.readFileSync(path.join(__dirname, 'runner.js'), 'utf8'));
 
 // Load modules -- order matches index.html dependency chain
-load('prng.js');
-load('time-rotation.js');
-load('state-machine.js');
-load('save-crypto.js');
-load('save-manager.js');
-load('input-handler.js');
-load('sprite-compositor.js');
+load('js/core/prng.js');
+load('js/core/time-rotation.js');
+load('js/core/state-machine.js');
+load('js/core/save-crypto.js');
+load('js/core/save-manager.js');
+load('js/core/input-handler.js');
+load('js/render/sprite-compositor.js');
 load('../../shared/game-effects.js');
-load('renderer.js');
-load('combat-fx.js');
-load('battle-sprites.js');
-load('battle-backdrop.js');
-load('battle-fx.js');
-load('battle-scene.js');
-load('screen-art.js');
+load('js/render/renderer.js');
+load('js/combat/combat-fx.js');
+load('js/render/battle-sprites.js');
+load('js/render/battle-backdrop.js');
+load('js/render/battle-fx.js');
+load('js/render/battle-scene.js');
+load('js/render/screen-art.js');
 
 // Shared enums (load before all data files)
-load('data/enums.js');
+load('js/data/enums.js');
 
 // Data files: races & monsters (push to _pending.creatures)
 function tryLoad(file) { try { load(file); } catch (_) { /* data file may not exist yet */ } }
-tryLoad('data/races-core.js');
-tryLoad('data/races-expanded.js');
-tryLoad('data/races-psionic.js');
-tryLoad('data/races-campaign.js');
-tryLoad('data/monsters-aberrations.js');
-tryLoad('data/monsters-animals.js');
-tryLoad('data/monsters-constructs.js');
-tryLoad('data/monsters-dragons.js');
-tryLoad('data/monsters-elementals.js');
-tryLoad('data/monsters-fey.js');
-tryLoad('data/monsters-fiends.js');
-tryLoad('data/monsters-giants.js');
-tryLoad('data/monsters-humanoids.js');
-tryLoad('data/monsters-magical-beasts.js');
-tryLoad('data/monsters-oozes-plants.js');
-tryLoad('data/monsters-undead.js');
-tryLoad('data/monsters-misc.js');
-tryLoad('data/monsters-outsiders.js');
-load('creature-registry.js');
+tryLoad('js/data/races-core.js');
+tryLoad('js/data/races-expanded.js');
+tryLoad('js/data/races-psionic.js');
+tryLoad('js/data/races-campaign.js');
+tryLoad('js/data/monsters-aberrations.js');
+tryLoad('js/data/monsters-animals.js');
+tryLoad('js/data/monsters-constructs.js');
+tryLoad('js/data/monsters-dragons.js');
+tryLoad('js/data/monsters-elementals.js');
+tryLoad('js/data/monsters-fey.js');
+tryLoad('js/data/monsters-fiends.js');
+tryLoad('js/data/monsters-giants.js');
+tryLoad('js/data/monsters-humanoids.js');
+tryLoad('js/data/monsters-magical-beasts.js');
+tryLoad('js/data/monsters-oozes-plants.js');
+tryLoad('js/data/monsters-undead.js');
+tryLoad('js/data/monsters-misc.js');
+tryLoad('js/data/monsters-outsiders.js');
+load('js/systems/creature-registry.js');
 
 // Data files: classes (push to _pending.classes)
-tryLoad('data/classes-core.js');
-tryLoad('data/classes-complete.js');
-tryLoad('data/classes-psionic.js');
-tryLoad('data/classes-incarnum.js');
-tryLoad('data/classes-tome.js');
-tryLoad('data/classes-campaign.js');
-tryLoad('data/prestige-core.js');
-tryLoad('data/prestige-complete.js');
-tryLoad('data/prestige-campaign.js');
-tryLoad('data/prestige-supplements.js');
-load('class-registry.js');
+tryLoad('js/data/classes-core.js');
+tryLoad('js/data/classes-complete.js');
+tryLoad('js/data/classes-psionic.js');
+tryLoad('js/data/classes-incarnum.js');
+tryLoad('js/data/classes-tome.js');
+tryLoad('js/data/classes-campaign.js');
+tryLoad('js/data/prestige-core.js');
+tryLoad('js/data/prestige-complete.js');
+tryLoad('js/data/prestige-campaign.js');
+tryLoad('js/data/prestige-supplements.js');
+load('js/systems/class-registry.js');
 
 // Data files: skills, feats, conditions
-tryLoad('data/skills.js');
-tryLoad('data/conditions.js');
-tryLoad('data/feats-general.js');
-tryLoad('data/feats-combat.js');
-tryLoad('data/feats-magic.js');
-tryLoad('data/feats-class.js');
-tryLoad('data/feats-racial.js');
-load('skill-registry.js');
-load('feat-registry.js');
+tryLoad('js/data/skills.js');
+tryLoad('js/data/conditions.js');
+tryLoad('js/data/feats-general.js');
+tryLoad('js/data/feats-combat.js');
+tryLoad('js/data/feats-magic.js');
+tryLoad('js/data/feats-class.js');
+tryLoad('js/data/feats-racial.js');
+load('js/systems/skill-registry.js');
+load('js/systems/feat-registry.js');
 
 // Engine modules
-load('bonus-stacking.js');
-load('condition-engine.js');
-load('action-economy.js');
+load('js/core/bonus-stacking.js');
+load('js/core/condition-engine.js');
+load('js/core/action-economy.js');
 
 // Character & roster
-load('character.js');
-load('roster.js');
+load('js/systems/character.js');
+load('js/systems/roster.js');
 
 // Data files: terrain, biomes, planes
-tryLoad('data/terrain-types.js');
-tryLoad('data/biomes.js');
-tryLoad('data/planes.js');
-load('terrain-registry.js');
-load('plane-registry.js');
-load('portal.js');
-load('plane-worlds.js');
-tryLoad('data/spell-terrain-effects.js');
-load('passability.js');
-load('terrain.js');
+tryLoad('js/data/terrain-types.js');
+tryLoad('js/data/biomes.js');
+tryLoad('js/data/planes.js');
+load('js/systems/terrain-registry.js');
+load('js/systems/plane-registry.js');
+load('js/systems/portal.js');
+load('js/systems/plane-worlds.js');
+tryLoad('js/data/spell-terrain-effects.js');
+load('js/core/passability.js');
+load('js/systems/terrain.js');
 
 // Combat & pathfinding
-load('combat-grid.js');
-load('pathfinding.js');
-load('d20-engine.js');
-load('combat-unit.js');
-load('enemy-ai.js');
+load('js/combat/combat-grid.js');
+load('js/core/pathfinding.js');
+load('js/core/d20-engine.js');
+load('js/combat/combat-unit.js');
+load('js/systems/enemy-ai.js');
 
 // Data files: spells
-tryLoad('data/spells-0.js');
-tryLoad('data/spells-1.js');
-tryLoad('data/spells-2.js');
-tryLoad('data/spells-3.js');
-tryLoad('data/spells-4.js');
-tryLoad('data/spells-5.js');
-tryLoad('data/spells-6.js');
-tryLoad('data/spells-7.js');
-tryLoad('data/spells-8.js');
-tryLoad('data/spells-9.js');
-tryLoad('data/spells-psionic.js');
-tryLoad('data/spells-campaign.js');
-load('spell-registry.js');
-load('spells.js');
+tryLoad('js/data/spells-0.js');
+tryLoad('js/data/spells-1.js');
+tryLoad('js/data/spells-2.js');
+tryLoad('js/data/spells-3.js');
+tryLoad('js/data/spells-4.js');
+tryLoad('js/data/spells-5.js');
+tryLoad('js/data/spells-6.js');
+tryLoad('js/data/spells-7.js');
+tryLoad('js/data/spells-8.js');
+tryLoad('js/data/spells-9.js');
+tryLoad('js/data/spells-psionic.js');
+tryLoad('js/data/spells-campaign.js');
+load('js/systems/spell-registry.js');
+load('js/systems/spells.js');
 
 // Data files: items
-tryLoad('data/weapons-simple.js');
-tryLoad('data/weapons-martial.js');
-tryLoad('data/weapons-exotic.js');
-tryLoad('data/armor.js');
-tryLoad('data/items-mundane.js');
-tryLoad('data/items-potions.js');
-tryLoad('data/items-scrolls.js');
-tryLoad('data/items-wondrous.js');
-tryLoad('data/items-rings.js');
-tryLoad('data/items-rods-staves.js');
-tryLoad('data/items-artifacts.js');
-tryLoad('data/items-materials.js');
-tryLoad('data/item-enchantments.js');
-load('item-registry.js');
-load('items.js');
-load('shop.js');
+tryLoad('js/data/weapons-simple.js');
+tryLoad('js/data/weapons-martial.js');
+tryLoad('js/data/weapons-exotic.js');
+tryLoad('js/data/armor.js');
+tryLoad('js/data/items-mundane.js');
+tryLoad('js/data/items-potions.js');
+tryLoad('js/data/items-scrolls.js');
+tryLoad('js/data/items-wondrous.js');
+tryLoad('js/data/items-rings.js');
+tryLoad('js/data/items-rods-staves.js');
+tryLoad('js/data/items-artifacts.js');
+tryLoad('js/data/items-materials.js');
+tryLoad('js/data/item-enchantments.js');
+load('js/systems/item-registry.js');
+load('js/systems/items.js');
+load('js/systems/shop.js');
 
 // Data files: creature types, enemy templates, boss templates
-tryLoad('data/creature-types.js');
-tryLoad('data/enemy-templates.js');
-tryLoad('data/boss-templates.js');
+tryLoad('js/data/creature-types.js');
+tryLoad('js/data/enemy-templates.js');
+tryLoad('js/data/boss-templates.js');
 
 // Game systems
-load('combat-history.js');
-load('combat-ui.js');
-load('monster-attacks.js');
-load('monster-abilities.js');
-load('combat-engine.js');
-load('pixel-art.js');
-load('terrain-art.js');
-load('asset-loader.js');
-tryLoad('data/creature-sprites.js');
-load('sprite-resolver.js');
-load('autotile.js');
-load('overworld-map.js');
-load('dungeon-gen.js');
-load('dungeon-themes.js');
-load('monster-roster.js');
-load('dungeon-crawl.js');
-load('dungeon-art.js');
-load('dungeon-view.js');
-load('debug-console.js');
+load('js/systems/combat-history.js');
+load('js/ui/combat-ui.js');
+load('js/systems/monster-attacks.js');
+load('js/systems/monster-abilities.js');
+load('js/combat/combat-templates.js');
+load('js/combat/combat-engine.js');
+load('js/combat/combat-engine-actions.js');
+load('js/combat/combat-engine-ai.js');
+load('js/combat/combat-engine-effects.js');
+load('js/render/pixel-art.js');
+load('js/render/terrain-art.js');
+load('js/render/asset-loader.js');
+tryLoad('js/data/creature-sprites.js');
+load('js/render/sprite-resolver.js');
+load('js/render/autotile.js');
+load('js/dungeon/overworld-map.js');
+load('js/dungeon/dungeon-gen.js');
+load('js/dungeon/dungeon-themes.js');
+load('js/systems/monster-roster.js');
+load('js/dungeon/dungeon-crawl.js');
+load('js/dungeon/dungeon-art.js');
+load('js/dungeon/dungeon-view.js');
+load('js/ui/debug-console.js');
 
 // Load test suites
 function loadTest(file) {

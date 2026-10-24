@@ -124,156 +124,169 @@
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
 <script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <!-- Core modules -->
-<script defer src="prng.js?v=da40bcff"></script>
-<script defer src="time-rotation.js?v=bbf72db3"></script>
-<script defer src="state-machine.js?v=1db276a5"></script>
-<script defer src="save-crypto.js?v=aaee9783"></script>
-<script defer src="save-manager.js?v=6b4f4b82"></script>
-<script defer src="input-handler.js?v=1757edd2"></script>
-<script defer src="sprite-compositor.js?v=c87cc637"></script>
-<script defer src="renderer.js?v=1b761e86"></script>
-<script defer src="combat-fx.js?v=a8502e64"></script>
-<script defer src="battle-sprites.js?v=effe68b3"></script>
-<script defer src="battle-backdrop.js?v=d6e6644a"></script>
-<script defer src="battle-fx.js?v=cf0e61d7"></script>
-<script defer src="battle-scene.js?v=42d7ec26"></script>
-<script defer src="screen-art.js?v=aed57d1b"></script>
+<script src="js/core/prng.js?v=da40bcff" defer></script>
+<script src="js/core/time-rotation.js?v=bbf72db3" defer></script>
+<script src="js/core/state-machine.js?v=1db276a5" defer></script>
+<script src="js/core/save-crypto.js?v=aaee9783" defer></script>
+<script src="js/core/save-manager.js?v=6b4f4b82" defer></script>
+<script src="js/core/input-handler.js?v=1757edd2" defer></script>
+<script src="js/render/sprite-compositor.js?v=c87cc637" defer></script>
+<script src="js/render/renderer.js?v=1b761e86" defer></script>
+<script src="js/combat/combat-fx.js?v=a8502e64" defer></script>
+<script src="js/render/battle-sprites.js?v=effe68b3" defer></script>
+<script src="js/render/battle-backdrop.js?v=d6e6644a" defer></script>
+<script src="js/render/battle-fx.js?v=cf0e61d7" defer></script>
+<script src="js/render/battle-scene.js?v=42d7ec26" defer></script>
+<script src="js/render/screen-art.js?v=aed57d1b" defer></script>
 
 <!-- Shared enums (loaded before all data files) -->
-<script defer src="data/enums.js?v=3f20a3b6"></script>
+<script src="js/data/enums.js?v=3f20a3b6" defer></script>
 
 <!-- Data files: races & monsters -->
-<script defer src="data/races-core.js?v=5c93b840"></script>
-<script defer src="data/races-expanded.js?v=44868cb6"></script>
-<script defer src="data/races-psionic.js?v=e0799af9"></script>
-<script defer src="data/races-campaign.js?v=c649ce81"></script>
-<script defer src="data/monsters-aberrations.js?v=492b4f33"></script>
-<script defer src="data/monsters-animals.js?v=4c549313"></script>
-<script defer src="data/monsters-constructs.js?v=dcc69f38"></script>
-<script defer src="data/monsters-dragons.js?v=34adde61"></script>
-<script defer src="data/monsters-elementals.js?v=fa12aece"></script>
-<script defer src="data/monsters-fey.js?v=535f4d32"></script>
-<script defer src="data/monsters-fiends.js?v=954e317e"></script>
-<script defer src="data/monsters-giants.js?v=fcb7909f"></script>
-<script defer src="data/monsters-humanoids.js?v=9f501a55"></script>
-<script defer src="data/monsters-magical-beasts.js?v=456abf02"></script>
-<script defer src="data/monsters-oozes-plants.js?v=44fddab9"></script>
-<script defer src="data/monsters-undead.js?v=acb624e9"></script>
-<script defer src="data/monsters-misc.js?v=a8a4cae9"></script>
-<script defer src="data/monsters-outsiders.js?v=e6c6c9fe"></script>
-<script defer src="creature-registry.js?v=ff18ad3b"></script>
+<script src="js/data/races-core.js?v=5c93b840" defer></script>
+<script src="js/data/races-expanded.js?v=44868cb6" defer></script>
+<script src="js/data/races-psionic.js?v=e0799af9" defer></script>
+<script src="js/data/races-campaign.js?v=c649ce81" defer></script>
+<script src="js/data/monsters-aberrations.js?v=492b4f33" defer></script>
+<script src="js/data/monsters-animals.js?v=4c549313" defer></script>
+<script src="js/data/monsters-constructs.js?v=dcc69f38" defer></script>
+<script src="js/data/monsters-dragons.js?v=34adde61" defer></script>
+<script src="js/data/monsters-elementals.js?v=fa12aece" defer></script>
+<script src="js/data/monsters-fey.js?v=535f4d32" defer></script>
+<script src="js/data/monsters-fiends.js?v=954e317e" defer></script>
+<script src="js/data/monsters-giants.js?v=fcb7909f" defer></script>
+<script src="js/data/monsters-humanoids.js?v=9f501a55" defer></script>
+<script src="js/data/monsters-magical-beasts.js?v=456abf02" defer></script>
+<script src="js/data/monsters-oozes-plants.js?v=44fddab9" defer></script>
+<script src="js/data/monsters-undead.js?v=acb624e9" defer></script>
+<script src="js/data/monsters-misc.js?v=a8a4cae9" defer></script>
+<script src="js/data/monsters-outsiders.js?v=e6c6c9fe" defer></script>
+<script src="js/systems/creature-registry.js?v=ff18ad3b" defer></script>
 
 <!-- Data files: classes -->
-<script defer src="data/classes-core.js?v=0cb06855"></script>
-<script defer src="data/classes-complete.js?v=fb5ca6b3"></script>
-<script defer src="data/classes-psionic.js?v=06c07854"></script>
-<script defer src="data/classes-incarnum.js?v=fd97877c"></script>
-<script defer src="data/classes-tome.js?v=5f610820"></script>
-<script defer src="data/classes-campaign.js?v=d80a3197"></script>
-<script defer src="data/prestige-core.js?v=491cda40"></script>
-<script defer src="data/prestige-complete.js?v=e9c5c2e7"></script>
-<script defer src="data/prestige-campaign.js?v=40bf701b"></script>
-<script defer src="data/prestige-supplements.js?v=9665d843"></script>
-<script defer src="class-registry.js?v=ce5e99c9"></script>
+<script src="js/data/classes-core.js?v=0cb06855" defer></script>
+<script src="js/data/classes-complete.js?v=fb5ca6b3" defer></script>
+<script src="js/data/classes-psionic.js?v=06c07854" defer></script>
+<script src="js/data/classes-incarnum.js?v=fd97877c" defer></script>
+<script src="js/data/classes-tome.js?v=5f610820" defer></script>
+<script src="js/data/classes-campaign.js?v=d80a3197" defer></script>
+<script src="js/data/prestige-core.js?v=491cda40" defer></script>
+<script src="js/data/prestige-complete.js?v=e9c5c2e7" defer></script>
+<script src="js/data/prestige-campaign.js?v=40bf701b" defer></script>
+<script src="js/data/prestige-supplements.js?v=9665d843" defer></script>
+<script src="js/systems/class-registry.js?v=ce5e99c9" defer></script>
 
 <!-- Data files: skills, feats, conditions -->
-<script defer src="data/skills.js?v=992b393d"></script>
-<script defer src="data/conditions.js?v=190a55e6"></script>
-<script defer src="data/feats-general.js?v=896b51ae"></script>
-<script defer src="data/feats-combat.js?v=2c60b05b"></script>
-<script defer src="data/feats-magic.js?v=ceaf6f0c"></script>
-<script defer src="data/feats-class.js?v=43189f15"></script>
-<script defer src="data/feats-racial.js?v=a16ba862"></script>
-<script defer src="skill-registry.js?v=ad7e2ea7"></script>
-<script defer src="feat-registry.js?v=6ce9515f"></script>
+<script src="js/data/skills.js?v=992b393d" defer></script>
+<script src="js/data/conditions.js?v=190a55e6" defer></script>
+<script src="js/data/feats-general.js?v=896b51ae" defer></script>
+<script src="js/data/feats-combat.js?v=2c60b05b" defer></script>
+<script src="js/data/feats-magic.js?v=ceaf6f0c" defer></script>
+<script src="js/data/feats-class.js?v=43189f15" defer></script>
+<script src="js/data/feats-racial.js?v=a16ba862" defer></script>
+<script src="js/systems/skill-registry.js?v=ad7e2ea7" defer></script>
+<script src="js/systems/feat-registry.js?v=6ce9515f" defer></script>
 
 <!-- Engine modules: bonus stacking, conditions, action economy -->
-<script defer src="bonus-stacking.js?v=d3017d31"></script>
-<script defer src="condition-engine.js?v=1d6e3704"></script>
-<script defer src="action-economy.js?v=7f4b9f1f"></script>
+<script src="js/core/bonus-stacking.js?v=d3017d31" defer></script>
+<script src="js/core/condition-engine.js?v=1d6e3704" defer></script>
+<script src="js/core/action-economy.js?v=7f4b9f1f" defer></script>
 
 <!-- Character & roster (depends on registries) -->
-<script defer src="character.js?v=d5e3e555"></script>
-<script defer src="roster.js?v=3fc749ab"></script>
+<script src="js/systems/character.js?v=d5e3e555" defer></script>
+<script src="js/systems/roster.js?v=3fc749ab" defer></script>
 
 <!-- Data files: terrain, biomes, planes -->
-<script defer src="data/terrain-types.js?v=1558b39e"></script>
-<script defer src="data/biomes.js?v=732d49a3"></script>
-<script defer src="data/planes.js?v=d1e92f9f"></script>
-<script defer src="terrain-registry.js?v=85347ba7"></script>
-<script defer src="plane-registry.js?v=ce307453"></script>
-<script defer src="portal.js?v=6e9b24e9"></script>
-<script defer src="plane-worlds.js?v=5f99434f"></script>
-<script defer src="data/spell-terrain-effects.js?v=b69004f7"></script>
-<script defer src="passability.js?v=ae79730b"></script>
-<script defer src="terrain.js?v=9dd66f20"></script>
+<script src="js/data/terrain-types.js?v=1558b39e" defer></script>
+<script src="js/data/biomes.js?v=732d49a3" defer></script>
+<script src="js/data/planes.js?v=d1e92f9f" defer></script>
+<script src="js/systems/terrain-registry.js?v=85347ba7" defer></script>
+<script src="js/systems/plane-registry.js?v=ce307453" defer></script>
+<script src="js/systems/portal.js?v=6e9b24e9" defer></script>
+<script src="js/systems/plane-worlds.js?v=5f99434f" defer></script>
+<script src="js/data/spell-terrain-effects.js?v=b69004f7" defer></script>
+<script src="js/core/passability.js?v=ae79730b" defer></script>
+<script src="js/systems/terrain.js?v=9dd66f20" defer></script>
 
 <!-- Combat grid & pathfinding -->
-<script defer src="combat-grid.js?v=256c66b2"></script>
-<script defer src="pathfinding.js?v=8e1f7bb8"></script>
-<script defer src="d20-engine.js?v=9366194a"></script>
-<script defer src="combat-unit.js?v=96640d9d"></script>
-<script defer src="enemy-ai.js?v=5329f579"></script>
+<script src="js/combat/combat-grid.js?v=256c66b2" defer></script>
+<script src="js/core/pathfinding.js?v=8e1f7bb8" defer></script>
+<script src="js/core/d20-engine.js?v=9366194a" defer></script>
+<script src="js/combat/combat-unit.js?v=96640d9d" defer></script>
+<script src="js/systems/enemy-ai.js?v=5329f579" defer></script>
 
 <!-- Data files: spells -->
-<script defer src="data/spells-0.js?v=cf67fa15"></script>
-<script defer src="data/spells-1.js?v=412968a8"></script>
-<script defer src="data/spells-2.js?v=f3b353fa"></script>
-<script defer src="data/spells-3.js?v=bce68fd8"></script>
-<script defer src="data/spells-4.js?v=c74b0371"></script>
-<script defer src="data/spells-5.js?v=68062a79"></script>
-<script defer src="data/spells-6.js?v=377372ac"></script>
-<script defer src="data/spells-7.js?v=2f767e98"></script>
-<script defer src="data/spells-8.js?v=7f621b99"></script>
-<script defer src="data/spells-9.js?v=7464571e"></script>
-<script defer src="data/spells-psionic.js?v=7e803cad"></script>
-<script defer src="data/spells-campaign.js?v=4d38c3ab"></script>
-<script defer src="spell-registry.js?v=9fb2e6c3"></script>
-<script defer src="spells.js?v=5d50b0dc"></script>
+<script src="js/data/spells-0.js?v=cf67fa15" defer></script>
+<script src="js/data/spells-1.js?v=412968a8" defer></script>
+<script src="js/data/spells-2.js?v=f3b353fa" defer></script>
+<script src="js/data/spells-3.js?v=bce68fd8" defer></script>
+<script src="js/data/spells-4.js?v=c74b0371" defer></script>
+<script src="js/data/spells-5.js?v=68062a79" defer></script>
+<script src="js/data/spells-6.js?v=377372ac" defer></script>
+<script src="js/data/spells-7.js?v=2f767e98" defer></script>
+<script src="js/data/spells-8.js?v=7f621b99" defer></script>
+<script src="js/data/spells-9.js?v=7464571e" defer></script>
+<script src="js/data/spells-psionic.js?v=7e803cad" defer></script>
+<script src="js/data/spells-campaign.js?v=4d38c3ab" defer></script>
+<script src="js/systems/spell-registry.js?v=9fb2e6c3" defer></script>
+<script src="js/systems/spells.js?v=5d50b0dc" defer></script>
 
 <!-- Data files: items -->
-<script defer src="data/weapons-simple.js?v=56d874a2"></script>
-<script defer src="data/weapons-martial.js?v=9976b363"></script>
-<script defer src="data/weapons-exotic.js?v=d46839f5"></script>
-<script defer src="data/armor.js?v=b87f8e39"></script>
-<script defer src="data/items-mundane.js?v=ecc2f23c"></script>
-<script defer src="data/items-potions.js?v=d7e0f7ee"></script>
-<script defer src="data/items-scrolls.js?v=c5e64d4a"></script>
-<script defer src="data/items-wondrous.js?v=bb2cc1c2"></script>
-<script defer src="data/items-rings.js?v=67f5a948"></script>
-<script defer src="data/items-rods-staves.js?v=2582af8f"></script>
-<script defer src="data/items-artifacts.js?v=a4380faf"></script>
-<script defer src="data/items-materials.js?v=08a48659"></script>
-<script defer src="data/item-enchantments.js?v=d59eb7e1"></script>
-<script defer src="item-registry.js?v=797594a9"></script>
-<script defer src="items.js?v=79914238"></script>
-<script defer src="shop.js?v=e0f27377"></script>
+<script src="js/data/weapons-simple.js?v=56d874a2" defer></script>
+<script src="js/data/weapons-martial.js?v=9976b363" defer></script>
+<script src="js/data/weapons-exotic.js?v=d46839f5" defer></script>
+<script src="js/data/armor.js?v=b87f8e39" defer></script>
+<script src="js/data/items-mundane.js?v=ecc2f23c" defer></script>
+<script src="js/data/items-potions.js?v=d7e0f7ee" defer></script>
+<script src="js/data/items-scrolls.js?v=c5e64d4a" defer></script>
+<script src="js/data/items-wondrous.js?v=bb2cc1c2" defer></script>
+<script src="js/data/items-rings.js?v=67f5a948" defer></script>
+<script src="js/data/items-rods-staves.js?v=2582af8f" defer></script>
+<script src="js/data/items-artifacts.js?v=a4380faf" defer></script>
+<script src="js/data/items-materials.js?v=08a48659" defer></script>
+<script src="js/data/item-enchantments.js?v=d59eb7e1" defer></script>
+<script src="js/systems/item-registry.js?v=797594a9" defer></script>
+<script src="js/systems/items.js?v=79914238" defer></script>
+<script src="js/systems/shop.js?v=e0f27377" defer></script>
 
 <!-- Data files: creature types, enemy/boss templates -->
-<script defer src="data/creature-types.js?v=624e0d47"></script>
-<script defer src="data/enemy-templates.js?v=cd1a5653"></script>
-<script defer src="data/boss-templates.js?v=f3539c46"></script>
+<script src="js/data/creature-types.js?v=624e0d47" defer></script>
+<script src="js/data/enemy-templates.js?v=cd1a5653" defer></script>
+<script src="js/data/boss-templates.js?v=f3539c46" defer></script>
 
 <!-- Combat engine & game systems -->
-<script defer src="combat-history.js?v=f059d091"></script>
-<script defer src="monster-attacks.js?v=bb6de750"></script>
-<script defer src="monster-abilities.js?v=2a7c51c6"></script>
-<script defer src="combat-engine.js?v=4afe298f"></script>
-<script defer src="pixel-art.js?v=9ce08096"></script>
-<script defer src="terrain-art.js?v=3b6b9023"></script>
-<script defer src="asset-loader.js?v=706e6fae"></script>
-<script defer src="data/creature-sprites.js?v=ad2ac978"></script>
-<script defer src="sprite-resolver.js?v=5becdd0b"></script>
-<script defer src="autotile.js?v=c5d02180"></script>
-<script defer src="overworld-map.js?v=3d9a0c92"></script>
-<script defer src="dungeon-gen.js?v=2710615a"></script>
-<script defer src="dungeon-themes.js?v=2cf41bff"></script>
-<script defer src="monster-roster.js?v=315f2867"></script>
-<script defer src="dungeon-crawl.js?v=e635fec9"></script>
-<script defer src="dungeon-art.js?v=71a2440c"></script>
-<script defer src="dungeon-view.js?v=139e23a0"></script>
-<script defer src="combat-ui.js?v=e6a92811"></script>
-<script defer src="debug-console.js?v=d513e9ab"></script>
-<script defer src="controller.js?v=5059a7e1"></script>
+<script src="js/systems/combat-history.js?v=f059d091" defer></script>
+<script src="js/systems/monster-attacks.js?v=bb6de750" defer></script>
+<script src="js/systems/monster-abilities.js?v=2a7c51c6" defer></script>
+<script src="js/combat/combat-templates.js?v=ed0722b1" defer></script>
+<script src="js/combat/combat-engine.js?v=d59da00a" defer></script>
+<script src="js/combat/combat-engine-actions.js?v=c3238c08" defer></script>
+<script src="js/combat/combat-engine-ai.js?v=9ebb5472" defer></script>
+<script src="js/combat/combat-engine-effects.js?v=1181f352" defer></script>
+<script src="js/render/pixel-art.js?v=9ce08096" defer></script>
+<script src="js/render/terrain-art.js?v=3b6b9023" defer></script>
+<script src="js/render/asset-loader.js?v=706e6fae" defer></script>
+<script src="js/data/creature-sprites.js?v=ad2ac978" defer></script>
+<script src="js/render/sprite-resolver.js?v=5becdd0b" defer></script>
+<script src="js/render/autotile.js?v=c5d02180" defer></script>
+<script src="js/dungeon/overworld-map.js?v=3d9a0c92" defer></script>
+<script src="js/dungeon/dungeon-gen.js?v=2710615a" defer></script>
+<script src="js/dungeon/dungeon-themes.js?v=2cf41bff" defer></script>
+<script src="js/systems/monster-roster.js?v=315f2867" defer></script>
+<script src="js/dungeon/dungeon-crawl.js?v=e635fec9" defer></script>
+<script src="js/dungeon/dungeon-art.js?v=71a2440c" defer></script>
+<script src="js/dungeon/dungeon-view.js?v=139e23a0" defer></script>
+<script src="js/ui/combat-ui.js?v=e6a92811" defer></script>
+<script src="js/ui/debug-console.js?v=d513e9ab" defer></script>
+<script src="js/app/app-constants.js?v=6ad21471" defer></script>
+<script src="js/app/controller.js?v=84ae18a8" defer></script>
+<script src="js/app/controller-combat.js?v=6c6a7ab2" defer></script>
+<script src="js/app/controller-combat-ui.js?v=eff2a3a9" defer></script>
+<script src="js/app/controller-crawl.js?v=25b5cd04" defer></script>
+<script src="js/app/controller-overworld.js?v=2a018f24" defer></script>
+<script src="js/app/controller-render.js?v=fe1a2fb8" defer></script>
+<script src="js/app/controller-screens.js?v=226cb913" defer></script>
+<script src="js/app/controller-status.js?v=ff7b1bff" defer></script>
+<script src="js/app/boot.js?v=d8b0df97" defer></script>
 </body>
 </html>
