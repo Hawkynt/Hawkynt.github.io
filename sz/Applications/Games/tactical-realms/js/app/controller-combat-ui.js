@@ -117,14 +117,34 @@
         const caster = eng.currentUnit;
         if (spell.aoe && spell.aoe > 0) {
           const result = eng.selectAoeSpellTarget(gridCol, gridRow);
-          if (result)
+          if (result) {
             this._startAoeSpellAnim(caster, result);
+            return;
+          }
+          const spot = { col: gridCol, row: gridRow };
+          this._approachAndCast(spell, spot, () => {
+            eng.selectSpell(spell.id);
+            const again = eng.selectAoeSpellTarget(spot.col, spot.row);
+            if (again)
+              this._startAoeSpellAnim(eng.currentUnit, again);
+          });
         } else {
           const targetId = eng.grid.unitAt(gridCol, gridRow);
           const target = targetId ? eng.unitById(targetId) : null;
           const result = eng.selectSpellTarget(gridCol, gridRow);
-          if (result)
+          if (result) {
             this._startSpellAnim(caster, target, result);
+            return;
+          }
+          if (target && target.isAlive && this._spellTakes(spell, caster, target)) {
+            const at = target.position;
+            this._approachAndCast(spell, at, () => {
+              eng.selectSpell(spell.id);
+              const again = eng.selectSpellTarget(at.col, at.row);
+              if (again)
+                this._startSpellAnim(eng.currentUnit, target, again);
+            });
+          }
         }
         return;
       }
@@ -161,9 +181,51 @@
         const attackerId = eng.currentUnit.id;
         const targetId = eng.grid.unitAt(gridCol, gridRow);
         const result = eng.selectTarget(gridCol, gridRow);
-        if (result)
+        if (result) {
           this._startAttackAnim(attackerId, targetId, result);
+          return;
+        }
+        /* the swing was armed before the walk: give the move phase back and let
+           the approach carry the attacker to a square it can hit from */
+        const target = targetId ? eng.unitById(targetId) : null;
+        const unit = eng.currentUnit;
+        if (target && target.isAlive && target.faction !== unit.faction && !unit.hasMoved) {
+          eng.cancelTarget();
+          this._approachAndAttack(target);
+        }
       }
+    },
+
+    /* whether a spell's target rule admits this creature at all, range aside */
+    _spellTakes(spell, caster, target) {
+      if (spell.target === 'self')
+        return target.id === caster.id;
+      if (spell.target === 'ally')
+        return target.faction === caster.faction;
+      return target.faction !== caster.faction;
+    },
+
+    /* a spell armed and a target clicked too far away: walk to the edge of the
+       spell's own range -- as close as the cast needs, no closer -- and `cast`
+       runs on arrival. A creature that already moved cannot walk again. */
+    _approachAndCast(spell, anchor, cast) {
+      const eng = this._combatEngine;
+      const unit = eng.currentUnit;
+      if (!unit || unit.hasMoved)
+        return;
+      const range = Spells.rangeTiles(spell.range);
+      const tile = this._findApproachTile(eng, unit, unit.position, anchor,
+        (c, r) => Spells.isInRange(c, r, anchor.col, anchor.row, range));
+      /* the spell goes back to the menu while the caster walks; the cast callback
+         re-arms it on arrival */
+      eng.cancelTarget();
+      if (!tile) {
+        const step = this._closestApproachTile(eng, unit, anchor);
+        if (step && (step.col !== unit.position.col || step.row !== unit.position.row))
+          this._walkAndThen(eng, unit, step, () => {});
+        return;
+      }
+      this._walkAndThen(eng, unit, tile, cast);
     },
 
     /* the square to stand on to act against a creature: only squares the action is

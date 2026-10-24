@@ -82,6 +82,71 @@
     });
   });
 
+  describe('_approachAndCast', () => {
+    it('stops at the edge of the spell range instead of walking into melee', () => {
+      const unit = makeUnit(7, 0, 6, null);
+      unit.hasMoved = false;
+      const target = { id: 't1', faction: 'enemy', position: { col: 12, row: 0 } };
+      const grid = openGrid(16, 16);
+      const calls = { move: [], spell: [], spellTarget: [], cancel: 0 };
+      const eng = {
+        grid,
+        currentUnit: unit,
+        selectMoveTile: (col, row) => { calls.move.push({ col, row }); return true; },
+        confirmMove: () => {},
+        cancelTarget: () => { ++calls.cancel; },
+        selectSpell: (id) => { calls.spell.push(id); return true; },
+        selectSpellTarget: (col, row) => { calls.spellTarget.push({ col, row }); return null; },
+      };
+      const self = Object.create(Controller.prototype);
+      self._combatEngine = eng;
+      self._startSpellAnim = () => {};
+      const spell = { id: 'acid_arrow', range: 15, target: 'enemy' };
+      Controller.prototype._approachAndCast.call(self, spell, target.position, () => {
+        eng.selectSpell(spell.id);
+        eng.selectSpellTarget(target.position.col, target.position.row);
+      });
+      assert.equal(calls.cancel, 1, 'the spell goes back to the menu while the caster walks');
+      assert.deepEqual(calls.move, [{ col: 9, row: 0 }], 'three squares off -- 15 feet, not the enemy\'s face');
+      assert.equal(typeof self._combatMoveCallback, 'function', 'the cast waits for the walk to land');
+      self._combatMoveCallback();
+      assert.deepEqual(calls.spell, ['acid_arrow'], 'the spell is re-armed on arrival');
+      assert.deepEqual(calls.spellTarget, [{ col: 12, row: 0 }], 'and fired at the clicked creature');
+    });
+
+    it('a caster that already moved stands and holds the spell', () => {
+      const unit = makeUnit(7, 0, 6, null);
+      unit.hasMoved = true;
+      const target = { id: 't1', faction: 'enemy', position: { col: 12, row: 0 } };
+      const calls = [];
+      const eng = {
+        grid: openGrid(16, 16),
+        currentUnit: unit,
+        selectMoveTile: (col, row) => { calls.push({ col, row }); return true; },
+        confirmMove: () => {},
+        cancelTarget: () => {},
+      };
+      const self = Object.create(Controller.prototype);
+      self._combatEngine = eng;
+      Controller.prototype._approachAndCast.call(self, { id: 's', range: 15, target: 'enemy' }, target.position, () => {});
+      assert.equal(calls.length, 0, 'no second move in the same turn');
+    });
+  });
+
+  describe('_spellTakes', () => {
+    it('applies the spell\'s own target rule before any range', () => {
+      const caster = { id: 'u1', faction: 'party' };
+      const foe = { id: 't1', faction: 'enemy' };
+      const friend = { id: 'u2', faction: 'party' };
+      const self = Object.create(Controller.prototype);
+      assert.ok(Controller.prototype._spellTakes.call(self, { target: 'enemy' }, caster, foe));
+      assert.ok(!Controller.prototype._spellTakes.call(self, { target: 'enemy' }, caster, friend));
+      assert.ok(Controller.prototype._spellTakes.call(self, { target: 'ally' }, caster, friend));
+      assert.ok(Controller.prototype._spellTakes.call(self, { target: 'self' }, caster, caster));
+      assert.ok(!Controller.prototype._spellTakes.call(self, { target: 'self' }, caster, foe));
+    });
+  });
+
   describe('_approachAndAttack', () => {
     it('walks to a square next to the target and attacks from there', () => {
       const unit = makeUnit(9, 0, 6, null);
