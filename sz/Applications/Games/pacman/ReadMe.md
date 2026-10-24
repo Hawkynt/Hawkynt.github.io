@@ -10,8 +10,15 @@ Canvas-based game rendered at 448x496 (28x31 tile grid, 16px tiles) with HiDPI s
 
 ## Architecture
 
-- **`index.html`** -- Menu bar (Game/Help), canvas, status bar (score/lives/level/effects), dialogs (High Scores, Controls, About)
-- **`controller.js`** -- IIFE with maze logic, Pac-Man movement, ghost AI, collision detection, powerup system, boss encounters, level progression, game states, rendering
+- **`index.html`** -- Menu bar (Game/Help), canvas, status bar (score/lives/level/effects), dialogs (High Scores, Controls, About); loads the modules under `js/` in dependency order
+- **`js/`** -- the game under `SZ.Pacman`, one module per domain:
+  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- tile, timing, scoring, theme and storage tunables; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas, context and canvas scaling; `js/core/effects.js` -- particle, shake and floating-text singletons
+  - `js/data/maze-data.js` -- the 28x31 maze; `js/data/level-data.js` -- fruit rewards, powerup definitions, per-level configs, boss roster
+  - `js/systems/` -- maze helpers, entities, movement, mode timers, collisions, powerups, Pac-Man, ghosts, boss, level flow, pause
+  - `js/render/` -- wall tiles, maze cache, maze, Pac-Man, ghosts, fruit, powerup item, boss, intermission, overlays, one frame in order
+  - `js/ui/` -- status bar cells, high scores, menu bar actions, keyboard and swipe input
+  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
+- **`tests/`** -- behavior pin: a scripted session recorded against the game, digest-checked for exact behavioral equality
 - **`styles.css`** -- Flex layout for resizable canvas and visual styling
 - **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
 

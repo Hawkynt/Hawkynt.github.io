@@ -1,0 +1,56 @@
+/* The one shared mutable state object every module reads and writes. */
+;(function() {
+  'use strict';
+
+  const SZ = window.SZ || (window.SZ = {});
+  const NS = SZ.Pacman || (SZ.Pacman = {});
+  const S = NS.state = NS.state || {};
+
+  S.maze = undefined;
+  S.totalDots = undefined;
+  S.dotsEaten = undefined;
+  S.score = undefined;
+  S.lives = undefined;
+  S.level = undefined;
+  S.gameState = undefined;
+  S.animFrameId = undefined;
+  S.lastTime = undefined;
+  S.pacman = undefined;
+  S.ghosts = undefined;
+  S.modeTimer = undefined;
+  S.modeIndex = undefined;
+  S.currentMode = undefined;
+  S.frightenedTimer = undefined;
+  S.ghostsEatenThisRound = undefined;
+  S.fruitActive = undefined;
+  S.fruitTimer = undefined;
+  S.fruitDotsThreshold1 = undefined;
+  S.fruitDotsThreshold2 = undefined;
+  S.fruitShown = undefined;
+  S.readyTimer = undefined;
+  S.dyingTimer = undefined;
+  S.levelCompleteTimer = undefined;
+  S.levelFlashCount = undefined;
+  S.currentTheme = undefined;
+  S.mazeCache = undefined;
+  S.trailCounter = undefined;
+  S.dotChainCount = undefined;
+  S.dotChainTimer = undefined;
+  S.electricArcs = undefined;
+  S.fieldPowerup = undefined;
+  S.lastPowerupTime = undefined;
+  S.activePowerups = undefined;
+  S.scoreMultiplier = undefined;
+  S.pacmanPhasing = undefined;
+  S.ghostsFrozen = undefined;
+  S.levelConfig = undefined;
+  S.intermissionTimer = undefined;
+  S.boss = undefined;
+  S.bossActive = undefined;
+  S.bossWarningTimer = undefined;
+  S.bossVictoryTimer = undefined;
+  S.bossMinions = undefined;
+  S.pacmanSlowed = undefined;
+  S.pacmanSlowTimer = undefined;
+  S.highScores = [];
+})();
