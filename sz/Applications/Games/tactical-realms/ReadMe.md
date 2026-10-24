@@ -8819,7 +8819,7 @@ Some achievements unlock cosmetic rewards:
 
 ### Module Structure (IIFE + window.SZ)
 
-**Implemented files** (71 modules under `js/` + 69 SRD data files + HTML/CSS/SVG):
+**Implemented files** (76 modules under `js/` + 69 SRD data files + HTML/CSS/SVG):
 
 ```
 Applications/Games/tactical-realms/
@@ -8838,7 +8838,12 @@ Applications/Games/tactical-realms/
   js/app/controller-screens.js  Victory/defeat screens, hit-testing, keyboard, battle-scene attach
   js/app/controller-status.js  Hover refresh and status-bar cells
   js/app/boot.js              DOMContentLoaded start-up: build the controller, init()
-  js/render/renderer.js       Canvas rendering engine (overworld, combat, UI, cut-ins, sprites)
+  js/render/renderer.js       Canvas engine core: buffer, camera, frame begin/end, image blits
+  js/render/renderer-sprites.js  Tinted blits and the animated creature sprite pass
+  js/render/renderer-map.js   Infinite overworld map, day/night ambience, fallback tile colors
+  js/render/renderer-combat.js   Battle grid, terrain edges, lighting, unit tokens, highlights
+  js/render/renderer-ui.js    Panels, buttons, text, character card, tooltips, context menus
+  js/render/renderer-screens.js  Title, victory and defeat screens
   js/core/input-handler.js    Mouse/keyboard input abstraction, screen-to-tile conversion
   js/core/prng.js             Seeded PRNG (mulberry32), hash code, random utilities
   js/core/time-rotation.js    Date-seeded content rotation (daily/weekly/monthly/seasonal)
