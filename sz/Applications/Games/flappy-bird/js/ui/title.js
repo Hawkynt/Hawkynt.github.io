@@ -3,149 +3,153 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.FlappyBird;
 
-  /* Title screen and the Adventure world map with its stage buttons. Reads G.save, sets
-     G.mode/G.stageIndex through the button actions. */
+  /* The title screen: logo, the hero bird with its friends flying around, the main menu
+     (Continue when a run is saved, Story, modes, Classic, Nest, Wardrobe, Goals, Help) and
+     the "today" panel with the seasonal event, its track, the day streak, the daily twist
+     and the three daily quests. Reads G.save and the saved run. */
 
   const { CANVAS_W, BIRD_DEFS } = NS.C;
   const { ctx, ui } = NS.services;
   const G = NS.state;
   const Prog = NS.progress;
-  const View = NS.view;
-  const Run = NS.run;
   const Shapes = NS.shapes;
   const Menu = NS.menu;
   const Nav = NS.nav;
+  const Goals = NS.goals;
+  const S = SZ.FlappySeasons;
 
-  function drawTitleScreen() {
-    const t = G.globalTime;
-    ui.drawHeadline('FLAPPY BIRD', 640, 130, 900, 96, '#ffd23f', '#ff8a1e');
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ui.fitText('Flap. Dodge. Collect. Soar.', 640, 200, 600, 22, { color: ui.UI.textDim });
+  let runCache = { at: -1, snap: null };
 
-    // the decoration birds stay in the left and right thirds — they never cross the
-    // headline, the subtitle or the column of buttons
-    const others = BIRD_DEFS.filter(d => Prog.birdOwned(d.id) && d.id !== Prog.currentBird()).map(d => d.id);
+  /* the saved run, read from storage at most twice a second */
+  function savedRun() {
+    if (G.globalTime - runCache.at > 0.5 || runCache.at < 0) {
+      runCache = { at: G.globalTime, snap: NS.save.readRun() };
+    }
+    return runCache.snap;
+  }
+
+  function drawHeroes(t) {
+    const others = BIRD_DEFS.filter(d => Prog.owns('birds', d.id) && d.id !== Prog.currentBird()).map(d => d.id);
     while (others.length < 2)
       others.push(others.length === 0 ? 'ruby' : 'jay');
     for (let i = 0; i < 2; ++i) {
-      const home = i === 0 ? 250 : 1040;
-      const x = home + Math.sin(t * (0.5 + i * 0.17) + i) * 130;
-      const y = 420 + i * 90 + Math.sin(t * 1.5 + i * 2) * 60;
-      SZ.FlappyBirdArt.drawBird(ctx, { x: x, y: y, angle: 0, birdId: others[i], frame: t * 8, scale: 1.4 });
+      const x = 170 + i * 120 + Math.sin(t * (0.5 + i * 0.17) + i) * 90;
+      const y = 470 + i * 70 + Math.sin(t * 1.5 + i * 2) * 50;
+      SZ.FlappyBirdArt.drawBird(ctx, { x: x, y: y, angle: 0.1 * Math.sin(t * 2 + i), birdId: others[i], frame: t * 9, scale: 1.4 });
     }
-    SZ.FlappyBirdArt.drawBird(ctx, {
-      x: 250 + 80 * Math.sin(t),
-      y: 450 + 70 * Math.sin(2 * t),
-      angle: 0.2 * Math.cos(2 * t),
-      birdId: Prog.currentBird(),
-      frame: t * 10,
-      scale: 3
-    });
+    const hx = 240 + 70 * Math.sin(t), hy = 330 + 60 * Math.sin(2 * t);
+    const ang = 0.2 * Math.cos(2 * t);
+    const stretch = 1 + 0.06 * Math.sin(t * 10);
+    SZ.FlappyBirdArt.drawBird(ctx, { x: hx, y: hy, angle: ang, birdId: Prog.currentBird(), frame: t * 10, scale: 3, sx: 2 - stretch, sy: stretch });
+    const hat = Prog.currentHat();
+    if (hat !== 'none')
+      SZ.FlappyCosmeticArt.drawHat(ctx, { x: hx, y: hy, angle: ang, hatId: hat, scale: 3, sx: 2 - stretch, sy: stretch });
+    if (Math.random() < 0.3)
+      NS.services.particles.trail(hx - 50, hy + 8, { color: '#fff6c0', size: 3, life: 0.6, vx: -2, shape: 'star' });
+  }
 
-    const bx = 640 - 170;
-    let y = 236;
-    Menu.drawButton('t-adventure', 'Adventure', bx, y, 340, 50, { sub: Prog.totalStars() + ' / 72 stars', action: Nav.goWorlds });
-    y += 58;
-    Menu.drawButton('t-classic', 'Classic', bx, y, 340, 50, { sub: 'Best ' + G.save.best.classic, action: () => { G.mode = 'classic'; Run.startRun(); } });
-    y += 58;
-    Menu.drawButton('t-time', 'Time Attack', bx, y, 340, 50, { sub: 'Best ' + G.save.best.time, action: () => { G.mode = 'time'; Run.startRun(); } });
-    y += 58;
-    Menu.drawButton('t-daily', 'Daily Run', bx, y, 340, 50, {
-      sub: G.save.best.daily.date === Prog.todayKey() ? 'Best ' + G.save.best.daily.score : 'New seed today',
-      action: () => { G.mode = 'daily'; Run.startRun(); }
-    });
-    y += 58;
-    Menu.drawButton('t-nest', 'Nest', bx, y, 340, 50, { sub: Prog.treeComplete() + ' / 15 upgrades', action: Nav.goNest });
-    y += 58;
-    Menu.drawButton('t-aviary', 'Aviary', bx, y, 340, 50, { sub: G.save.birds.length + '/6 birds', action: Nav.goAviary });
-    y += 58;
-    Menu.drawButton('t-help', 'Help', bx, y, 340, 50, { action: Nav.goHelp });
+  function drawTodayPanel() {
+    const x = 900, y = 214, w = 356;
+    const ev = G.season.event;
+    const s = G.save.season;
+    // season event card
+    ui.drawPanel(x, y, w, 150, { title: ev.name, titlePx: 18, accent: ev.accent, titleRight: G.season.daysLeft + ' days left' });
+    ctx.save();
+    ctx.translate(x + 40, y + 70);
+    SZ.FlappySeasonArt.drawToken(ctx, ev.id, 0, 0, G.globalTime);
+    ctx.restore();
+    const tier = S.trackTier(s.tokens);
+    const next = S.TRACK[Math.min(tier, S.TRACK.length - 1)];
+    const prevNeed = tier > 0 ? S.TRACK[tier - 1].need : 0;
+    const ratio = tier >= S.TRACK.length ? 1 : (s.tokens - prevNeed) / (next.need - prevNeed);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ui.fitText(s.tokens + ' ' + ev.token + (s.tokens === 1 ? '' : 's'), x + 72, y + 56, w - 90, 18, { weight: 'bold', color: ev.tokenColor });
+    ui.drawMeter(x + 72, y + 74, w - 92, 12, ratio, ev.accent);
+    let reward;
+    if (tier >= S.TRACK.length)
+      reward = 'Track complete - Season Champion!';
+    else if (next.reward)
+      reward = 'Next: ' + Prog.itemName(next.reward === 'bird' ? 'birds' : next.reward + 's', ev.rewards[next.reward]) + ' at ' + next.need;
+    else
+      reward = 'Next: +' + next.coins + ' coins at ' + next.need;
+    ui.fitText(reward, x + 72, y + 100, w - 90, 14, { color: ui.UI.textDim });
+    ui.drawTextBlock(ev.blurb, x + 16, y + 112, w - 32, 34, 13, { color: ui.UI.textMute });
 
+    // daily quests and streak
+    const qy = y + 162;
+    const quests = Goals.questList();
+    ui.drawPanel(x, qy, w, 186, { title: 'Today', titlePx: 18, titleRight: 'Streak ' + G.save.streak.count + ' day' + (G.save.streak.count === 1 ? '' : 's') });
+    ctx.textAlign = 'left';
+    ui.fitText('Daily twist: ' + G.twist.name, x + 16, qy + 46, w - 32, 15, { weight: 'bold', color: '#ff9a3a' });
+    for (let i = 0; i < quests.length; ++i) {
+      const q = quests[i];
+      const done = G.save.daily.claimed[i];
+      const ly = qy + 76 + i * 34;
+      ui.roundRectPath(x + 16, ly - 10, 20, 20, 5);
+      ctx.fillStyle = done ? ui.UI.good : 'rgba(255,255,255,0.08)';
+      ctx.fill();
+      if (done) {
+        ctx.strokeStyle = '#0a2a12';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x + 20, ly);
+        ctx.lineTo(x + 25, ly + 5);
+        ctx.lineTo(x + 32, ly - 5);
+        ctx.stroke();
+      }
+      ctx.textAlign = 'left';
+      ui.fitText(q.text, x + 46, ly - 4, w - 140, 14, { color: done ? ui.UI.textDim : ui.UI.text });
+      ui.drawMeter(x + 46, ly + 8, w - 140, 5, Goals.questProgress(q) / q.need, done ? ui.UI.good : ui.UI.accent);
+      ctx.textAlign = 'right';
+      ui.fitText('+' + q.reward, x + w - 16, ly, 70, 14, { weight: 'bold', color: ui.UI.gold });
+    }
+  }
+
+  function drawTitleScreen() {
+    const t = G.globalTime;
+    drawHeroes(t);
+    const bob = Math.sin(t * 2) * 4;
+    ui.drawHeadline('FLAPPY BIRD', 640, 92 + bob, 900, 92, '#ffd23f', '#ff8a1e');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ui.fitText('and the Season Feathers', 640, 156, 600, 26, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.6)' });
+
+    const bx = 640 - 175, bw = 350, bh = 48, step = 54;
+    let y = 196;
+    const snap = savedRun();
+    if (snap) {
+      Menu.drawButton('t-continue', 'Continue', bx, y, bw, bh, { sub: NS.autosave.describe(snap), accent: '#6fe08a', action: Nav.continueRun });
+      y += step;
+    }
+    const next = SZ.FlappyCourse.STAGES[Prog.storyNext()];
+    Menu.drawButton('t-story', 'Story', bx, y, bw, bh, {
+      sub: Prog.totalStars() + ' / 72 stars  -  ' + NS.C.CHAPTERS[next.world].name, action: Nav.goWorlds
+    });
+    y += step;
+    Menu.drawButton('t-modes', 'Arcade, Zen & more', bx, y, bw, bh, { sub: 'Arcade, Zen, Time Attack, Daily, Boss Rush', action: Nav.goModes });
+    y += step;
+    Menu.drawButton('t-classic', 'Classic', bx, y, bw, bh, { sub: 'Best ' + G.save.best.classic, action: () => Nav.startMode('classic') });
+    y += step;
+    Menu.drawButton('t-nest', 'Nest - Tech Tree', bx, y, bw, bh, { sub: Prog.treeComplete() + ' / ' + NS.C.TREE.length + ' upgrades maxed', action: Nav.goNest });
+    y += step;
+    Menu.drawButton('t-wardrobe', 'Wardrobe', bx, y, bw, bh, { sub: Prog.wardrobeCount() + ' / ' + Prog.wardrobeTotal() + ' birds, hats & trails', action: Nav.goAviary });
+    y += step;
+    Menu.drawButton('t-goals', 'Goals & Stats', bx, y, bw, bh, { sub: Goals.achievementCount() + ' / ' + NS.C.ACHIEVEMENTS.length + ' achievements', action: () => Nav.goGoals(0) });
+    y += step;
+    if (!snap)
+      Menu.drawButton('t-help', 'Help', bx, y, bw, bh, { action: Nav.goHelp });
+
+    drawTodayPanel();
     Shapes.drawCoinChip(G.save.coins, CANVAS_W - 24, 20);
+    if (G.save.streak.count > 1)
+      ui.drawChip('Day streak ' + G.save.streak.count, 24, 20, 30, { align: 'left', color: '#ff9a3a', bg: 'rgba(0,0,0,0.45)' });
     ui.drawKeyHints([
       { key: '↑↓', label: 'Move' },
       { key: 'Enter', label: 'Select' },
       { key: 'H', label: 'Help' }
-    ], 640, 690, 420, 1.2);
+    ], 640, 700, 420, 1.1);
   }
 
-  function drawWorldsScreen() {
-    ui.drawHeadline('Adventure', 640, 62, 500, 44, ui.UI.gold);
-    const stages = SZ.FlappyCourse.STAGES;
-    for (let w = 0; w < 6; ++w) {
-      const cx = 40 + (w % 3) * 404;
-      const cy = 120 + Math.floor(w / 3) * 274;
-      const biome = SZ.FlappyCourse.BIOME_ORDER[w];
-      const worldLocked = !Prog.stageUnlocked(w * 4);
-
-      ui.drawPanel(cx, cy, 380, 250, { accent: ui.UI.gold });
-
-      // miniature of the biome sky, clipped into the card
-      ctx.save();
-      ui.roundRectPath(cx, cy, 380, 250, 9);
-      ctx.clip();
-      ctx.translate(cx, cy);
-      ctx.scale(0.3, 0.3);
-      View.sceneFor(biome).drawSky(ctx);
-      ctx.restore();
-      const g = ctx.createLinearGradient(0, cy + 110, 0, cy + 250);
-      g.addColorStop(0, 'rgba(6,10,24,0)');
-      g.addColorStop(1, 'rgba(6,10,24,0.85)');
-      ctx.fillStyle = g;
-      ctx.fillRect(cx, cy + 110, 380, 140);
-
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ui.fitText(SZ.FlappyCourse.BIOMES[biome].name, cx + 16, cy + 26, 250, 26, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.6)' });
-      // the star counter sits on a dark chip, right-aligned at the card edge
-      ui.drawChip(Prog.worldStars(w) + ' / 12', cx + 380 - 16, cy + 26 - 13, 26, {
-        align: 'right',
-        color: '#ffd23f',
-        bg: 'rgba(0,0,0,0.45)'
-      });
-      ctx.textAlign = 'left';
-
-      if (worldLocked) {
-        Shapes.drawLock(cx + 190, cy + 110, 64);
-        ctx.textAlign = 'center';
-        ui.fitText('Clear ' + SZ.FlappyCourse.BIOMES[SZ.FlappyCourse.BIOME_ORDER[w - 1]].name, cx + 190, cy + 162, 340, 18, { weight: 'bold', color: ui.UI.warn });
-        ctx.textAlign = 'left';
-      }
-
-      for (let s = 0; s < 4; ++s) {
-        const idx = w * 4 + s;
-        const bx = cx + 12 + s * 92, by = cy + 170;
-        const locked = !Prog.stageUnlocked(idx);
-        const action = () => { G.mode = 'adventure'; G.stageIndex = idx; Run.startRun(); };
-        const index = Menu.registerHit('stage' + idx, bx, by, 80, 64, action, locked);
-        const hot = Menu.isHot(index, bx, by, 80, 64);
-        ctx.save();
-        if (locked)
-          ctx.globalAlpha *= 0.45;
-        if (hot) {
-          ctx.translate(bx + 40, by + 32);
-          ctx.scale(1.05, 1.05);
-          ctx.translate(-(bx + 40), -(by + 32));
-        }
-        ui.drawPanel(bx, by, 80, 64, { radius: 8, noStuds: true, accent: hot ? ui.UI.gold : ui.UI.accent, glow: hot });
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ui.fitText(String(s + 1), bx + 40, by + 22, 60, 26, { weight: 'bold', color: hot ? '#ffffff' : ui.UI.text });
-        const earned = G.save.stars[stages[idx].id] || 0;
-        for (let k = 0; k < 3; ++k)
-          Shapes.drawStarShape(bx + 26 + k * 14, by + 48, 6, k < earned);
-        if (locked)
-          Shapes.drawLock(bx + 40, by + 32, 26);
-        ctx.restore();
-      }
-    }
-    ui.drawKeyHints([
-      { key: '↑↓←→', label: 'Stage' },
-      { key: 'Enter', label: 'Play' },
-      { key: 'Esc', label: 'Title' }
-    ], 640, 692, 900, 1);
-  }
-
-  Object.assign(NS.title, { drawTitleScreen, drawWorldsScreen });
+  Object.assign(NS.title, { savedRun, drawTitleScreen, drawTodayPanel });
 })();

@@ -43,7 +43,7 @@ global.document = { createElement: () => fakeCanvas() };
 require('../js/art/bird-art.js');
 
 const Art = window.SZ.FlappyBirdArt;
-const IDS = ['sunny', 'ruby', 'jay', 'pip', 'snowy', 'phoenix'];
+const IDS = ['sunny', 'ruby', 'jay', 'pip', 'snowy', 'phoenix', 'goldie', 'corvus', 'frosty', 'nova', 'blossom', 'surf', 'maple', 'jack'];
 const FIELDS = ['name', 'body', 'belly', 'wing', 'wingDark', 'beak', 'beakDark', 'outline', 'eye', 'style'];
 let failures = 0;
 
@@ -64,7 +64,7 @@ if (!Art) {
 }
 
 const ids = Art.BIRDS.map(function(b) { return b.id; });
-check('BIRDS has the six ids in order', ids.join(',') === IDS.join(','), 'got ' + ids.join(','));
+check('BIRDS has the fourteen ids in order', ids.join(',') === IDS.join(','), 'got ' + ids.join(','));
 check('BIRDS frozen', Object.isFrozen(Art.BIRDS), 'the array is not frozen');
 
 for (let i = 0; i < Art.BIRDS.length; ++i) {
@@ -110,6 +110,10 @@ for (let i = 0; i < IDS.length; ++i) {
   check('drawBird ' + IDS[i], !err, err ? 'threw ' + err.message : '');
   if (!err) check('drawBird ' + IDS[i] + ' blits once', ctx.images === 1, 'drawImage called ' + ctx.images + ' times');
 }
+
+const stretched = fakeCtx();
+Art.drawBird(stretched, { x: 0, y: 0, birdId: 'corvus', sx: 0.86, sy: 1.22, flip: true });
+check('squash, stretch and flip still blit once', stretched.images === 1, 'drawImage called ' + stretched.images + ' times');
 
 const bare = fakeCtx();
 let bareErr = null;

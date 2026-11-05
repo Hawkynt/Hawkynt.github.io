@@ -78,6 +78,31 @@
       let f = hz.frame === undefined ? Math.floor(t * 8) % 2 : hz.frame;
       f = ((f % 2) + 2) % 2;
       c.drawImage(sh.bats[f], hz.sx - BAT_W / 2, hz.sy - BAT_H / 2);
+    } else if (hz.type === 'laser' && hz.y !== undefined) {
+      // the scanner: emitters on both sides of the gate, a horizontal beam between them
+      const x0 = hz.sx - 14, x1 = hz.sx + 86;
+      c.strokeStyle = rgba('#ff2a6a', 0.25);
+      c.lineWidth = 10;
+      c.beginPath();
+      c.moveTo(x0, hz.y);
+      c.lineTo(x1, hz.y);
+      c.stroke();
+      c.strokeStyle = rgba('#ff2a6a', 0.7);
+      c.lineWidth = 5;
+      c.stroke();
+      c.strokeStyle = hz.frozen ? '#bfeaff' : '#ffffff';
+      c.lineWidth = 2;
+      c.stroke();
+      c.save();
+      c.translate(x0, hz.y);
+      c.rotate(-Math.PI / 2);
+      c.drawImage(sh.emitters[0], -12, -8);
+      c.restore();
+      c.save();
+      c.translate(x1, hz.y);
+      c.rotate(Math.PI / 2);
+      c.drawImage(sh.emitters[1], -12, -8);
+      c.restore();
     } else if (hz.type === 'laser') {
       const bx = hz.sx + 36;
       c.drawImage(sh.emitters[0], bx - 12, hz.y1 - 8);

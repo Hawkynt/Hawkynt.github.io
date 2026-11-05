@@ -13,7 +13,7 @@
   const statusBest = document.getElementById('statusBest');
   const statusState = document.getElementById('statusState');
 
-  const particles = new SZ.GameEffects.ParticleSystem();
+  const particles = new SZ.FlappyParticles.ParticlePool();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
 

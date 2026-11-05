@@ -60,6 +60,7 @@ const HAZARDS = [
   { type: 'laser', sx: 500, y1: 200, y2: 400, on: true, warn: false },
   { type: 'laser', sx: 500, y1: 200, y2: 400, on: false, warn: true },
   { type: 'laser', sx: 500, y1: 200, y2: 400, on: false, warn: false },
+  { type: 'laser', sx: 500, y: 300 },
   { type: 'fireball', sx: 600, sy: 300, vy: -120 },
   { type: 'fireball', sx: 600, sy: 300, vy: 120 }
 ];

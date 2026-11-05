@@ -14,6 +14,7 @@
   const Shapes = NS.shapes;
 
   const TREE_CARD_W = 300, TREE_CARD_H = 120, TREE_COL_GAP = 90, TREE_ROW_GAP = 26;
+  const BACK_BTN = { x: 38, y: 34, w: 110, h: 48 };
 
   function treeNodeById(id) {
     return TREE.find(n => n.id === id) || null;
@@ -155,7 +156,12 @@
 
     // header: title, coins, progress
     ui.drawPanel(24, 20, 1232, 76);
-    ui.drawHeadline('Nest', 130, 58, 220, 40, ui.UI.gold);
+    const backHot = G.mouseX >= BACK_BTN.x && G.mouseX <= BACK_BTN.x + BACK_BTN.w && G.mouseY >= BACK_BTN.y && G.mouseY <= BACK_BTN.y + BACK_BTN.h;
+    ui.drawPanel(BACK_BTN.x, BACK_BTN.y, BACK_BTN.w, BACK_BTN.h, { radius: 10, noStuds: true, accent: backHot ? ui.UI.gold : ui.UI.accent, glow: backHot });
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ui.fitText(G.prevState === NS.C.STATE_PAUSED ? '< Run' : '< Back', BACK_BTN.x + BACK_BTN.w / 2, BACK_BTN.y + BACK_BTN.h / 2 + 1, BACK_BTN.w - 16, 18, { weight: 'bold', color: '#ffffff' });
+    ui.drawHeadline('Nest - Tech Tree', 420, 58, 460, 40, ui.UI.gold);
     Shapes.drawCoinChip(G.save.coins, 1236, 30);
     ctx.textAlign = 'right';
     ui.fitText(Prog.treeComplete() + ' / ' + TREE.length + ' upgrades complete', 1236, 84, 320, 13, { color: ui.UI.textDim });
@@ -221,7 +227,8 @@
     }
 
     ui.drawKeyHints([
-      { key: '←→', label: 'Branch' },
+      { key: '1-6', label: 'Branch' },
+      { key: '←→', label: 'Column' },
       { key: '↑↓', label: 'Select' },
       { key: 'Enter', label: 'Buy' },
       { key: 'Esc', label: 'Back' }
@@ -316,6 +323,6 @@
 
   Object.assign(NS.nest, {
     treeNodeById, treeDepth, buildTreeLayout, treeCardById, selectFirstInBranch, moveTreeSelection,
-    drawNestScreen, drawNestNodeCard, romanNumeral
+    drawNestScreen, drawNestNodeCard, romanNumeral, BACK_BTN
   });
 })();

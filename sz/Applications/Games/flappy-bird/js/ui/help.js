@@ -5,7 +5,7 @@
 
   /* Help pages. Owns HELP_PAGES and reads G.helpPage. */
 
-  const { CANVAS_W, CANVAS_H } = NS.C;
+  const { CANVAS_W, CANVAS_H, POWER_BY_ID } = NS.C;
   const { ctx, ui } = NS.services;
   const G = NS.state;
   const View = NS.view;
@@ -14,42 +14,61 @@
     {
       title: 'Flying',
       lines: [
-        'Space, click or tap to flap.',
-        'Hold the flap while falling to glide, once Glide is learned.',
-        'Steer through the gaps between the pipes.',
-        'The pipes move and close — watch the openings.',
-        'Esc pauses the run.'
+        'Space, W, Up, click or tap to flap.',
+        'Hold the flap while falling to glide, once Glide is learned in the Nest.',
+        'Steer through the gaps. Pipes move, close, and carry lasers.',
+        'Storm crows flash a red ! and then dive at the height you were at.',
+        'Esc or the pause button pauses; the Nest and Wardrobe open from there too.'
       ]
     },
     {
-      title: 'Coins & combos',
+      title: 'Coins, combos & FEVER',
       lines: [
-        'Coins pay for Nest upgrades and Aviary birds.',
+        'Coins pay for Nest upgrades, birds, hats and trails.',
         'A pass through the middle of a gap is PERFECT and builds the combo.',
         'Combo 5, 10 and 20 multiply coins x2, x3 and x4.',
-        'A close shave past a pipe pays a bonus coin.',
-        'A hit breaks the combo — the Combo Keeper can save it.'
+        'PERFECT passes fill the FEVER meter: full, it pays double for 6 seconds.',
+        'A close shave past a pipe pays a bonus coin.'
       ]
     },
     {
-      title: 'Power-ups',
+      title: 'Power-ups (1 / 2)',
       bubbles: ['shield', 'magnet', 'slow', 'ghost', 'double', 'tiny'],
+      lines: []
+    },
+    {
+      title: 'Power-ups (2 / 2)',
+      bubbles: ['blast', 'rush', 'heart', 'freeze', 'gold', 'buddy'],
+      lines: []
+    },
+    {
+      title: 'Story & bosses',
       lines: [
-        'Shield — eats the next hit.',
-        'Magnet — pulls coins in for a while.',
-        'Slow-mo — the whole world slows down.',
-        'Ghost — pass through everything but the ground.',
-        'Double coins — every coin pays twice.',
-        'Tiny — the bird and its hitbox shrink.'
+        'Corvus the Storm Crow scattered the six Season Feathers - bring them home.',
+        'Every land ends in a boss arena: dodge the attacks, grab the sun orbs.',
+        'Each sun orb you touch fires a bolt at the boss.',
+        'Stars: finish the stage, collect 60% of its coins, take no hits.',
+        'Beaten bosses wait for you again in Boss Rush.'
       ]
     },
     {
       title: 'Modes',
       lines: [
-        'Adventure stars: finish the stage, collect 60% of the coins, take no hits.',
-        'Classic medals: Bronze 10, Silver 25, Gold 50, Platinum 100.',
-        'Time Attack: 60 seconds on the clock, every hit costs 3 seconds.',
-        'Daily Run: the same course for everyone today.'
+        'Classic: the original, with medals - Bronze 10, Silver 25, Gold 50, Platinum 100.',
+        'Arcade: points x multiplier - clean pipes raise it, a hit resets it. Top 10 table.',
+        'Zen: wide gaps and soft chimes. Nothing hurts. Esc ends the flight.',
+        'Time Attack: 60 seconds, every hit costs 3. Daily Challenge: one course and one twist per day.',
+        'Your run is saved all the time - Continue on the title picks it up again.'
+      ]
+    },
+    {
+      title: 'Every day & every season',
+      lines: [
+        'Three new daily quests every day, plus a featured challenge each week.',
+        'Play on consecutive days for a growing streak bonus.',
+        'Seasonal events change the scenery and hide tokens between the pipes.',
+        'Tokens fill the event track: coins, a trail, a hat and a bird to keep.',
+        'Achievements pay coins and unlock more of the wardrobe.'
       ]
     }
   ];
@@ -61,16 +80,20 @@
     const page = HELP_PAGES[G.helpPage];
     ui.drawHeadline(page.title, 640, py + 84, pw - 120, 36, ui.UI.gold);
     let ly = py + 150;
-    for (let i = 0; i < page.lines.length; ++i) {
-      if (page.bubbles) {
+    const n = page.bubbles ? page.bubbles.length : page.lines.length;
+    if (page.bubbles)
+      for (let i = 0; i < n; ++i) {
         ctx.save();
-        ctx.translate(px + 100, ly);
+        ctx.translate(px + 100, py + 150 + i * 52);
         ctx.scale(0.55, 0.55);
         View.sceneFor('meadow').drawBubble(ctx, page.bubbles[i], 0, 0, G.globalTime);
         ctx.restore();
+      }
+    for (let i = 0; i < n; ++i) {
+      if (page.bubbles) {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ui.fitText(page.lines[i], px + 150, ly, pw - 270, 20, { color: ui.UI.text });
+        ui.fitText(POWER_BY_ID[page.bubbles[i]].name + ' - ' + POWER_BY_ID[page.bubbles[i]].desc, px + 150, ly, pw - 270, 20, { color: ui.UI.text });
       } else {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
