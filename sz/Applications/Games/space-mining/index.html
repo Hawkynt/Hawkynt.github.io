@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online asteroid mining game -- pilot your rig, drill asteroids, sell ore and upgrade equipment in your browser">
+<meta name="description" content="Free online space mining and economy game -- fly a mining ship through five asteroid belts, laser rocks into ore, sell into a living market, refine bars, deploy drones, research a 32-node tech tree, plus Gold Rush and Daily Belt modes">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Space Mining -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online asteroid mining game -- pilot your rig, drill asteroids, sell ore and upgrade equipment in your browser">
+<meta property="og:description" content="Free online space mining and economy game -- fly a mining ship through five asteroid belts, laser rocks into ore, sell into a living market, refine bars, deploy drones, research a 32-node tech tree, plus Gold Rush and Daily Belt modes">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/space-mining/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Space Mining",
   "url": "https://hawkynt.github.io/sz/Applications/Games/space-mining/index.html",
-  "description": "Free online asteroid mining game -- pilot your rig, drill asteroids, sell ore and upgrade equipment in your browser",
+  "description": "Free online space mining and economy game -- fly a mining ship through five asteroid belts, laser rocks into ore, sell into a living market, refine bars, deploy drones, research a 32-node tech tree, plus Gold Rush and Daily Belt modes",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,17 +26,18 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=7d6b5dea">
+<link rel="stylesheet" href="styles.css?v=e4ce556b">
 </head>
 <body>
-<noscript><p>Free online asteroid mining game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online space mining and economy game: fly a mining ship through five asteroid belts, laser rocks into ore, trade, refine, research and build. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...<span class="shortcut">T</span></div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
@@ -45,7 +46,7 @@
   </div>
   <div class="menu-item" data-menu="help">Help
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="tutorial">Tutorial...<span class="shortcut">H</span></div>
+      <div class="menu-entry" data-action="tutorial">How to Play...<span class="shortcut">H</span></div>
       <div class="menu-entry" data-action="controls">Controls...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="about">About Space Mining</div>
@@ -55,14 +56,15 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
   <div class="status-section" id="statusCredits">Credits: 0</div>
-  <div class="status-section" id="statusCargo">Cargo: 0/10</div>
-  <div class="status-section" id="statusState">Ready</div>
+  <div class="status-section" id="statusData">Research: 0</div>
+  <div class="status-section" id="statusCargo">Belts: 1 / 5</div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- High Scores Dialog -->
@@ -72,7 +74,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Credits</th><th>Ore Mined</th></tr>
+          <tr><th>#</th><th>Score</th><th>Mode</th><th>Belt</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -86,17 +88,25 @@
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Arrow Keys / WASD</td><td>Fly mining rig</td></tr>
-        <tr><td>Space</td><td>Activate drill (near asteroid)</td></tr>
-        <tr><td>E</td><td>Sell cargo / Open shop (at station)</td></tr>
-        <tr><td>1-5 / Arrow+Enter</td><td>Buy upgrades in shop</td></tr>
-        <tr><td>H</td><td>Show tutorial</td></tr>
-        <tr><td>Escape</td><td>Pause / Close shop / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>WASD / Arrow keys</td><td>Fly (inertia)</td></tr>
+        <tr><td>Right mouse</td><td>Fly toward the cursor</td></tr>
+        <tr><td>Left mouse</td><td>Drill with the mining laser at the cursor</td></tr>
+        <tr><td>Space</td><td>Drill with auto-aim</td></tr>
+        <tr><td>Shift</td><td>Boost (Afterburner research)</td></tr>
+        <tr><td>Q</td><td>Scanner pulse</td></tr>
+        <tr><td>C</td><td>Drop a seismic charge</td></tr>
+        <tr><td>F</td><td>Recall or launch the mining drones</td></tr>
+        <tr><td>Esc / P</td><td>Pause (tech tree from the pause menu)</td></tr>
+        <tr><td>Tab</td><td>Next station tab</td></tr>
+        <tr><td>T / H</td><td>Tech tree / How to Play (in menus)</td></tr>
+        <tr><td>B</td><td>Research the selected tech node</td></tr>
+        <tr><td>Any key / click</td><td>Skip a cinematic</td></tr>
+        <tr><td>F2</td><td>Title screen</td></tr>
+        <tr><td>Touch</td><td>Left stick flies, right stick aims and drills</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -107,12 +117,12 @@
 
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">About Space Mining</div>
     <div class="dialog-body">
       <strong>Space Mining</strong><br><br>
-      Pilot your mining rig through asteroid fields, drill for precious ores, and sell them at the station. Upgrade your drill speed, cargo capacity, hull armor, engines, and scanner to mine deeper and earn more credits.<br><br>
-      Features 4 ore types (iron, gold, platinum, crystal), dynamic market prices, 5 equipment upgrades purchasable at the station shop, floating powerups (shield, speed boost, ore magnet, bonus ore, repair kit), animated parallax starfield with nebulae and shooting stars, scanner overlays, and contextual mining tutorial.<br><br>
+      Fly a mining ship out of Kessler Station into five asteroid belts. Laser rocks until they crack into smaller rocks and ore, reel the nuggets in with the tractor beam and haul them home past volatile rocks, radiation, solar storms, gravity wells and pirates.<br><br>
+      Sell ten ores into a market that moves, smelt bars, fill contracts, buy four hulls and upgrades that level up, build five station modules, deploy mining drones and research a 32-node tech tree - all the way to the Crown Heart. Plus Gold Rush and the seeded Daily Belt.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -122,52 +132,81 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Space Mining - Free Online Asteroid Mining and Economy Browser Game</h1>
-<p>Pilot your mining rig through asteroid fields, drill for precious ores, sell resources at the station, and upgrade your equipment in this free HTML5 space mining simulator playable in your browser.</p>
+<h1>Space Mining - Free Online Asteroid Mining and Economy Game with Tech Tree, Drones and Five Belts</h1>
+<p>Fly a mining ship through large scrolling asteroid belts, laser asteroids apart into ore, tractor the nuggets aboard and sell them in a living market at your home station in this free HTML5 browser game.</p>
 <h2>Features</h2>
 <ul>
-<li>Free-flight mining rig with thrust-based movement and mouse-only control mode</li>
-<li>Drill mechanic with particle spray effects when extracting ore</li>
-<li>4 ore types: Iron, Gold, Platinum, and Crystal with distinct glow colors</li>
-<li>Cargo system with limited capacity requiring station returns</li>
-<li>Station trading with dynamic market prices</li>
-<li>5 equipment upgrades: Drill Speed, Cargo Capacity, Engine Power, Scanner Range, Hull Armor</li>
-<li>5 powerup types: Speed Boost, Drill Boost, Shield, Magnet, Double Value</li>
-<li>3-layer parallax starfield with nebula patches and shooting stars</li>
-<li>Large scrolling world with camera following the ship</li>
-<li>Drill particle sprays, ore glow effects, asteroid break debris, and screen shake</li>
-<li>4-page first-time tutorial with controls and mechanics</li>
-<li>High score persistence via localStorage</li>
+<li>3 game modes: Career, Gold Rush (five minutes) and a seeded Daily Belt</li>
+<li>5 asteroid belts with their own scenery, ore and hazards: Kessler Drift, Amber Reach, Verdant Shoals, Crimson Maw and Void Crown</li>
+<li>10 ores from iron and ice to platinum, iridium and void crystal</li>
+<li>Asteroids that crack into smaller rocks and ore nuggets, with chunks, dust and shockwaves</li>
+<li>Inertia flight, boost, tractor beam, scanner pulse, seismic charges and mining drones</li>
+<li>Hazards: volatile chain-reacting rocks, radiation fields, solar storms, gravity wells and three kinds of pirates</li>
+<li>Market prices that drift with booms, busts and your own sales, refining into bars and delivery contracts</li>
+<li>4 hulls, 6 upgrades that level up to 10, 5 station modules that change the station</li>
+<li>32-node tech tree in Drilling, Engines, Logistics, Automation, Defense and Science</li>
+<li>Geodes, derelicts and the Crown Heart; 17 achievements</li>
+<li>Cinematics: launch intro, belt arrival, docking, discoveries, new belts and the ending</li>
+<li>Touch controls with virtual sticks</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=d0eb55dd"></script>
-<script src="js/core/constants.js?v=7f120784"></script>
-<script src="js/data/tables.js?v=9308b99b"></script>
-<script src="js/core/state.js?v=ff4f2fad"></script>
-<script src="js/core/dom.js?v=ce802dd1"></script>
-<script src="js/systems/world.js?v=d27d3253"></script>
-<script src="js/systems/economy.js?v=06fdb2b2"></script>
-<script src="js/systems/mining.js?v=245a95ac"></script>
-<script src="js/systems/ship.js?v=412e5d17"></script>
-<script src="js/systems/powerups.js?v=edd82e6e"></script>
-<script src="js/systems/hints.js?v=5a5d4dfd"></script>
-<script src="js/systems/flow.js?v=f2af9b9e"></script>
-<script src="js/core/os.js?v=09895289"></script>
-<script src="js/render/background.js?v=799b76bc"></script>
-<script src="js/render/entities.js?v=747de3f0"></script>
-<script src="js/render/hud.js?v=b07eb2ad"></script>
-<script src="js/render/overlays.js?v=f82b04a3"></script>
-<script src="js/render/scene.js?v=024a21f5"></script>
-<script src="js/ui/input.js?v=58cc81cc"></script>
-<script src="js/ui/highscores.js?v=72709258"></script>
-<script src="js/ui/menu.js?v=9589cc77"></script>
-<script src="js/app.js?v=19111af5"></script>
+<script src="js/core/namespace.js?v=94b5c198"></script>
+<script src="js/core/constants.js?v=e85e2634"></script>
+<script src="js/core/rng.js?v=110b2bf5"></script>
+<script src="js/core/data-ores.js?v=2a009168"></script>
+<script src="js/core/data-ships.js?v=aaeebdb0"></script>
+<script src="js/core/data-tree.js?v=71354a50"></script>
+<script src="js/core/data-goals.js?v=ab49ec96"></script>
+<script src="js/core/rules.js?v=56b3ac9e"></script>
+<script src="js/core/economy.js?v=05662cd9"></script>
+<script src="js/core/state.js?v=7f7e54e4"></script>
+<script src="js/core/save.js?v=12c85499"></script>
+<script src="js/core/audio.js?v=c3e9dccf"></script>
+<script src="js/systems/grid.js?v=eca9be1a"></script>
+<script src="js/systems/fx.js?v=5bbe6026"></script>
+<script src="js/systems/camera.js?v=3bd29dcb"></script>
+<script src="js/systems/asteroids.js?v=82ff9bc6"></script>
+<script src="js/systems/ship.js?v=214c75c9"></script>
+<script src="js/systems/mining.js?v=1ec9267a"></script>
+<script src="js/systems/hazards.js?v=785f7951"></script>
+<script src="js/systems/pirates.js?v=266a65af"></script>
+<script src="js/systems/drones.js?v=94d72a02"></script>
+<script src="js/systems/trip.js?v=f1f62dd8"></script>
+<script src="js/systems/cinematics.js?v=c7f43cab"></script>
+<script src="js/systems/sim.js?v=c88784ea"></script>
+<script src="js/render/art-kit.js?v=f79533cf"></script>
+<script src="js/render/view.js?v=ea910c5e"></script>
+<script src="js/render/ship-art.js?v=f160c627"></script>
+<script src="js/render/rock-art.js?v=80f90336"></script>
+<script src="js/render/prop-art.js?v=50e6b1bc"></script>
+<script src="js/render/station-art.js?v=1b9980a1"></script>
+<script src="js/render/backdrop-art.js?v=62810c6c"></script>
+<script src="js/render/backdrop.js?v=38e30a5f"></script>
+<script src="js/render/fx-render.js?v=a5879503"></script>
+<script src="js/render/world.js?v=944be06f"></script>
+<script src="js/render/cine-render.js?v=b7cf13e2"></script>
+<script src="js/ui/kit.js?v=6cd446dd"></script>
+<script src="js/ui/widgets.js?v=c0715a8f"></script>
+<script src="js/ui/screens.js?v=0871a984"></script>
+<script src="js/ui/status-bar.js?v=0a1535e6"></script>
+<script src="js/ui/touch.js?v=d12227be"></script>
+<script src="js/render/hud.js?v=ebb9b240"></script>
+<script src="js/ui/title.js?v=162ce7ac"></script>
+<script src="js/ui/station.js?v=b89d13ba"></script>
+<script src="js/ui/shipyard.js?v=88f8fe1b"></script>
+<script src="js/ui/map.js?v=ec27b5f4"></script>
+<script src="js/ui/tree.js?v=7b03a12f"></script>
+<script src="js/ui/help.js?v=f881a99a"></script>
+<script src="js/ui/pause.js?v=ac09091b"></script>
+<script src="js/ui/results.js?v=523bd424"></script>
+<script src="js/render/frame.js?v=0e8d8c41"></script>
+<script src="js/ui/input.js?v=223a6b55"></script>
+<script src="js/app.js?v=86d05dba"></script>
 </body>
 </html>

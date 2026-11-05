@@ -1,97 +1,88 @@
-/* The one shared mutable state object every module reads and writes. */
+/* The one shared game state object, SZ.SpaceMining.state (G in every module): screen and menu
+   cursor, the save and derived stats, the trip being flown, world entity lists, ship, camera,
+   effects and feel timers, the running cinematic, input and per-screen UI state.
+   Systems mutate it; render and UI read it. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
-  const C = NS.constants;
-  const S = NS.state = NS.state || {};
+  const { WORLD_W, WORLD_H } = NS.constants;
 
-  /* ── Game State ── */
-  S.state = C.STATE_READY;
-  S.credits = 0;
-  S.totalOreMined = 0;
-  S.highScores = [];
-  S.gameTime = 0;
+  NS.state = {
+    /* screens: title, station, map, tree, help, playing, paused, results, cine */
+    screen: 'title',
+    screenT: 0,
+    treeReturn: 'title',
+    helpReturn: 'title',
+    time: 0,
 
-  /* Ship */
-  S.ship = { x: C.STATION_X, y: C.STATION_Y - 100, vx: 0, vy: 0, angle: 0 };
-  S.thrustPower = C.BASE_THRUST;
-  S.drillSpeed = C.BASE_DRILL_RATE;
-  S.cargoMax = C.BASE_CARGO_MAX;
-  S.scannerLevel = 0;
-  S.hullMax = C.BASE_HULL;
-  S.hull = C.BASE_HULL;
+    save: null,
+    stats: null,
 
-  /* Upgrade levels */
-  S.upgradeLevels = { drillSpeed: 0, cargoCapacity: 0, enginePower: 0, hullStrength: 0, scannerRange: 0 };
+    /* the trip in flight (null in menus) */
+    run: null,
 
-  /* Cargo contents: { iron: 0, gold: 0, platinum: 0, crystal: 0 } */
-  S.cargo = {};
+    /* world */
+    world: { w: WORLD_W, h: WORLD_H },
+    rocks: [],
+    nuggets: [],
+    pirates: [],
+    bolts: [],
+    drones: [],
+    charges: [],
+    radZones: [],
+    wells: [],
+    storm: null,
+    specials: [],
+    dock: null,
+    ship: null,
+    beams: [],
 
-  /* Drilling state */
-  S.isDrilling = false;
-  S.drillTarget = null;
-  S.drillTimer = 0;
+    /* effects: additive and alpha-blended particles, shockwave rings, floating texts */
+    fxAdd: [],
+    fxNormal: [],
+    rings: [],
+    texts: [],
 
-  /* Market prices (fluctuate) */
-  S.marketPrices = {};
+    /* camera in world coordinates (centre of the view) */
+    cam: { x: 0, y: 0, tx: 0, ty: 0, trauma: 0, ox: 0, oy: 0, zoom: 1, tzoom: 1, focus: null },
 
-  /* Asteroids */
-  S.asteroids = [];
+    /* feel */
+    hitStop: 0,
+    slowMo: 0,
+    slowScale: 1,
+    flash: 0,
+    flashColor: '#ffffff',
+    banner: null,
 
-  /* Stars -- three parallax layers */
-  S.starLayers = [[], [], []];
+    /* the running cinematic: { kind, t, dur, data, onEnd } */
+    cine: null,
 
-  /* Nebula patches */
-  S.nebulae = [];
+    /* input: keys by code, pointer in view coordinates */
+    input: {
+      keys: {},
+      mouseX: 640, mouseY: 360, mouseDown: false, rightDown: false, mouseMoved: 0,
+      aimMode: 'mouse', touch: false,
+      moveX: 0, moveY: 0, aimWX: 0, aimWY: 0, firing: false, boost: false, tractor: false,
+    },
+    hitAreas: [],
+    menuCursor: 0,
 
-  /* Background asteroids (decorative, far layer) */
-  S.bgAsteroids = [];
-
-  /* Shooting stars */
-  S.shootingStars = [];
-  S.shootingStarTimer = 0;
-
-  /* Powerups */
-  S.powerups = [];
-  S.powerupSpawnTimer = 0;
-  S.activePowerups = {};
-
-  /* Shop state */
-  S.shopOpen = false;
-  S.shopSelection = 0;
-
-  /* Tutorial */
-  S.tutorialSeen = false;
-  S.showTutorial = false;
-  S.tutorialPage = 0;
-
-  /* Contextual hints */
-  S.hintTimer = 0;
-  S.currentHint = '';
-  S.hintAlpha = 0;
-  S.lastHintId = '';
-  S.hintsShown = {};
-
-  /* Camera */
-  S.camera = { x: 0, y: 0 };
-
-  /* Input */
-  S.keys = {};
-
-  /* Mouse input */
-  S.mouseDown = false;
-  S.mouseWorldX = 0;
-  S.mouseWorldY = 0;
-  S.mouseCanvasX = 0;
-  S.mouseCanvasY = 0;
-  S.mouseActive = false;       /* true while pointer is held on the game canvas */
-  S.mouseDrilling = false;     /* true when mouse-hold targets an asteroid in drill range */
-
-  /* Animation */
-  S.animFrameId = null;
-  S.lastTimestamp = 0;
-  S.dpr = 1;
-  S.thrusterTimer = 0;
+    /* per-screen UI state */
+    ui: {
+      stationTab: 'market',
+      shipyardTab: 'upgrades',
+      marketSel: 'iron',
+      mapSel: 0,
+      treeSel: 'd_focus',
+      treeFlash: 0,
+      treeFlashId: '',
+      helpPage: 0,
+      results: null,
+      toast: null,
+      popups: [],
+      ticker: 0,
+    },
+  };
 })();
