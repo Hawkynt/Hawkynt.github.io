@@ -6,9 +6,13 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.BoulderDash || (SZ.BoulderDash = {});
 
-  /* state and view are owned by their own modules, not pre-created here */
-  const MODULES = ['constants', 'levelgen', 'rules', 'game', 'tutorial', 'cave',
-    'input', 'menu', 'highscores', 'app'];
+  const MODULES = [
+    'constants', 'rng', 'story', 'items', 'meta', 'progression', 'save',
+    'levels', 'cavegen', 'solver', 'physics', 'creatures', 'boss', 'player', 'run', 'fx', 'sim', 'bot',
+    'view', 'artKit', 'tileArt', 'spriteArt', 'backdrop', 'world', 'fxRender', 'hud', 'frame',
+    'creatureArt', 'kit', 'screens', 'title', 'map', 'cinema', 'tree', 'wardrobe', 'journal', 'overlays', 'help',
+    'input', 'touch', 'dom', 'app'
+  ];
   for (let i = 0; i < MODULES.length; ++i)
     NS[MODULES[i]] = NS[MODULES[i]] || {};
 })();

@@ -19,7 +19,7 @@ body {
   border: 3px solid;
   border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
   margin: 4px;
-  background: #111;
+  background: #0a0604;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -29,7 +29,9 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  touch-action: none;
+  outline: none;
+  cursor: default;
 }
 
 /* ---- Status Bar ---- */
@@ -52,6 +54,10 @@ body {
   white-space: nowrap;
   color: var(--sz-color-menu-text);
   flex: 1;
+}
+
+.status-section.status-wide {
+  flex: 2;
 }
 
 /* ---- High Scores Table ---- */
@@ -97,5 +103,5 @@ body {
 .controls-table td:first-child {
   font-weight: bold;
   white-space: nowrap;
-  width: 160px;
+  width: 150px;
 }

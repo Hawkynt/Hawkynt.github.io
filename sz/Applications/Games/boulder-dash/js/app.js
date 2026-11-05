@@ -1,60 +1,89 @@
-/* Bootstrap: the requestAnimationFrame game loop, the OS integration hooks and the
-   start-up sequence (high scores, first level, title, tutorial, mute button, loop). */
+/* Bootstrap: reads the calendar (season, streak, quests), the fixed 60 Hz loop (as many steps as
+   are due, then one draw), the slow housekeeping tick (achievements, finished quests, play time,
+   status bar), saving on page hide and unload, and start-up. Owns the loop clock. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.BoulderDash || (SZ.BoulderDash = {});
   const C = NS.constants;
-  const S = NS.state;
-  const { loadHighScores } = NS.highscores;
-  const { generateLevel } = NS.levelgen;
-  const { updateTitle } = NS.game;
-  const { User32 } = window.SZ?.Dlls ?? {};
+  const G = NS.state;
+  const P = NS.progression;
+  const scr = NS.screens;
 
-  /* ── OS integration ── */
-  function handleResize() {
-    // Canvas size is fixed to grid; CSS scales it
+  let last = 0, acc = 0, slow = 0;
+
+  function calendar() {
+    const now = new Date();
+    G.today = NS.rng.dateKey(now);
+    G.season = P.seasonFor(now);
+    P.syncSeason(G.save, G.season, now);
+    const bonus = P.refreshDay(G.save, now, G.perks);
+    if (bonus) scr.toast('Day ' + G.save.streak.count + ' streak: +' + bonus + ' gold', '#ffd54a');
   }
 
-  if (User32?.RegisterWindowProc) {
-    User32.RegisterWindowProc((msg, wParam, lParam) => {
-      if (msg === 'WM_THEMECHANGED') {
-        // Theme changed — no action needed for canvas game
-      }
-      if (msg === 'WM_SIZE')
-        handleResize();
-    });
-  }
-
-  /* ── Game loop ── */
-  function gameLoop(timestamp) {
-    const dt = Math.min((timestamp - S.lastTime) / 1000, C.MAX_DT);
-    S.lastTime = timestamp;
-
-    NS.rules.update(dt);
-    NS.cave.draw();
-    requestAnimationFrame(gameLoop);
-  }
-
-  /* ── Init ── */
-  function init() {
-    loadHighScores();
-    try { S.tutorialSeen = localStorage.getItem(C.STORAGE_TUTORIAL) === '1'; } catch (_) { S.tutorialSeen = false; }
-    generateLevel(S.currentLevel);
-    updateTitle();
-    handleResize();
-    if (!S.tutorialSeen) {
-      S.showTutorial = true;
-      S.tutorialPage = 0;
-      S.tutorialSeen = true;
-      try { localStorage.setItem(C.STORAGE_TUTORIAL, '1'); } catch (_) {}
+  function housekeeping() {
+    if (G.screen === 'playing') G.save.stats.playTime = (G.save.stats.playTime || 0) + 1;
+    const got = P.checkAchievements(G.save, G.perks);
+    for (let k = 0; k < got.length; ++k) {
+      scr.toast('Achievement: ' + got[k].name + '  +' + got[k].gold + ' gold', '#ffd54a');
+      SZ.GameAudio && SZ.GameAudio.play('levelup', { volume: 0.3 });
     }
-    SZ.GameAudio.attachMuteButton();
-    requestAnimationFrame(gameLoop);
+    const q = G.save.quests.list;
+    for (let k = 0; k < q.length; ++k)
+      if (q[k].done && !q[k].notified) {
+        q[k].notified = true;
+        scr.toast('Quest done: ' + P.questText(q[k]) + ' - claim it in the Journal', '#5fd6ff');
+      }
+    if (NS.rng.dateKey(new Date()) !== G.today) calendar();
+    NS.dom.update();
   }
 
-  Object.assign(NS.app, { gameLoop, handleResize, init });
+  function loop(ts) {
+    if (!last) last = ts;
+    let elapsed = ts - last;
+    last = ts;
+    if (Math.abs(elapsed - C.STEP_MS) < C.STEP_SNAP_MS) elapsed = C.STEP_MS;
+    acc = Math.min(acc + elapsed, C.STEP_MS * C.MAX_STEPS);
+    const t0 = performance.now();
+    while (acc >= C.STEP_MS) {
+      acc -= C.STEP_MS;
+      NS.sim.update(C.STEP);
+    }
+    const sim = performance.now() - t0;
+    G.perf.sim = sim;
+    G.perf.avgSim = G.perf.avgSim * 0.95 + sim * 0.05;
+    NS.frame.draw(Math.min(0.05, elapsed / 1000));
+    slow += elapsed;
+    if (slow >= 1000) { slow -= 1000; housekeeping(); }
+    requestAnimationFrame(loop);
+  }
 
-  init();
+  function saveNow() {
+    if (G.run && G.screen === 'playing') NS.run.autosave();
+    else NS.save.writeSave();
+  }
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+  window.addEventListener('pagehide', saveNow);
+  window.addEventListener('beforeunload', saveNow);
+
+  const User32 = SZ.Dlls && SZ.Dlls.User32;
+  if (User32) {
+    if (User32.EnableVisualStyles) User32.EnableVisualStyles();
+    if (User32.SetWindowText) User32.SetWindowText('Boulder Dash');
+  }
+  if (SZ.GameAudio) SZ.GameAudio.attachMuteButton();
+  document.body.tabIndex = -1;
+
+  calendar();
+  NS.save.writeSave();
+  NS.dom.update();
+  if (!G.save.seenHelp) {
+    G.save.seenHelp = true;
+    scr.toast('New miner? Press H for How to Play', '#5fd6ff');
+  }
+  requestAnimationFrame(loop);
+
+  Object.assign(NS.app, { calendar, housekeeping, saveNow });
 })();
