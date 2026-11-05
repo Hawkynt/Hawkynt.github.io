@@ -18,14 +18,15 @@ function check(name, ok, details) {
   }
 }
 
-/* Stages: 24 of them, unique ids, four per world, the fourth flagged final */
+/* Stages: 24 of them, unique ids, four per world, the fourth flagged final with a boss */
 const ids = new Set(C.STAGES.map(s => s.id));
 const perWorld = [];
 for (let w = 0; w < 6; ++w)
   perWorld.push(C.STAGES.filter(s => s.world === w).length);
 const finals = C.STAGES.filter(s => s.stage === 3);
 const okStages = C.STAGES.length === 24 && ids.size === 24 &&
-  perWorld.every(n => n === 4) && finals.length === 6 && finals.every(s => s.final === true);
+  perWorld.every(n => n === 4) && finals.length === 6 && finals.every(s => s.final === true) &&
+  finals.map(s => s.boss).join() === C.BOSS_ORDER.join();
 check('24 stages, unique ids, 4 per world, finals flagged', okStages,
   'len ' + C.STAGES.length + ' ids ' + ids.size + ' perWorld ' + JSON.stringify(perWorld) +
   ' finals ' + finals.length + '/' + finals.filter(s => s.final === true).length);
@@ -65,7 +66,7 @@ for (const stage of C.STAGES) {
     }
     const wantHazard = C.BIOMES[stage.biome].hazard;
     for (const h of c.hazards)
-      if (h.type !== wantHazard)
+      if (h.type !== wantHazard && !(h.type === 'crow' && stage.crowChance > 0))
         bad.push(tag + ' hazard ' + h.type + ' want ' + wantHazard);
     if (!(c.totalCoins === c.coins.length && c.coins.length > 0))
       bad.push(tag + ' coins ' + c.coins.length + ' total ' + c.totalCoins);
@@ -125,5 +126,45 @@ const d2 = C.dailySeed(new Date(2026, 9, 5, 23));
 const d3 = C.dailySeed(new Date(2026, 9, 6));
 check('dailySeed stable within a day and differs next day', d1 === d2 && d1 !== d3,
   JSON.stringify([d1, d2, d3]));
+
+/* Snapshot / restore: a restored endless course continues with exactly the same gates */
+const sa = C.createCourse({ seed: 99, profile: 'arcade', tokenEvery: 5 });
+sa.ensure(8000);
+sa.coins[3].taken = true;
+const snap = JSON.parse(JSON.stringify(sa.snapshot()));
+sa.ensure(30000);
+const sb = C.createCourse({ seed: 99, profile: 'arcade', tokenEvery: 5 });
+sb.restore(snap);
+sb.ensure(30000);
+check('snapshot + restore continues the same endless course',
+  JSON.stringify(sa.gates.map(g => [g.id, g.x, g.gapY])) === JSON.stringify(sb.gates.map(g => [g.id, g.x, g.gapY])) &&
+  JSON.stringify(sa.hazards) === JSON.stringify(sb.hazards) && sb.coins[3].taken === true, 'courses diverge');
+
+/* Tokens: every few gates, never on a hazard; ids unique over every object */
+const tc = C.createCourse({ seed: 5, stage: C.STAGES[13], tokenEvery: 5 });
+const near = (t) => tc.hazards.some(h => h.type !== 'gust' && Math.abs(h.x - t.x) < 40);
+const objIds = [].concat(tc.gates, tc.coins, tc.bubbles, tc.hazards, tc.tokens).map(o => o.id);
+check('tokens are placed behind every fifth gap, clear of hazards', tc.tokens.length === Math.floor((C.STAGES[13].gates + 2) / 5) && !tc.tokens.some(near), tc.tokens.length + ' tokens');
+check('every course object has a unique id', new Set(objIds).size === objIds.length, objIds.length + " ids");
+
+/* Bubbles cover all twelve power-ups */
+const kinds = new Set();
+for (let seed = 1; seed < 40; ++seed)
+  for (const b of C.createCourse({ seed: seed, stage: C.STAGES[5] }).bubbles)
+    kinds.add(b.kind);
+check('bubbles roll all twelve power-up kinds', kinds.size === 12 && C.BUBBLE_KINDS.length === 12, [...kinds].join());
+
+/* Laser gates: roomier, never closing */
+let laserOk = true, lasers = 0;
+for (let seed = 1; seed < 20; ++seed) {
+  const lc = C.createCourse({ seed: seed, stage: C.STAGES[18] });
+  for (const h of lc.hazards.filter(x => x.type === 'laser')) {
+    ++lasers;
+    const g = lc.gates.find(x => x.index === h.gate);
+    if (!g || g.close || g.gap !== C.STAGES[18].gap + 30)
+      laserOk = false;
+  }
+}
+check('laser gates are 30 px roomier and never close', laserOk && lasers > 0, lasers + ' lasers');
 
 process.exit(failures ? 1 : 0);

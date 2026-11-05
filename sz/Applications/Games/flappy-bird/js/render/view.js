@@ -5,29 +5,26 @@
 
   /* Canvas geometry and frame composition: backing-store size, letterboxing, the visible
      logical rect, pointer mapping, the per-biome scene-art cache, and draw(), which shows a
-     menu screen or the run with its HUD and panels. Owns G.dpr, G.viewScale/OffX/OffY,
-     G.mouseX/Y and G.sceneCache; resets G.hitAreas each frame. */
+     menu screen, a cinematic or the run with its HUD and panels, then the toasts. Owns G.dpr,
+     G.viewScale/OffX/OffY, G.mouseX/Y and G.sceneCache; resets G.hitAreas each frame. */
 
   const {
-    CANVAS_W, CANVAS_H, STATE_TITLE, STATE_WORLDS, STATE_NEST, STATE_AVIARY, STATE_HELP, STATE_READY,
-    STATE_PLAYING, STATE_PAUSED, STATE_DYING, STATE_DEAD, STATE_CLEAR
+    CANVAS_W, CANVAS_H, STATE_TITLE, STATE_WORLDS, STATE_MODES, STATE_NEST, STATE_AVIARY, STATE_GOALS, STATE_HELP,
+    STATE_CINE, STATE_READY, STATE_PLAYING, STATE_PAUSED, STATE_DYING, STATE_DEAD, STATE_CLEAR, MENU_STATES
   } = NS.C;
   const { canvas, ctx } = NS.services;
   const G = NS.state;
-  const World = NS.world;
-  const Hud = NS.hud;
-  const Menu = NS.menu;
-  const Title = NS.title;
-  const Nest = NS.nest;
-  const Aviary = NS.aviary;
-  const Help = NS.help;
-  const Results = NS.results;
+
+  let lastCssW = 0, lastCssH = 0, lastDpr = 0;
 
   function setupCanvas() {
     // never render more than ~1.5 backing pixels per logical pixel; the browser upscales the rest
     const dprRaw = window.devicePixelRatio || 1;
     const cssW = Math.max(1, canvas.clientWidth);
     const cssH = Math.max(1, canvas.clientHeight);
+    lastCssW = cssW;
+    lastCssH = cssH;
+    lastDpr = dprRaw;
     const fit = Math.min(cssW / CANVAS_W, cssH / CANVAS_H);
     G.dpr = Math.max(0.5, Math.min(dprRaw, 1.5 / Math.max(fit, 0.01)));
     canvas.width = Math.round(cssW * G.dpr);
@@ -39,9 +36,19 @@
     ctx.imageSmoothingEnabled = true;
   }
 
+  /* the iframe can change size without a window resize event (maximize, restore):
+     check the element size every frame and refit when it moved */
+  function checkResize() {
+    if (canvas.clientWidth !== lastCssW || canvas.clientHeight !== lastCssH || (window.devicePixelRatio || 1) !== lastDpr)
+      setupCanvas();
+  }
+
   /* Fill the whole canvas (letterbox bars too), then return to logical coordinates */
   function beginFrame() {
+    checkResize();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#10202a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(G.viewScale, 0, 0, G.viewScale, G.viewOffX, G.viewOffY);
@@ -62,8 +69,9 @@
   /* Pointer event -> logical coordinates */
   function pointerToLogical(e) {
     const rect = canvas.getBoundingClientRect();
-    G.mouseX = ((e.clientX - rect.left) * G.dpr - G.viewOffX) / G.viewScale;
-    G.mouseY = ((e.clientY - rect.top) * G.dpr - G.viewOffY) / G.viewScale;
+    const sx = canvas.width / Math.max(1, rect.width), sy = canvas.height / Math.max(1, rect.height);
+    G.mouseX = ((e.clientX - rect.left) * sx - G.viewOffX) / G.viewScale;
+    G.mouseY = ((e.clientY - rect.top) * sy - G.viewOffY) / G.viewScale;
   }
 
   function sceneFor(biome) {
@@ -73,39 +81,52 @@
   function draw() {
     G.hitAreas.length = 0;
 
+    if (G.state === STATE_CINE) {
+      NS.cineDraw.draw();
+      NS.hud.drawToasts();
+      return;
+    }
+
     // Menu screens replace the frozen run with a drifting biome backdrop
-    if (G.state === STATE_TITLE || G.state === STATE_WORLDS || G.state === STATE_NEST ||
-      G.state === STATE_AVIARY || G.state === STATE_HELP) {
-      Menu.drawMenuBackground();
+    if (MENU_STATES.indexOf(G.state) >= 0) {
+      NS.menu.drawMenuBackground();
       if (G.state === STATE_TITLE)
-        Title.drawTitleScreen();
+        NS.title.drawTitleScreen();
       else if (G.state === STATE_WORLDS)
-        Title.drawWorldsScreen();
+        NS.map.drawMapScreen();
+      else if (G.state === STATE_MODES)
+        NS.modes.drawModesScreen();
       else if (G.state === STATE_NEST)
-        Nest.drawNestScreen();
+        NS.nest.drawNestScreen();
       else if (G.state === STATE_AVIARY)
-        Aviary.drawAviaryScreen();
-      else
-        Help.drawHelpScreen();
+        NS.aviary.drawAviaryScreen();
+      else if (G.state === STATE_GOALS)
+        NS.goalsUi.drawGoalsScreen();
+      else if (G.state === STATE_HELP)
+        NS.help.drawHelpScreen();
+      NS.hud.drawToasts();
       return;
     }
 
     ctx.save();
-    World.drawRunScene();
+    NS.world.drawRunScene();
     if (G.state === STATE_PLAYING || G.state === STATE_DYING || G.state === STATE_PAUSED)
-      Hud.drawHud();
-    if (G.biomeBanner > 0 && G.state !== STATE_READY)
-      Hud.drawBiomeBanner();
+      NS.hud.drawHud();
+    if (G.biomeBanner > 0 && !(G.bossIntro > 0) && (G.state === STATE_PLAYING || G.state === STATE_PAUSED))
+      NS.hud.drawBiomeBanner();
+    if (G.bossIntro > 0 && G.boss)
+      NS.hud.drawBossIntro();
     if (G.state === STATE_READY)
-      Hud.drawReadyOverlay();
+      NS.hud.drawReadyOverlay();
     if (G.state === STATE_PAUSED)
-      Results.drawPausePanel();
+      NS.results.drawPausePanel();
     if (G.state === STATE_DEAD)
-      Results.drawDeathPanel();
+      NS.results.drawDeathPanel();
     if (G.state === STATE_CLEAR)
-      Results.drawClearPanel();
+      NS.results.drawClearPanel();
     ctx.restore();
+    NS.hud.drawToasts();
   }
 
-  Object.assign(NS.view, { setupCanvas, beginFrame, visibleRect, pointerToLogical, sceneFor, draw });
+  Object.assign(NS.view, { setupCanvas, checkResize, beginFrame, visibleRect, pointerToLogical, sceneFor, draw });
 })();

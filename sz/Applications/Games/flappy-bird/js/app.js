@@ -3,8 +3,8 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.FlappyBird;
 
-  /* Bootstrap: the game loop, menu bar, dialogs, OS integration and start-up.
-     Owns G.lastTimestamp and G.animFrameId. */
+  /* Bootstrap: the game loop (with a smoothed JS frame time in G.frameMs), the menu bar,
+     dialogs, OS integration and start-up. Owns G.lastTimestamp and G.animFrameId. */
 
   const { MAX_HIGH_SCORES, MAX_DT, STATE_TITLE } = NS.C;
   const G = NS.state;
@@ -15,8 +15,10 @@
   const FxDraw = NS.fxDraw;
   const Nav = NS.nav;
   const Input = NS.input;
+  const Goals = NS.goals;
 
   function gameLoop(timestamp) {
+    const t0 = performance.now();
     const rawDt = G.lastTimestamp ? (timestamp - G.lastTimestamp) / 1000 : 1 / 60;
     const dt = Math.min(rawDt, MAX_DT);
     G.lastTimestamp = timestamp;
@@ -26,6 +28,7 @@
     View.draw();
     FxDraw.drawScreenFx();
 
+    G.frameMs = G.frameMs * 0.95 + (performance.now() - t0) * 0.05;
     G.animFrameId = requestAnimationFrame(gameLoop);
   }
 
@@ -42,18 +45,24 @@
         for (let i = 0; i < MAX_HIGH_SCORES; ++i) {
           const s = G.highScores[i] || 0;
           const medal = Rules.getMedal(s);
+          const a = G.save.arcadeScores[i];
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${i + 1}</td><td>${s}</td><td>${medal ? medal.name : '-'}</td>`;
+          tr.innerHTML = `<td>${i + 1}</td><td>${s}</td><td>${medal ? medal.name : '-'}</td><td>${a ? a.score : '-'}</td>`;
           tbody.appendChild(tr);
         }
         const result = await SZ.Dialog.show('highScoresBackdrop');
         if (result === 'reset') {
           G.highScores = [];
           Save.saveHighScores();
+          G.save.arcadeScores = [];
+          Save.writeSave();
           Nav.updateStatus();
         }
       },
-      exit: () => SZ.Dlls.User32.DestroyWindow(),
+      exit: () => {
+        NS.autosave.saveNow();
+        SZ.Dlls.User32.DestroyWindow();
+      },
       controls: () => SZ.Dialog.show('controlsBackdrop'),
       about: () => SZ.Dialog.show('dlg-about')
     };
@@ -65,9 +74,8 @@
 
   /* ── OS Integration ── */
   SZ.Dlls.User32.RegisterWindowProc(function(msg) {
-    if (msg === 'WM_THEMECHANGED') {
-      // Theme changed — nothing specific needed, CSS handles it
-    }
+    if (msg === 'WM_SIZE' || msg === 'WM_THEMECHANGED')
+      View.setupCanvas();
   });
 
   SZ.Dlls.User32.SetWindowText('Flappy Bird');
@@ -76,8 +84,12 @@
   document.body.tabIndex = -1;
   Save.loadHighScores();
   Save.loadSave();
+  Goals.rollover();
+  Goals.check();
+  Save.writeSave();
   View.setupCanvas();
   G.state = STATE_TITLE;
+  G.fade = 1;
   Nav.updateStatus();
   Nav.updateWindowTitle();
   SZ.GameAudio.attachMuteButton();

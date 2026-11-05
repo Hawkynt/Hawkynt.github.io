@@ -506,6 +506,8 @@
       c.strokeText('x2', cx, cy + 1);
       c.fillStyle = tint;
       c.fillText('x2', cx, cy + 1);
+    } else if (kind !== 'tiny' && PARTS.powerIcons) {
+      PARTS.powerIcons.draw(c, kind, tint, cx, cy);
     } else { /* tiny */
       c.fillStyle = tint;
       c.beginPath();

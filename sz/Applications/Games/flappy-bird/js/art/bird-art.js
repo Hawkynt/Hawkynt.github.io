@@ -4,7 +4,7 @@
 
   /*
    * Bird sprites for the flappy game. BIRDS holds the palette and build hints
-   * of the six birds; getSprite paints one shaded bird per id and wing frame
+   * of the fourteen birds (seven painters: round, robin, jay, parrot, owl, phoenix, crow); getSprite paints one shaded bird per id and wing frame
    * into a cached canvas (rendered at 2x so it stays crisp when the game draws
    * it larger), and drawBird blits that cached frame rotated and scaled.
    * Every bit of shading - gradients, the 2 px outline, glints, the cast
@@ -57,6 +57,46 @@
       id: 'phoenix', name: 'Phoenix', body: '#ff5a1f', belly: '#ffd23f',
       wing: '#e8381a', wingDark: '#a8200e', beak: '#ffe08a', beakDark: '#d9a83a',
       outline: '#5a1206', eye: '#1b1b1b', accent: '#ffcf3a', style: 'phoenix'
+    }),
+    Object.freeze({
+      id: 'goldie', name: 'Goldie', body: '#ffcf3a', belly: '#fff6c8',
+      wing: '#e6a412', wingDark: '#a8740a', beak: '#ffffff', beakDark: '#d8d8e0',
+      outline: '#6a4806', eye: '#1b1b1b', style: 'round'
+    }),
+    Object.freeze({
+      id: 'corvus', name: 'Corvus', body: '#3a3450', belly: '#6a6488',
+      wing: '#2a2440', wingDark: '#16122a', beak: '#4a4a5a', beakDark: '#24242e',
+      outline: '#0c0a18', eye: '#ff3a4a', accent: '#b45aff', style: 'crow'
+    }),
+    Object.freeze({
+      id: 'frosty', name: 'Frosty', body: '#cfeaff', belly: '#ffffff',
+      wing: '#9fd0f0', wingDark: '#5a9ac0', beak: '#ff9a3a', beakDark: '#c8641a',
+      outline: '#3a6a8a', eye: '#3ab0ff', style: 'owl'
+    }),
+    Object.freeze({
+      id: 'nova', name: 'Nova', body: '#7a4aff', belly: '#ffd84a',
+      wing: '#5a2ae0', wingDark: '#3a1aa0', beak: '#ffe08a', beakDark: '#d9a83a',
+      outline: '#1a0a4a', eye: '#1b1b1b', accent: '#ff7af0', style: 'phoenix'
+    }),
+    Object.freeze({
+      id: 'blossom', name: 'Blossom', body: '#ffa8d0', belly: '#fff0f8',
+      wing: '#ff7ab4', wingDark: '#d84a8a', beak: '#ffb84a', beakDark: '#d88a1a',
+      outline: '#7a2a52', eye: '#1b1b1b', style: 'round'
+    }),
+    Object.freeze({
+      id: 'surf', name: 'Surf', body: '#2ad0c8', belly: '#c8fff4',
+      wing: '#1a9ab8', wingDark: '#0e6680', beak: '#ffe0a0', beakDark: '#c8a860',
+      outline: '#0a4a52', eye: '#111111', accent: '#ffcf3a', style: 'parrot'
+    }),
+    Object.freeze({
+      id: 'maple', name: 'Maple', body: '#e8602a', belly: '#ffe0b0',
+      wing: '#b83a1a', wingDark: '#7a2410', beak: '#3a2a1a', beakDark: '#1a120a',
+      outline: '#4a1a0a', eye: '#111111', style: 'jay'
+    }),
+    Object.freeze({
+      id: 'jack', name: 'Jack', body: '#2a2230', belly: '#ff8a1e',
+      wing: '#1a1420', wingDark: '#0a080e', beak: '#ffcf3a', beakDark: '#c89a1a',
+      outline: '#0a060e', eye: '#ffd84a', style: 'robin'
     })
   ]);
 
@@ -602,7 +642,60 @@
     drawWedgeBeak(ctx, bird, 19, -1, 9, 3, 2.4);
   }
 
+  /* The storm crow: dark gloss, a heavy hooked beak, a red eye and a ragged crest. */
+  function paintCrow(ctx, bird, wingAngle) {
+    tailFan(ctx, bird, -16, 0, 4, 15, 3.2, 0.2, Math.PI, bird.wing, bird.wingDark);
+    drawBody(ctx, bird, 21, 14);
+    drawBelly(ctx, bird, 7, 6, 11, 7);
+    drawGloss(ctx, 21, 14);
+    ellipsePath(ctx, -2, -4, 15, 4, -0.15);
+    ctx.fillStyle = hexToRgba(bird.accent, 0.35);
+    ctx.fill();
+    strokeBody(ctx, bird, 21, 14);
+    drawWing(ctx, bird, wingAngle);
+    // ragged crest
+    ctx.fillStyle = bird.wingDark;
+    ctx.strokeStyle = bird.outline;
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 3; ++i) {
+      ctx.save();
+      ctx.translate(4 - i * 4, -12 + i);
+      ctx.rotate(-2.4 - i * 0.25);
+      featherShape(ctx, 8 - i, 2.2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    // red eye with a hard brow
+    drawEye(ctx, 9, -5, 4.2, bird.eye);
+    ctx.beginPath();
+    ctx.moveTo(4, -10);
+    ctx.lineTo(14, -7);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = bird.outline;
+    ctx.stroke();
+    // hooked beak
+    ctx.beginPath();
+    ctx.moveTo(17, -5);
+    ctx.quadraticCurveTo(28, -5, 31, 1);
+    ctx.quadraticCurveTo(26, -1, 17, 2);
+    ctx.closePath();
+    ctx.fillStyle = shade(bird.beak, 0.2);
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(17, 2);
+    ctx.lineTo(26, 3);
+    ctx.lineTo(17, 5);
+    ctx.closePath();
+    ctx.fillStyle = bird.beakDark;
+    ctx.fill();
+    ctx.stroke();
+  }
+
   const PAINTERS = {
+    crow: paintCrow,
     round: paintSunny,
     robin: paintRuby,
     jay: paintJay,
@@ -648,12 +741,15 @@
     const angle = opts.angle || 0;
     const scale = opts.scale === undefined ? 1 : opts.scale;
     const alpha = opts.alpha === undefined ? 1 : opts.alpha;
+    // squash and stretch: sx/sy scale the sprite around its centre (1 = none)
+    const sx = scale * (opts.sx || 1), sy = scale * (opts.sy || 1);
     const sprite = getSprite(opts.birdId || 'sunny', opts.frame);
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
+    if (opts.flip) ctx.scale(-1, 1);
     if (alpha !== 1) ctx.globalAlpha *= alpha;
-    ctx.drawImage(sprite, -32 * scale, -24 * scale, 64 * scale, 48 * scale);
+    ctx.drawImage(sprite, -32 * sx, -24 * sy, 64 * sx, 48 * sy);
     ctx.restore();
   }
 

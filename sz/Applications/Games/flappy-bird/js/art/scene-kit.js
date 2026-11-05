@@ -81,7 +81,9 @@
 
   const BUBBLE_TINTS = {
     shield: '#4aa3ff', magnet: '#ff4a4a', slow: '#b06aff',
-    ghost: '#bff4ff', double: '#ffc21a', tiny: '#5ad06a'
+    ghost: '#bff4ff', double: '#ffc21a', tiny: '#5ad06a',
+    blast: '#ff7a2a', rush: '#ff4ad8', heart: '#ff5a6a',
+    freeze: '#8ae8ff', gold: '#ffe14a', buddy: '#7ad85a'
   };
 
   /* ── Color helpers ── */

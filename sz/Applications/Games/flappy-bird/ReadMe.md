@@ -1,247 +1,236 @@
 # Flappy Bird
 
 A one-button arcade flyer for the SynthelicZ Desktop, drawn in a landscape
-1280 x 720 view. Flap through gates in six biomes -- Sunny Meadow, Dune
-Canyon, Frost Peaks, Twilight Woods, Neon City and Ember Volcano -- across
-four modes: Adventure (24 stages in six worlds), Classic, Time Attack and
-Daily Run. Gates move and close, each biome brings its own hazard, coins pay
-for a fifteen-node Nest tech tree, and six birds with real perks wait in the
-Aviary. Hearts, combos and power-ups sit between the bird and the ground.
+1280 x 720 view: *Flappy Bird and the Season Feathers*. Corvus the Storm Crow
+has scattered the six Season Feathers that keep the Sky Tree's seasons
+turning, and Sunny flies through six lands -- Sunny Meadow, Dune Canyon, Frost
+Peaks, Twilight Woods, Neon City and Ember Volcano -- to bring them home, with
+a boss at the end of every land and cinematic scenes between the chapters.
+Next to the story wait Classic, Arcade, Zen, Time Attack, a Daily Challenge
+and Boss Rush; twelve power-ups, storm crows, a 27-node Nest tech tree, a
+wardrobe of birds, hats and trails, seasonal events, daily quests, a day
+streak, achievements and an autosave that resumes a run after a reload.
 
 ## How It Works
 
 The bird holds a fixed horizontal position at x 360 while the course scrolls
 past it. Gravity pulls it down and every flap gives an upward impulse; the
-view is letterboxed and everything is drawn in logical 1280 x 720 space, with
-physics normalized to 60 fps. Gates are 72 px wide with capped ends, and
-their openings are placed at least 72 px from the sky edge and the ground at
-y 640 -- never further from the previous opening than the spacing allows.
-Higher stages and deeper Classic tiers make the gap narrower, the scroll
-faster and the spacing tighter, and add gates that slide up and down or
-breathe shut.
+view is letterboxed (the scenery fills the bars at any aspect ratio) and
+everything is drawn in logical 1280 x 720 space, with physics normalized to
+60 fps. Gates are 72 px wide with capped ends; their openings keep 72 px from
+the sky edge and the ground at y 640, never further from the previous opening
+than the spacing allows. Later stages narrow the gaps, speed up the scroll,
+and add gates that slide or breathe shut.
 
 Coins sit in every gap and in arcs between them; a pass through the middle of
-a gap is PERFECT and builds a combo that multiplies coin payouts, while a
-shave past a pipe pays a CLOSE bonus. Bubbles floating between the gates hand
-out shield, magnet, slow-motion, ghost, double-coin and tiny-bird effects.
-Each biome adds a hazard: wind gusts, falling icicles, bats, pulsing laser
-beams and fireballs from the ground.
+a gap is PERFECT, builds a combo that multiplies coins and fills the FEVER
+meter -- full, it pays double for six seconds with a rainbow trail. Each land
+adds its hazard (gusts, icicles, bats, sweeping laser scanners, fireballs),
+and storm crows warn with a red "!" before they dive at the height the bird
+was at. Bubbles between the gates hold twelve power-ups. The fourth stage of
+every land ends in a boss arena: the boss hovers at the right, cycles its own
+attack patterns and turns faster below half health, while sun orbs drift in --
+every orb the bird touches launches a bolt at the boss.
 
-A hit costs a heart and grants a short invulnerability; the ground always
-costs a heart, and outside Classic and Daily the bird bounces back off it
-while a heart is left to spare. Losing the last heart ends the run in a
-half-second tumble -- unless a Phoenix Feather brings the bird back once.
-Coins collected during a run are banked to the save when it ends, and spent
-in the Nest or the Aviary;
-Adventure stars unlock the next stage, and clearing certain stages unlocks
-birds. Everything -- coins, stars, per-mode bests, upgrades, birds and
-lifetime stats -- persists in localStorage.
+Coins collected in any mode are banked when a run ends and spent in the Nest
+(the tech tree, reachable from the title and the pause menu, effective at
+once) or the Wardrobe. Seasonal events follow the local date and put tokens
+between the pipes that fill an event track of coins, a trail, a hat and a
+bird. Daily quests, a weekly challenge, a day-streak bonus and 37 achievements
+pay out on the spot. Everything lives in localStorage: the v3 save (migrated
+from the v2 save and the original high-score table), and the snapshot of the
+run in flight, written every three seconds, on pause, on page hide and on
+unload, so Continue on the title resumes exactly where the bird was (or, after
+a cleared story stage, starts the next one).
 
 ## Architecture
 
 Plain scripts, no build step: every file is an IIFE that fills one slot of the
-`SZ.FlappyBird` namespace, and `index.html` loads them in dependency order. All
-mutable game state lives in one long-lived object, `SZ.FlappyBird.state` (`G`),
-that the modules read and write in place; constants come from `NS.C`, the canvas,
-drawing kit, effect systems and sound from `NS.services`.
+`SZ.FlappyBird` namespace (or a small `SZ.Flappy*` module), and `index.html`
+loads them in dependency order. All mutable game state lives in one long-lived
+object, `SZ.FlappyBird.state` (`G`), that the modules read and write in place;
+constants and data tables come from `NS.C`, the canvas, drawing kit, effect
+systems and sound from `NS.services`.
 
-- `js/core/course.js` - biomes, the 24 adventure stages and the seeded generation of gates, coins, bubbles and hazards (`SZ.FlappyCourse`). Pure data.
-- `js/core/namespace.js` - the `SZ.FlappyBird` namespace, its module slots and the load order.
-- `js/core/constants.js` - canvas size, physics, bird and course numbers, power-ups, medals, the Stage Clear panel, the Nest tree, the Aviary birds and the state names.
-- `js/core/state.js` - `G`, the one mutable state object: view, run, power-ups and combo, scenery, juice timers, menu cursors.
-- `js/core/services.js` - canvas and 2D context, the drawing kit, status-bar cells, particles, screen shake, floating text and the rate-limited `sfx`.
-- `js/core/save.js` - the Classic high-score table and the v2 save: load, migration, write.
-- `js/core/progress.js` - tech-tree levels and purchases, Aviary birds, stage unlocks, stars and per-mode bests.
-- `js/core/rules.js` - rules derived from upgrades, bird and run: gravity, glide, radii, magnet range, coin value, combo multiplier, medals.
-- `js/systems/run.js` - run lifecycle: start, flap, hits, shield, revive, death and the result settled into the save.
-- `js/systems/effects.js` - simulation of feathers, biome weather, coin rings and the Stage Clear star reveal.
-- `js/systems/flight.js` - the per-frame update: state dispatch, hit-stop, bird physics, timers, ground bounce and biome changes.
-- `js/systems/contact.js` - the bird against the course: gate collision and scoring (perfect combo, Combo Keeper, near miss), coins with magnet and streak, bubbles, moving hazards.
-- `js/art/bird-art.js` - the six birds as cached sprites (`SZ.FlappyBirdArt`).
-- `js/art/scene-kit.js` - scenery sizes, biome themes, gate styles, colour helpers, the seeded RNG and seamless strip painting.
+Pure modules (no DOM, also loaded by the node tests):
+- `js/core/course.js` - biomes, the 24 story stages (every fourth a boss stage), endless profiles (endless, Zen, Arcade) and the seeded generation of gates, coins, bubbles, hazards, crows and seasonal tokens, with snapshot / restore of the generator (`SZ.FlappyCourse`).
+- `js/core/hazards.js` - icicles, bats, laser scanners, fireballs, gusts and storm crows as pure step / hit functions shared by the game and the test bot (`SZ.FlappyHazards`).
+- `js/core/boss.js` - the seeded boss simulation: six bosses, their attack patterns, projectiles, telegraphed zones, sun orbs and bolts (`SZ.FlappyBoss`).
+- `js/core/seasons.js` - seasonal events by date, season keys, the event track, the daily twist, daily quests, the weekly challenge and day differences (`SZ.FlappySeasons`).
+
+Art (cached offscreen canvases, drawn with a few blits per frame):
+- `js/art/bird-art.js` - fourteen birds with seven painters, squash, stretch and flip (`SZ.FlappyBirdArt`).
+- `js/art/cosmetic-art.js` - fourteen hats anchored to the bird's head (`SZ.FlappyCosmeticArt`).
+- `js/art/boss-art.js` - the six bosses in two wing frames, their projectiles, sun orbs and the beam / geyser / lightning zones (`SZ.FlappyBossArt`).
+- `js/art/season-art.js` - event tokens, rolling ground decor, pipe toppers and the Halloween moon (`SZ.FlappySeasonArt`).
+- `js/art/story-art.js` - the dawn and storm skies, the Sky Tree in leaf and in blossom, the glowing Season Feathers (`SZ.FlappyStoryArt`).
+- `js/art/scene-kit.js` - scenery sizes, biome themes, gate styles, bubble tints, colour helpers, the seeded RNG and seamless strip painting.
 - `js/art/scene-backdrop.js` - sky, far / mid / near silhouette strips, clouds and the ground tile, painted once per biome.
+- `js/art/power-icons.js` - the icons of the six newer power-up bubbles.
 - `js/art/scene-sprites.js` - gate body and cap per biome, shared icicle, bat, laser emitter, fireball, coin and bubble sprites.
 - `js/art/scene-art.js` - `SZ.FlappySceneArt.create(biome)`: builds a biome's caches and returns its cheap draw functions.
 - `js/render/flappy-ui.js` - the drawing kit: panels, text that fits its box, chips, meters, headlines and key hints (`SZ.FlappyUI`).
-- `js/render/view.js` - canvas sizing and letterboxing, the visible rect, pointer mapping, the scene cache and `draw()`, which composes one frame.
-- `js/render/shapes.js` - hearts, stars, locks, the coin chip and the dim backdrop.
-- `js/render/effects.js` - drawing of feathers, weather, coin rings and the full-screen flash and fade.
-- `js/render/world.js` - the running world: scenery, gates, hazards, coins, bubbles, afterimages, the bird and its shield.
-- `js/render/hud.js` - score, combo, coins and hearts, the Time Attack clock, power-up chips, the biome banner and the READY panel.
-- `js/ui/menu.js` - hit areas, the shared keyboard / mouse cursor, buttons and the cycling menu backdrop.
-- `js/ui/navigation.js` - screen changes, pause, the window title and the status bar.
-- `js/ui/title.js` - the title screen and the Adventure world map.
-- `js/ui/nest.js` - the Nest tech-tree screen: layout, selection and cards.
-- `js/ui/aviary.js` - the Aviary screen.
-- `js/ui/help.js` - the help pages.
-- `js/ui/results.js` - pause menu, Game Over and Stage Clear panels.
-- `js/ui/input.js` - keyboard and pointer input for every screen, auto-pause and resize.
-- `js/app.js` - the game loop, menu bar, dialogs, OS integration and start-up.
-- `tests/` - node suites for the course generator, the drawing kit and the bird and scene art budgets.
 
-The page also uses the shared desktop libraries `../../shared/game-effects.js`, `game-audio.js`, `game-autopause.js`, `menu.js` and `dialog.js`.
+Core:
+- `js/systems/particles.js` - a pooled particle system (1200 reusable particles, sprite per shape and colour) (`SZ.FlappyParticles`).
+- `js/core/namespace.js` - the `SZ.FlappyBird` namespace, its module slots and the load order.
+- `js/core/constants.js` - canvas, physics, bird and course numbers, the twelve power-ups, medals, modes, arcade scoring, the Stage Clear panel, the Nest tree and the state names.
+- `js/core/data-cosmetics.js` - the wardrobe catalogue: birds with perks, hats, trails, scenery themes and how each unlocks.
+- `js/core/data-goals.js` - the achievements and the lifetime statistics.
+- `js/core/data-story.js` - the cast, the Season Feathers, the chapters, the boss taunts and every cinematic as shot lists.
+- `js/core/state.js` - `G`, the one mutable state object.
+- `js/core/services.js` - canvas and 2D context, the drawing kit, status-bar cells, particles, screen shake, floating text and the rate-limited `sfx`.
+- `js/core/save.js` - the Classic table, the v3 save with migration and repair, and the run snapshot in localStorage.
+- `js/core/progress.js` - tech-tree levels and purchases, the wardrobe (state, hints, buy / wear), stage unlocks, stars and per-mode bests.
+- `js/core/rules.js` - rules derived from upgrades, bird, mode and twist: gravity, hearts, speed, power-up times, radii, coin value, fever gain, crow and wind scales.
+
+Systems:
+- `js/systems/goals.js` - stats, daily quests, the weekly challenge, the day streak, the seasonal track, achievements and toasts.
+- `js/systems/run.js` - run lifecycle: start, resume from a snapshot, flap, hits (shield, wingmate, ghost, revive), death and the settlement (coins, interest, bests, stars, arcade table).
+- `js/systems/powers.js` - granting power-ups, their timers, the Sky Rush autopilot, the Wingmate, Rocket Beak smashing, Gold Rush and FEVER.
+- `js/systems/bossfight.js` - starts and steps the boss simulation, turns its events into effects, and settles a defeat (victory cinematic, Boss Rush rounds).
+- `js/systems/effects.js` - feathers, biome and seasonal weather, fireworks, coin rings, pipe debris, cosmetic trails and the Stage Clear star reveal.
+- `js/systems/cinematics.js` - the cinematic player: shots, typed speech, sound cues, skip.
+- `js/systems/autosave.js` - the run snapshot: timed, on pause, on page hide and unload; the Continue label.
+- `js/systems/flight.js` - the per-frame update: state dispatch, hit-stop, bird physics, the course clock, Zen ambience, boss arena start, timers and biome changes.
+- `js/systems/contact.js` - the bird against the course: gates (score, arcade points and multiplier, PERFECT, CLOSE, Zen chimes), coins, bubbles, tokens and hazards.
+
+Render:
+- `js/render/view.js` - canvas sizing and letterboxing (refit whenever the iframe changes size), the visible rect, pointer mapping, the scene cache and `draw()`.
+- `js/render/shapes.js` - hearts, stars, locks, the coin chip and the dim backdrop.
+- `js/render/effects.js` - drawing of feathers, weather, coin rings, debris and the full-screen flash and fade.
+- `js/render/world.js` - the running world with seasonal dressing, gates, hazards, crows, pickups, the boss arena, the bird with hat and squash / stretch, the Wingmate and the screen tints.
+- `js/render/hud.js` - score or points, multiplier, combo, fever meter, coins, hearts, tokens, clock, power-up chips, boss bar and entrance card, pause button, banners, READY panel and toasts.
+- `js/render/cine-render.js` - draws a cinematic shot: backdrop, actors, effects, letterbox, caption, speech panel with portrait, title card, skip hint.
+
+UI:
+- `js/ui/menu.js` - hit areas, the shared keyboard / mouse cursor, buttons, the Back button and the seasonal menu backdrop.
+- `js/ui/navigation.js` - screen changes, story entry with chapter scenes, mode starts, Continue, pause, window title and status bar.
+- `js/ui/title.js` - the title screen with the hero birds, the main menu and the "today" panel (event, track, streak, twist, quests).
+- `js/ui/modes.js` - the mode select cards with their vignettes and bests.
+- `js/ui/map.js` - the story world map: six painted lands, the trail of stage nodes, boss crests, feathers and the stage panel.
+- `js/ui/nest.js` - the Nest tech-tree screen: tabs, card layout, selection and the Back button.
+- `js/ui/aviary.js` - the Wardrobe: Birds, Hats, Trails and Themes tabs, the pedestal preview and the item grid.
+- `js/ui/goals-ui.js` - Goals & Stats: quests, achievements, statistics with the arcade top 10, and the season track.
+- `js/ui/help.js` - the seven help pages.
+- `js/ui/results.js` - pause menu (with Nest and Wardrobe), Game Over and Stage Clear panels.
+- `js/ui/input.js` - keyboard, mouse and touch for every screen, cinematic skip, auto-pause, autosave hooks and resize.
+- `js/app.js` - the game loop (with a smoothed frame time), menu bar, dialogs, OS integration and start-up.
+
+Tests (`node tests/<name>.test.js`):
+- `tests/harness.js` - a fake canvas, DOM and storage, and a loader for the real scripts in `index.html` order.
+- `tests/flight-bot.js` - the completability bot: flies the real course, hazard and boss modules with the base bird, checking every decision with rollouts and a depth-first search fallback.
+- `tests/completability.test.js` - all 24 story stages (6 boss fights included), 120 pipes of the endless, Zen and Arcade courses and 30 Daily Challenge dates are flown clean.
+- `tests/course.test.js` - stage structure, bounds, determinism, snapshot / restore, tokens, ids, bubble kinds, laser gates.
+- `tests/save.test.js` - migration from v2 and the old table, repair, round trip, storage failures, autosave and Continue.
+- `tests/seasons.test.js` - the event of every boundary day, season keys, days left, track tiers, twists, quests, weeks, day differences.
+- `tests/progression.test.js` - tree costs and immediate effects, wardrobe, achievements and unlocks, quests, streaks over real dates, the season track, power-ups, settlement.
+- `tests/scenario.test.js` - every mode and land flies, a boss fight and Boss Rush run to the end, every cinematic and screen draws, and the busy-frame draw budget.
+- `tests/bird-art.test.js`, `tests/scene-art.test.js`, `tests/flappy-ui.test.js` - sprite caches, blit budgets and the drawing kit.
+
+The page also uses the shared desktop libraries `../../shared/game-effects.js` (screen shake, floating text), `game-audio.js`, `game-autopause.js`, `menu.js` and `dialog.js`.
 
 ## User Stories
 
 ### Core Flight
-- [x] As a user, I can flap with Space or by clicking/tapping the canvas, receiving an upward impulse of -9 px/frame
-- [x] As a user, I can see the bird gain 0.48 px/frame of downward speed each frame, capped at a terminal velocity of 14.4 px/frame
-- [x] As a user, I can fly in a landscape 1280 x 720 view with the bird fixed at x 360 and the ground at y 640
-- [x] As a user, I can graze a gate cap and live, because the hitbox is a circle of 14 px radius rather than the bird's full shape
-- [x] As a user, I can see the bird tilt up to -30 degrees on the rise and nose-dive to +90 degrees on the fall
-- [x] As a user, I can be clamped at the ceiling without dying, preventing escape above the screen
-- [x] As a user, I can see a bobbing bird, a dotted preview of the first flap's arc, a bouncing chevron and a pulsing "TAP!" on the ready screen
-- [x] As a user, I can hold the flap key or button while falling to glide once the Glide upgrade is learned, sinking 35% slower with a faint trail under the wings
-- [x] As a user, I can lose a heart to any hit, then get 1.2 seconds of invulnerability and an upward kick while a heart remains
-- [x] As a user, I can see the ground always cost a heart, and bounce back off it in Adventure and Time Attack whenever a heart is left to spare
-- [x] As a user, I can watch a half-second death tumble -- the first 0.45 seconds in slow motion with a slow camera push-in -- before the results panel
-- [x] As a user, I can restart the current run at any time with F2 and pause with Escape
+- [x] As a player, I can flap with Space, W, Up, Enter, a click or a tap, receiving an upward impulse of -9 px/frame
+- [x] As a player, I can see the bird gain 0.48 px/frame of downward speed each frame, capped at 14.4 px/frame
+- [x] As a player, I can graze a gate cap and live, because the hitbox is a circle of 14 px radius
+- [x] As a player, I can see the bird stretch tall on every flap, settle back and lean into its dive
+- [x] As a player, I can hold the flap while falling to glide once the Glide upgrade is learned
+- [x] As a player, I can lose a heart to a hit, then get a moment of invulnerability while a heart remains
+- [x] As a player, I can watch a short slow-motion death tumble with a camera push-in before the results panel
+- [x] As a player, I can pause with Escape, P or the on-screen pause button, and restart with F2
 
-### Game Modes
-- [x] As a user, I can choose Adventure, Classic, Time Attack or Daily Run from the title screen
-- [x] As a user, I can fly an endless, randomly generated course in Classic, with medals and a top-5 high-score table
-- [x] As a user, I can race a 60-second clock in Time Attack, where every hit costs 3 seconds instead of a heart
-- [x] As a user, I can play the Daily Run, whose course is seeded from today's date so every player gets the same gates, coins and hazards
-- [x] As a user, I can see my best score per mode in the status bar, on the ready panel and on the results panel
-- [x] As a user, I can see the Daily best reset when the date rolls over to a new seed
-- [x] As a user, I can quit a run in progress back to the world map (Adventure) or the title screen with Escape
+### Story
+- [x] As a player, I can watch an intro of the Sky Tree, its six Season Feathers and Corvus the Storm Crow scattering them
+- [x] As a player, I can meet the cast: Sunny, Elder Hoot, Pip, Ruby, Jay and Corvus, each with a portrait and voice blips
+- [x] As a player, I can play six chapters (The Honey Thief, Sea of Sand, The Frozen Throne, Where the Moths Dance, Iron Wings, Heart of the Storm), each opened by a chapter title and a dialogue scene
+- [x] As a player, I can travel a world map of six painted lands with a trail of 24 stage nodes, boss crests and the feathers I have recovered
+- [x] As a player, I can fight a boss at the end of every land: Queen Buzzella, Dunejaw, Glacius, Duskmoth, MK-7 Crowbot and Corvus, each entering with a name card and a taunt
+- [x] As a player, I can dodge each boss's own attacks: aimed stingers and drones, sand geysers and lobs, ice fans and icicle rain, spore rings and homing spores, laser sweeps and missiles, feather fans, lightning and crow swarms
+- [x] As a player, I can strike back by touching sun orbs, each firing a bolt at the boss, and see the boss turn ENRAGED below half health
+- [x] As a player, I can enter boss arenas with two extra hearts from the Sky Tree
+- [x] As a player, I can watch a victory scene for every recovered feather and a finale where the seasons return and Corvus is offered a branch
+- [x] As a player, I can skip any cinematic with any key, click or tap, and rewatch the intro and chapter scenes from the map
+- [x] As a player, I can earn three stars per stage: finish, collect 60% of the coins, take no hits
 
-### Adventure Worlds & Stars
-- [x] As a user, I can play 24 Adventure stages arranged as six worlds of four stages each, worth 72 stars in total
-- [x] As a user, I can see each world as a card painted with its biome's sky, with a lock and the name of the world to clear first
-- [x] As a user, I can unlock the next stage as soon as the previous one holds at least one star
-- [x] As a user, I can fly stages of 18 to 40 gates, growing by four per stage and two per world
-- [x] As a user, I can feel the campaign ramp: gate gaps narrow from 205 px to 136 px, scroll speed climbs from 2.70 to 4.54 px/frame and spacing tightens from 380 px to 288 px across the 24 stages
-- [x] As a user, I can earn up to three stars per stage -- one for finishing, one for collecting at least 60% of the coins, one for a hit-free run
-- [x] As a user, I can watch the stars pop in one by one on the Stage Clear panel, each with its own chime, above coin, hit and combo tallies
-- [x] As a user, I can go straight to the next stage, replay the current one or return to the world map from the clear panel
-- [x] As a user, I can see my progress as a flag-topped meter along the top of the screen during an Adventure stage
-
-### Biomes & Hazards
-- [x] As a user, I can fly six biomes: Sunny Meadow, Dune Canyon, Frost Peaks, Twilight Woods, Neon City and Ember Volcano
-- [x] As a user, I can see each biome with its own sky gradient, sun, three parallax silhouette layers, clouds, ground texture and gate style (pipes, pillars, ice, logs, neon, basalt)
-- [x] As a user, I can see biome weather drift across the screen: leaves, blowing sand, snow, fireflies, rain and rising embers
-- [x] As a user, I can see the endless modes change biome every 25 gates, announced by a banner that slides down for 2.5 seconds
-- [x] As a user, I can be pushed up or down by a 180 px-wide wind gust in Dune Canyon, and buy Storm Rider to blunt it by 40% per level
-- [x] As a user, I can dodge icicles of 70 to 120 px in Frost Peaks, which rattle for 0.35 seconds before dropping and shatter on the ground
-- [x] As a user, I can dodge bats in Twilight Woods that fly leftward at 1.4 px/frame while bobbing on a 50 to 90 px sine
-- [x] As a user, I can time the pulsing laser beams in Neon City, which burn across the gap for 1.0 to 1.4 seconds and rest for 1.2 to 1.8 seconds
-- [x] As a user, I can duck the fireballs of Ember Volcano, launched every 2.2 to 3.0 seconds up to 45-70% of the 640 px playfield
-- [x] As a user, I can see at most one hazard between a pair of gates, from the second world onward (up to 65% of pairs) and from the second tier in the endless modes (up to 60%)
-- [x] As a user, I can meet gates that slide up and down (up to 60% chance, 2.2 to 3.8 second period) or breathe shut by up to 40 px, never both at once
-- [x] As a user, I can pass through hazards unharmed while ghosted -- they keep moving, they just cannot hurt
-
-### Coins & Combos
-- [x] As a user, I can collect three coins in every gate gap, plus five-coin arcs between the pairs that carry no bubble or hazard
-- [x] As a user, I can pick a coin up within 26 px of the bird
-- [x] As a user, I can earn PERFECT by passing within 22% of the gap's centre, which raises the combo counter
-- [x] As a user, I can multiply coin payouts x2 at combo 5, x3 at combo 10 and x4 at combo 20, with a banner at each step
-- [x] As a user, I can see a hit break the combo, and the Combo Keeper upgrade spend a save instead
-- [x] As a user, I can earn a bonus coin for a CLOSE pass -- under 7 px of clearance and no hit inside that gate
-- [x] As a user, I can see fractional coin values accumulate, so a Golden Touch bonus is never lost to rounding
-- [x] As a user, I can see the coin counter bump, gold rings bloom and the pickup chime climb in pitch on a quick streak of coins
-- [x] As a user, I can see the coins earned in a run banked into my total on the results panel
+### Modes
+- [x] As a player, I can play Classic: the original endless course with medals (Bronze 10, Silver 25, Gold 50, Platinum 100) and a top-5 table
+- [x] As a player, I can play Arcade: points for pipes, PERFECTs, coins, close shaves and tokens, a multiplier that rises every five clean pipes up to x8, FEVER doubling, crows, a power-up every four pipes and a top-10 table
+- [x] As a player, I can play Zen: wide gaps, translucent soft pipes that only bump me, a slow pastel wash, drifting light motes, a pentatonic chime for every pipe and soft chords, ended from the pause menu
+- [x] As a player, I can race a 60-second clock in Time Attack, where every hit costs 3 seconds
+- [x] As a player, I can play the Daily Challenge, seeded by the local date, with a daily twist: Feather Fall, Gale Day, Needle's Eye, Gold Fever, Bubble Party, Night Flight, Crow Storm or Turbo
+- [x] As a player, I can play Boss Rush against every boss I have beaten, back to back, for the best time
 
 ### Power-ups
-- [x] As a user, I can pop power-up bubbles that float between the gates, one every 6 gates in Adventure and every 7 in the endless modes
-- [x] As a user, I can take a Shield, which eats the next non-ground hit and shows as a ring around the bird
-- [x] As a user, I can take a Magnet, which drags coins in from 190 px for 8 seconds
-- [x] As a user, I can take Slow-mo, which runs the whole world at 60% speed for 5 seconds behind a purple vignette
-- [x] As a user, I can take Ghost, which lets me pass through gates and hazards -- but not the ground -- for 4 seconds
-- [x] As a user, I can take Double Coins, which pays every coin twice for 10 seconds
-- [x] As a user, I can take Tiny, which shrinks the bird and its hitbox to 65% for 8 seconds
-- [x] As a user, I can see active power-ups as bubble chips with a countdown ring in the top-right corner
-- [x] As a user, I can see each pickup announced with a name, a colored burst and a matching screen flash
+- [x] As a player, I can pop twelve kinds of bubbles: Shield, Magnet, Slow-Mo, Ghost, Double Coins, Tiny, Rocket Beak (smash through pipes), Sky Rush (untouchable autopilot dash), Extra Heart, Frost Time (moving pipes and hazards freeze), Gold Rush (every pipe showers coins) and Wingmate (a friend grabs coins and, upgraded, takes a hit)
+- [x] As a player, I can see active power-ups as chips with countdown rings that blink before they run out
+- [x] As a player, I can fill the FEVER meter with PERFECT passes for six seconds of double coins and points
+
+### Hazards & Course
+- [x] As a player, I can fly six biomes with their own sky, parallax layers, gate style and weather
+- [x] As a player, I can slip past laser scanners that sweep the gap of a roomier gate, gusts, falling icicles, bats and fireballs
+- [x] As a player, I can dodge storm crows that caw, flash a warning and dive at the height I was flying
+- [x] As a player, I can rely on every story stage, boss fight and Daily course having been flown clean by an automated bot
 
 ### Nest Tech Tree
-- [x] As a user, I can spend banked coins in a Nest tech tree of 15 upgrades across five branches: Wings, Armor, Magnet, Power and Spirit
-- [x] As a user, I can buy Light Feathers (3 levels, 150/300/600) to weaken gravity by 4% per level
-- [x] As a user, I can buy Glide (800, needs Light Feathers I) to hold the flap while falling and sink 35% slower
-- [x] As a user, I can buy Storm Rider (2 levels, 400/900) to be pushed 40% less by wind gusts per level
-- [x] As a user, I can buy Extra Heart (2 levels, 500/1500) for one more heart per level
-- [x] As a user, I can buy Starting Shield (1200, needs Extra Heart I) to begin every run with a shield
-- [x] As a user, I can buy Thick Down (2 levels, 300/700) for 0.4 seconds more safety after a hit per level
-- [x] As a user, I can buy Coin Magnet (3 levels, 200/450/900) to pull in coins within 60 px per level
-- [x] As a user, I can buy Golden Touch (3 levels, 400/900/1600) for 10% more coins per level
-- [x] As a user, I can buy Super Magnet (2 levels, 500/1000) to extend the Magnet power-up's range by 50% per level
-- [x] As a user, I can buy Long Lasting (3 levels, 300/650/1200) so power-ups last 20% longer per level
-- [x] As a user, I can buy Bubble Luck (2 levels, 600/1300) so bubbles appear 25% more often per level
-- [x] As a user, I can buy Starter Kit (2000, needs Long Lasting II and Bubble Luck I) to begin every run with a random power-up
-- [x] As a user, I can buy Eagle Eye (3 levels, 250/550/1000) to widen the PERFECT zone by 15% per level
-- [x] As a user, I can buy Combo Keeper (2 levels, 700/1500) so an imperfect pass keeps the combo, once per level each run
-- [x] As a user, I can buy Phoenix Feather (3000, needs Eagle Eye II) to come back to life once per run
-- [x] As a user, I can see each node's level as pips and a roman-numeral counter, its next cost with a coin, and locked nodes name what they require
-- [x] As a user, I can switch branches with Tab or keys 1-5, move with the arrow keys and buy with Enter, Space or a click
+- [x] As a player, I can spend coins in a Nest of 27 upgrades in six branches: Wings, Armor, Magnet, Power, Spirit and Fortune
+- [x] As a player, I can open the Nest from the title, the pause menu and the results panel, and see bought upgrades act at once (an extra heart fills up mid-run)
+- [x] As a player, I can buy upgrades for the new power-ups (Jet Stream, Hard Beak, Deep Frost, Loyal Wingmate, Mother Lode), crows (Crow Scarer), FEVER (Fever Pitch) and the meta game (Quest Hunter, Homing Instinct, Festive Spirit, Sun Caller, Nest Egg)
+- [x] As a player, I can switch branches with Tab or 1-6, move with the arrows and buy with Enter or a click
 
-### Aviary Birds
-- [x] As a user, I can choose among six birds in the Aviary, each with its own perk
-- [x] As a user, I can fly Sunny, the free balanced all-rounder
-- [x] As a user, I can buy Ruby for 400 coins: light, with gravity 6% weaker
-- [x] As a user, I can buy Jay for 900 coins: shiny eyes add 50 px of coin magnet
-- [x] As a user, I can unlock Pip by clearing stage 2-4: lucky, +15% coins
-- [x] As a user, I can unlock Snowy by clearing stage 4-4: tough, +1 heart
-- [x] As a user, I can unlock Phoenix by clearing stage 6-4: reborn, revive once per run
-- [x] As a user, I can see stage-unlocked birds come free once their stage is cleared, while the others are bought with coins
-- [x] As a user, I can preview the selected bird large on a glowing pedestal, with the six birds in a row below showing price, ownership or lock
-- [x] As a user, I can see birds gliding across the title screen as decoration, with a large copy of the selected bird among them
+### Wardrobe & Collection
+- [x] As a player, I can choose among 14 birds with perks (Sunny, Ruby, Jay, Pip, Snowy, Phoenix, Goldie, Corvus and six festive seasonal birds)
+- [x] As a player, I can wear 14 hats and 12 trails, bought with coins or unlocked by achievements and seasonal events
+- [x] As a player, I can preview a look on a pedestal where the bird loops with its trail, and see every locked item's unlock hint
+- [x] As a player, I can see my hat in every mode, on the map and in the story scenes
+- [x] As a player, I can keep a seasonal event's scenery as a theme all year once I collected ten of its tokens, or let the scenery follow the calendar
 
-### Visual Effects
-- [x] As a user, I can see a puff of particles and two loose feathers on every flap, with up to 60 feathers drifting and tumbling on screen
-- [x] As a user, I can see gold sparkles at both gap edges and a floating "+1" when a gate is passed
-- [x] As a user, I can see a beat of frozen frame, a white flash and a feather burst when a hit lands, and a red flash on death
-- [x] As a user, I can see an afterimage trail while the combo is at 10 or higher or the world runs in slow motion
-- [x] As a user, I can see the score pop on each pass and the last heart breathe when there were more to lose
-- [x] As a user, I can see confetti and hear a fanfare when a new best is set or a stage is cleared
-- [x] As a user, I can see the medal -- Bronze, Silver, Gold or Platinum -- with slowly rotating light rays on the Classic and Daily results panel
-- [x] As a user, I can see buyable upgrade cards breathe with a pulsing outline and flash white when bought
-- [x] As a user, I can see the menus drift over a biome backdrop that cycles through all six every 12 seconds
+### Seasons, Quests & Achievements
+- [x] As a player, I can play through six seasonal events by local date: Winter Wonderflap, Year-End Fireworks, Blossom Festival, Summer Splash, Harvest Moon and Spooky Flight
+- [x] As a player, I can see each event change the scenery: a colour wash, rolling decor (snowmen, rockets, egg baskets, beach umbrellas, hay bales, jack-o'-lanterns), pipe toppers, its own weather and fireworks
+- [x] As a player, I can collect the event's tokens to climb a seven-tier track paying coins, a trail, a hat, a bird and a Season Champion badge
+- [x] As a player, I can complete three daily quests and a weekly featured challenge, with a bonus for all three
+- [x] As a player, I can earn a growing coin bonus for playing on consecutive days
+- [x] As a player, I can earn 37 achievements that pay coins and unlock wardrobe items, announced by toasts
+- [x] As a player, I can read lifetime statistics, my bests in every mode and the Arcade top 10
 
-### Sound
-- [x] As a user, I can hear synthesized effects for flapping, gate passes, coins, power-ups, hits, death, victory and defeat
-- [x] As a user, I can hear a level-up fanfare every 12 gates passed
-- [x] As a user, I can hear the coin chime climb in pitch on a quick streak and the PERFECT blip rise with the combo
-- [x] As a user, I can hear hazards: laser hum, icicle drop, fireball launch and gust whoosh
-- [x] As a user, I can mute everything with the speaker button in the corner, and the choice is remembered between visits
-- [x] As a user, I can hear the same effect at most once per 45 ms, so a busy screen never turns into a wall of noise
+### Visual Effects & Sound
+- [x] As a player, I can see pooled particles, feathers, coin rings, shock rings, pipe debris, screen shake, hit-stop and flashes
+- [x] As a player, I can see afterimages while the combo is hot, in slow motion, rushing or in FEVER
+- [x] As a player, I can see floating score text, a popping score, breathing hearts and stars that pop in on the Stage Clear panel
+- [x] As a player, I can hear synthesized sounds for every event, rate-limited so a busy screen never turns into noise, and mute them
+
+### Persistence & Retention
+- [x] As a player, I can close the window or reload the page mid-run and press Continue to resume at the same spot, on the same course, with the same power-ups
+- [x] As a player, I can press Continue after clearing a story stage to fly straight on to the next one
+- [x] As a player, I can keep my old high scores, coins, stars, upgrades and birds from the previous save version
+- [x] As a player, I can keep everything in my browser only - no server is involved
 
 ### Menus & Controls
-- [x] As a user, I can reach Title, World Map, Nest, Aviary and Help screens, plus Ready, Paused, Game Over and Stage Clear panels
-- [x] As a user, I can move every menu with the arrow keys or WASD and confirm with Enter or Space
-- [x] As a user, I can press Escape to pause a run, back out of a menu or leave a results panel
-- [x] As a user, I can open the four-page Help book from any menu with H, and page through it with Left/Right
-- [x] As a user, I can pause and choose Resume, Restart or Quit to Menu
-- [x] As a user, I can play entirely with the mouse or a finger: click to flap, hold to glide, click cards and buttons
-- [x] As a user, I can see the status bar report the score, the best for the current mode and the state (Title, Adventure, Nest, Aviary, Help, Ready, Playing, Paused, Game Over, Stage Clear)
-
-### Persistence and OS Integration
-- [x] As a user, I can see coins, stage stars, per-mode bests, tech-tree levels, owned birds, the selected bird and lifetime stats (runs, gates, coins) saved in localStorage under `sz-flappy-bird-save-v2`
-- [x] As a user, I can see the Classic top-5 high-score table kept alongside the save, viewable and resettable from the Game menu, with its best migrated into the save
-- [x] As a user, I can see the window title follow the game: "Flappy Bird" in the menus, "Flappy Bird -- <mode or stage name>" during a run
-- [x] As a user, I can access the Game menu (New Game F2, Pause Esc, High Scores, Exit) and the Help menu (Controls, About)
-- [x] As a user, I can see the 1280 x 720 view letterboxed and scaled to the window, with the backing store capped at about 1.5 pixels per logical pixel
-- [x] As a user, I can see the run pause itself when the window loses focus or is hidden
+- [x] As a player, I can use every screen with the keyboard, the mouse or a touch screen, with Back buttons for touch
+- [x] As a player, I can resize or maximize the window and still click exactly what I point at
+- [x] As a player, I can read seven help pages from any menu with H
 
 ## Controls
 
 | Input | Action |
 |---|---|
-| Space / Click / Tap | Flap (hold while falling to glide, once learned) |
-| Escape | Pause / Resume, back out of a menu, quit a results panel |
-| Arrow keys / WASD | Move through menus, the tree and the Aviary |
-| Enter / Space | Select, buy, confirm |
-| Tab or 1-5 | Switch tech-tree branch |
-| H | Open / close Help |
+| Space / W / Up / Enter / Click / Tap | Flap (hold while falling to glide, once learned) |
+| Escape / P / pause button | Pause / Resume, back out of a menu, leave a results panel |
+| Arrow keys / WASD | Move through menus, the map, the tree and the wardrobe |
+| Enter / Space | Select, buy, wear, confirm |
+| Tab / 1-6 | Switch tabs and tech-tree branches |
+| Any key / click / tap | Skip a cinematic |
+| H | Help |
 | F2 | Restart the current run |
 
 ## Technical Details
 
-- Canvas rendering in a logical 1280 x 720 space, letterboxed with devicePixelRatio scaling capped near 1.5 backing pixels per logical pixel
-- IIFE pattern with `window.SZ` namespace; no build step required
-- Course generation is pure data in `js/core/course.js` (seeded, testable); scenery and sprites are prebuilt offscreen canvases in `js/art/`
-- requestAnimationFrame game loop with delta-time capped at 50 ms and physics normalized to 60 fps via a `dt * 60` step multiplier
-- Circular 14 px bird hitbox against the four rectangles of each gate (two columns, two caps)
-- Gate openings placed with a 72 px margin from sky and ground, and a bounded jump from the previous opening
-- Endless difficulty advances every 12 gates: gap 190 to 122 px, speed 2.70 to 5.40 px/frame, spacing 360 to 252 px, biome every 25 gates
-- Daily and Adventure courses are seeded (date hash / stage id), so the same seed always yields the same course
-- localStorage keys: `sz-flappy-bird-save-v2` for the save, `sz-flappy-bird-highscores` for the Classic table
+- Canvas rendering in a logical 1280 x 720 space, letterboxed with the scenery stretched into the bars, backing store capped near 1.5 pixels per logical pixel, refit whenever the iframe's size changes
+- IIFE modules in the `SZ.FlappyBird` namespace and pure `SZ.Flappy*` modules; no build step
+- All art in cached offscreen canvases; no shadow blur; pooled particles; culling to the visible course window
+- Course, hazards, bosses and seasons are pure, seeded and testable; story and Daily courses are seeded (stage id / date)
+- localStorage keys: `sz-flappy-bird-save-v3` (the save), `sz-flappy-bird-run-v1` (the run in flight), `sz-flappy-bird-highscores` (the Classic table); `sz-flappy-bird-save-v2` is read once for migration and left as a backup
 - OS integration via SZ.Dlls.User32 (SetWindowText, RegisterWindowProc, DestroyWindow)

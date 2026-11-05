@@ -6,15 +6,14 @@
   /* Shared menu machinery: hit areas rebuilt each frame, the keyboard/mouse cursor, buttons
      and the cycling biome backdrop. Owns G.hitAreas, G.menuCursor, G.menuBiomeIndex/At. */
 
-  const { STATE_TITLE, STATE_WORLDS, STATE_NEST, STATE_AVIARY, STATE_HELP, STATE_DEAD, STATE_CLEAR } = NS.C;
+  const { MENU_STATES, STATE_DEAD, STATE_CLEAR } = NS.C;
   const { ctx, ui, sfx } = NS.services;
   const G = NS.state;
   const View = NS.view;
   const FxDraw = NS.fxDraw;
 
   function isMenuState(s) {
-    return s === STATE_TITLE || s === STATE_WORLDS || s === STATE_NEST ||
-      s === STATE_AVIARY || s === STATE_HELP || s === STATE_DEAD || s === STATE_CLEAR;
+    return MENU_STATES.indexOf(s) >= 0 || s === STATE_DEAD || s === STATE_CLEAR;
   }
 
   /* Register one clickable / keyboard-selectable item for this frame */
@@ -84,16 +83,31 @@
     }
     const ms = View.sceneFor(SZ.FlappyCourse.BIOME_ORDER[G.menuBiomeIndex]);
     const v = View.visibleRect();
+    const ev = NS.progress.visualEvent();
     ms.drawSky(ctx, v);
+    if (ev)
+      SZ.FlappySeasonArt.drawSkyExtra(ctx, ev.id, v, G.globalTime);
     ms.drawBackdrop(ctx, G.globalTime * 60, G.globalTime, v);
+    if (ev) {
+      ctx.fillStyle = ev.tint;
+      ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+      SZ.FlappySeasonArt.drawDecor(ctx, ev.id, G.globalTime * 36, v, 640);
+    }
     FxDraw.drawWeather('back');
     ms.drawGround(ctx, G.globalTime * 60, v);
     FxDraw.drawWeather('front');
+    NS.services.particles.draw(ctx);
     ctx.fillStyle = 'rgba(6, 10, 24, 0.35)';
     ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
   }
 
+  /* a Back button in the top-left corner, for mouse and touch players */
+  function drawBackButton(action) {
+    drawButton('back', '< Back', 24, 22, 120, 44, { px: 18, action: action || NS.nav.menuEscape });
+  }
+
   Object.assign(NS.menu, {
+    drawBackButton,
     isMenuState, registerHit, isHot, drawButton, moveMenuCursor, activateMenuItem, drawMenuBackground
   });
 })();
