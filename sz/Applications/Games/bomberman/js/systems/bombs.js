@@ -1,244 +1,279 @@
-/* Bombs: placement, detonation with the blast arms and chain explosions, the
-   glove throw, the power-kick slide and the slide stepping. */
+/* Bombs and fire: placing (player, imp and boss bombs, the Mega Bomb), fuses, remote detonation,
+   kicks that slide a bomb until something stops it, glove throws that arc over walls, belts
+   that carry resting bombs, detonation into four fire arms (pierce, chained bombs that join
+   the same blast group, burning pickups) and the fire timers. Mutates G.run.bombs and the
+   fire layers run.fire / fireDir / fireG / fireO. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Bomberman || (SZ.Bomberman = {});
   const C = NS.constants;
-  const T = NS.data;
-  const S = NS.state;
-  const D = NS.dom;
-  const B = NS.bombs = NS.bombs || {};
+  const G = NS.state;
+  const { COLS, ROWS, T_HARD, T_SOFT, T_CRATE, T_BELT_U, T_BELT_D, T_BELT_L, T_BELT_R, DIRS } = C;
+  const A = NS.arena;
+  const fx = NS.fx;
 
-  /* ── Place Bomb ── */
-  B.placeBomb = function placeBomb() {
-    if (S.state !== C.STATE_PLAYING)
-      return;
+  const OWNER = { p: 0, e: 1, b: 2 };
+  const BELT_DIR = {};
+  BELT_DIR[T_BELT_D] = 0; BELT_DIR[T_BELT_U] = 1; BELT_DIR[T_BELT_L] = 2; BELT_DIR[T_BELT_R] = 3;
 
-    // Prevent placing on non-EMPTY cells (climb lets you walk on walls, but not plant)
-    if (S.grid[S.player.row][S.player.col] !== C.EMPTY)
-      return;
+  function playerBombs() {
+    let n = 0;
+    const bs = G.run.bombs;
+    for (let k = 0; k < bs.length; ++k) if (bs[k].owner === 'p' && !bs[k].mega) ++n;
+    return n;
+  }
 
-    // Remote detonation: at max bombs or bomb already here, detonate oldest
-    if (S.hasRemote && (S.bombs.length >= S.maxBombs || NS.arena.hasBombAt(S.player.col, S.player.row))) {
-      if (S.bombs.length > 0)
-        B.detonateBomb(S.bombs[0]);
-      return;
+  function make(owner, c, r, range, fuse, opts) {
+    const run = G.run;
+    const b = {
+      id: run.nextId++, owner: owner, i: A.idx(c, r), x: c, y: r, t: fuse, fuse: fuse, range: range,
+      pierce: !!(opts && opts.pierce), remote: !!(opts && opts.remote), mega: !!(opts && opts.mega),
+      vx: 0, vy: 0, fly: null, group: 0, chained: false, squash: 1
+    };
+    run.bombs.push(b);
+    G.lvl.bombAt[b.i] = run.bombs.length - 1;
+    return b;
+  }
+
+  /* The player's bomb key: returns the bomb or null */
+  function placePlayer() {
+    const run = G.run, p = run.player;
+    if (p.dead || run.phase !== 'play') return null;
+    if (p.curse === 'nobomb') { fx.sfx('error', { volume: 0.4 }); return null; }
+    const c = Math.round(p.x), r = Math.round(p.y);
+    const t = A.tileAt(c, r);
+    if (t === T_SOFT || t === T_CRATE || t === T_HARD) return null;
+    if (A.bombAtCell(c, r)) return null;
+    if (playerBombs() >= p.bombs) return null;
+    const fuse = p.curse === 'short' ? 0.9 : G.perks.fuse;
+    const b = make('p', c, r, p.curse === 'short' ? 1 : p.fire, fuse, { pierce: p.pierce, remote: p.remote });
+    p.onBomb.push(b.id);
+    p.squash = 0.35;
+    b.squash = 0.4;
+    NS.tracker.stat('bombs', 1);
+    fx.sfx('drop', { pitch: 0.9 + Math.random() * 0.2 });
+    return b;
+  }
+
+  function placeMega() {
+    const run = G.run, p = run.player;
+    if (!G.perks.mega || p.mega < C.SUPER_COST || p.dead || run.phase !== 'play') return null;
+    const c = Math.round(p.x), r = Math.round(p.y);
+    if (A.bombAtCell(c, r) || A.isBlock(A.tileAt(c, r))) return null;
+    p.mega = 0;
+    const b = make('p', c, r, 6, 1.7, { pierce: true, mega: true });
+    p.onBomb.push(b.id);
+    fx.banner('MEGA BOMB!', 'run!', '#ff8a3c', 1.2);
+    fx.sfx('powerup', { pitch: 0.6 });
+    return b;
+  }
+
+  function placeEnemy(c, r, range, fuse, owner) {
+    if (A.bombAtCell(c, r) || A.isBlock(A.tileAt(c, r))) return null;
+    return make(owner || 'e', c, r, range, fuse || 2.2, null);
+  }
+
+  /* Starts a bomb sliding in direction d (kick); returns whether it moved */
+  function kick(b, d) {
+    const nc = Math.round(b.x) + DIRS[d][0], nr = Math.round(b.y) + DIRS[d][1];
+    if (b.fly || !A.bombCan(nc, nr)) return false;
+    b.vx = DIRS[d][0] * C.SLIDE_SPEED;
+    b.vy = DIRS[d][1] * C.SLIDE_SPEED;
+    b.from = b.i;
+    b.belt = false;
+    b.squash = 0.6;
+    fx.sfx('whoosh', { volume: 0.6 });
+    return true;
+  }
+
+  /* Glove: the bomb arcs three tiles and lands on the first free tile from there */
+  function throwBomb(b, d) {
+    const run = G.run;
+    b.vx = b.vy = 0;
+    const fromX = b.x, fromY = b.y;
+    let c = Math.round(b.x) + DIRS[d][0] * 3, r = Math.round(b.y) + DIRS[d][1] * 3;
+    for (let k = 0; k < COLS + ROWS; ++k) {
+      c = Math.min(COLS - 2, Math.max(1, c));
+      r = Math.min(ROWS - 2, Math.max(1, r));
+      if (!A.isBlock(A.tileAt(c, r)) && !A.bombAtCell(c, r)) break;
+      c += DIRS[d][0]; r += DIRS[d][1];
+      if (c <= 0 || c >= COLS - 1 || r <= 0 || r >= ROWS - 1) { c = Math.round(b.x); r = Math.round(b.y); break; }
     }
+    b.fly = { t: 0, dur: C.THROW_TIME, fx: fromX, fy: fromY, tx: c, ty: r };
+    b.t = Math.max(b.t, 0.8);
+    const p = run.player;
+    const k = p.onBomb.indexOf(b.id);
+    if (k >= 0) p.onBomb.splice(k, 1);
+    fx.sfx('jump', { pitch: 1.2 });
+  }
 
-    if (S.bombs.length >= S.maxBombs)
-      return;
-    if (NS.arena.hasBombAt(S.player.col, S.player.row))
-      return;
+  /* Every remote bomb of the player goes off, oldest first, a beat apart */
+  function detonateRemote() {
+    const bs = G.run.bombs;
+    let n = 0;
+    for (let k = 0; k < bs.length; ++k)
+      if (bs[k].owner === 'p' && bs[k].remote && !bs[k].fly) {
+        bs[k].remote = false;
+        bs[k].t = 0.001 + n * C.CHAIN_DELAY;
+        ++n;
+      }
+    if (n) fx.sfx('click', { pitch: 1.6 });
+    return n;
+  }
 
-    S.bombs.push({
-      col: S.player.col,
-      row: S.player.row,
-      fuse: C.BOMB_TIME,
-      blastRange: S.blastRange,
-      sliding: false,
-      slideDx: 0,
-      slideDy: 0,
-      slideProgress: 0
-    });
-    SZ.GameAudio.play('drop', { volume: 0.7 });
-  };
+  function setFire(i, dirBits, group, owner) {
+    const run = G.run;
+    run.fire[i] = C.FIRE_TIME;
+    run.fireDir[i] |= dirBits;
+    run.fireG[i] = group;
+    run.fireO[i] = owner;
+  }
 
-  /* ── Detonate Bomb ── */
-  B.detonateBomb = function detonateBomb(bomb) {
-    const idx = S.bombs.indexOf(bomb);
-    if (idx === -1)
-      return;
-    S.bombs.splice(idx, 1);
-
-    const cx = bomb.col * C.TILE_SIZE + C.TILE_SIZE / 2;
-    const cy = bomb.row * C.TILE_SIZE + C.TILE_SIZE / 2;
-
-    SZ.GameAudio.play('explode', { pitch: 1.15 - Math.min(bomb.blastRange, 6) * 0.05 });
-
-    // Center fire cell
-    S.fireCells.push({ col: bomb.col, row: bomb.row, timer: C.FIRE_DURATION, isCenter: true });
-
-    // Primary burst: orange/red circles
-    D.particles.burst(cx, cy, 15, { color: '#ff4500', speed: 5, life: 0.6, size: 3, decay: 0.02, gravity: 0.05 });
-    // Secondary burst: yellow star-shaped sparks
-    D.particles.sparkle(cx, cy, 10, { color: '#ffd700', speed: 4, life: 0.5 });
-    // Debris: brown square confetti with gravity
-    D.particles.confetti(cx, cy, 6, { colors: ['#8b4513', '#a0522d', '#cd853f'], speed: 3, gravity: 0.12 });
-
-    // Spread in cardinal directions
-    for (const dir of C.DIRS) {
-      for (let i = 1; i <= bomb.blastRange; ++i) {
-        const fc = bomb.col + dir.dx * i;
-        const fr = bomb.row + dir.dy * i;
-
-        if (fc < 0 || fc >= C.COLS || fr < 0 || fr >= C.ROWS)
-          break;
-
-        const cell = S.grid[fr][fc];
-
-        // Indestructible wall: stop, blocked
-        if (cell === C.WALL)
-          break;
-
-        const fx = fc * C.TILE_SIZE + C.TILE_SIZE / 2;
-        const fy = fr * C.TILE_SIZE + C.TILE_SIZE / 2;
-
-        // Destructible wall: destroy breakable wall and stop
-        if (cell === C.DESTRUCTIBLE) {
-          S.grid[fr][fc] = C.EMPTY;
-          S.fireCells.push({ col: fc, row: fr, timer: C.FIRE_DURATION, dirX: dir.dx, dirY: dir.dy, isEnd: true });
-
-          // Enhanced wall destruction: confetti debris with gravity + rotation
-          D.particles.confetti(fx, fy, 8, { colors: ['#8b4513', '#a0522d', '#cd853f', '#d2b48c'], speed: 4, gravity: 0.15 });
-          D.particles.burst(fx, fy, 6, { color: '#a0522d', speed: 3, life: 0.4, size: 2, decay: 0.03 });
-          SZ.GameAudio.play('smallExplode', { volume: 0.6 });
-
-          // Reveal hidden power-up from destroyed wall
-          const key = fr + ',' + fc;
-          if (S.hiddenPowerUps[key]) {
-            S.powerUps.push({ col: fc, row: fr, type: S.hiddenPowerUps[key] });
-            delete S.hiddenPowerUps[key];
-          }
-          break; // Explosion stops at destructible wall
+  /* Blows bomb b up: four fire arms, chain reactions, broken bricks */
+  function detonate(b) {
+    const run = G.run;
+    const k = run.bombs.indexOf(b);
+    if (k < 0) return;
+    run.bombs.splice(k, 1);
+    A.rebuild();
+    const c0 = Math.round(b.x), r0 = Math.round(b.y);
+    const owner = OWNER[b.owner];
+    if (!b.group) {
+      b.group = run.nextId++;
+      run.groups.push({ id: b.group, kills: 0, bombs: 0, owner: b.owner });
+      if (run.groups.length > 24) run.groups.shift();
+    }
+    const grp = run.groups.find(g => g.id === b.group);
+    if (grp) ++grp.bombs;
+    const i0 = A.idx(c0, r0);
+    run.fireDir[i0] = 0;
+    setFire(i0, 16, b.group, owner);
+    fx.flame(c0, r0, 2);
+    const range = b.range + (b.chained && b.owner === 'p' ? G.perks.chain : 0);
+    for (let d = 0; d < 4; ++d) {
+      const dx = DIRS[d][0], dy = DIRS[d][1];
+      for (let s = 1; s <= range; ++s) {
+        const c = c0 + dx * s, r = r0 + dy * s;
+        if (!A.inside(c, r)) break;
+        const i = A.idx(c, r);
+        const t = run.level.grid[i];
+        if (t === T_HARD) break;
+        if (t === T_SOFT || t === T_CRATE) {
+          setFire(i, d < 2 ? 3 : 12, b.group, owner);
+          A.hitBlock(i, b.owner === 'p');
+          if (!b.pierce || t === T_CRATE) break;
+          continue;
         }
-
-        // Empty: add fire cell
-        S.fireCells.push({ col: fc, row: fr, timer: C.FIRE_DURATION, dirX: dir.dx, dirY: dir.dy, isEnd: i === bomb.blastRange });
-
-        // Directional sparkle at each fire cell
-        D.particles.sparkle(fx, fy, 3, {
-          color: '#ff9f43',
-          speed: 2,
-          vx: dir.dx * 2,
-          vy: dir.dy * 2
-        });
-
-        // Trail particle along explosion arm
-        D.particles.trail(fx, fy, {
-          color: '#ff6600',
-          vx: dir.dx * 1.5,
-          vy: dir.dy * 1.5,
-          life: 0.3,
-          size: 2
-        });
-
-        // Chain explosion: trigger adjacent bomb if fire hits another bomb
-        for (const otherBomb of S.bombs) {
-          if (otherBomb.col === fc && otherBomb.row === fr) {
-            B.detonateBomb(otherBomb);
-            D.screenShake.trigger(8, 300);
-            break;
-          }
+        setFire(i, (d < 2 ? 3 : 12) | (s === range ? 32 : 0), b.group, owner);
+        if ((s & 1) === 0 || s === range) fx.flame(c, r, 1);
+        const other = A.bombAtCell(c, r);
+        if (other && !other.chained) {
+          other.chained = true;
+          other.group = b.group;
+          other.remote = false;
+          other.t = Math.min(other.t, C.CHAIN_DELAY);
+          if (!other.mega) break;
         }
+        NS.items.burnAt(i);
       }
     }
+    fx.explosion(c0, r0, range);
+    fx.hitstop(b.mega ? 0.09 : 0.025);
+    fx.sfx(b.mega || range >= 5 ? 'explode' : 'smallExplode', { pitch: 0.85 + Math.random() * 0.3 });
+    if (b.mega) { fx.shake(18); fx.flash('#ffffff', 0.5); }
+  }
 
-    // Screen shake scaled by blast range
-    D.screenShake.trigger(3 + bomb.blastRange, 150 + bomb.blastRange * 30);
-  };
-
-  /* ── Throw Bomb (Glove) ── */
-  B.throwBomb = function throwBomb(col, row) {
-    const bomb = S.bombs.find(b => b.col === col && b.row === row);
-    if (!bomb)
-      return;
-
-    // Pick random cardinal direction and range 3-5
-    const dir = C.DIRS[Math.floor(Math.random() * C.DIRS.length)];
-    const range = 3 + Math.floor(Math.random() * 3);
-
-    let landCol = col;
-    let landRow = row;
-    // Fly over all cells (even walls)
-    for (let i = 1; i <= range; ++i) {
-      const nc = col + dir.dx * i;
-      const nr = row + dir.dy * i;
-      if (nc < 1 || nc >= C.COLS - 1 || nr < 1 || nr >= C.ROWS - 1)
-        break;
-      landCol = nc;
-      landRow = nr;
-    }
-
-    // If landing on indestructible WALL, back up to last non-WALL cell
-    while (S.grid[landRow][landCol] === C.WALL && (landCol !== col || landRow !== row)) {
-      landCol -= dir.dx;
-      landRow -= dir.dy;
-    }
-
-    bomb.col = landCol;
-    bomb.row = landRow;
-
-    // Particle burst at landing spot
-    const lx = landCol * C.TILE_SIZE + C.TILE_SIZE / 2;
-    const ly = landRow * C.TILE_SIZE + C.TILE_SIZE / 2;
-    D.particles.burst(lx, ly, 10, { color: '#ff69b4', speed: 4, life: 0.5, size: 3, decay: 0.03 });
-    SZ.GameAudio.play('whoosh');
-  };
-
-  /* ── Slide Bomb (Power Kick) ── */
-  B.slideBomb = function slideBomb(col, row, dx, dy) {
-    const bomb = S.bombs.find(b => b.col === col && b.row === row);
-    if (!bomb || bomb.sliding)
-      return;
-    bomb.sliding = true;
-    bomb.slideDx = dx;
-    bomb.slideDy = dy;
-    bomb.slideProgress = 0;
-    SZ.GameAudio.play('whoosh', { pitch: 0.8 });
-  };
-
-  /* ── Update Sliding Bombs ── */
-  B.updateSlidingBombs = function updateSlidingBombs(dt) {
-    for (const bomb of S.bombs) {
-      if (!bomb.sliding)
+  function update(dt) {
+    const run = G.run;
+    const bs = run.bombs;
+    for (let k = bs.length - 1; k >= 0; --k) {
+      const b = bs[k];
+      if (!b) continue;
+      b.squash += (1 - b.squash) * Math.min(1, dt * 10);
+      if (b.fly) {
+        const f = b.fly;
+        f.t += dt;
+        const u = Math.min(1, f.t / f.dur);
+        b.x = f.fx + (f.tx - f.fx) * u;
+        b.y = f.fy + (f.ty - f.fy) * u;
+        if (u >= 1) {
+          b.fly = null;
+          b.x = f.tx; b.y = f.ty;
+          b.i = A.idx(f.tx, f.ty);
+          b.squash = 0.45;
+          fx.sfx('thud', { volume: 0.5 });
+          A.rebuild();
+        }
         continue;
-
-      bomb.slideProgress += C.BOMB_SLIDE_SPEED * dt;
-      if (bomb.slideProgress >= 1) {
-        bomb.slideProgress = 0;
-        const nextCol = bomb.col + bomb.slideDx;
-        const nextRow = bomb.row + bomb.slideDy;
-
-        // Stop if wall/bomb/bounds
-        if (!NS.arena.isWalkable(nextCol, nextRow) || NS.arena.hasBombAt(nextCol, nextRow)) {
-          bomb.sliding = false;
-          bomb.slideDx = 0;
-          bomb.slideDy = 0;
-          bomb.slideProgress = 0;
-          // Dust particles on stop
-          const sx = bomb.col * C.TILE_SIZE + C.TILE_SIZE / 2;
-          const sy = bomb.row * C.TILE_SIZE + C.TILE_SIZE / 2;
-          D.particles.burst(sx, sy, 6, { color: '#aaa', speed: 2, life: 0.3, size: 2, decay: 0.04, gravity: 0.05 });
-          SZ.GameAudio.play('thud', { volume: 0.6 });
-          continue;
+      }
+      /* belts push resting bombs */
+      const tile = A.tileAt(Math.round(b.x), Math.round(b.y));
+      if (!b.vx && !b.vy && BELT_DIR[tile] !== undefined && Math.abs(b.x - Math.round(b.x)) < 0.01 && Math.abs(b.y - Math.round(b.y)) < 0.01) {
+        const d = BELT_DIR[tile];
+        if (A.bombCan(Math.round(b.x) + DIRS[d][0], Math.round(b.y) + DIRS[d][1]) && !playerOn(b)) {
+          b.vx = DIRS[d][0] * 2.4;
+          b.vy = DIRS[d][1] * 2.4;
+          b.belt = true;
+          b.from = b.i;
         }
-
-        // Stop if hitting an enemy
-        let hitEnemy = false;
-        for (const e of S.enemies)
-          if (e.alive && e.col === nextCol && e.row === nextRow) {
-            hitEnemy = true;
-            break;
-          }
-
-        if (hitEnemy) {
-          bomb.sliding = false;
-          bomb.slideDx = 0;
-          bomb.slideDy = 0;
-          bomb.slideProgress = 0;
-          const sx = bomb.col * C.TILE_SIZE + C.TILE_SIZE / 2;
-          const sy = bomb.row * C.TILE_SIZE + C.TILE_SIZE / 2;
-          D.particles.burst(sx, sy, 6, { color: '#aaa', speed: 2, life: 0.3, size: 2, decay: 0.04, gravity: 0.05 });
-          SZ.GameAudio.play('thud', { volume: 0.6 });
-          continue;
-        }
-
-        // Move to next cell
-        bomb.col = nextCol;
-        bomb.row = nextRow;
+      }
+      if (b.vx || b.vy) slide(b, dt);
+      if (b.owner !== 'p' || !b.remote || run.player.dead) {
+        b.t -= dt;
+        if (b.t <= 0) detonate(b);
       }
     }
-  };
+    const f = run.fire;
+    for (let i = 0; i < f.length; ++i) {
+      if (f[i] <= 0) continue;
+      f[i] -= dt;
+      if (f[i] <= 0) { f[i] = 0; run.fireDir[i] = 0; }
+    }
+  }
+
+  function playerOn(b) {
+    const p = G.run.player;
+    return Math.abs(p.x - b.x) < 0.7 && Math.abs(p.y - b.y) < 0.7;
+  }
+
+  function slide(b, dt) {
+    const sx = Math.sign(b.vx), sy = Math.sign(b.vy);
+    const cx = Math.round(b.x), cy = Math.round(b.y);
+    const atOrPast = sx ? (sx > 0 ? b.x >= cx : b.x <= cx) : (sy > 0 ? b.y >= cy : b.y <= cy);
+    if (atOrPast) {
+      const ci = A.idx(cx, cy);
+      const stopBelt = b.belt && ci !== b.from;
+      const nc = cx + sx, nr = cy + sy;
+      const p = G.run.player;
+      const blocked = !A.bombCan(nc, nr) || (!p.dead && Math.round(p.x) === nc && Math.round(p.y) === nr);
+      if (stopBelt || blocked) {
+        b.x = cx; b.y = cy;
+        b.vx = b.vy = 0;
+        b.belt = false;
+        b.i = ci;
+        if (blocked && !stopBelt) b.squash = 0.6;
+        A.rebuild();
+        return;
+      }
+    }
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    const ni = A.idx(Math.round(b.x), Math.round(b.y));
+    if (ni !== b.i) {
+      b.i = ni;
+      A.rebuild();
+    }
+  }
+
+  function bombById(id) {
+    const bs = G.run.bombs;
+    for (let k = 0; k < bs.length; ++k) if (bs[k].id === id) return bs[k];
+    return null;
+  }
+
+  Object.assign(NS.bombs, {
+    playerBombs, placePlayer, placeMega, placeEnemy, kick, throwBomb, detonateRemote, detonate, setFire, update, bombById, OWNER
+  });
 })();

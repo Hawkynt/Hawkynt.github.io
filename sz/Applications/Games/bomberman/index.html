@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Sprites: "Bomb Party" by Matt Hackett, Cem Kalyoncu, /usr/share (CC-BY 3.0) | "Bomberman Explosion Effect" by Satik64 (CC0) -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Bomberman game -- place bombs, destroy walls, defeat enemies and collect power-ups in your browser">
-<meta name="keywords" content="bomberman game, online bomberman, bomb game, browser game, arcade game, free game, bomb blast, power-ups, multiplayer bomber, retro game">
+<meta name="description" content="Free online Bomberman game -- a story campaign across five worlds with five bosses and cinematics, Arcade, Zen, Daily Challenge and Boss Rush modes, 15 power-ups, a 25-node tech tree, seasonal events, skins and autosave">
+<meta name="keywords" content="bomberman game, online bomberman, bomb game, browser game, arcade game, free game, boss fights, power-ups, tech tree, zen mode, daily challenge, retro game">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Bomberman -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online Bomberman game -- place bombs, destroy walls, defeat enemies and collect power-ups in your browser">
+<meta property="og:description" content="Free online Bomberman game -- a story campaign across five worlds with five bosses and cinematics, Arcade, Zen, Daily Challenge and Boss Rush modes, 15 power-ups, a 25-node tech tree, seasonal events, skins and autosave">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/bomberman/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -18,7 +17,7 @@
   "@type": "WebApplication",
   "name": "Bomberman",
   "url": "https://hawkynt.github.io/sz/Applications/Games/bomberman/index.html",
-  "description": "Free online Bomberman game -- place bombs, destroy walls, defeat enemies and collect power-ups in your browser",
+  "description": "Free online Bomberman game -- a story campaign across five worlds with five bosses and cinematics, Arcade, Zen, Daily Challenge and Boss Rush modes, 15 power-ups, a 25-node tech tree, seasonal events, skins and autosave",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -31,14 +30,16 @@
 <link rel="stylesheet" href="styles.css?v=7295899f">
 </head>
 <body>
-<noscript><p>Free online Bomberman game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online Bomberman game: a five-world story campaign with bosses, Arcade, Zen, Daily Challenge and Boss Rush modes, a tech tree and seasonal events. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...</div>
+      <div class="menu-entry" data-action="wardrobe">Wardrobe...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
@@ -56,15 +57,15 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-section" id="statusScore">Score: 0</div>
-  <div class="status-section" id="statusLevel">Level: 1</div>
-  <div class="status-section" id="statusLives">Lives: 3</div>
-  <div class="status-section" id="statusState">Ready</div>
+  <div class="status-section" id="statusScore">Gems: 0</div>
+  <div class="status-section" id="statusLevel">Stars: 0 / 105</div>
+  <div class="status-section" id="statusLives"></div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- High Scores Dialog -->
@@ -74,7 +75,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Score</th><th>Level</th></tr>
+          <tr><th>#</th><th>Score</th><th>Stage</th><th>Mode</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -88,15 +89,21 @@
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 380px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Arrow Keys / WASD</td><td>Move player</td></tr>
-        <tr><td>Space</td><td>Place bomb</td></tr>
-        <tr><td>Space (at max bombs)</td><td>Remote: detonate oldest bomb</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Arrow Keys / WASD</td><td>Move (slides around corners)</td></tr>
+        <tr><td>Space / Z</td><td>Drop a bomb (with the glove: throw it)</td></tr>
+        <tr><td>X / E</td><td>Detonate remote bombs</td></tr>
+        <tr><td>C</td><td>Mega Bomb (tech tree)</td></tr>
+        <tr><td>Shift</td><td>Dash (tech tree)</td></tr>
+        <tr><td>Mouse</td><td>Click a tile to walk there, click Pip or right-click to drop a bomb</td></tr>
+        <tr><td>Touch</td><td>Thumb pad on the left, BOMB and BOOM buttons on the right</td></tr>
+        <tr><td>Escape / P</td><td>Pause menu (tech tree, wardrobe, goals, save &amp; quit)</td></tr>
+        <tr><td>B</td><td>Buy the selected tech tree node</td></tr>
+        <tr><td>Tab</td><td>Switch wardrobe / goals tab</td></tr>
+        <tr><td>F2</td><td>Title screen (the run is saved)</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
       </table>
     </div>
@@ -108,12 +115,12 @@
 
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
-  <div class="dialog">
+  <div class="dialog" style="width: 380px;">
     <div class="dialog-title">About Bomberman</div>
     <div class="dialog-body">
-      <strong>Bomberman</strong><br><br>
-      Navigate grid-based arenas, place bombs to destroy walls and defeat enemies, and collect 9 types of power-ups to enhance your abilities: Bomb Up, Fire Up, Speed Up, Kick, Remote, Power Kick, Fly, Glove, and Climb. Features 7 enemy types introduced across levels: wandering slow/normal/fast enemies, wall-climbing Climbers (level 3), player-pursuing Chasers (level 4), multi-HP Tanks (level 5), and wall-phasing Ghosts (level 7). Includes chain explosions, multiple arena layouts, and explosive visual effects.<br><br>
-      Sprites: &ldquo;Bomb Party&rdquo; by Matt Hackett, Cem Kalyoncu, /usr/share (CC-BY 3.0) | &ldquo;Bomberman Explosion Effect&rdquo; by Satik64 (CC0)<br><br>
+      <strong>Bomberman - Spark Quest</strong><br><br>
+      Baron Blackfuse stole the Spark Core of Fuse Village and split it into five Embers. Guide Pip through Meadow Gardens, the Frostbite Caverns, the Ember Foundry, the Neon Circuit and the Shadow Keep - 35 stages, five bosses and illustrated cinematics - or play Arcade, Zen, the Daily Challenge and Boss Rush.<br><br>
+      15 power-ups, 10 enemy kinds, a 25-node tech tree, 13 skins, bomb skins and trails, 28 achievements, daily quests, a weekly challenge, play streaks and a seasonal event every season. Everything is saved in your browser and your run continues where you left it.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -123,47 +130,77 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Bomberman - Free Online Arcade Bomb Game</h1>
-<p>Play Bomberman free in your browser -- navigate grid-based arenas, place bombs to destroy walls and defeat enemies, collect power-ups, and advance through increasingly challenging levels with explosive visual effects.</p>
+<h1>Bomberman - Free Online Bomb Game with Story, Bosses and Seasonal Events</h1>
+<p>Play Bomberman free in your browser: drop bombs, chain explosions, blast bricks for power-ups and find the exit across a five-world story campaign with boss fights and cinematics.</p>
 <h2>Features</h2>
 <ul>
-<li>Grid-based arena with indestructible walls, destructible bricks, and walkable tiles</li>
-<li>Bomb placement with timed fuse and cardinal direction explosions</li>
-<li>Chain explosions -- bombs detonate adjacent bombs for cascading blasts</li>
-<li>5 power-up types: Extra Bombs, Bigger Blast, Speed Boost, Kick, Remote Detonation</li>
-<li>3+ AI enemies with wandering movement behavior</li>
-<li>Multiple arena layouts via procedural level generator with increasing difficulty</li>
-<li>Lives system with respawn and game over</li>
-<li>Particle effects, screen shake, fire glow, and floating score text</li>
-<li>High score persistence and tutorial overlay</li>
+<li>Story mode: 35 stages in five themed worlds with ice, conveyor belts, teleporters and darkness, five bosses and comic cinematics</li>
+<li>Arcade mode with endless arenas, chain and combo multipliers and a high-score table</li>
+<li>Zen mode without harm, Daily Challenge with seeded modifiers and Boss Rush</li>
+<li>15 power-ups including kick, glove, remote, pierce, shield, time freeze, gem magnet and cursed skulls</li>
+<li>10 enemy kinds: hunters that path-find, wall-passing wisps, bomb-dropping imps, splitting blobs and charging beetles</li>
+<li>A tech tree with 25 upgrade nodes including the Mega Bomb, dash and Phoenix revive</li>
+<li>Skins, bomb skins and trails, achievements, daily quests, weekly challenges and play streaks</li>
+<li>Seasonal events for winter, spring, summer, autumn and the year-end festival with their own looks and rewards</li>
+<li>Automatic saving: continue your run after reloading the page</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="../../shared/touch-controls.js?v=e8d87d1b"></script>
-<script src="js/core/namespace.js?v=087f669d"></script>
-<script src="js/core/constants.js?v=0fb8fb29"></script>
-<script src="js/data/tables.js?v=54213cef"></script>
-<script src="js/core/state.js?v=18cedd7a"></script>
-<script src="js/core/dom.js?v=8c45aa7a"></script>
-<script src="js/systems/arena.js?v=8affbfaa"></script>
-<script src="js/systems/enemies.js?v=289992de"></script>
-<script src="js/systems/bombs.js?v=1dff69c9"></script>
-<script src="js/systems/player.js?v=297e956e"></script>
-<script src="js/systems/damage.js?v=4138a7d0"></script>
-<script src="js/systems/flow.js?v=34666cdc"></script>
-<script src="js/render/sprites.js?v=8b3ffac1"></script>
-<script src="js/render/scene.js?v=743cfed3"></script>
-<script src="js/render/tutorial.js?v=1654d770"></script>
-<script src="js/ui/input.js?v=d4536d5a"></script>
-<script src="js/ui/highscores.js?v=a1ee0154"></script>
-<script src="js/ui/menu.js?v=e7dc8735"></script>
-<script src="js/core/os.js?v=ec1f4449"></script>
-<script src="js/app.js?v=b7ef003f"></script>
+<script src="js/core/namespace.js?v=f14514a2"></script>
+<script src="js/core/constants.js?v=21323999"></script>
+<script src="js/core/rng.js?v=a073ad7d"></script>
+<script src="js/core/data-story.js?v=4b5169b2"></script>
+<script src="js/core/data-content.js?v=a22cbe73"></script>
+<script src="js/core/data-meta.js?v=3c5c9876"></script>
+<script src="js/core/season.js?v=6cb1a1b2"></script>
+<script src="js/core/rules.js?v=fc4d5f94"></script>
+<script src="js/core/state.js?v=325b21be"></script>
+<script src="js/core/save.js?v=ebb0d0ea"></script>
+<script src="js/systems/levelgen.js?v=967f1b24"></script>
+<script src="js/systems/arena.js?v=3f5f99fc"></script>
+<script src="js/systems/fx.js?v=170ec041"></script>
+<script src="js/systems/bombs.js?v=73500d6c"></script>
+<script src="js/systems/items.js?v=9dcf69e5"></script>
+<script src="js/systems/player.js?v=4ea8bc35"></script>
+<script src="js/systems/enemies.js?v=c6182f12"></script>
+<script src="js/systems/bosses.js?v=2ef19c71"></script>
+<script src="js/systems/run.js?v=29bbd1f8"></script>
+<script src="js/systems/tracker.js?v=9726b012"></script>
+<script src="js/systems/sim.js?v=006b2c7e"></script>
+<script src="js/render/view.js?v=37d06825"></script>
+<script src="js/render/art-kit.js?v=4255fcb5"></script>
+<script src="js/render/icons.js?v=c08440ef"></script>
+<script src="js/ui/kit.js?v=3e401c1f"></script>
+<script src="js/render/tile-art.js?v=b101e1b9"></script>
+<script src="js/render/actor-art.js?v=e24320d5"></script>
+<script src="js/render/boss-art.js?v=abf8046f"></script>
+<script src="js/render/item-art.js?v=379918af"></script>
+<script src="js/render/backdrop.js?v=a53e6280"></script>
+<script src="js/render/world.js?v=dfb773c2"></script>
+<script src="js/render/fx-render.js?v=67cf73c5"></script>
+<script src="js/render/hud.js?v=fc4311fb"></script>
+<script src="js/render/cine-render.js?v=f545047d"></script>
+<script src="js/render/frame.js?v=af81a67c"></script>
+<script src="js/ui/screens.js?v=a5d08b36"></script>
+<script src="js/ui/modes.js?v=08f0ce0f"></script>
+<script src="js/ui/cine.js?v=d289b95a"></script>
+<script src="js/ui/title.js?v=cefec491"></script>
+<script src="js/ui/map.js?v=e6110627"></script>
+<script src="js/ui/tree.js?v=30e2a159"></script>
+<script src="js/ui/wardrobe.js?v=71129763"></script>
+<script src="js/ui/goals.js?v=637a3a37"></script>
+<script src="js/ui/stats.js?v=66876908"></script>
+<script src="js/ui/results.js?v=e388cc39"></script>
+<script src="js/ui/pause.js?v=e485edc3"></script>
+<script src="js/ui/help.js?v=741e5a56"></script>
+<script src="js/ui/touch.js?v=2896502a"></script>
+<script src="js/ui/input.js?v=c741e575"></script>
+<script src="js/ui/status-bar.js?v=167dc9ef"></script>
+<script src="js/app.js?v=38ec10f1"></script>
 </body>
 </html>
