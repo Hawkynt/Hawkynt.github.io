@@ -1,6 +1,7 @@
-/* Player weapons: the six primaries (bolts, beam, rail, flak, ion arcs) with fire rate, crits and
-   power-up multipliers; the four secondaries (missiles, mines, EMP, drones) with ammo; and the
-   wingman drones' AI. Owns G.drones, G.beams, G.rails and G.arcs entries of the player. */
+/* Player weapons, all firing up-screen: the six primaries (bolts, beam, rail, flak, ion arcs)
+   with fire rate, crits, focus and power-up multipliers; the four secondaries (homing missiles,
+   lobbed mines, EMP, drones) with ammo; and the wingman drones flying in formation beside the
+   ship. Owns G.drones, G.beams, G.rails and G.arcs entries of the player. */
 ;(function() {
   'use strict';
 
@@ -19,8 +20,10 @@
   const seg = { t: 0 };
   let twin = 1;
 
+  const UP = -Math.PI / 2;
+
   function dmgExtra(p) {
-    let m = 1;
+    let m = p.focus ? G.stats.focusDmg : 1;
     if (p.overdrive > 0) m *= 1.25;
     if (p.overcharge > 0) m *= 1.5;
     const mut = G.stage && G.stage.mutator && NS.waves.MUTATORS[G.stage.mutator];
@@ -64,7 +67,7 @@
     const w = p.primary;
     if (p.primaryCd > 0) p.primaryCd -= dt;
     p.beamOn = false;
-    if (!G.input.firing || !p.alive || p.rollT > 0.25) return;
+    if (!G.input.firing || !p.alive) return;
     if (w.kind === 'beam') {
       fireBeam(p, w, dt);
       return;
@@ -79,13 +82,14 @@
     if (w.kind === 'bolt') {
       twin = -twin;
       for (let i = 0; i < w.count; ++i) {
-        const off = w.count > 1 ? (i / (w.count - 1) - 0.5) * w.arc : 0;
+        /* focus tightens a fan into a lance */
+        const off = w.count > 1 ? (i / (w.count - 1) - 0.5) * w.arc * (p.focus ? 0.35 : 1) : 0;
         const a = p.angle + off + (R() - 0.5) * w.jitter;
         const side = w.count === 1 ? twin * 7 : 0;
         const bx = nx - sa * side, by = ny + ca * side;
         const d = roll(w.dmg, p);
-        const b = NS.projectiles.player('bolt', bx, by, Math.cos(a) * w.speed * ps + p.vx * 0.3,
-          Math.sin(a) * w.speed * ps + p.vy * 0.3, w.life * ps, d.dmg, 5, w.color);
+        const b = NS.projectiles.player('bolt', bx, by, Math.cos(a) * w.speed * ps,
+          Math.sin(a) * w.speed * ps, w.life * ps, d.dmg, 5, w.color);
         b.crit = d.crit;
       }
       fx.muzzle(nx, ny, p.angle, col[1]);
@@ -93,10 +97,12 @@
     } else if (w.kind === 'rail') {
       fireRail(p, w, nx, ny);
     } else if (w.kind === 'flak') {
-      const dx = p.aimX - nx, dy = p.aimY - ny;
-      const dist = Math.max(140, Math.min(w.speed * w.life * ps, Math.sqrt(dx * dx + dy * dy)));
+      /* the shell bursts on the nearest target ahead, or at full range */
+      const t = nearestTarget(nx, ny - 60, w.speed * w.life * ps + 60, UP, 0.5);
+      const reach = w.speed * w.life * ps;
+      const dist = t ? Math.max(120, Math.min(reach, ny - t.y)) : reach;
       const sp = w.speed * ps;
-      const b = NS.projectiles.player('flak', nx, ny, ca * sp + p.vx * 0.3, sa * sp + p.vy * 0.3, dist / sp, roll(w.dmg, p).dmg, 7, w.color);
+      const b = NS.projectiles.player('flak', nx, ny, ca * sp, sa * sp, dist / sp, roll(w.dmg, p).dmg, 7, w.color);
       b.frags = w.frags;
       b.fragDmg = roll(w.frag, p).dmg;
       fx.muzzle(nx, ny, p.angle, col[1]);
@@ -164,8 +170,6 @@
     G.rails.push({ alive: true, x0: nx, y0: ny, x1: ex, y1: ey, t: 0, life: 0.38 });
     fx.glow(nx, ny, 30, '#ffffff', 0.1);
     fx.sparks(ex, ey, p.angle + Math.PI, 1.6, 8, '#cfe0ff', 500, 0.3);
-    p.vx -= ca * 60;
-    p.vy -= sa * 60;
     fx.shake(0.12);
     sfx('laser', { pitch: 0.55, volume: 0.6 });
   }
@@ -173,7 +177,7 @@
   function fireIon(p, w, nx, ny) {
     const range = w.range * G.stats.projSpeed;
     const chain = [];
-    let t = nearestTarget(nx, ny, range, p.angle, 0.55);
+    let t = nearestTarget(nx, ny, range, p.angle, 0.75);
     const pts = [{ x: nx, y: ny }];
     let lx = nx, ly = ny;
     while (t && chain.length <= w.chains) {
@@ -210,12 +214,12 @@
     const st = G.stats;
     const ca = Math.cos(p.angle), sa = Math.sin(p.angle);
     if (w.id === 'missiles') {
-      const target = nearestTarget(p.aimX, p.aimY, 700, 0, 0) || nearestTarget(p.x, p.y, 900, p.angle, 1.2);
+      const target = nearestTarget(p.x, p.y - 200, 600, UP, 1.1) || nearestTarget(p.x, p.y, 800, UP, 1.4);
       for (let i = 0; i < w.count; ++i) {
         const side = i === 0 ? -1 : 1;
-        const a = p.angle + side * 0.8;
+        const a = p.angle + side * 0.9;
         const b = NS.projectiles.player('missile', p.x - sa * side * 12, p.y + ca * side * 12,
-          Math.cos(a) * 260 + p.vx, Math.sin(a) * 260 + p.vy, 3, w.dmg * st.secDmg * st.dmgMul * dmgExtra(p), 6, 'amber');
+          Math.cos(a) * 260, Math.sin(a) * 260, 3, w.dmg * st.secDmg * st.dmgMul * dmgExtra(p), 6, 'amber');
         b.target = target;
         b.speed = w.speed;
         b.blast = w.radius;
@@ -223,7 +227,8 @@
       }
       sfx('whoosh', { pitch: 1.6, volume: 0.6 });
     } else if (w.id === 'mines') {
-      const b = NS.projectiles.player('pmine', p.x - ca * 26, p.y - sa * 26, p.vx * 0.15 - ca * 40, p.vy * 0.15 - sa * 40, 30,
+      /* lobbed up-screen; it slows, then rides the scroll back down */
+      const b = NS.projectiles.player('pmine', p.x, p.y - 26, (R() - 0.5) * 60, -420, 30,
         w.dmg * st.secDmg * st.dmgMul * dmgExtra(p), 12, 'red');
       b.blast = w.radius;
       b.arm = 0.45;
@@ -243,12 +248,17 @@
 
   /* ── drones ── */
   function spawnDrone(p, life, escort) {
-    const n = G.drones.length;
     G.drones.push({
-      alive: true, x: p.x, y: p.y, vx: 0, vy: 0, angle: p.angle, life: life, max: life,
-      cd: 0.3, orbit: n * 2.1 + R(), escort: escort, r: 9, t: 0,
+      alive: true, x: p.x, y: p.y, vx: 0, vy: 0, angle: UP, life: life, max: life,
+      cd: 0.3, escort: escort, r: 9, t: R() * 6,
     });
     fx.ring(p.x, p.y, 10, 50, 0.3, '#8affe0', 3);
+  }
+
+  /* wingmen hold slots left and right of the ship, a little behind, and pick their own targets */
+  function droneSlot(i) {
+    const side = i % 2 ? 1 : -1, rank = Math.floor(i / 2);
+    return { x: side * (48 + rank * 30), y: 16 + rank * 20 };
   }
 
   function updateDrones(dt) {
@@ -268,25 +278,24 @@
         }
       }
       if (!p || !p.alive) continue;
-      d.orbit += dt * 1.4;
-      const tx = p.x + Math.cos(d.orbit) * 70, ty = p.y + Math.sin(d.orbit) * 70;
-      d.vx += (tx - d.x) * 9 * dt - d.vx * 3.5 * dt;
-      d.vy += (ty - d.y) * 9 * dt - d.vy * 3.5 * dt;
+      const slot = droneSlot(i);
+      const tx = p.x + slot.x + Math.sin(d.t * 2.2) * 5, ty = p.y + slot.y + Math.cos(d.t * 1.7) * 4;
+      d.vx += (tx - d.x) * 60 * dt - d.vx * 12 * dt;
+      d.vy += (ty - d.y) * 60 * dt - d.vy * 12 * dt;
       d.x += d.vx * dt;
       d.y += d.vy * dt;
-      const target = nearestTarget(d.x, d.y, 560, 0, 0);
-      if (target) {
-        d.angle = Math.atan2(target.y - d.y, target.x - d.x);
-        d.cd -= dt;
-        if (d.cd <= 0) {
-          d.cd = w.fire / power;
-          const lead = 0.12;
-          const a = Math.atan2(target.y + (target.vy || 0) * lead - d.y, target.x + (target.vx || 0) * lead - d.x);
-          NS.projectiles.player('bolt', d.x, d.y, Math.cos(a) * 900, Math.sin(a) * 900, 0.7, w.dmg * power * st.dmgMul, 4, 'green');
-          sfxAt('shoot', d.x, d.y, { volume: 0.12, pitch: 1.7 });
-        }
-      } else
-        d.angle += (p.angle - d.angle) * Math.min(1, dt * 4);
+      const target = nearestTarget(d.x, d.y, 560, UP, 1.2);
+      const want = target ? Math.atan2(target.y - d.y, target.x - d.x) : UP;
+      d.angle += (want - d.angle) * Math.min(1, dt * 10);
+      if (!target) continue;
+      d.cd -= dt;
+      if (d.cd <= 0) {
+        d.cd = w.fire / power;
+        const lead = 0.12;
+        const a = Math.atan2(target.y + (target.vy || 0) * lead - d.y, target.x + (target.vx || 0) * lead - d.x);
+        NS.projectiles.player('bolt', d.x, d.y, Math.cos(a) * 900, Math.sin(a) * 900, 0.7, w.dmg * power * st.dmgMul, 4, 'green');
+        sfxAt('shoot', d.x, d.y, { volume: 0.12, pitch: 1.7 });
+      }
     }
     compact(G.drones);
   }

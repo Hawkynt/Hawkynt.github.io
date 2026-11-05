@@ -45,8 +45,10 @@
   }
 
   function update(dt) {
-    updateList(G.fxAdd, dt);
-    updateList(G.fxNormal, dt);
+    /* smoke and debris trail behind with the forward scroll while flying */
+    const drift = G.screen === 'playing' ? G.scroll.speed * 0.5 : 0;
+    updateList(G.fxAdd, dt, 0);
+    updateList(G.fxNormal, dt, drift);
     for (let i = 0; i < G.rings.length; ++i) {
       const r = G.rings[i];
       r.t += dt;
@@ -68,7 +70,7 @@
     if (G.vignette > 0) G.vignette = Math.max(0, G.vignette - dt * 1.8);
   }
 
-  function updateList(list, dt) {
+  function updateList(list, dt, drift) {
     for (let i = 0; i < list.length; ++i) {
       const p = list[i];
       p.life -= dt;
@@ -80,7 +82,7 @@
       p.vx *= k;
       p.vy *= k;
       p.x += p.vx * dt;
-      p.y += p.vy * dt;
+      p.y += (p.vy + drift) * dt;
       p.size += p.grow * dt;
       p.rot += p.vr * dt;
     }

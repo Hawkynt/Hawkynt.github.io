@@ -1,7 +1,7 @@
 /* Keyboard, mouse and touch input: held keys and the pointer in G.input, flight intents sampled
-   each step (thrust, boost, mouse aim or the IJKL keyboard turret, fire, secondary, roll,
-   special), menu navigation and clicks through the hit areas, per-screen keys, pause on hidden
-   tab. Owns G.input. */
+   each step (8-way move or follow the pointer, fire, secondary, focus, dash, special), menu
+   navigation and clicks through the hit areas, per-screen keys, pause on hidden tab.
+   Owns G.input. */
 ;(function() {
   'use strict';
 
@@ -14,15 +14,13 @@
   const inp = G.input;
   const tmp = { x: 0, y: 0 };
 
-  inp.aimDirX = 0;
-  inp.aimDirY = -1;
-
   SZ.GameAutoPause.attach({
     isRunning: () => G.screen === 'playing',
     pause: () => scr.pause(),
   });
 
-  const FLIGHT_KEYS = { Space: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Tab: 1 };
+  const FLIGHT_KEYS = { Space: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Tab: 1, ShiftLeft: 1, ShiftRight: 1 };
+  const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1 };
 
   document.addEventListener('keydown', (e) => {
     inp.keys[e.code] = true;
@@ -51,13 +49,14 @@
   function onFlightKey(e) {
     if (FLIGHT_KEYS[e.code]) e.preventDefault();
     if (e.repeat) return;
+    if (MOVE_KEYS[e.code]) inp.steer = 'keys';
     switch (e.code) {
-      case 'Space': inp.rollQ = true; break;
+      case 'KeyC':
+      case 'KeyV': inp.dashQ = true; break;
       case 'KeyE':
       case 'KeyQ': inp.abilityQ = true; break;
       case 'Escape':
       case 'KeyP': scr.pause(); break;
-      case 'KeyI': case 'KeyJ': case 'KeyK': case 'KeyL': inp.aimMode = 'keys'; break;
     }
   }
 
@@ -127,7 +126,7 @@
     if (G.screen === 'playing') {
       if (e.button === 2) inp.rightDown = true;
       else inp.mouseDown = true;
-      inp.aimMode = 'mouse';
+      inp.steer = 'mouse';
       return;
     }
     const i = W.hitAt(p.x, p.y);
@@ -146,9 +145,9 @@
       return;
     }
     ++inp.mouseMoved;
-    if (G.screen === 'playing' && inp.aimMode !== 'mouse') {
+    if (G.screen === 'playing' && inp.steer !== 'mouse') {
       const dx = e.movementX || 0, dy = e.movementY || 0;
-      if (Math.abs(dx) + Math.abs(dy) > 2) inp.aimMode = 'mouse';
+      if (Math.abs(dx) + Math.abs(dy) > 3) inp.steer = 'mouse';
     }
   });
 
@@ -170,29 +169,17 @@
   function sample() {
     inp.moveX = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
     inp.moveY = (k('KeyS') || k('ArrowDown') ? 1 : 0) - (k('KeyW') || k('ArrowUp') ? 1 : 0);
-    inp.boost = k('ShiftLeft') || k('ShiftRight');
-    inp.secondary = inp.rightDown || k('KeyX') || k('KeyC');
-    inp.firing = false;
-    inp.touchAim = false;
-    const p = G.player;
-    /* keyboard turret */
-    const tx = (k('KeyL') ? 1 : 0) - (k('KeyJ') ? 1 : 0), ty = (k('KeyK') ? 1 : 0) - (k('KeyI') ? 1 : 0);
-    if (tx || ty) {
-      const l = Math.sqrt(tx * tx + ty * ty);
-      inp.aimDirX = tx / l;
-      inp.aimDirY = ty / l;
-      inp.firing = true;
-      inp.aimMode = 'keys';
-    }
-    NS.touch.sample(inp);
-    if (inp.aimMode === 'mouse' && !inp.touch) {
+    inp.focus = k('ShiftLeft') || k('ShiftRight');
+    inp.secondary = inp.rightDown || k('KeyX');
+    inp.firing = k('Space') || k('KeyZ');
+    inp.follow = false;
+    if (NS.touch.sample(inp)) return;
+    if (inp.steer === 'mouse') {
       NS.camera.toWorld(inp.mouseX, inp.mouseY, tmp);
-      inp.aimWX = tmp.x;
-      inp.aimWY = tmp.y;
+      inp.followX = tmp.x;
+      inp.followY = tmp.y;
+      inp.follow = true;
       inp.firing = inp.firing || inp.mouseDown;
-    } else if (p) {
-      inp.aimWX = p.x + inp.aimDirX * 320;
-      inp.aimWY = p.y + inp.aimDirY * 320;
     }
   }
 

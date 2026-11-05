@@ -93,8 +93,8 @@
 
     /* stat bars against the best in class */
     const bars = [
-      ['Hull', s.hull / 170, UI.hull], ['Shield', s.shield / 100, UI.shield], ['Top speed', s.speed / 520, '#ffd25a'],
-      ['Thrust', s.thrust / 2100, '#ffa040'], ['Firepower', s.dmg / 1.35, '#ff5cf0'], ['Dodge', 0.8 / s.roll, '#5cff9a'],
+      ['Hull', s.hull / 170, UI.hull], ['Shield', s.shield / 100, UI.shield], ['Speed', s.speed / 390, '#ffd25a'],
+      ['Firepower', s.dmg / 1.35, '#ff5cf0'], ['Dash', 0.75 / s.dash, '#5cff9a'], ['Special', 6 / s.ability.cd, '#ffa040'],
     ];
     for (let i = 0; i < bars.length; ++i) {
       const by = y + 110 + i * 40;
@@ -105,7 +105,7 @@
     kit.text('SPECIAL  -  ' + s.ability.name.toUpperCase(), x + 488, y + 384, 13, s.colors.glow, { weight: 'bold' });
     kit.wrap(s.ability.desc, x + 488, y + 404, 266, 14, 19, UI.text);
     kit.text('Cooldown ' + s.ability.cd + ' s  -  key E / Q', x + 488, y + 454, 12, UI.textMute);
-    if (s.bonus) kit.text('Bonus: wider radar and a free escort drone', x + 30, y + 470, 13, UI.good);
+    if (s.bonus) kit.text('Bonus: sharper graze sensors and a free escort drone', x + 30, y + 470, 13, UI.good);
 
     const owned = save.ships.indexOf(s.id) >= 0;
     if (!owned) {
@@ -124,7 +124,7 @@
   function drawWeapons(save) {
     const sel = G.ui.weaponSel || { kind: 'primary', id: save.loadout.primary };
     G.ui.weaponSel = sel;
-    kit.text('PRIMARY  (left mouse / IJKL)', 60, 100, 13, UI.accent, { weight: 'bold' });
+    kit.text('PRIMARY  (Z / Space / left mouse)', 60, 100, 13, UI.accent, { weight: 'bold' });
     for (let i = 0; i < PRIMARIES.length; ++i) weaponCard(save, 'primary', PRIMARIES[i], 60, 116 + i * 66, sel);
     kit.text('SECONDARY  (right mouse / X)', 400, 100, 13, UI.accent, { weight: 'bold' });
     for (let i = 0; i < SECONDARIES.length; ++i) weaponCard(save, 'secondary', SECONDARIES[i], 400, 116 + i * 66, sel);
@@ -194,15 +194,20 @@
       kit.text('Equipped', x + w / 2, y + h - 42, 17, UI.good, { align: 'center', weight: 'bold' });
   }
 
-  /* A looping firing demo: a ship on the left, a target on the right */
-  function drawDemo(x, y, w, h, kind, wpn) {
+  /* A looping firing demo, arcade style: the ship at the bottom fires up at a raider. Drawn in a
+     frame turned a quarter so the demo's "forward" (+x) is up-screen. */
+  function drawDemo(x0, y0, w0, h0, kind, wpn) {
     ctx.save();
-    kit.roundRect(x, y, w, h, 10);
+    kit.roundRect(x0, y0, w0, h0, 10);
     ctx.clip();
     ctx.fillStyle = 'rgba(2,4,12,0.85)';
-    ctx.fillRect(x, y, w, h);
-    const sx = x + 50, sy = y + h / 2;
-    const tx = x + w - 70, ty = y + h / 2 + Math.sin(G.time * 1.5) * 40;
+    ctx.fillRect(x0, y0, w0, h0);
+    ctx.translate(x0 + w0 / 2, y0 + h0 / 2);
+    ctx.rotate(-Math.PI / 2);
+    const w = h0, h = w0;
+    const x = -w / 2, y = -h / 2;
+    const sx = x + 30, sy = y + h / 2 + Math.sin(G.time * 0.8) * 60;
+    const tx = x + w - 40, ty = y + h / 2 + Math.sin(G.time * 1.5) * 90;
     const ship = byId(SHIPS, G.save.ship) || SHIPS[0];
     K.blitRot(ctx, NS.enemyArt.enemySprite('fighter'), tx, ty, Math.PI, 1);
     K.blitRot(ctx, NS.shipArt.shipSprite(ship.id, G.save.style.skin, colorsOf(ship), 0), sx, sy, 0, 1.2);

@@ -34,15 +34,15 @@
     { id: 'd_last', branch: 'defense', name: 'Last Stand', icon: 'heart', row: 3, lane: 0.5, stat: 'lastStand', per: 1, fmt: 'Once per mission, survive a fatal hit', costs: [1600], req: [['d_regen', 2], ['d_repair', 1]] },
 
     /* Engines */
-    { id: 'e_thrust', branch: 'engines', name: 'Ion Thrusters', icon: 'engine', row: 0, lane: 0, stat: 'thrust', per: 0.08, fmt: '+{p}% thrust and top speed', costs: [140, 280, 500, 820, 1250], req: [] },
-    { id: 'e_roll', branch: 'engines', name: 'Gyro Stabilisers', icon: 'roll', row: 0, lane: 1, stat: 'rollCd', per: 0.12, fmt: '-{p}% dodge-roll cooldown', costs: [180, 380, 700], req: [] },
-    { id: 'e_boost', branch: 'engines', name: 'Heat Sinks', icon: 'heat', row: 1, lane: 0, stat: 'boostCap', per: 0.25, fmt: '+{p}% boost before overheating', costs: [220, 460, 800], req: [['e_thrust', 1]] },
-    { id: 'e_grip', branch: 'engines', name: 'Vector Nozzles', icon: 'vector', row: 1, lane: 1, stat: 'grip', per: 0.18, fmt: '+{p}% grip, less drift', costs: [200, 420, 750], req: [['e_roll', 1]] },
-    { id: 'e_ram', branch: 'engines', name: 'Ram Field', icon: 'blast', row: 2, lane: 1, stat: 'ram', per: 40, fmt: 'Dodge rolls deal {v} damage', costs: [600, 1200], req: [['e_roll', 2]] },
-    { id: 'e_burn', branch: 'engines', name: 'Afterburner Wake', icon: 'flame', row: 2, lane: 0, stat: 'burn', per: 1, fmt: 'Boosting leaves a burning wake', costs: [1100], req: [['e_boost', 2]] },
+    { id: 'e_thrust', branch: 'engines', name: 'Ion Thrusters', icon: 'engine', row: 0, lane: 0, stat: 'speed', per: 0.06, fmt: '+{p}% flight speed', costs: [140, 280, 500, 820, 1250], req: [] },
+    { id: 'e_roll', branch: 'engines', name: 'Gyro Stabilisers', icon: 'roll', row: 0, lane: 1, stat: 'dashCd', per: 0.12, fmt: '-{p}% dash cooldown', costs: [180, 380, 700], req: [] },
+    { id: 'e_boost', branch: 'engines', name: 'Focus Optics', icon: 'crosshair', row: 1, lane: 0, stat: 'focusDmg', per: 0.1, fmt: '+{p}% damage while focused (Shift)', costs: [220, 460, 800], req: [['e_thrust', 1]] },
+    { id: 'e_grip', branch: 'engines', name: 'Vector Nozzles', icon: 'vector', row: 1, lane: 1, stat: 'dashLen', per: 0.18, fmt: '+{p}% dash distance', costs: [200, 420, 750], req: [['e_roll', 1]] },
+    { id: 'e_ram', branch: 'engines', name: 'Ram Field', icon: 'blast', row: 2, lane: 1, stat: 'ram', per: 40, fmt: 'Dashing through enemies deals {v} damage', costs: [600, 1200], req: [['e_roll', 2]] },
+    { id: 'e_burn', branch: 'engines', name: 'Afterburner Wake', icon: 'flame', row: 2, lane: 0, stat: 'burn', per: 1, fmt: 'Dashes leave a burning wake', costs: [1100], req: [['e_boost', 2]] },
 
     /* Systems */
-    { id: 's_radar', branch: 'systems', name: 'Long-Range Radar', icon: 'radar', row: 0, lane: 0, stat: 'radar', per: 0.25, fmt: '+{p}% radar range', costs: [120, 260, 480], req: [] },
+    { id: 's_radar', branch: 'systems', name: 'Graze Sensors', icon: 'radar', row: 0, lane: 0, stat: 'graze', per: 0.25, fmt: '+{p}% special charge from grazing shots', costs: [120, 260, 480], req: [] },
     { id: 's_magnet', branch: 'systems', name: 'Tractor Coils', icon: 'magnet', row: 0, lane: 1, stat: 'magnet', per: 0.4, fmt: '+{p}% pickup magnet radius', costs: [120, 260, 480], req: [] },
     { id: 's_salvage', branch: 'systems', name: 'Salvage Protocols', icon: 'scrap', row: 1, lane: 1, stat: 'salvage', per: 0.1, fmt: '+{p}% scrap earned', costs: [250, 500, 850, 1300], req: [['s_magnet', 1]] },
     { id: 's_drone', branch: 'systems', name: 'Drone AI', icon: 'drone', row: 1, lane: 0, stat: 'droneAi', per: 1, fmt: 'Drones +20% power; an escort drone at level 3', costs: [300, 650, 1200], req: [['s_radar', 1]] },

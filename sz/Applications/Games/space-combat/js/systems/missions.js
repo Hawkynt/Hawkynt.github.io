@@ -1,6 +1,7 @@
-/* The mission runtime: starting runs in all four modes, setting up a stage (sector size, layout,
-   hazards, player, allies, outposts, cores, boss), the wave spawner, objectives and their
-   progress text, the convoy and the station, win and loss, multi-stage runs (daily, boss rush,
+/* The mission runtime: starting runs in all four modes, setting up a stage (layout, hazards,
+   player, allies, boss), the spawn queue that feeds waves into the field in formation, the
+   outposts, data cores and terrain sentries that scroll in, objectives and their progress text,
+   the convoy and the station below the pilot, win and loss, multi-stage runs (daily, boss rush,
    endless) and the payout into the save with stars, bests and high scores.
    Owns G.run, G.stage, G.allies. */
 ;(function() {
@@ -9,7 +10,9 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceCombat || (SZ.SpaceCombat = {});
   const G = NS.state;
-  const { makeRng, dayKey, clamp } = NS.rng;
+  const { makeRng, dayKey } = NS.rng;
+  const { PF_W, PF_H } = NS.constants;
+  const F = NS.formations;
   const R = NS.rng.fx;
   const W = NS.waves;
   const { MISSION_TYPES, SECTORS } = NS.campaign;
@@ -20,6 +23,8 @@
   /* ── runs ── */
   function startRun(mode, opts) {
     G.mode = mode;
+    /* the keys steer until the mouse moves again */
+    G.input.steer = 'keys';
     NS.save.refreshStats();
     NS.combat.resetScore();
     G.player = null;
@@ -66,11 +71,12 @@
     const carry = G.player && G.player.alive && G.run && G.run.idx > 0 ? G.player : null;
     G.stage = st;
     G.sector = st.sector;
-    G.world.w = st.size;
-    G.world.h = st.size;
+    G.world.w = PF_W;
+    G.world.h = PF_H;
     clearWorld();
     if (!carry) G.drones.length = 0;
-    NS.combat.resetGrid(st.size, st.size);
+    NS.combat.resetGrid(PF_W, PF_H);
+    NS.camera.snap();
     NS.backdrop.setSector(st.sector);
     const L = W.layoutStage(st);
     NS.hazards.setup(L, st);
@@ -79,7 +85,7 @@
       /* the next stage of a run: keep the ship, mend half of the damage, refill */
       carry.x = L.start.x;
       carry.y = L.start.y;
-      carry.vx = carry.vy = 0;
+      carry.vx = carry.vy = carry.ex = carry.ey = 0;
       carry.hull = Math.min(carry.maxHull, carry.hull + (carry.maxHull - carry.hull) * 0.5);
       carry.shield = carry.maxShield;
       carry.ammo = carry.maxAmmo;
@@ -92,7 +98,8 @@
     const rt = st.rt = {
       t: 0, wave: 0, nextWave: 2.5, done: false, failed: false, endT: 0, rng: makeRng(st.seed ^ 0x51ed1),
       timeLeft: st.time, coresGot: 0, cores: 0, outposts: 0, outpostsLeft: 0, bossDelay: 1.6, bossSpawned: false,
-      waveEnemies: 0, breakT: 0, reason: '',
+      waveEnemies: 0, breakT: 0, reason: '', queue: [], outQueue: L.outposts.slice(), coreQueue: L.cores.slice(),
+      lastOutpost: -99, padT: L.turrets ? 7 : Infinity, gate: null,
     };
     G.allies.length = 0;
     if (st.type === 'defend') {
@@ -101,30 +108,19 @@
         hp: 1000 * (1 + st.sector * 0.4), maxHp: 1000 * (1 + st.sector * 0.4), flash: 0, angle: 0, hurtT: 0,
       });
     } else if (st.type === 'escort') {
-      const r0 = L.route[0];
+      const c = L.convoy;
       G.allies.push({
-        alive: true, kind: 'ally', type: 'freighter', x: r0.x, y: r0.y, vx: 0, vy: 0, r: 46,
-        hp: 650 * (1 + st.sector * 0.25), maxHp: 650 * (1 + st.sector * 0.25), flash: 0, angle: 0, hurtT: 0,
-        route: L.route, leg: 1, speed: Math.max(58, st.len / 44), progress: 0,
+        alive: true, kind: 'ally', type: 'freighter', x: c.x, y: c.y, baseY: c.y, vx: 0, vy: 0, r: 46,
+        hp: 650 * (1 + st.sector * 0.25), maxHp: 650 * (1 + st.sector * 0.25), flash: 0, angle: -Math.PI / 2, hurtT: 0,
+        len: st.len, speed: Math.max(58, st.len / 44), travelled: 0, progress: 0,
       });
-      rt.gate = L.route[L.route.length - 1];
     } else if (st.type === 'destroy') {
-      for (let i = 0; i < L.outposts.length; ++i) {
-        const o = L.outposts[i];
-        const e = NS.enemies.spawn('station', o.x, o.y, { objective: true, instant: true });
-        if (e) ++rt.outposts;
-        const guards = 1 + Math.floor(st.sector / 2);
-        for (let k = 0; k < guards; ++k)
-          NS.enemies.spawn(st.roster[k % 2], o.x + (R() - 0.5) * 300, o.y + (R() - 0.5) * 300, {});
-      }
-      rt.outpostsLeft = rt.outposts;
+      rt.outposts = rt.outpostsLeft = L.outposts.length;
     } else if (st.type === 'collect') {
-      for (let i = 0; i < L.cores.length; ++i) NS.pickups.add('core', L.cores[i].x, L.cores[i].y, 1);
       rt.cores = L.cores.length;
     }
     if (st.type === 'boss') rt.nextWave = 14;
 
-    NS.camera.snap();
     const tname = MISSION_TYPES[st.type].name;
     G.banner = {
       title: st.name.toUpperCase(),
@@ -181,6 +177,8 @@
   }
 
   function spawnWaves(dt, st, rt) {
+    runQueue(rt);
+    scrollIns(st, rt, dt);
     if (st.type === 'endless') {
       if (rt.breakT > 0) {
         rt.breakT -= dt;
@@ -189,11 +187,8 @@
       }
       if (rt.wave === 0 && rt.t >= rt.nextWave) {
         spawnWave(st, rt, 0);
-        if (st.boss) {
-          const p = G.player;
-          NS.bosses.spawn(st.boss, clamp(p.x, 500, st.size - 500), clamp(p.y - 620, 400, st.size - 400));
-        } else
-          spawnWave(st, rt, 1);
+        if (st.boss) NS.bosses.spawn(st.boss, PF_W / 2);
+        else spawnWave(st, rt, 1, 2.5);
         rt.wave = 1;
         rt.waveEnd = rt.t + 25;
       }
@@ -203,8 +198,7 @@
       rt.bossDelay -= dt;
       if (rt.bossDelay <= 0) {
         rt.bossSpawned = true;
-        const p = G.player;
-        NS.bosses.spawn(st.boss, clamp(p.x, 500, st.size - 500), clamp(p.y - 620, 400, st.size - 400));
+        NS.bosses.spawn(st.boss, PF_W / 2);
       }
     }
     if (rt.t < rt.nextWave) return;
@@ -214,17 +208,84 @@
     ++rt.wave;
   }
 
-  function spawnWave(st, rt, idx) {
+  /* A wave: its groups fly in one after another, each in a formation that suits the type */
+  function spawnWave(st, rt, idx, delay) {
     const budget = Math.round(st.budget + st.growth * idx);
     const groups = W.composeWave(rt.rng, st.roster, budget, idx + (st.type === 'endless' ? st.index : 0));
-    const p = G.player;
-    const ally = G.allies[0];
+    let at = rt.t + (delay || 0);
     for (let g = 0; g < groups.length; ++g) {
-      const anchor = ally && ally.alive && rt.rng() < 0.5 ? ally : p;
-      if (!anchor) continue;
-      const sp = W.spawnPoint(rt.rng, st.size, anchor.x, anchor.y, 820, 1100);
-      for (let k = 0; k < groups[g].count; ++k)
-        NS.enemies.spawn(groups[g].type, sp.x + (rt.rng() - 0.5) * 160, sp.y + (rt.rng() - 0.5) * 160, {});
+      at = queueGroup(rt, groups[g].type, groups[g].count, at) + 0.9;
+    }
+  }
+
+  /* queues one group; heavy ships come one per group so a row of carriers never happens */
+  function queueGroup(rt, type, count, at) {
+    const def = NS.enemyData.ENEMIES[type];
+    let left = count;
+    let last = at;
+    while (left > 0) {
+      const n = def.r > 35 ? 1 : Math.min(left, type === 'drone' ? 8 : 7);
+      const kind = F.pick(type, rt.rng);
+      const plan = F.plan(kind, n, def.r, rt.rng, PF_W, PF_H);
+      for (let i = 0; i < plan.length; ++i) {
+        rt.queue.push({ at: at + plan[i].delay, type: type, path: plan[i] });
+        last = Math.max(last, at + plan[i].delay);
+      }
+      left -= n;
+      at = last + (def.r > 35 ? 1.2 : 1.6);
+    }
+    return last;
+  }
+
+  function runQueue(rt) {
+    const q = rt.queue;
+    if (!q.length) return;
+    let j = 0;
+    for (let i = 0; i < q.length; ++i) {
+      const it = q[i];
+      if (rt.t >= it.at) NS.enemies.spawn(it.type, 0, 0, { path: it.path });
+      else q[j++] = it;
+    }
+    q.length = j;
+  }
+
+  /* outposts, data cores and terrain sentries arrive on their own schedules */
+  function scrollIns(st, rt, dt) {
+    if (rt.outQueue.length) {
+      const next = rt.outQueue[0];
+      /* at most one outpost per lane: the timed one waits while its lane is still held */
+      let live = 0, laneBusy = false;
+      for (let i = 0; i < G.enemies.length; ++i) {
+        const e = G.enemies[i];
+        if (!e.alive || !e.objective) continue;
+        ++live;
+        if (Math.abs(e.homeX - next.x) < 160) laneBusy = true;
+      }
+      if ((rt.t >= next.at && !laneBusy) || (!live && rt.t > rt.lastOutpost + 12)) {
+        rt.outQueue.shift();
+        rt.lastOutpost = rt.t;
+        const path = { x0: next.x, y0: -120, cx: next.x, cy: 40, x1: next.x, y1: 150, dur: 3.2, hold: true, lane: next.x, amp: 0 };
+        /* every shot from below finds an outpost, so they are built heavier than in open space */
+        NS.enemies.spawn('station', next.x, -120, { objective: true, path: path, hpMul: 1.5 });
+        queueGroup(rt, st.roster[rt.outQueue.length % 2], 2 + Math.floor(st.sector / 2), rt.t + 2);
+        G.banner = { title: 'OUTPOST AHEAD', sub: (rt.outposts - rt.outQueue.length) + ' / ' + rt.outposts, t: 0, life: 1.6, color: '#ffd25a' };
+      }
+    }
+    for (let i = 0; i < rt.coreQueue.length; ++i) {
+      const c = rt.coreQueue[i];
+      if (rt.t >= c.at) {
+        rt.coreQueue.splice(i, 1);
+        --i;
+        NS.pickups.add('core', c.x, -30, 1);
+      }
+    }
+    if (rt.padT < Infinity && st.type !== 'boss') {
+      rt.padT -= dt;
+      if (rt.padT <= 0) {
+        rt.padT = 10 + rt.rng() * 5;
+        const n = 1 + (rt.rng() < 0.4 ? 1 : 0);
+        for (let i = 0; i < n; ++i) NS.enemies.spawn('turret', 90 + rt.rng() * (PF_W - 180), -40 - i * 140, { ground: true });
+      }
     }
   }
 
@@ -243,7 +304,7 @@
         break;
       case 'escort': {
         const a = G.allies[0];
-        if (a && a.alive && a.leg >= a.route.length) win();
+        if (a && a.alive && a.progress >= 1) win();
         break;
       }
       case 'boss':
@@ -253,7 +314,7 @@
         const b = G.boss;
         const bossDone = !st.boss || (b && !b.alive);
         const left = hostileCount();
-        if (rt.wave > 0 && bossDone && (left === 0 || (!st.boss && rt.t > rt.waveEnd && left < 6)))
+        if (rt.wave > 0 && bossDone && !rt.queue.length && (left === 0 || (!st.boss && rt.t > rt.waveEnd && left < 6)))
           endlessNext(st, rt);
         break;
       }
@@ -274,7 +335,7 @@
       next.rt.nextWave = 2.5;
       return;
     }
-    G.stage = Object.assign(next, { rt: rt, size: st.size });
+    G.stage = Object.assign(next, { rt: rt });
     if (G.boss && !G.boss.alive) G.boss = null;
     rt.wave = 0;
     rt.breakT = 2.5;
@@ -302,30 +363,25 @@
         }
         continue;
       }
-      /* the freighter follows its route; it slows down while under fire */
-      if (a.leg >= a.route.length) continue;
-      const tgt = a.route[a.leg];
-      const dx = tgt.x - a.x, dy = tgt.y - a.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
+      /* the freighter flies up-field below the pilot, weaving; it slows down while under fire */
       const speed = a.speed * (a.hurtT > 0 ? 0.7 : 1);
-      if (d < 20) {
-        ++a.leg;
-        continue;
-      }
-      a.angle = NS.rng.turnToward(a.angle, Math.atan2(dy, dx), dt * 1.2);
-      a.vx = Math.cos(a.angle) * speed;
-      a.vy = Math.sin(a.angle) * speed;
+      a.travelled += speed * dt;
+      a.progress = Math.min(1, a.travelled / a.len);
+      const rt = G.stage.rt;
+      const tx = PF_W / 2 + Math.sin(rt.t * 0.23) * 170, ty = a.baseY + Math.sin(rt.t * 0.41) * 30;
+      a.vx = (tx - a.x) * 1.5;
+      a.vy = (ty - a.y) * 1.5;
       a.x += a.vx * dt;
       a.y += a.vy * dt;
-      a.progress = Math.min(1, (a.leg - 1 + (1 - d / Math.max(1, legLength(a)))) / (a.route.length - 1));
+      a.angle = -Math.PI / 2 + Math.max(-0.25, Math.min(0.25, a.vx / 300));
       if (R() < 0.6)
-        fx.exhaust(a.x - Math.cos(a.angle) * 50, a.y - Math.sin(a.angle) * 50, -a.vx, -a.vy, 10, '#8ad8ff', null);
+        fx.exhaust(a.x + (R() - 0.5) * 16, a.y + 52, 0, 200, 10, '#8ad8ff', null);
+      /* the jump gate comes into view for the last stretch */
+      if (a.progress > 0.86) {
+        const k = (a.progress - 0.86) / 0.14;
+        rt.gate = { x: a.x, y: -120 + (a.y + 120) * k * k, r: 90 };
+      }
     }
-  }
-
-  function legLength(a) {
-    const p = a.route[a.leg - 1], q = a.route[a.leg];
-    return Math.sqrt((q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y));
   }
 
   /* After a win, stragglers blow up in a satisfying chain */
@@ -374,10 +430,17 @@
     NS.combat.addScore(300, G.player.x, G.player.y);
     if (rt.coresGot >= rt.cores) return;
     const n = 2 + Math.floor(st.sector / 2) + (rt.coresGot % 2);
-    const sp = W.spawnPoint(rt.rng, st.size, G.player.x, G.player.y, 650, 800);
-    for (let i = 0; i < n; ++i)
-      NS.enemies.spawn(st.roster[(rt.coresGot + i) % Math.min(3, st.roster.length)], sp.x + (rt.rng() - 0.5) * 140, sp.y + (rt.rng() - 0.5) * 140, {});
+    const types = st.roster.filter(t => t !== 'turret');
+    queueGroup(rt, types[rt.coresGot % Math.min(3, types.length)], n, rt.t + 0.4);
     G.banner = { title: 'AMBUSH', sub: rt.coresGot + ' / ' + rt.cores + ' cores recovered', t: 0, life: 1.6, color: '#ff8a5c' };
+  }
+
+  /* a core that drifted off the bottom comes round again a little later */
+  function coreMissed() {
+    const rt = G.stage && G.stage.rt;
+    if (!rt || rt.done || rt.failed) return;
+    rt.coreQueue.push({ x: 90 + rt.rng() * (PF_W - 180), at: rt.t + 3 });
+    G.banner = { title: 'CORE LOST', sub: 'It will drift past again', t: 0, life: 1.4, color: '#7affd0' };
   }
 
   function allyDestroyed(a) {
@@ -479,7 +542,7 @@
   }
 
   Object.assign(NS.missions, {
-    startRun, startStage, update, outpostDestroyed, coreCollected, allyDestroyed, abandon, progressText,
-    objectiveGoal, hostileCount, win, fail
+    startRun, startStage, update, outpostDestroyed, coreCollected, coreMissed, allyDestroyed, abandon, progressText,
+    objectiveGoal, hostileCount, win, fail, queueGroup
   });
 })();

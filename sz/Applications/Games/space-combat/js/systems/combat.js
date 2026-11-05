@@ -1,14 +1,15 @@
-/* Combat resolution: the per-step spatial grid of everything the player can hit, shot and body
-   collisions, damage routing (ships, frigate shield arcs, cloak reveal, boss core and parts,
-   rocks, mines, allies), area blasts and burning zones, kills with explosions, drops, score,
-   combo and multiplier. Owns the grid, G.zones, G.score, G.combo and the kill counters. */
+/* Combat resolution: the per-step spatial grid of everything the player can hit (only what is
+   inside the play field), shot and body collisions against the ship's small hitbox, grazing,
+   damage routing (ships, frigate shield arcs, cloak reveal, boss core and parts, rocks, mines,
+   allies), area blasts and burning zones, kills with explosions, drops, score, combo and
+   multiplier. Owns the grid, G.zones, G.score, G.combo, G.grazes and the kill counters. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceCombat || (SZ.SpaceCombat = {});
   const G = NS.state;
-  const { GRID_CELL, COMBO_WINDOW } = NS.constants;
+  const { GRID_CELL, COMBO_WINDOW, GRAZE_R } = NS.constants;
   const { createGrid, compact } = NS.grid;
   const { angleDiff } = NS.rng;
   const R = NS.rng.fx;
@@ -16,7 +17,7 @@
   const fx = NS.fx;
   const { sfx, sfxAt } = NS.audio;
 
-  const grid = createGrid(3400, 3400, GRID_CELL);
+  const grid = createGrid(720, 720, GRID_CELL);
   const near = [];
 
   function resetGrid(w, h) {
@@ -25,12 +26,13 @@
 
   function rebuildGrid() {
     grid.clear();
+    /* ships still above the field cannot be hit yet */
     for (let i = 0; i < G.enemies.length; ++i) {
       const e = G.enemies[i];
-      if (e.alive && e.spawnT <= 0) grid.insert(e);
+      if (e.alive && e.spawnT <= 0 && e.y > -e.r * 0.5) grid.insert(e);
     }
     const b = G.boss;
-    if (b && b.alive && !b.dying) {
+    if (b && b.alive && !b.dying && b.y > -b.r) {
       if (b.fadeT < 0.5) grid.insert(b);
       for (let i = 0; i < b.parts.length; ++i)
         if (b.parts[i].alive) grid.insert(b.parts[i]);
@@ -60,9 +62,9 @@
 
   function damageEnemy(e, dmg, x, y, ang, opts) {
     if (e.spawnT > 0) return false;
-    /* frigates shrug off anything that arrives inside their front arc */
+    /* frigates shrug off anything that arrives inside their swinging shield arc */
     if (e.def.shieldArc && e.stun <= 0 && !opts.shieldBreak && ang !== undefined && !opts.blast) {
-      if (Math.abs(angleDiff(e.angle, ang)) < e.def.shieldArc) {
+      if (Math.abs(angleDiff(e.shieldA, ang)) < e.def.shieldArc) {
         e.shieldHit = 1;
         if (R() < 0.5) fx.sparks(x, y, ang, 1, 2, '#9ad8ff', 240, 0.18);
         return false;
@@ -216,6 +218,7 @@
     }
   }
 
+  /* enemy shots against the ship's small hitbox; a near miss is a graze (score and special charge) */
   function enemyShots() {
     const p = G.player;
     const live = p && p.alive;
@@ -224,8 +227,11 @@
       if (!b.alive) continue;
       if (live) {
         const dx = p.x - b.x, dy = p.y - b.y;
-        const rr = p.r + b.r - 3;
-        if (dx * dx + dy * dy < rr * rr) {
+        const d2 = dx * dx + dy * dy;
+        const gr = p.hitR + b.r + GRAZE_R;
+        if (!b.grazed && d2 < gr * gr && p.aegis <= 0) graze(p, b);
+        const rr = (p.aegis > 0 ? p.r + 8 : p.hitR) + b.r;
+        if (d2 < rr * rr) {
           if (p.aegis > 0) {
             /* reflected back as a player shot */
             b.alive = false;
@@ -256,7 +262,15 @@
     }
   }
 
-  /* ramming: ships bump the player; a dodge roll with Ram Field hurts them instead */
+  function graze(p, b) {
+    b.grazed = true;
+    ++G.grazes;
+    G.score += 10;
+    if (p.abilityCd > 0) p.abilityCd = Math.max(0, p.abilityCd - 0.12 * G.stats.graze);
+    if (G.grazes % 3 === 0) fx.spawn(fx.SPARK, b.x, b.y, (b.x - p.x) * 3, (b.y - p.y) * 3, 0.18, 2, '#ffffff');
+  }
+
+  /* ramming: ships bump the player; a dash with Ram Field hurts them instead */
   function bodies() {
     const p = G.player;
     if (!p || !p.alive) return;
@@ -265,7 +279,7 @@
       const t = near[i];
       if (!t.alive || t.kind === 'rock') continue;
       const dx = p.x - t.x, dy = p.y - t.y;
-      const min = p.r + t.r;
+      const min = p.r * 0.6 + t.r * 0.85;
       const d2 = dx * dx + dy * dy;
       if (d2 >= min * min) continue;
       if (t.kind === 'mine') {
@@ -273,21 +287,21 @@
         continue;
       }
       const d = Math.sqrt(d2) || 1;
-      p.x = t.x + dx / d * min;
-      p.y = t.y + dy / d * min;
-      p.vx += dx / d * 260;
-      p.vy += dy / d * 260;
-      if (p.rollT > 0 && G.stats.ram > 0) {
+      if (p.dashT > 0 && G.stats.ram > 0) {
         if (!p.ramHit[t.id || t.kind]) {
           p.ramHit[t.id || t.kind] = true;
           hit(t, G.stats.ram * G.stats.dmgMul, p.x, p.y, Math.atan2(dy, dx), { blast: true });
           fx.shockwave(t.x, t.y, 60, '#ffd27a');
         }
-      } else if (t.kind === 'enemy' && t.def.ai !== 'kamikaze') {
-        NS.player.damage(8, t.x, t.y);
-      } else if (t.kind === 'boss' || t.kind === 'part' || t.kind === 'station') {
-        NS.player.damage(12, t.x, t.y);
+        continue;
       }
+      /* bumped aside; contact hurts */
+      p.x = t.x + dx / d * min;
+      p.y = t.y + dy / d * min;
+      NS.player.keepInside(p);
+      NS.player.push(dx / d * 220, dy / d * 220);
+      if (t.kind === 'enemy' && t.def.ai !== 'kamikaze') NS.player.damage(8, t.x, t.y);
+      else if (t.kind === 'boss' || t.kind === 'part' || t.kind === 'station') NS.player.damage(12, t.x, t.y);
     }
   }
 
@@ -296,6 +310,7 @@
       const z = G.zones[i];
       z.t += dt;
       if (z.t >= z.life) { z.alive = false; continue; }
+      if (z.vy) z.y += z.vy * dt;
       grid.query(z.x, z.y, z.r, near);
       for (let j = 0; j < near.length; ++j) {
         const t = near[j];
@@ -314,6 +329,7 @@
 
   function resetScore() {
     G.score = 0;
+    G.grazes = 0;
     G.combo = 0;
     G.comboT = 0;
     G.multiplier = 1;

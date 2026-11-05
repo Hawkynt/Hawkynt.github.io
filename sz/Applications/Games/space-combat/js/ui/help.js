@@ -1,6 +1,6 @@
-/* How to Play: six illustrated pages - controls (drawn keycaps and mouse), flight and combat,
-   weapons and power-ups, the ten enemies, bosses and hazards, modes and progression - with
-   page dots and keyboard paging. */
+/* How to Play: six illustrated pages - controls (drawn keycaps and mouse), arcade flight with
+   dash, focus and grazing, weapons and power-ups, the ten enemies, bosses and hazards, modes and
+   progression - with page dots and keyboard paging. */
 ;(function() {
   'use strict';
 
@@ -34,19 +34,19 @@
   function pageControls(x, y) {
     /* WASD cluster */
     key(x + 60, y, 40, 'W'); key(x + 15, y + 40, 40, 'A'); key(x + 60, y + 40, 40, 'S'); key(x + 105, y + 40, 40, 'D');
-    kit.text('Thrust / strafe  (or arrow keys)', x + 170, y + 40, 15, UI.text);
-    key(x + 15, y + 92, 130, 'SHIFT');
-    kit.text('Boost - builds heat, overheats at 100%', x + 170, y + 108, 15, UI.text);
-    key(x + 15, y + 136, 130, 'SPACE');
-    kit.text('Dodge roll - brief invulnerability', x + 170, y + 152, 15, UI.text);
-    key(x + 15, y + 180, 60, 'E'); key(x + 85, y + 180, 60, 'Q');
-    kit.text('Ship special ability', x + 170, y + 196, 15, UI.text);
-    key(x + 15, y + 224, 60, 'X'); key(x + 85, y + 224, 60, 'C');
-    kit.text('Fire secondary weapon', x + 170, y + 240, 15, UI.text);
-    key(x + 60, y + 272, 40, 'I'); key(x + 15, y + 312, 40, 'J'); key(x + 60, y + 312, 40, 'K'); key(x + 105, y + 312, 40, 'L');
-    kit.text('Keyboard turret: aim and fire in 8 directions', x + 170, y + 312, 15, UI.text);
-    key(x + 15, y + 364, 130, 'ESC / P');
-    kit.text('Pause - tech tree from the pause menu', x + 170, y + 380, 15, UI.text);
+    kit.text('Move in 8 directions  (or arrow keys)', x + 170, y + 40, 15, UI.text);
+    key(x + 15, y + 92, 60, 'Z'); key(x + 85, y + 92, 60, 'SPACE');
+    kit.text('Fire the primary weapon (hold)', x + 170, y + 108, 15, UI.text);
+    key(x + 15, y + 136, 130, 'SHIFT');
+    kit.text('Focus - slow, precise, tighter and stronger shots', x + 170, y + 152, 15, UI.text);
+    key(x + 15, y + 180, 60, 'C'); key(x + 85, y + 180, 60, 'V');
+    kit.text('Dash - a quick burst sideways, invulnerable', x + 170, y + 196, 15, UI.text);
+    key(x + 15, y + 224, 130, 'X');
+    kit.text('Fire the secondary weapon', x + 170, y + 240, 15, UI.text);
+    key(x + 15, y + 268, 60, 'E'); key(x + 85, y + 268, 60, 'Q');
+    kit.text('Ship special ability', x + 170, y + 284, 15, UI.text);
+    key(x + 15, y + 312, 130, 'ESC / P');
+    kit.text('Pause - tech tree from the pause menu', x + 170, y + 328, 15, UI.text);
     /* mouse */
     const mx = x + 700, my = y + 70;
     const body = ctx.createLinearGradient(mx, my, mx + 90, my + 140);
@@ -72,10 +72,10 @@
     ctx.fillStyle = '#c8d0e0';
     kit.roundRect(mx + 40, my + 16, 10, 24, 5);
     ctx.fill();
-    kit.text('Aim with the mouse', mx + 45, my + 166, 15, UI.text, { align: 'center' });
+    kit.text('The ship follows the mouse', mx + 45, my + 166, 15, UI.text, { align: 'center' });
     kit.text('Left: primary weapon', mx + 45, my + 190, 14, UI.accent, { align: 'center' });
     kit.text('Right: secondary', mx + 45, my + 212, 14, UI.warn, { align: 'center' });
-    kit.wrap('Touch screens get two virtual sticks: the left one flies, the right one aims and fires. Buttons for boost, roll, secondary and special sit above the right stick.', x + 560, y + 300, 380, 14, 20, UI.textDim);
+    kit.wrap('Touch screens: drag anywhere and the ship follows your finger while its guns fire on their own. Buttons for dash, secondary, special and focus sit in the right panel.', x + 560, y + 300, 380, 14, 20, UI.textDim);
   }
 
   function shipAt(x, y, a, s, bank) {
@@ -85,28 +85,41 @@
 
   function pageFlight(x, y) {
     const t = G.time;
-    /* drift illustration: ship sliding sideways with a velocity arrow */
-    shipAt(x + 120, y + 70, -0.3, 1.6, Math.sin(t * 2));
+    /* arcade flight: the ship faces up, arrows show the eight directions */
+    shipAt(x + 120, y + 70, -Math.PI / 2, 1.5, Math.sin(t * 2) * 0.6);
     ctx.strokeStyle = UI.good;
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(x + 120, y + 70); ctx.lineTo(x + 220, y + 120); ctx.stroke();
-    kit.text('Inertia and drift', x + 260, y + 50, 18, '#ffffff', { weight: 'bold' });
-    kit.wrap('Your ship keeps its momentum. Thrust in any direction while the nose follows your aim - strafe around enemies, drift through turns.', x + 260, y + 66, 640, 14, 20, UI.text);
-    /* roll illustration */
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 8; ++i) {
+      const a = i * TAU / 8;
+      ctx.moveTo(x + 120 + Math.cos(a) * 40, y + 70 + Math.sin(a) * 40);
+      ctx.lineTo(x + 120 + Math.cos(a) * 56, y + 70 + Math.sin(a) * 56);
+    }
+    ctx.stroke();
+    kit.text('Arcade flight', x + 260, y + 50, 18, '#ffffff', { weight: 'bold' });
+    kit.wrap('Your ship always faces up and goes exactly where you steer - no drift. Enemies pour in from the top and the sides while the sector scrolls past; the top band belongs to the bosses.', x + 260, y + 66, 640, 14, 20, UI.text);
+    /* dash illustration */
     for (let i = 0; i < 5; ++i) {
       ctx.globalAlpha = 0.2 + i * 0.2;
       ctx.save();
-      ctx.translate(x + 60 + i * 34, y + 200);
-      ctx.scale(1, Math.abs(Math.cos(i * 0.8)) + 0.1);
-      shipAt(0, 0, 0, 1.2, 0);
+      ctx.translate(x + 50 + i * 36, y + 200);
+      ctx.scale(Math.abs(Math.cos(i * 0.8)) + 0.15, 1);
+      shipAt(0, 0, -Math.PI / 2, 1.1, 0);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
-    kit.text('Dodge roll', x + 260, y + 170, 18, '#ffffff', { weight: 'bold' });
-    kit.wrap('A burst sideways with a moment of invulnerability. Roll through bullets, beams and solar flares. The Ram Field upgrade turns rolls into weapons.', x + 260, y + 186, 640, 14, 20, UI.text);
-    kit.bar(x + 40, y + 300, 160, 12, 0.5 + Math.sin(t) * 0.4, UI.heat, { cells: 10 });
-    kit.text('Boost and heat', x + 260, y + 290, 18, '#ffffff', { weight: 'bold' });
-    kit.wrap('Boost nearly doubles your speed but heats the engines. Overheat and you must cool down to 35% before boosting again.', x + 260, y + 306, 640, 14, 20, UI.text);
+    kit.text('Dash', x + 260, y + 170, 18, '#ffffff', { weight: 'bold' });
+    kit.wrap('A quick burst sideways (or in the direction you hold) with a moment of invulnerability. Dash through bullet walls and solar flares. Ram Field turns dashes into weapons.', x + 260, y + 186, 640, 14, 20, UI.text);
+    /* focus: the true hitbox */
+    shipAt(x + 120, y + 300, -Math.PI / 2, 1.3, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x + 120, y + 300, 5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ff4a6a';
+    ctx.beginPath(); ctx.arc(x + 120, y + 300, 3, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(x + 120, y + 300, 14, t * 3, t * 3 + 5); ctx.stroke();
+    kit.text('Focus and grazing', x + 260, y + 290, 18, '#ffffff', { weight: 'bold' });
+    kit.wrap('Hold Shift to fly slowly with a tighter, stronger spread and see your true hitbox: only the glowing core can be hit. Shots that skim past are grazes - points, and charge for your special.', x + 260, y + 306, 640, 14, 20, UI.text);
     kit.text('x' + (1 + Math.floor(t % 7)) + ' COMBO', x + 120, y + 400, 26, '#ff9ab8', { align: 'center', weight: 'bold' });
     kit.text('Shields, hull and combos', x + 260, y + 390, 18, '#ffffff', { weight: 'bold' });
     kit.wrap('Shields recharge after a moment without damage; hull does not (except with Nano Repair). Kills in quick succession build a combo for up to x7 score.', x + 260, y + 406, 640, 14, 20, UI.text);
@@ -172,11 +185,11 @@
       kit.fitText(b.title, xx + 80, y + 170, 176, 11, { align: 'center', color: UI.textDim });
     }
     const hz = [
-      ['Asteroids', 'Break into smaller rocks; ramming hurts.', () => K.blitRot(ctx, P.rock(2, 1, 'kepler'), x + 40, y + 250, G.time * 0.3, 0.8)],
-      ['Space mines', 'Blink faster when you are near, then blow.', () => K.blit(ctx, P.mine(false), x + 40, y + 310, 1)],
+      ['Asteroids', 'Drift down and break into smaller rocks; ramming hurts.', () => K.blitRot(ctx, P.rock(2, 1, 'kepler'), x + 40, y + 250, G.time * 0.3, 0.8)],
+      ['Space mines', 'Drift down in strings; they blink faster when you are near, then blow.', () => K.blit(ctx, P.mine(false), x + 40, y + 310, 1)],
       ['Nebulae', 'Slow ships and hide them - enemies inside need you close to see you.', () => { ctx.fillStyle = 'rgba(176,74,255,0.35)'; ctx.beginPath(); ctx.arc(x + 40, y + 370, 24, 0, TAU); ctx.fill(); }],
-      ['Black holes', 'Pull ships, shots and scrap. The core destroys.', () => K.blit(ctx, P.blackHole(12), x + 40, y + 430, 0.5)],
-      ['Solar flares', 'A wall of light crosses the sector - roll through it.', () => { ctx.fillStyle = 'rgba(255,190,90,0.6)'; ctx.fillRect(x + 30, y + 466, 20, 44); }],
+      ['Black holes', 'Cross the field pulling ships, shots and scrap. The core destroys.', () => K.blit(ctx, P.blackHole(12), x + 40, y + 430, 0.5)],
+      ['Solar flares', 'A band of the screen flashes, then burns - get out or dash through.', () => { ctx.fillStyle = 'rgba(255,190,90,0.6)'; ctx.fillRect(x + 30, y + 466, 20, 44); }],
     ];
     for (let i = 0; i < hz.length; ++i) {
       const col = i < 3 ? 0 : 1, row = i < 3 ? i : i - 3;

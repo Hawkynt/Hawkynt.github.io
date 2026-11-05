@@ -1,6 +1,7 @@
 /* Things to pick up: scrap (the currency), the five combat power-ups (shield, repair,
-   overcharge, magnet, munitions) and the data cores of salvage missions. Drops, drift, the
-   tractor magnet, lifetimes and collection. Owns G.pickups. */
+   overcharge, magnet, munitions) and the data cores of salvage missions. Drops that burst out
+   and then fall with the scroll, the tractor magnet, lifetimes, the core download while a core
+   drifts past, and collection. Owns G.pickups. */
 ;(function() {
   'use strict';
 
@@ -15,7 +16,7 @@
   const { compact } = NS.grid;
 
   const PU_KEYS = Object.keys(POWERUPS);
-  const CORE_RANGE = 120, CORE_TIME = 2.6;
+  const CORE_RANGE = 110, CORE_TIME = 1.6, CORE_DRIFT = 30;
 
   function add(type, x, y, value) {
     const a = R() * TAU, s = 60 + R() * 140;
@@ -24,7 +25,7 @@
       value: value || 1, t: 0, life: type === 'core' ? Infinity : PICKUP_LIFE * (type === 'scrap' ? 0.8 : 1),
       r: type === 'scrap' ? 8 : type === 'core' ? 20 : 16, spin: R() * TAU,
     };
-    if (type === 'core') { p.vx = 0; p.vy = 0; }
+    if (type === 'core') { p.vx = 0; p.vy = CORE_DRIFT; }
     G.pickups.push(p);
     return p;
   }
@@ -77,12 +78,16 @@
       q.life -= dt;
       q.spin += dt * 2;
       if (q.life <= 0) { q.alive = false; continue; }
-      q.vx *= 1 - 2.2 * dt;
-      q.vy *= 1 - 2.2 * dt;
       if (q.type === 'core') {
+        q.y += q.vy * dt;
+        if (q.y > G.world.h + 30) {
+          q.alive = false;
+          NS.missions.coreMissed(q);
+          continue;
+        }
         /* data cores download while the ship holds station next to them */
         const near = live && (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) < CORE_RANGE * CORE_RANGE;
-        q.progress = Math.max(0, Math.min(1, (q.progress || 0) + (near ? dt / CORE_TIME : -dt / CORE_TIME * 0.5)));
+        q.progress = Math.max(0, Math.min(1, (q.progress || 0) + (near ? dt / CORE_TIME : -dt / CORE_TIME * 0.25)));
         q.linked = near;
         if (near && Math.floor(q.t * 8) !== Math.floor((q.t - dt) * 8)) fx.glow(q.x, q.y, 18, '#7affd0', 0.25);
         if (q.progress >= 1) collect(q, p);
@@ -91,7 +96,7 @@
       if (live) {
         const dx = p.x - q.x, dy = p.y - q.y;
         const d2 = dx * dx + dy * dy;
-        const reach = bigMag ? 1000 : q.type === 'scrap' ? magR : magR * 0.6;
+        const reach = bigMag ? 1100 : q.type === 'scrap' ? magR : magR * 0.6;
         if (d2 < reach * reach) {
           const d = Math.sqrt(d2) || 1;
           const pullK = (1 - d / reach) * 2400 + 300;
@@ -104,8 +109,13 @@
           continue;
         }
       }
+      q.vx *= 1 - 2.2 * dt;
+      q.vy *= 1 - 2.2 * dt;
       q.x += q.vx * dt;
-      q.y += q.vy * dt;
+      q.y += (q.vy + G.scroll.speed * 0.55) * dt;
+      if (q.x < 8) q.vx = Math.abs(q.vx);
+      if (q.x > G.world.w - 8) q.vx = -Math.abs(q.vx);
+      if (q.y > G.world.h + 30) q.alive = false;
     }
     compact(G.pickups);
   }

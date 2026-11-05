@@ -43,8 +43,8 @@ for (let s = 0; s < 5; ++s) for (let i = 0; i < 6; ++i) {
   steps(120);
   const st = G.stage;
   let ok = G.player && G.player.alive;
-  if (st.type === 'destroy') ok = ok && st.rt.outposts === st.n && G.enemies.some(e => e.objective);
-  if (st.type === 'collect') ok = ok && G.pickups.filter(q => q.type === 'core').length === st.n;
+  if (st.type === 'destroy') ok = ok && st.rt.outposts === st.n && G.enemies.some(e => e.objective && e.phase === 'enter');
+  if (st.type === 'collect') ok = ok && st.rt.cores === st.n && st.rt.coreQueue.length + G.pickups.filter(q => q.type === 'core').length === st.n;
   if (st.type === 'escort' || st.type === 'defend') ok = ok && G.allies.length === 1;
   if (st.type === 'boss') ok = ok && G.boss && G.boss.parts.length > 0;
   kinds[st.id] = ok;

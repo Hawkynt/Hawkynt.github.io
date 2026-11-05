@@ -7,43 +7,43 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceCombat || (SZ.SpaceCombat = {});
 
-  /* hull/shield in points, thrust in px/s^2, speed in px/s, roll = dodge cooldown seconds */
+  /* hull/shield in points, speed in px/s across the play field, dash = dash cooldown seconds */
   const SHIPS = [
     {
       id: 'falcon', name: 'Falcon', role: 'Balanced striker', cost: 0,
       desc: 'A dependable all-rounder with a strong gun and a forgiving shield.',
-      hull: 110, shield: 70, regen: 15, thrust: 1650, speed: 430, boost: 1, roll: 1.15, dmg: 1,
+      hull: 110, shield: 70, regen: 15, speed: 330, dash: 1.1, dmg: 1,
       ability: { id: 'overdrive', name: 'Overdrive', cd: 20, time: 6, desc: 'Double fire rate and +25% damage for 6 s.' },
       colors: { hull: '#c9d6e8', dark: '#4a5872', trim: '#2f8cff', glow: '#7fd4ff' },
     },
     {
       id: 'wraith', name: 'Wraith', role: 'Fast interceptor', cost: 1800,
       desc: 'Light, quick and slippery. Blinks through danger, but cannot take much of it.',
-      hull: 80, shield: 55, regen: 18, thrust: 2100, speed: 520, boost: 1.25, roll: 0.8, dmg: 0.95,
-      ability: { id: 'blink', name: 'Phase Blink', cd: 6, time: 0.5, desc: 'Teleport 280 px ahead, leaving a damaging rift behind.' },
+      hull: 80, shield: 55, regen: 18, speed: 390, dash: 0.75, dmg: 0.95,
+      ability: { id: 'blink', name: 'Phase Blink', cd: 6, time: 0.5, desc: 'Teleport 220 px up-screen, leaving a damaging rift behind.' },
       colors: { hull: '#2a2f3e', dark: '#12151e', trim: '#b066ff', glow: '#d9a8ff' },
     },
     {
       id: 'bastion', name: 'Bastion', role: 'Heavy gunship', cost: 2600,
       desc: 'Armoured to the teeth and slow to turn. Its Aegis reflects enemy fire.',
-      hull: 170, shield: 100, regen: 12, thrust: 1250, speed: 360, boost: 0.85, roll: 1.5, dmg: 1.1,
+      hull: 170, shield: 100, regen: 12, speed: 280, dash: 1.45, dmg: 1.1,
       ability: { id: 'aegis', name: 'Aegis', cd: 18, time: 4, desc: 'Invulnerable for 4 s; enemy shots bounce back.' },
       colors: { hull: '#a89a7c', dark: '#4c4434', trim: '#ff9a2a', glow: '#ffd27a' },
     },
     {
       id: 'tempest', name: 'Tempest', role: 'Glass cannon', cost: 3400,
       desc: 'Enormous firepower on a fragile frame. Nova clears the screen.',
-      hull: 85, shield: 60, regen: 15, thrust: 1800, speed: 450, boost: 1, roll: 1.05, dmg: 1.35,
-      ability: { id: 'nova', name: 'Nova Burst', cd: 16, time: 0.4, desc: 'A 360 px shockwave: 150 damage, erases enemy shots.' },
+      hull: 85, shield: 60, regen: 15, speed: 340, dash: 1, dmg: 1.35,
+      ability: { id: 'nova', name: 'Nova Burst', cd: 16, time: 0.4, desc: 'A 300 px shockwave: 150 damage, erases enemy shots.' },
       colors: { hull: '#e8e4f0', dark: '#5a3a5e', trim: '#ff3d6e', glow: '#ff9ab8' },
     },
     {
       id: 'specter', name: 'Specter', role: 'Tech frigate', cost: 4500,
-      desc: 'A tactical ship that bends time. Built-in drone bay and a wider radar.',
-      hull: 120, shield: 80, regen: 16, thrust: 1550, speed: 420, boost: 1.1, roll: 1.1, dmg: 1.05,
+      desc: 'A tactical ship that bends time. Built-in drone bay and sharper graze sensors.',
+      hull: 120, shield: 80, regen: 16, speed: 320, dash: 1.05, dmg: 1.05,
       ability: { id: 'warp', name: 'Time Warp', cd: 22, time: 5, desc: 'Enemies and their shots slow to 30% for 5 s.' },
       colors: { hull: '#9fe6d8', dark: '#1f4c52', trim: '#18e0b0', glow: '#8affe0' },
-      bonus: { radar: 0.25, drones: 1 },
+      bonus: { graze: 0.25, drones: 1 },
     },
   ];
 
@@ -58,7 +58,7 @@
     { id: 'rail', name: 'Rail Driver', cost: 1900, kind: 'rail', dmg: 78, rate: 0.62, range: 1500, pierce: 6, color: 'white',
       desc: 'Hitscan slug that pierces up to six targets.' },
     { id: 'flak', name: 'Flak Mortar', cost: 1600, kind: 'flak', dmg: 16, frag: 7, frags: 12, rate: 0.36, speed: 760, life: 0.55, color: 'amber',
-      desc: 'Shells burst into shrapnel at the aim point.' },
+      desc: 'Shells burst into shrapnel at the target ahead.' },
     { id: 'ion', name: 'Ion Arc', cost: 2400, kind: 'ion', dmg: 17, rate: 0.16, range: 430, chains: 3, chainRange: 210, color: 'blue',
       desc: 'Lightning that jumps between up to four enemies.' },
   ];
@@ -67,11 +67,11 @@
     { id: 'missiles', name: 'Seeker Missiles', cost: 0, ammo: 12, rate: 0.4, count: 2, dmg: 26, speed: 640, radius: 60,
       desc: 'Pairs of homing missiles with a small blast.' },
     { id: 'mines', name: 'Proximity Mines', cost: 800, ammo: 8, rate: 0.35, dmg: 95, radius: 130,
-      desc: 'Drop mines behind you; they detonate on contact.' },
+      desc: 'Lobbed ahead, they ride the scroll and blow on contact.' },
     { id: 'emp', name: 'EMP Pulse', cost: 1500, ammo: 3, rate: 1, dmg: 24, radius: 470, stun: 3.2,
       desc: 'Stuns everything nearby, drops shields, wipes shots.' },
     { id: 'drones', name: 'Attack Drones', cost: 2100, ammo: 3, rate: 1, life: 24, dmg: 9, fire: 0.24,
-      desc: 'Launch a wingman drone that hunts on its own.' },
+      desc: 'Launch a wingman drone that flies beside you and hunts.' },
   ];
 
   /* combat drops; weight = relative drop chance */

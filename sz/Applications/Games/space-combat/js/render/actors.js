@@ -1,7 +1,8 @@
-/* Drawing the ships: the player (bank frames, dodge-roll squash, engine flames, shield bubble
-   that flares where it is hit, Aegis, hit flash), wingman drones, every enemy type (warp-in,
-   cloak shimmer, sentry barrels, frigate shield arcs, lancer warning lines, engine glows), the
-   allies, and the bosses with parts, core shields, open jaws and death throes. World units. */
+/* Drawing the ships: the player (always nose-up, bank frames, dash roll, engine flames, the
+   focus hitbox, shield bubble that flares where it is hit, Aegis, hit flash), wingman drones,
+   every enemy type (warp-in, cloak shimmer, sentry barrels on terrain pads, frigate shield arcs,
+   lancer warning lines, engine glows), the allies, and the bosses with parts, core shields, open
+   jaws and death throes. World units. */
 ;(function() {
   'use strict';
 
@@ -27,9 +28,9 @@
     const p = G.player;
     if (!p || !p.alive) return;
     const ship = p.ship.id;
-    const roll = p.rollT > 0 ? Math.cos(p.rollSpin) : 1;
-    const bank = p.rollT > 0 ? Math.sin(p.rollSpin) : p.bank;
-    const blink = p.iframes > 0 && p.rollT <= 0 && Math.floor(G.time * 20) % 2 === 0;
+    const roll = p.dashT > 0 ? Math.cos(p.dashSpin) : 1;
+    const bank = p.dashT > 0 ? Math.sin(p.dashSpin) : p.bank;
+    const blink = p.iframes > 0 && p.dashT <= 0 && Math.floor(G.time * 20) % 2 === 0;
 
     /* engine flames behind the hull */
     lighter();
@@ -42,7 +43,7 @@
       const e = eng[i];
       const ey = e[1] * roll;
       const x = p.x + ca * e[0] - sa * ey, y = p.y + sa * e[0] + ca * ey;
-      const len = (10 + power * 18 + (p.boosting ? 14 : 0)) * flick;
+      const len = (10 + power * 18 + (p.focus ? -6 : 0)) * flick;
       ctx.globalAlpha = 0.9;
       K.blitRot(ctx, glow, x - ca * len * 0.35, y - sa * len * 0.35, p.angle, 1, 1);
       ctx.save();
@@ -104,6 +105,57 @@
     }
     ctx.globalAlpha = 1;
     normal();
+    /* focus shows the true hitbox, as in the classics */
+    if (p.focus) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.hitR + 6, G.time * 3, G.time * 3 + TAU * 0.8);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.hitR * 0.6, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#ff4a6a';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.hitR * 0.35, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  /* a metal landing pad under terrain sentries, painted once */
+  function padSprite() {
+    return K.sprite('terrainPad', 96, 96, (g, w, h) => {
+      const c = w / 2;
+      g.beginPath();
+      for (let i = 0; i < 8; ++i) {
+        const a = i * TAU / 8 + TAU / 16;
+        g.lineTo(c + Math.cos(a) * 44, c + Math.sin(a) * 44);
+      }
+      g.closePath();
+      const gr = g.createLinearGradient(0, 0, w, h);
+      gr.addColorStop(0, '#5a6274');
+      gr.addColorStop(1, '#1c2030');
+      g.fillStyle = gr;
+      g.fill();
+      g.strokeStyle = '#8a94aa';
+      g.lineWidth = 2;
+      g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.45)';
+      g.lineWidth = 1;
+      for (let i = 0; i < 4; ++i) {
+        const a = i * TAU / 4 + TAU / 8;
+        g.beginPath();
+        g.moveTo(c + Math.cos(a) * 20, c + Math.sin(a) * 20);
+        g.lineTo(c + Math.cos(a) * 42, c + Math.sin(a) * 42);
+        g.stroke();
+      }
+      g.fillStyle = '#ffb347';
+      for (let i = 0; i < 4; ++i) {
+        const a = i * TAU / 4;
+        g.fillRect(c + Math.cos(a) * 36 - 2, c + Math.sin(a) * 36 - 2, 4, 4);
+      }
+    });
   }
 
   function drawDrones() {
@@ -156,6 +208,7 @@
         continue;
       }
       if (e.type === 'turret') {
+        if (e.ground) K.blit(ctx, padSprite(), e.x, e.y, 0.75);
         drawTurret(e.x, e.y, e.parent ? e.parent.angle : 0, e.barrel, e.flash, 1);
         continue;
       }
@@ -203,7 +256,7 @@
     ctx.strokeStyle = K.rgba('#8ad8ff', e.stun > 0 ? 0.05 : a);
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r + 12, e.angle - e.def.shieldArc, e.angle + e.def.shieldArc);
+    ctx.arc(e.x, e.y, e.r + 12, e.shieldA - e.def.shieldArc, e.shieldA + e.def.shieldArc);
     ctx.stroke();
     ctx.strokeStyle = K.rgba('#ffffff', a * 0.6);
     ctx.lineWidth = 1.5;
@@ -291,7 +344,7 @@
     const b = G.boss;
     if (!b || !b.alive) return;
     const fade = b.fadeT > 0 ? 1 - b.fadeT : 1;
-    const intro = b.introT > 0 ? Math.max(0.2, 1 - b.introT / 2.6) : 1;
+    const intro = 1;
     ctx.globalAlpha = fade * intro;
     /* serpent body from the tail forward */
     for (let i = b.parts.length - 1; i >= 0; --i) {

@@ -9,54 +9,54 @@
   /* ai: behaviour in systems/enemies.js; cost: wave budget points; fire.rate = seconds between bursts */
   const ENEMIES = {
     fighter: {
-      name: 'Raider', role: 'Strafes around you at mid range and fires bursts.',
+      name: 'Raider', role: 'Flies in in formation, sways in its slot and fires bursts.',
       hp: 40, r: 20, speed: 300, accel: 620, score: 100, scrap: 5, cost: 2, ai: 'strafe', range: 330,
       fire: { rate: 1.7, burst: 3, gap: 0.12, speed: 470, dmg: 7, kind: 'bolt', color: 'red' },
     },
     interceptor: {
-      name: 'Hornet', role: 'Fast pursuer that leads its shots and overshoots.',
+      name: 'Hornet', role: 'Dives at you from the top corners, leading its shots, then loops round.',
       hp: 30, r: 17, speed: 480, accel: 900, score: 120, scrap: 6, cost: 2, ai: 'pursue', range: 240,
       fire: { rate: 1.2, burst: 2, gap: 0.1, speed: 580, dmg: 6, kind: 'bolt', color: 'orange' },
     },
     bomber: {
-      name: 'Hammerhead', role: 'Slow bomber that lobs heavy plasma at stations and convoys.',
+      name: 'Hammerhead', role: 'Slow bomber that lobs heavy plasma at you, stations and convoys.',
       hp: 130, r: 28, speed: 150, accel: 240, score: 250, scrap: 12, cost: 4, ai: 'bomber', range: 420,
       fire: { rate: 2.8, burst: 1, gap: 0, speed: 240, dmg: 18, kind: 'orb', color: 'violet', count: 3, arc: 0.5 },
     },
     drone: {
-      name: 'Swarmer', role: 'Kamikaze drone; detonates on contact.',
+      name: 'Swarmer', role: 'Kamikaze drones weaving down in a column; they ram and explode.',
       hp: 14, r: 12, speed: 370, accel: 760, score: 50, scrap: 2, cost: 1, ai: 'kamikaze',
       blast: { dmg: 20, radius: 70 },
     },
     turret: {
-      name: 'Sentry', role: 'Static gun platform that tracks you.',
+      name: 'Sentry', role: 'Gun platform on drifting terrain pads and outposts; tracks you.',
       hp: 110, r: 24, speed: 0, accel: 0, score: 150, scrap: 8, cost: 3, ai: 'turret', range: 620,
       fire: { rate: 1.5, burst: 4, gap: 0.09, speed: 520, dmg: 7, kind: 'bolt', color: 'red' },
     },
     station: {
-      name: 'Outpost', role: 'Armoured base with sentries; launches swarmers.',
+      name: 'Outpost', role: 'Armoured base that holds the top of the screen and launches swarmers.',
       hp: 1100, r: 70, speed: 0, accel: 0, score: 1500, scrap: 50, cost: 12, ai: 'station', range: 700,
       spawn: { type: 'drone', every: 7, count: 3 }, turrets: 3,
     },
     frigate: {
-      name: 'Bulwark', role: 'Shielded frigate: its front arc blocks shots. Flank it.',
+      name: 'Bulwark', role: 'Shielded frigate: its shield arc swings to and fro - shoot through the gap.',
       hp: 300, r: 40, speed: 115, accel: 150, score: 500, scrap: 22, cost: 6, ai: 'frigate', range: 520,
       shieldArc: 1.05,
       fire: { rate: 2.2, burst: 1, gap: 0, speed: 400, dmg: 8, kind: 'pellet', color: 'orange', count: 5, arc: 0.6 },
     },
     cloaker: {
-      name: 'Phantom', role: 'Cloaks, closes in unseen and decloaks to strike.',
+      name: 'Phantom', role: 'Cloaks, slips to your flank unseen and decloaks to strike.',
       hp: 55, r: 19, speed: 340, accel: 520, score: 300, scrap: 11, cost: 3, ai: 'cloak', range: 280,
       fire: { rate: 0.9, burst: 5, gap: 0.07, speed: 520, dmg: 6, kind: 'bolt', color: 'violet' },
     },
     carrier: {
-      name: 'Leviathan', role: 'Huge carrier that launches raiders and swarmers.',
+      name: 'Leviathan', role: 'Huge carrier that opens its bays and launches raiders and swarmers.',
       hp: 820, r: 66, speed: 70, accel: 90, score: 1200, scrap: 45, cost: 10, ai: 'carrier', range: 700,
       spawn: { type: 'fighter', every: 6.5, count: 2, alt: 'drone' },
       fire: { rate: 3.2, burst: 1, gap: 0, speed: 300, dmg: 10, kind: 'orb', color: 'red', count: 8, arc: 6.283 },
     },
     lancer: {
-      name: 'Lancer', role: 'Long-range sniper: a red line warns before the beam.',
+      name: 'Lancer', role: 'Sniper holding the top: a red line warns before the beam.',
       hp: 65, r: 20, speed: 230, accel: 400, score: 260, scrap: 11, cost: 3, ai: 'lancer', range: 720,
       beam: { charge: 1.15, dmg: 24, every: 3.6, width: 10 },
     },
@@ -64,7 +64,7 @@
 
   const ENEMY_ORDER = ['fighter', 'interceptor', 'drone', 'bomber', 'turret', 'frigate', 'cloaker', 'lancer', 'carrier', 'station'];
 
-  /* Bosses. Part coordinates are relative to the boss centre, facing +x.
+  /* Bosses. Part coordinates are relative to the boss centre, facing +x (the hull faces down-screen in flight).
      shieldBy: the core is invulnerable while parts of that type live (minimum left alive = shieldMin).
      weak: 'mouth' (core only vulnerable while the mouth is open), 'rear' (frontal arc armoured). */
   const BOSSES = {
@@ -100,8 +100,8 @@
       move: { type: 'stalk', dist: 520, speed: 70, turn: 0.45 },
       shieldBy: 'shield', shieldMin: 0,
       parts: [
-        { type: 'shield', x: -70, y: -74, hp: 540, r: 26 },
-        { type: 'shield', x: -70, y: 74, hp: 540, r: 26 },
+        { type: 'shield', x: -64, y: -110, hp: 540, r: 26 },
+        { type: 'shield', x: -64, y: 110, hp: 540, r: 26 },
         { type: 'beam', x: 52, y: -92, hp: 480, r: 24 },
         { type: 'beam', x: 52, y: 92, hp: 480, r: 24 },
         { type: 'turret', x: 0, y: -60, hp: 310, r: 20 },

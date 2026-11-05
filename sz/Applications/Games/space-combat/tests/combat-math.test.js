@@ -38,13 +38,14 @@ check('combo multiplier never drops as the chain grows', mono);
 /* every tree stat level improves the derived stat in the right direction */
 const fresh = R.defaultSave();
 const s0 = R.computeStats(fresh, 'falcon');
-fresh.tree = { d_hull: 5, d_shield: 5, e_thrust: 5, e_roll: 3, w_rate: 5, s_radar: 3, s_magnet: 3, s_salvage: 4, s_ability: 3 };
+fresh.tree = { d_hull: 5, d_shield: 5, e_thrust: 5, e_roll: 3, e_grip: 3, e_boost: 3, w_rate: 5, s_radar: 3, s_magnet: 3, s_salvage: 4, s_ability: 3 };
 const s1 = R.computeStats(fresh, 'falcon');
 check('hull and shield grow', s1.hull > s0.hull && s1.shield > s0.shield);
-check('thrust and speed grow', s1.thrust > s0.thrust && s1.speed > s0.speed);
-check('roll and special cooldowns shrink', s1.rollCd < s0.rollCd && s1.abilityCd < s0.abilityCd);
-check('radar, magnet, salvage and fire rate grow', s1.radar > s0.radar && s1.magnet > s0.magnet && s1.salvage > s0.salvage && s1.rateMul > s0.rateMul);
-check('specter brings radar and a drone', R.computeStats(R.defaultSave(), 'specter').escortDrones === 1);
+check('flight speed, dash distance and focus damage grow', s1.speed > s0.speed && s1.dashLen > s0.dashLen && s1.focusDmg > s0.focusDmg);
+check('dash and special cooldowns shrink', s1.dashCd < s0.dashCd && s1.abilityCd < s0.abilityCd);
+check('graze charge, magnet, salvage and fire rate grow', s1.graze > s0.graze && s1.magnet > s0.magnet && s1.salvage > s0.salvage && s1.rateMul > s0.rateMul);
+check('specter brings graze sensors and a drone', R.computeStats(R.defaultSave(), 'specter').escortDrones === 1 && R.computeStats(R.defaultSave(), 'specter').graze > s0.graze);
+check('every ship has an arcade speed and a dash cooldown', SHIPS.every(s => s.speed >= 250 && s.speed <= 420 && s.dash > 0.5 && s.dash < 2));
 
 /* weapon balance: every primary lands within a band of sustained damage */
 const dps = PRIMARIES.map(w => w.kind === 'beam' ? w.dps : w.dmg * (w.count || 1) / w.rate * (w.kind === 'flak' ? 1 + w.frags * w.frag / w.dmg * 0.35 : 1));

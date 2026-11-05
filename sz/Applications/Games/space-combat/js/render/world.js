@@ -1,21 +1,22 @@
-/* The battle scene in draw order, culled to the visible plane: dust, sector edge, black holes,
-   burning zones, pickups, mines, asteroids, allies, enemies, the boss, drones, the player, all
-   shots and beams, effects, nebula fog and the solar flare front. World units via the camera. */
+/* The play field in draw order, clipped to the field and culled: speed streaks, black holes,
+   burning zones, the jump gate, pickups, mines, asteroids, allies, enemies, the boss, drones,
+   the player, all shots and beams, effects, nebula fog and the solar flare band. World units
+   via the camera. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceCombat || (SZ.SpaceCombat = {});
   const G = NS.state;
-  const { VIEW_W, VIEW_H, TAU } = NS.constants;
+  const { VIEW_W, VIEW_H, TAU, PF_W, PF_H } = NS.constants;
   const K = NS.artKit;
   const P = NS.propArt;
   const A = NS.actors;
   const { COLORS, POWERUPS } = NS.ships;
   const { SECTORS } = NS.campaign;
-  const { ctx, visible } = NS.view;
+  const { ctx } = NS.view;
 
-  /* the visible plane in world coordinates */
+  /* the drawn part of the field in world coordinates */
   const wv = { x0: 0, y0: 0, x1: 0, y1: 0 };
   const bossBeams = [];
 
@@ -33,16 +34,18 @@
 
   function draw() {
     const cam = G.cam;
-    const v = visible();
     const ox = VIEW_W / 2 - cam.x + cam.ox, oy = VIEW_H / 2 - cam.y + cam.oy;
-    wv.x0 = v.x0 - ox; wv.y0 = v.y0 - oy; wv.x1 = v.x1 - ox; wv.y1 = v.y1 - oy;
-    const p = G.player;
-    NS.backdrop.drawDust(cam.x - cam.ox, cam.y - cam.oy, p ? p.vx : 0, p ? p.vy : 0);
+    /* only the field is drawn; a little margin so big ships slide in from the edge */
+    wv.x0 = -10; wv.y0 = -10; wv.x1 = PF_W + 10; wv.y1 = PF_H + 10;
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(VIEW_W / 2 - PF_W / 2, VIEW_H / 2 - PF_H / 2, PF_W, PF_H);
+    ctx.clip();
     ctx.translate(ox, oy);
-    drawEdge();
+    NS.backdrop.drawDust(G.scroll.y);
     drawHoles();
     drawZones();
+    drawGate();
     drawPickups();
     drawMines();
     drawRocks();
@@ -60,24 +63,25 @@
     ctx.restore();
   }
 
-  /* the sector border: a warning lattice when the player nears it */
-  function drawEdge() {
-    const W = G.world.w, H = G.world.h;
-    const p = G.player;
-    const near = p ? Math.min(p.x, p.y, W - p.x, H - p.y) : 9999;
-    const a = near < 500 ? 0.15 + (1 - near / 500) * 0.5 : 0.1;
-    ctx.strokeStyle = K.rgba('#ff5c6c', a);
+  /* the convoy's jump gate swings into view for the last stretch of an escort */
+  function drawGate() {
+    const g = G.stage && G.stage.rt && G.stage.rt.gate;
+    if (!g) return;
+    lighter();
+    const pulse = 1 + Math.sin(G.time * 4) * 0.05;
+    ctx.globalAlpha = 0.9;
+    K.blit(ctx, K.ringSprite('#9ad8ff'), g.x, g.y, g.r / 26 * pulse);
+    ctx.globalAlpha = 0.35;
+    K.blit(ctx, K.glow('#9ad8ff'), g.x, g.y, g.r / 12);
+    ctx.globalAlpha = 1;
+    normal();
+    ctx.strokeStyle = 'rgba(154,216,255,0.7)';
     ctx.lineWidth = 3;
-    ctx.setLineDash([24, 16]);
-    ctx.strokeRect(0, 0, W, H);
+    ctx.setLineDash([16, 10]);
+    ctx.beginPath();
+    ctx.arc(g.x, g.y, g.r * 1.15, G.time, G.time + TAU);
+    ctx.stroke();
     ctx.setLineDash([]);
-    if (near < 500) {
-      ctx.fillStyle = K.rgba('#ff5c6c', a * 0.12);
-      if (wv.x0 < 0) ctx.fillRect(wv.x0, wv.y0, -wv.x0, wv.y1 - wv.y0);
-      if (wv.y0 < 0) ctx.fillRect(wv.x0, wv.y0, wv.x1 - wv.x0, -wv.y0);
-      if (wv.x1 > W) ctx.fillRect(W, wv.y0, wv.x1 - W, wv.y1 - wv.y0);
-      if (wv.y1 > H) ctx.fillRect(wv.x0, H, wv.x1 - wv.x0, wv.y1 - H);
-    }
   }
 
   function drawHoles() {
@@ -193,7 +197,7 @@
         ctx.strokeStyle = K.rgba('#ff3a3a', 0.35);
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(m.x, m.y, 125 * (1 - m.trig / 0.55), 0, TAU);
+        ctx.arc(m.x, m.y, NS.hazards.MINE_BLAST * (1 - m.trig / 0.55), 0, TAU);
         ctx.stroke();
       }
     }
@@ -382,28 +386,42 @@
     ctx.globalAlpha = 1;
   }
 
-  /* the solar flare: a wall of light rolling across the sector */
+  /* the solar flare: a striped warning band that flashes faster, then a searing sheet of light */
   function drawFlare() {
     const f = G.flare;
-    if (!f || f.state !== 'sweep') return;
-    lighter();
-    const W = 260;
-    let gr;
-    if (f.dir === 0) {
-      gr = ctx.createLinearGradient(f.pos - W * f.sign, 0, f.pos + W * 0.3 * f.sign, 0);
-      gr.addColorStop(0, 'rgba(255,140,40,0)');
-      gr.addColorStop(0.8, 'rgba(255,200,120,0.45)');
-      gr.addColorStop(1, 'rgba(255,255,230,0.85)');
-      ctx.fillStyle = gr;
-      ctx.fillRect(Math.min(f.pos - W * f.sign, f.pos + W * 0.3 * f.sign), wv.y0, W * 1.3, wv.y1 - wv.y0);
-    } else {
-      gr = ctx.createLinearGradient(0, f.pos - W * f.sign, 0, f.pos + W * 0.3 * f.sign);
-      gr.addColorStop(0, 'rgba(255,140,40,0)');
-      gr.addColorStop(0.8, 'rgba(255,200,120,0.45)');
-      gr.addColorStop(1, 'rgba(255,255,230,0.85)');
-      ctx.fillStyle = gr;
-      ctx.fillRect(wv.x0, Math.min(f.pos - W * f.sign, f.pos + W * 0.3 * f.sign), wv.x1 - wv.x0, W * 1.3);
+    if (!f || !f.band || f.state === 'idle') return;
+    const b = f.band;
+    const horiz = b.axis === 'h';
+    const x = horiz ? 0 : b.pos - b.half, y = horiz ? b.pos - b.half : 0;
+    const w = horiz ? PF_W : b.half * 2, h = horiz ? b.half * 2 : PF_H;
+    if (f.state === 'warn') {
+      const k = 1 - f.t / NS.hazards.FLARE_WARN;
+      const on = Math.floor(G.time * (4 + k * 14)) % 2 === 0;
+      ctx.fillStyle = 'rgba(255,170,60,' + (0.06 + k * 0.12 + (on ? 0.08 : 0)) + ')';
+      ctx.fillRect(x, y, w, h);
+      /* hazard stripes along both edges */
+      ctx.strokeStyle = 'rgba(255,190,90,' + (0.4 + (on ? 0.4 : 0)) + ')';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([18, 12]);
+      ctx.lineDashOffset = -G.time * 60;
+      ctx.beginPath();
+      if (horiz) { ctx.moveTo(0, y); ctx.lineTo(PF_W, y); ctx.moveTo(0, y + h); ctx.lineTo(PF_W, y + h); }
+      else { ctx.moveTo(x, 0); ctx.lineTo(x, PF_H); ctx.moveTo(x + w, 0); ctx.lineTo(x + w, PF_H); }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+      return;
     }
+    lighter();
+    const k = Math.max(0, f.t / NS.hazards.FLARE_BURN);
+    const gr = horiz ? ctx.createLinearGradient(0, y, 0, y + h) : ctx.createLinearGradient(x, 0, x + w, 0);
+    gr.addColorStop(0, 'rgba(255,140,40,0)');
+    gr.addColorStop(0.3, 'rgba(255,200,120,' + 0.55 * k + ')');
+    gr.addColorStop(0.5, 'rgba(255,255,230,' + 0.95 * k + ')');
+    gr.addColorStop(0.7, 'rgba(255,200,120,' + 0.55 * k + ')');
+    gr.addColorStop(1, 'rgba(255,140,40,0)');
+    ctx.fillStyle = gr;
+    ctx.fillRect(x - (horiz ? 0 : 20), y - (horiz ? 20 : 0), w + (horiz ? 0 : 40), h + (horiz ? 40 : 0));
     normal();
   }
 
