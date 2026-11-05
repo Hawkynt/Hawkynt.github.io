@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Boulder Dash game -- dig through caves, collect gems, avoid falling boulders and enemies in your browser">
+<meta name="description" content="Free online Boulder Dash game -- dig through five themed depths of a 40-cave story with bosses and cinematics, plus Arcade, Zen, Daily Cave and Time Attack modes, a tech tree, power-ups, seasonal events, skins and autosave">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Boulder Dash -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online Boulder Dash game -- dig through caves, collect gems, avoid falling boulders and enemies in your browser">
+<meta property="og:description" content="Free online Boulder Dash game -- dig through five themed depths of a 40-cave story with bosses and cinematics, plus Arcade, Zen, Daily Cave and Time Attack modes, a tech tree, power-ups, seasonal events, skins and autosave">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/boulder-dash/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Boulder Dash",
   "url": "https://hawkynt.github.io/sz/Applications/Games/boulder-dash/index.html",
-  "description": "Free online Boulder Dash game -- dig through caves, collect gems, avoid falling boulders and enemies in your browser",
+  "description": "Free online Boulder Dash game -- dig through five themed depths of a 40-cave story with bosses and cinematics, plus Arcade, Zen, Daily Cave and Time Attack modes, a tech tree, power-ups, seasonal events, skins and autosave",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,18 +26,21 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=295c4ec9">
+<link rel="stylesheet" href="styles.css?v=ea263f3c">
 </head>
 <body>
-<noscript><p>Free online Boulder Dash game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online Boulder Dash game: a 40-cave story through five depths of Mount Ember, five bosses, Arcade, Zen, Daily Cave and Time Attack modes. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...</div>
+      <div class="menu-entry" data-action="wardrobe">Wardrobe...</div>
+      <div class="menu-entry" data-action="journal">Journal...</div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
@@ -54,27 +57,26 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-section" id="statusScore">Score: 0</div>
-  <div class="status-section" id="statusLevel">Level: 1</div>
-  <div class="status-section" id="statusGems">Gems: 0/0</div>
-  <div class="status-section" id="statusTime">Time: 0</div>
-  <div class="status-section" id="statusLives">Lives: 3</div>
-  <div class="status-section" id="statusState">Ready</div>
+  <div class="status-section" id="statusGold">Gold: 0</div>
+  <div class="status-section" id="statusStars">Stars: 0 / 120</div>
+  <div class="status-section" id="statusSeason">Event</div>
+  <div class="status-section" id="statusStreak">Streak: 0d</div>
+  <div class="status-section status-wide" id="statusState">Title</div>
 </div>
 
 <!-- High Scores Dialog -->
 <div class="dialog-overlay" id="highScoresBackdrop">
   <div class="dialog">
-    <div class="dialog-title">High Scores</div>
+    <div class="dialog-title">Arcade High Scores</div>
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Score</th><th>Level</th></tr>
+          <tr><th>#</th><th>Score</th><th>Cave</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -88,14 +90,18 @@
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
         <tr><td>Arrow Keys / WASD</td><td>Move &amp; dig</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Shift + direction</td><td>Grab: dig or collect without moving</td></tr>
+        <tr><td>Space</td><td>Drop dynamite</td></tr>
+        <tr><td>Escape / P</td><td>Pause menu</td></tr>
+        <tr><td>F2</td><td>Title screen (run is saved)</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
+        <tr><td>Mouse</td><td>Hold to walk toward the pointer, right click for dynamite</td></tr>
+        <tr><td>Touch</td><td>D-pad or swipe and hold; BOMB and GRAB buttons</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -106,11 +112,12 @@
 
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">About Boulder Dash</div>
     <div class="dialog-body">
       <strong>Boulder Dash</strong><br><br>
-      Dig through underground caves, collect gems, avoid falling boulders and enemies. Reach the gem quota to unlock the exit and advance to the next level. Features boulder physics, enemy AI, time limits, and explosive visual effects.<br><br>
+      The lamps of Emberfall went dark. Dig through the five depths of Mount Ember as Pip Ferrow, collect gems, outwit falling boulders, creatures and five bosses, and bring the light home.<br><br>
+      Story, Arcade, Zen, Daily Cave and Time Attack modes, a tech tree, power-ups, skins, seasonal events and daily quests. Progress is saved in your browser only.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -120,42 +127,71 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Boulder Dash - Free Online Cave Exploration Puzzle Game</h1>
-<p>Play Boulder Dash free in your browser -- dig through underground caves, collect gems, avoid falling boulders and enemies, and reach the exit before time runs out in this classic puzzle-action game.</p>
+<h1>Boulder Dash - Free Online Cave Digging Puzzle Game</h1>
+<p>Play Boulder Dash free in your browser -- dig through caves, collect gems, dodge falling boulders and creatures, and reach the exit. Follow Pip Ferrow through a 40-cave story across five themed depths of Mount Ember, each with a boss, or play Arcade, Zen, the Daily Cave and Time Attack.</p>
 <h2>Features</h2>
 <ul>
-<li>Grid-based cave with walls, dirt, boulders, gems, and an exit</li>
-<li>Dirt digging and smooth grid movement with lerp interpolation</li>
-<li>Boulder physics -- boulders fall when unsupported and slide off rounded objects</li>
-<li>Push boulders horizontally into empty spaces</li>
-<li>Gem collection with sparkle particle effects and floating score text</li>
-<li>Gem quota per level to unlock the exit</li>
-<li>Enemy AI with wall-following movement patterns</li>
-<li>Level progression with procedural cave generation and increasing difficulty</li>
-<li>Time limit per level with countdown timer and time bonus scoring</li>
-<li>Screen shake, gem glow effects, and level-complete confetti</li>
-<li>High score persistence and tutorial overlay</li>
+<li>Story mode: five chapters (Amber Mines, Frost Caverns, Glowshroom Grotto, Magma Forge, Crystal Heart), 40 caves, five bosses, cinematics and dialogue</li>
+<li>Classic boulder physics: falling, rolling, crushing, pushing, grabbing</li>
+<li>Fireflies, butterflies, moles, ice bats and spore moss</li>
+<li>Magic walls, powder barrels, sliding ice, lava and brick</li>
+<li>Eleven power-ups: dynamite, hard hat, hourglass, gem magnet, power drill, frost charm, lantern, swift boots, lucky clover, stopwatch, extra life</li>
+<li>Arcade score attack with combo multiplier, relaxing Zen mode, a Daily Cave with a daily twist and Time Attack</li>
+<li>Tech tree with 25 upgrades in five branches</li>
+<li>Seasonal events with tokens and rewards, 16 miner skins, dig trails and tile sets</li>
+<li>Achievements, daily quests, play streaks and lifetime statistics</li>
+<li>Automatic save and continue in the browser</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=39d30ad0"></script>
-<script src="js/core/constants.js?v=f5699894"></script>
-<script src="js/core/state.js?v=3a5dd467"></script>
-<script src="js/core/view.js?v=36df98b3"></script>
-<script src="js/systems/levelgen.js?v=8ce89537"></script>
-<script src="js/core/rules.js?v=8dd47816"></script>
-<script src="js/systems/game.js?v=9f0740ef"></script>
-<script src="js/render/tutorial.js?v=8d72b79e"></script>
-<script src="js/render/cave.js?v=43ac3a1c"></script>
-<script src="js/ui/input.js?v=e8124eb9"></script>
-<script src="js/ui/menu.js?v=def8c1e9"></script>
-<script src="js/ui/highscores.js?v=007daaf9"></script>
-<script src="js/app.js?v=7949fb60"></script>
+<script src="js/core/namespace.js?v=ddcffbc6"></script>
+<script src="js/core/constants.js?v=bd454467"></script>
+<script src="js/core/rng.js?v=3b4167e8"></script>
+<script src="js/core/data-story.js?v=0be5433c"></script>
+<script src="js/core/data-items.js?v=17205ee3"></script>
+<script src="js/core/data-meta.js?v=ddd7e71c"></script>
+<script src="js/core/state.js?v=c239f847"></script>
+<script src="js/core/progression.js?v=b5e747af"></script>
+<script src="js/core/save.js?v=b1b1e12d"></script>
+<script src="js/systems/levels.js?v=f3795ee1"></script>
+<script src="js/systems/cavegen.js?v=8380c71f"></script>
+<script src="js/systems/solver.js?v=0f399bac"></script>
+<script src="js/systems/physics.js?v=a01fbe81"></script>
+<script src="js/systems/creatures.js?v=6e457c5d"></script>
+<script src="js/systems/boss.js?v=53630f5d"></script>
+<script src="js/systems/player.js?v=7f087036"></script>
+<script src="js/systems/bot.js?v=27906035"></script>
+<script src="js/systems/fx.js?v=a3946306"></script>
+<script src="js/systems/run.js?v=0b53fee6"></script>
+<script src="js/systems/sim.js?v=3de1d802"></script>
+<script src="js/render/view.js?v=29f1dd44"></script>
+<script src="js/render/art-kit.js?v=1da57a2c"></script>
+<script src="js/render/tile-art.js?v=67b66ab7"></script>
+<script src="js/render/sprite-art.js?v=0e8c69ef"></script>
+<script src="js/render/creature-art.js?v=7c6fbaf3"></script>
+<script src="js/render/backdrop.js?v=3b75516b"></script>
+<script src="js/render/world.js?v=e952862d"></script>
+<script src="js/render/fx-render.js?v=618fd629"></script>
+<script src="js/ui/kit.js?v=bf560d25"></script>
+<script src="js/render/hud.js?v=280b3378"></script>
+<script src="js/render/frame.js?v=b0676063"></script>
+<script src="js/ui/screens.js?v=9afdfc93"></script>
+<script src="js/ui/cinema.js?v=44b1cd40"></script>
+<script src="js/ui/title.js?v=988970a4"></script>
+<script src="js/ui/map.js?v=4de5b517"></script>
+<script src="js/ui/tree.js?v=eb0ad3b4"></script>
+<script src="js/ui/wardrobe.js?v=c67761a0"></script>
+<script src="js/ui/journal.js?v=8d87468a"></script>
+<script src="js/ui/overlays.js?v=6e959f8d"></script>
+<script src="js/ui/help.js?v=e4b111b0"></script>
+<script src="js/ui/touch.js?v=1aeaa1ed"></script>
+<script src="js/ui/input.js?v=0ab19290"></script>
+<script src="js/ui/dom.js?v=4dcc1fc0"></script>
+<script src="js/app.js?v=aafc00b1"></script>
 </body>
 </html>
