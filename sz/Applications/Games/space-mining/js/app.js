@@ -1,78 +1,104 @@
-/* Loaded last: the status bar and window title, the requestAnimationFrame game
-   loop and the start-up sequence. */
+/* Bootstrap: the fixed 60 Hz loop (as many simulation steps as are due, then one draw), the
+   window menu bar, background pre-painting of belt art while menus are idle, and start-up.
+   Owns the loop clock. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
-  const C = NS.constants;
-  const T = NS.data;
-  const S = NS.state;
-  const D = NS.dom;
-  const A = NS.app;
+  const G = NS.state;
+  const { STEP, STEP_MS, MAX_STEPS, STEP_SNAP_MS } = NS.constants;
+  const { ZONES, ORES } = NS.ores;
+  const scr = NS.screens;
+  const User32 = SZ.Dlls && SZ.Dlls.User32;
 
-  /* ── Status Bar ── */
-  A.updateStatusBar = function updateStatusBar() {
-    if (D.statusCredits)
-      D.statusCredits.textContent = 'Credits: ' + S.credits;
-    if (D.statusCargo)
-      D.statusCargo.textContent = 'Cargo: ' + Math.floor(NS.economy.totalCargo()) + '/' + S.cargoMax;
-    if (D.statusState) {
-      let stateText = S.state === C.STATE_PLAYING ? 'Mining' : S.state;
-      if (S.shopOpen) stateText = 'Docked';
-      const activeList = Object.keys(S.activePowerups);
-      if (activeList.length > 0)
-        stateText += ' [' + activeList.map(k => T.POWERUP_DEFS[k].icon).join('') + ']';
-      D.statusState.textContent = stateText;
+  let last = 0;
+  let acc = 0;
+  let warm = 0;
+
+  function loop(ts) {
+    if (!last) last = ts;
+    let elapsed = ts - last;
+    last = ts;
+    if (Math.abs(elapsed - STEP_MS) < STEP_SNAP_MS) elapsed = STEP_MS;
+    acc = Math.min(acc + elapsed, STEP_MS * MAX_STEPS);
+    while (acc >= STEP_MS) {
+      acc -= STEP_MS;
+      NS.sim.update(STEP);
     }
-  };
+    NS.frame.draw();
+    NS.statusBar.tick(elapsed / 1000);
+    prewarm();
+    requestAnimationFrame(loop);
+  }
 
-  /* ── Window Title ── */
-  A.updateWindowTitle = function updateWindowTitle() {
-    const title = 'Space Mining - Credits: ' + S.credits;
-    document.title = title;
-    if (D.User32?.SetWindowText)
-      D.User32.SetWindowText(title);
-  };
+  /* paint one piece of belt art per idle menu frame so trips never stall on first sight */
+  const jobs = [];
+  for (let z = 0; z < ZONES.length; ++z) {
+    jobs.push(() => NS.backdropArt.nebulaLayer(z, ZONES[z].theme));
+    for (let t = 1; t <= 4; ++t)
+      for (let v = 0; v < 4; ++v) jobs.push(() => NS.rockArt.body(t, v, ZONES[z].theme.rock));
+  }
+  /* vein overlays only for the ore of belts already licensed */
+  const reach = NS.economy.reachableOres(G.save);
+  for (let i = 0; i < ORES.length; ++i) {
+    if (reach.indexOf(ORES[i].id) < 0) continue;
+    for (let t = 1; t <= 4; ++t)
+      for (let v = 0; v < 4; ++v) jobs.push(() => NS.rockArt.veins(t, v, ORES[i].id));
+  }
 
-  /* ── Game Loop ── */
-  A.gameLoop = function gameLoop(timestamp) {
-    const rawDt = S.lastTimestamp ? (timestamp - S.lastTimestamp) / 1000 : 0;
-    const dt = Math.min(rawDt, C.MAX_DT);
-    S.lastTimestamp = timestamp;
+  function prewarm() {
+    if (warm >= jobs.length || G.screen === 'playing' || G.time < 0.6) return;
+    const t0 = performance.now();
+    while (warm < jobs.length && performance.now() - t0 < 4) jobs[warm++]();
+  }
 
-    NS.flow.updateGame(dt);
+  if (SZ.MenuBar) {
+    new SZ.MenuBar({
+      onAction(action) {
+        switch (action) {
+          case 'new': scr.setScreen('title'); break;
+          case 'pause':
+            if (G.screen === 'playing') scr.pause();
+            else if (G.screen === 'paused') scr.resume();
+            break;
+          case 'tree':
+            if (G.cine) break;
+            if (G.screen === 'playing') { scr.pause(); scr.openTree('paused'); }
+            else if (G.screen === 'paused') scr.openTree('paused');
+            else if (scr.isMenu()) scr.openTree(G.screen === 'tree' ? G.treeReturn : G.screen);
+            break;
+          case 'high-scores':
+            if (G.screen === 'playing') scr.pause();
+            NS.statusBar.showHighScores();
+            break;
+          case 'exit': if (User32) User32.DestroyWindow(); break;
+          case 'tutorial':
+            if (G.cine) break;
+            if (G.screen === 'playing') scr.pause();
+            scr.openHelp(G.screen === 'paused' ? 'paused' : G.screen === 'help' ? G.helpReturn : G.screen);
+            break;
+          case 'controls': SZ.Dialog.show('controlsBackdrop'); break;
+          case 'about': SZ.Dialog.show('dlg-about'); break;
+        }
+      },
+    });
+  }
 
-    D.particles.update();
-    D.screenShake.update(dt * 1000);
-    D.floatingText.update();
+  if (User32) {
+    User32.EnableVisualStyles && User32.EnableVisualStyles();
+    User32.SetWindowText && User32.SetWindowText('Space Mining');
+  }
+  if (SZ.GameAudio) SZ.GameAudio.attachMuteButton();
+  document.body.tabIndex = -1;
 
-    D.ctx.clearRect(0, 0, C.CANVAS_W, C.CANVAS_H);
-    D.ctx.save();
-    D.screenShake.apply(D.ctx);
-    NS.scene.drawGame();
-    D.particles.draw(D.ctx);
-    D.floatingText.draw(D.ctx);
-    D.screenShake.restore(D.ctx);
-    D.ctx.restore();
-
-    S.animFrameId = requestAnimationFrame(A.gameLoop);
-  };
-
-  /* ── Init ── */
-  SZ.GameAudio.attachMuteButton();
-  D.setupCanvas();
-  NS.highscores.loadHighScores();
-  NS.highscores.loadTutorialSeen();
-  NS.world.initStars();
-  NS.world.initNebulae();
-  NS.world.initBgAsteroids();
-  NS.economy.randomizePrices();
-  NS.mining.spawnAsteroids();
-  NS.economy.resetCargo();
-  NS.economy.applyUpgrades();
-  S.hull = S.hullMax;
-  A.updateWindowTitle();
-  S.lastTimestamp = 0;
-  S.animFrameId = requestAnimationFrame(A.gameLoop);
+  NS.backdrop.setZone(0);
+  NS.statusBar.update();
+  if (!G.save.seenHelp) {
+    G.save.seenHelp = true;
+    scr.toast('New pilot? Press H for How to Play', '#ffb44a');
+  }
+  if (G.save.migrated && G.save.stats.trips === 0 && G.save.credits > NS.rules.START_CREDITS)
+    scr.toast('Welcome back, veteran - your best haul became ' + NS.kit.group(G.save.credits - NS.rules.START_CREDITS) + ' starting credits', '#ffd25a');
+  requestAnimationFrame(loop);
 })();

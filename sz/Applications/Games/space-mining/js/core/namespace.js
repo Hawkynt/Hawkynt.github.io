@@ -6,10 +6,11 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
 
-  /* state and dom are owned by their own modules, not pre-created here */
-  const MODULES = ['constants', 'data', 'world', 'economy', 'mining', 'ship', 'powerups',
-    'hints', 'flow', 'os', 'background', 'entities', 'hud', 'overlays', 'scene',
-    'input', 'highscores', 'menu', 'app'];
+  const MODULES = ['constants', 'rng', 'ores', 'ships', 'treeData', 'goals', 'rules', 'economy', 'save', 'audio',
+    'grid', 'fx', 'camera', 'ship', 'asteroids', 'mining', 'hazards', 'pirates', 'drones', 'trip', 'cinematics', 'sim',
+    'artKit', 'shipArt', 'rockArt', 'propArt', 'stationArt', 'backdropArt', 'view', 'backdrop', 'world', 'fxRender',
+    'hud', 'cineRender', 'kit', 'widgets', 'screens', 'statusBar', 'touch', 'title', 'station', 'shipyard', 'map',
+    'tree', 'help', 'pause', 'results', 'frame', 'input', 'app'];
   for (let i = 0; i < MODULES.length; ++i)
     NS[MODULES[i]] = NS[MODULES[i]] || {};
 })();

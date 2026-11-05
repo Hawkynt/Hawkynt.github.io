@@ -29,8 +29,9 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  cursor: crosshair;
+  cursor: default;
+  touch-action: none;
+  outline: none;
 }
 
 /* ---- Status Bar ---- */
