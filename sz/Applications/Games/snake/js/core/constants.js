@@ -1,95 +1,80 @@
-/* Cell size, storage keys, scoring and level constants, speed/field presets, the
-   direction vectors, the theme color tables, the power-up types and the game presets.
-   Pure data, owns no state. */
+/* Fixed numbers: the 1280 x 720 view plane and the 30 x 17 board inside it, the simulation
+   clock, snake and combo timings, pool sizes, storage keys and the UI palette and fonts.
+   Owns nothing that changes. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Snake || (SZ.Snake = {});
-  const C = NS.constants || (NS.constants = {});
 
-  C.CELL = 20;
-  C.STORAGE_KEY = 'sz-snake-high-scores';
-  C.CONFIG_KEY = 'sz-snake-config';
-  C.MAX_HIGH_SCORES = 5;
-  C.INITIAL_LENGTH = 3;
-  C.FOODS_PER_LEVEL = 5;
-  C.FOOD_SCORE_BASE = 10;
-  C.INTERVAL_STEP = 10;
-  C.AI_KILL_BONUS = 50;
-  C.AI_RESPAWN_DELAY = 3000;
-  C.POWERUP_SPAWN_DELAY = 3000;
-  C.POWERUP_LIFETIME = 15000;
-  C.POWERUP_BLINK_START = 12000;
+  Object.assign(NS.constants, {
+    VIEW_W: 1280,
+    VIEW_H: 720,
+    TAU: Math.PI * 2,
 
-  C.SPEED_PRESETS = {
-    slow:   { base: 200, min: 100 },
-    normal: { base: 150, min: 50 },
-    fast:   { base: 100, min: 40 },
-    insane: { base: 60,  min: 30 }
-  };
+    /* the board: cells of 38 plane pixels, centred below the HUD strip */
+    COLS: 30,
+    ROWS: 17,
+    CELL: 38,
+    BX: 70,
+    BY: 64,
 
-  C.FIELD_SIZES = {
-    small:  { cols: 15, rows: 15 },
-    medium: { cols: 20, rows: 20 },
-    large:  { cols: 80, rows: 60 }
-  };
+    /* fixed 60 Hz simulation, at most 5 catch-up steps after a stall */
+    STEP: 1 / 60,
+    STEP_MS: 1000 / 60,
+    MAX_STEPS: 5,
 
-  C.DIR = {
-    UP:    { x:  0, y: -1 },
-    DOWN:  { x:  0, y:  1 },
-    LEFT:  { x: -1, y:  0 },
-    RIGHT: { x:  1, y:  0 }
-  };
-  C.ALL_DIRS = [C.DIR.UP, C.DIR.DOWN, C.DIR.LEFT, C.DIR.RIGHT];
+    /* the snake */
+    START_LEN: 4,
+    INPUT_QUEUE: 3,
+    RESPAWN_IFRAMES: 2.2,
+    DEATH_TIME: 1.3,
 
-  C.AI_COLORS = [
-    { head: '#e88a2a', body: '#c76f1a' },
-    { head: '#9c27b0', body: '#7b1fa2' },
-    { head: '#00bcd4', body: '#0097a7' }
-  ];
+    /* scoring */
+    COMBO_WINDOW: 3.2,
+    COMBO_PER_STEP: 3,
+    COMBO_STEP_MUL: 0.5,
+    COMBO_CAP: 4,
+    FOOD_SCORE: 10,
 
-  C.TRON_COLORS = {
-    player: '#00e5ff',
-    ai: ['#ff6d00', '#d500f9', '#ff1744'],
-    bg: '#050510',
-    grid: 'rgba(0,100,255,0.06)',
-    width: 5
-  };
+    /* power-ups on the field */
+    POWER_LIFE: 12,
+    POWER_BLINK: 3,
+    POWER_EVERY: 10,
 
-  C.ZEN_COLORS = {
-    bg: '#0a1a0a',
-    grid: 'rgba(34,139,34,0.06)',
-    leafColors: ['#2e7d32', '#388e3c', '#4caf50', '#66bb6a', '#81c784', '#a5d6a7']
-  };
+    /* effects */
+    MAX_PARTICLES: 1400,
+    MAX_TEXTS: 40,
+    MAX_RINGS: 40,
+    MAX_SHAKE: 18,
 
-  C.MAZE_COLORS = {
-    bg: '#1a1208',
-    brick: '#8d6e4f',
-    mortar: '#3e2723',
-    darkBrick: '#5d4037',
-    flame: ['#ff6d00', '#ff9100', '#ffab00', '#ffd600'],
-    ember: ['#ff6d00', '#e65100', '#bf360c', '#4e342e'],
-    coin: '#ffd700',
-    coinHighlight: '#fff8e1'
-  };
+    /* autosave cadence while playing, seconds */
+    AUTOSAVE_EVERY: 3,
 
-  C.POWERUP_TYPES = [
-    { id: 'speed',  name: 'Speed+',  color: '#ffeb3b', icon: 'lightning', duration: 8000 },
-    { id: 'slow',   name: 'Slow',    color: '#00e5ff', icon: 'clock',     duration: 8000 },
-    { id: 'shield', name: 'Shield',  color: '#448aff', icon: 'star',      duration: Infinity },
-    { id: 'shrink', name: 'Shrink',  color: '#e040fb', icon: 'minus',     duration: 0 },
-    { id: 'magnet', name: 'Magnet',  color: '#ff9100', icon: 'diamond',   duration: 10000 },
-    { id: 'ghost',  name: 'Ghost',   color: '#ffffff', icon: 'circle',    duration: 5000 }
-  ];
+    SAVE_KEY: 'sz-snake-save-v2',
+    RUN_KEY: 'sz-snake-run-v2',
+    OLD_SCORES_KEY: 'sz-snake-high-scores',
+    OLD_CONFIG_KEY: 'sz-snake-config',
+    MAX_HIGH_SCORES: 10,
 
-  C.PRESETS = {
-    classic:      { walls: 'solid', obstacles: 'none',    enemies: 0, powerups: false, fieldSize: 'medium', speed: 'normal' },
-    tron:         { walls: 'wrap',  obstacles: 'none',    enemies: 2, powerups: false, fieldSize: 'medium', speed: 'fast', visualTheme: 'tron' },
-    mazeRunner:   { walls: 'solid', obstacles: 'maze',    enemies: 0, powerups: true,  fieldSize: 'large',  speed: 'normal', visualTheme: 'maze' },
-    battleRoyale: { walls: 'wrap',  obstacles: 'random',  enemies: 3, powerups: true,  fieldSize: 'large',  speed: 'fast' },
-    zen:          { walls: 'wrap',  obstacles: 'none',    enemies: 0, powerups: true,  fieldSize: 'medium', speed: 'slow', visualTheme: 'zen' }
-  };
+    FONT: '"Segoe UI", "Trebuchet MS", Tahoma, Arial, sans-serif',
+    TITLE_FONT: '"Trebuchet MS", "Segoe UI", Verdana, sans-serif',
 
-  C.DEFAULT_CONFIG = { ...C.PRESETS.classic };
+    UI: {
+      panelTop: 'rgba(22,40,30,0.94)',
+      panelBottom: 'rgba(8,18,14,0.96)',
+      accent: '#7ee07a',
+      accentDeep: '#2e8b3e',
+      gold: '#ffd25a',
+      goldDeep: '#b8860b',
+      text: '#eef8ea',
+      textDim: '#a8c4a6',
+      textMute: '#62786a',
+      good: '#7cff9a',
+      bad: '#ff6a6a',
+      warn: '#ffb347',
+      sky: '#6fd3ff',
+      violet: '#c08cff',
+    },
+  });
 })();

@@ -1,58 +1,75 @@
-/* S, the one shared mutable state object: the game configuration and canvas
-   geometry, the player snake and its input queue, the food and power-up, the run's
-   score/level/foods and flags, the timings, the obstacles and AI snakes, the theme
-   decorations, the high scores and the mouse-steering bookkeeping. */
+/* The one shared game state object, SZ.Snake.state (G in every module): the screen and where
+   sub-screens return to, the profile save and the stats the tech tree adds up to, the run being
+   played (plain data, so it can be autosaved and restored whole) and its seeded generator, the
+   calendar context, feel timers, input, menu hit areas and per-screen UI state. Systems mutate
+   it; render and UI read it. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Snake || (SZ.Snake = {});
-  const C = NS.constants;
 
-  NS.state = NS.state || {
-    /* ---- Game Config ---- */
-    gameConfig: { ...C.DEFAULT_CONFIG },
-    cols: undefined,
-    rows: undefined,
-    canvasW: undefined,
-    canvasH: undefined,
-    dpr: undefined,
+  NS.state = {
+    /* screens: title, modes, map, playing, paused, results, tree, wardrobe, journal, help, cine */
+    screen: 'title',
+    screenT: 0,
+    time: 0,
+    back: { tree: 'title', wardrobe: 'title', journal: 'title', help: 'title' },
 
-    /* ---- State ---- */
-    snake: undefined,
-    prevSnake: undefined,
-    direction: undefined,
-    nextDirection: undefined,
-    inputQueue: undefined,
-    food: undefined,
-    score: undefined,
-    level: undefined,
-    foodsEaten: undefined,
-    gameActive: undefined,
-    gamePaused: undefined,
-    gameOverFlag: undefined,
-    waitingToStart: undefined,
-    lastMoveTime: undefined,
-    animFrameId: undefined,
-    lastTimestamp: undefined,
-    lerpT: undefined,
-    pausedForDialog: undefined,
-    obstacles: undefined,
-    aiSnakes: undefined,
-    fieldPowerup: undefined,
-    activePowerups: undefined,
-    lastPowerupTime: undefined,
-    dialogGen: undefined,
-    pendingVisualTheme: undefined,
-    zenLeaves: undefined,
-    mazeBrickCanvas: undefined,
+    save: null,
+    stats: null,
 
-    /* ---- High Scores ---- */
-    highScores: [],
+    /* the run: all plain data (see run.js); null on the menus */
+    run: null,
+    rng: null,
+    /* the snake body before the last step, for smooth movement between steps */
+    prevBody: [],
+    prevEnemy: [],
 
-    /* ---- Mouse / Touch controls ---- */
-    mouseCanvasX: -1,
-    mouseCanvasY: -1,
-    mouseControlActive: false
+    /* calendar: today's key, the running festival and its event id, this week's mutator */
+    today: '',
+    season: null,
+    eventId: '',
+    weekly: null,
+
+    /* feel */
+    shake: 0,
+    shakeX: 0,
+    shakeY: 0,
+    flash: 0,
+    flashColor: '#ffffff',
+    hitstop: 0,
+    slowmo: 0,
+    zoom: 0,
+
+    /* the active cinematic: { id, shots, i, t, typed, then } */
+    cine: null,
+
+    input: {
+      keys: {}, mouseX: 0, mouseY: 0, mouseMoved: 0, touch: false, touchSeen: false,
+      spitQ: false,
+    },
+
+    hitAreas: [],
+    menuCursor: 0,
+
+    ui: {
+      toast: null,
+      toasts: [],
+      treeSel: 'hide',
+      treeFlash: 0,
+      treeFlashId: '',
+      wardrobeTab: 'skin',
+      wardrobeSel: 'garden',
+      journalTab: 'goals',
+      mapWorld: 0,
+      mapSel: 0,
+      modeSel: 'story',
+      results: null,
+      helpPage: 0,
+      pauseConfirm: false,
+    },
+
+    perf: { sim: 0, draw: 0, simAvg: 0, drawAvg: 0, frames: 0 },
   };
 })();
