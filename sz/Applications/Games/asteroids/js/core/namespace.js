@@ -1,19 +1,18 @@
-/* The SZ.Asteroids namespace: every function module gets its empty object here,
-   in the order the later modules fill them. State and DOM objects are owned by
-   the modules that create them. */
+/* The game namespace SZ.Asteroids with one empty object per module, created up front so modules
+   can keep references to modules that load after them. Owns nothing else. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Asteroids || (SZ.Asteroids = {});
 
-  NS.MODULES = [
-    'constants', 'tables', 'rules', 'entities', 'zones', 'powerups', 'combo',
-    'shockwaves', 'warp', 'shooting', 'destruction', 'collision', 'spawn', 'homing',
-    'background', 'flow', 'os', 'starfield', 'shipView', 'asteroidView', 'bulletView',
-    'enemyView', 'powerupView', 'zoneView', 'effectView', 'hud', 'screens', 'scene',
-    'status', 'highscores', 'menu', 'input', 'app'
-  ];
-  for (const name of NS.MODULES)
-    NS[name] = NS[name] || {};
+  const MODULES = ['constants', 'rng', 'rockData', 'enemyData', 'powerData', 'campaign', 'treeData', 'cosmetics', 'goalData',
+    'seasons', 'rules', 'save', 'audio',
+    'grid', 'fx', 'ship', 'weapons', 'rocks', 'enemies', 'bosses', 'powerups', 'hazards', 'collision', 'waves', 'progress',
+    'cinematics', 'snapshot', 'sim', 'bot',
+    'artKit', 'rockArt', 'shipArt', 'enemyArt', 'propArt', 'view', 'backdrop', 'world', 'fxRender', 'cineRender',
+    'kit', 'widgets', 'screens', 'hud', 'title', 'map', 'story', 'tree', 'wardrobe', 'goals', 'results', 'pause', 'help',
+    'touch', 'statusBar', 'frame', 'input', 'app'];
+  for (let i = 0; i < MODULES.length; ++i)
+    NS[MODULES[i]] = NS[MODULES[i]] || {};
 })();
