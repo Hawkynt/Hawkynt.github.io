@@ -1,205 +1,157 @@
-/* The arena: level layout generation, the hidden power-up placement, the grass
-   detail seed, the walkability rules per actor and the enemy spawning. */
+/* The live arena of the run: tile queries, the per-step caches (which bomb and how many enemies
+   sit on each cell, teleporter pairs), walkability for each kind of mover, breaking bricks and
+   crates (debris, score, stats) and revealing what was hidden under them. Mutates G.run.level
+   and owns G.lvl. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Bomberman || (SZ.Bomberman = {});
   const C = NS.constants;
-  const T = NS.data;
-  const S = NS.state;
-  const A = NS.arena = NS.arena || {};
+  const G = NS.state;
+  const { COLS, ROWS, T_EMPTY, T_HARD, T_SOFT, T_CRATE, T_TELE } = C;
+  const N = COLS * ROWS;
 
-  A.generateGrassDetails = function generateGrassDetails() {
-    S.grassSeed = [];
-    for (let i = 0; i < C.ROWS * C.COLS; ++i)
-      S.grassSeed[i] = Array.from({ length: 3 }, () => ({
-        x: Math.random() * C.TILE_SIZE,
-        y: Math.random() * C.TILE_SIZE,
-        s: 0.5 + Math.random()
-      }));
-  };
+  function idx(c, r) {
+    return r * COLS + c;
+  }
 
-  /* ── Grid Generation ── */
-  A.generateArena = function generateArena(level) {
-    S.grid = [];
-    for (let r = 0; r < C.ROWS; ++r) {
-      S.grid[r] = [];
-      for (let c = 0; c < C.COLS; ++c) {
-        // Border walls
-        if (r === 0 || r === C.ROWS - 1 || c === 0 || c === C.COLS - 1)
-          S.grid[r][c] = C.WALL;
-        // Indestructible pillars at even row & col (alternating pattern using % 2)
-        else if (r % 2 === 0 && c % 2 === 0)
-          S.grid[r][c] = C.WALL;
-        else
-          S.grid[r][c] = C.EMPTY;
+  function inside(c, r) {
+    return c >= 0 && r >= 0 && c < COLS && r < ROWS;
+  }
+
+  function tileAt(c, r) {
+    return inside(c, r) ? G.run.level.grid[idx(c, r)] : T_HARD;
+  }
+
+  function isBlock(t) {
+    return t === T_HARD || t === T_SOFT || t === T_CRATE;
+  }
+
+  /* Rebuilds the per-step lookups after bombs or enemies moved */
+  function rebuild() {
+    const L = G.lvl;
+    if (!L.bombAt) {
+      L.bombAt = new Int32Array(N);
+      L.enemyAt = new Uint8Array(N);
+    }
+    L.bombAt.fill(-1);
+    L.enemyAt.fill(0);
+    const run = G.run;
+    for (let k = 0; k < run.bombs.length; ++k) {
+      const b = run.bombs[k];
+      if (!b.fly) L.bombAt[b.i] = k;
+    }
+    for (let k = 0; k < run.enemies.length; ++k) {
+      const e = run.enemies[k];
+      const i = idx(Math.round(e.x), Math.round(e.y));
+      if (i >= 0 && i < N && L.enemyAt[i] < 255) ++L.enemyAt[i];
+    }
+    if (L.dirty) {
+      /* teleporters pair up in reading order: first with second, third with fourth */
+      L.teleTo = {};
+      const list = [];
+      const g = run.level.grid;
+      for (let i = 0; i < N; ++i) if (g[i] === T_TELE) list.push(i);
+      for (let k = 0; k + 1 < list.length; k += 2) {
+        L.teleTo[list[k]] = list[k + 1];
+        L.teleTo[list[k + 1]] = list[k];
       }
+      L.dirty = false;
     }
+  }
 
-    // Place destructible walls with density increasing per level
-    const density = Math.min(0.3 + level * 0.05, 0.7);
-    for (let r = 1; r < C.ROWS - 1; ++r) {
-      for (let c = 1; c < C.COLS - 1; ++c) {
-        if (S.grid[r][c] !== C.EMPTY)
-          continue;
-        // Keep player spawn area clear (top-left)
-        if (r <= 2 && c <= 2)
-          continue;
-        if (Math.random() < density)
-          S.grid[r][c] = C.DESTRUCTIBLE;
-      }
-    }
+  function bombAtCell(c, r) {
+    if (!inside(c, r)) return null;
+    const k = G.lvl.bombAt[idx(c, r)];
+    return k >= 0 ? G.run.bombs[k] : null;
+  }
 
-    // Place hidden power-ups under some destructible walls
-    S.hiddenPowerUps = {};
-    const destructibles = [];
-    for (let r = 1; r < C.ROWS - 1; ++r)
-      for (let c = 1; c < C.COLS - 1; ++c)
-        if (S.grid[r][c] === C.DESTRUCTIBLE)
-          destructibles.push(r + ',' + c);
+  /* Can the player stand on (c, r)? Bombs block unless passable or being stood on already */
+  function playerCan(c, r, p) {
+    const t = tileAt(c, r);
+    if (t === T_HARD) return false;
+    if ((t === T_SOFT || t === T_CRATE) && !(p.wallpass && t === T_SOFT)) return false;
+    const b = bombAtCell(c, r);
+    if (b && !p.bombpass && p.onBomb.indexOf(b.id) < 0) return false;
+    return true;
+  }
 
-    const numPowerUps = Math.min(4 + level, destructibles.length);
-    for (let i = 0; i < numPowerUps && destructibles.length > 0; ++i) {
-      const idx = Math.floor(Math.random() * destructibles.length);
-      const key = destructibles.splice(idx, 1)[0];
-      S.hiddenPowerUps[key] = T.randomPowerUpType();
-    }
-    A.generateGrassDetails();
-  };
+  /* Can an enemy enter (c, r)? Ghosts pass bricks; nobody walks into fire or bombs */
+  function enemyCan(c, r, e, avoidFire) {
+    const t = tileAt(c, r);
+    if (t === T_HARD || t === T_CRATE) return false;
+    if (t === T_SOFT && !(e && e.ghost)) return false;
+    if (t === T_TELE) return false;
+    if (bombAtCell(c, r)) return false;
+    if (avoidFire !== false && G.run.fire[idx(c, r)] > 0) return false;
+    return true;
+  }
 
-  /* ── isWalkable ── */
-  A.isWalkable = function isWalkable(col, row) {
-    if (col < 0 || col >= C.COLS || row < 0 || row >= C.ROWS)
-      return false;
-    const cell = S.grid[row][col];
-    return cell === C.EMPTY;
-  };
+  /* Can a sliding bomb move into (c, r)? */
+  function bombCan(c, r) {
+    const t = tileAt(c, r);
+    if (isBlock(t)) return false;
+    if (bombAtCell(c, r)) return false;
+    if (G.lvl.enemyAt[idx(c, r)]) return false;
+    if (G.run.boss && NS.bosses.blocksCell(c, r)) return false;
+    return true;
+  }
 
-  /* ── isPlayerWalkable (climb lets player walk over destructible walls) ── */
-  A.isPlayerWalkable = function isPlayerWalkable(col, row) {
-    if (col < 0 || col >= C.COLS || row < 0 || row >= C.ROWS)
-      return false;
-    const cell = S.grid[row][col];
-    if (cell === C.EMPTY)
+  /* Breaks a brick (or cracks a crate) hit by fire; returns true if the blast stops here */
+  function hitBlock(i, byPlayer) {
+    const run = G.run;
+    const g = run.level.grid;
+    const t = g[i];
+    const c = i % COLS, r = (i / COLS) | 0;
+    if (t === T_CRATE) {
+      g[i] = T_SOFT;
+      NS.fx.debris(c, r, '#9aa4b0', 6);
+      NS.fx.sfx('thud', { pitch: 1.3, volume: 0.5 });
+      run.levelDirty = true;
       return true;
-    if (S.hasClimb && cell === C.DESTRUCTIBLE)
-      return true;
-    return false;
-  };
-
-  /* ── isEnemyWalkable (per-type walkability) ── */
-  A.isEnemyWalkable = function isEnemyWalkable(enemy, col, row) {
-    if (col < 0 || col >= C.COLS || row < 0 || row >= C.ROWS)
-      return false;
-    const cell = S.grid[row][col];
-    if (cell === C.EMPTY)
-      return true;
-    if (enemy.type === 'climber' && cell === C.DESTRUCTIBLE)
-      return true;
-    if (enemy.type === 'ghost' && enemy.phasing)
-      return cell !== undefined; // can walk through anything in-bounds
-    return false;
-  };
-
-  /* ── hasBomb at position ── */
-  A.hasBombAt = function hasBombAt(col, row) {
-    for (const b of S.bombs)
-      if (b.col === col && b.row === row)
-        return true;
-    return false;
-  };
-
-  /* ── Spawn Enemies ── */
-  A.spawnEnemies = function spawnEnemies(level) {
-    S.enemies = [];
-    const count = C.NUM_ENEMIES + Math.floor(level / 2);
-
-    // Build eligible pool with weights
-    const eligible = T.ENEMY_TYPES.filter(t => level >= t.minLevel);
-    const weights = eligible.map(t => {
-      const base = (t.type === 'slow' || t.type === 'normal' || t.type === 'fast') ? 10 : 0;
-      const bonus = Math.max(0, level - t.minLevel + 1);
-      return base + bonus;
-    });
-    const totalWeight = weights.reduce((s, w) => s + w, 0);
-
-    function pickType() {
-      let roll = Math.random() * totalWeight;
-      for (let i = 0; i < eligible.length; ++i) {
-        roll -= weights[i];
-        if (roll <= 0)
-          return eligible[i];
-      }
-      return eligible[0];
     }
+    if (t !== T_SOFT) return t === T_HARD;
+    g[i] = T_EMPTY;
+    run.levelDirty = true;
+    ++run.blocks;
+    NS.tracker.stat('blocks', 1);
+    if (run.mode === 'zen') NS.tracker.stat('zenBlocks', 1);
+    if (byPlayer) NS.run.addScore(C.BLOCK_POINTS, c, r, true);
+    NS.fx.crumble(c, r);
+    reveal(i);
+    return true;
+  }
 
-    // Guarantee at least 1 of each newly unlocked type
-    const guaranteed = [];
-    for (const t of T.ENEMY_TYPES)
-      if (level === t.minLevel && t.minLevel > 1)
-        guaranteed.push(t);
-
-    const toSpawn = [];
-    for (const g of guaranteed)
-      toSpawn.push(g);
-    while (toSpawn.length < count)
-      toSpawn.push(pickType());
-
-    for (const typeDef of toSpawn) {
-      let col, row;
-      const canSpawnOnDestructible = typeDef.type === 'climber' || typeDef.type === 'ghost';
-      do {
-        col = 3 + Math.floor(Math.random() * (C.COLS - 4));
-        row = 3 + Math.floor(Math.random() * (C.ROWS - 4));
-      } while (
-        (canSpawnOnDestructible
-          ? S.grid[row][col] === C.WALL
-          : S.grid[row][col] !== C.EMPTY) ||
-        (col <= 3 && row <= 3)
-      );
-
-      const hp = typeDef.type === 'tank' ? 2 + Math.floor(level / 5) : typeDef.hp;
-      const enemy = {
-        col, row,
-        x: col * C.TILE_SIZE + C.TILE_SIZE / 2,
-        y: row * C.TILE_SIZE + C.TILE_SIZE / 2,
-        type: typeDef.type,
-        speed: typeDef.speed,
-        hp,
-        maxHp: hp,
-        hitTimer: 0,
-        moveTimer: 0,
-        moveDir: null,
-        targetCol: col,
-        targetRow: row,
-        moveProgress: 0,
-        alive: true,
-        facing: 0,
-        walkFrame: 0,
-        walkTimer: 0
-      };
-
-      // Ghost-specific phase fields
-      if (typeDef.type === 'ghost') {
-        enemy.phaseTimer = 0;
-        enemy.phasing = false;
-      }
-
-      S.enemies.push(enemy);
+  /* Turns what was hidden under a broken brick into a pickup (or shows the exit) */
+  function reveal(i) {
+    const run = G.run;
+    const h = run.level.hidden[i];
+    if (!h) {
+      /* bricks in zen and on later arcade arenas sometimes drop a gem on their own */
+      if (run.mode === 'zen' && NS.run.rand() < 0.22) NS.items.spawn('gem', i, 0.4);
+      return;
     }
-  };
+    delete run.level.hidden[i];
+    if (h === 'exit') {
+      run.exitShown = true;
+      run.exitAt = i;
+      NS.fx.sparkle(i % COLS, (i / COLS) | 0, '#9af0ff', 18);
+      NS.fx.sfx('zap', { pitch: 1.4, volume: 0.6 });
+      NS.fx.text(i % COLS, (i / COLS) | 0, 'EXIT', '#9af0ff', 18);
+      return;
+    }
+    NS.items.spawn(h, i, 0.6);
+  }
 
-  /* ── Reset player to spawn position ── */
-  A.resetPlayerPosition = function resetPlayerPosition() {
-    S.player.col = 1;
-    S.player.row = 1;
-    S.player.x = 1 * C.TILE_SIZE + C.TILE_SIZE / 2;
-    S.player.y = 1 * C.TILE_SIZE + C.TILE_SIZE / 2;
-    S.player.moveProgress = 0;
-    S.player.moveDir = null;
-    S.player.facing = 0;
-    S.player.walkFrame = 0;
-    S.player.walkTimer = 0;
-  };
+  function countBricks() {
+    const g = G.run.level.grid;
+    let n = 0;
+    for (let i = 0; i < N; ++i) if (g[i] === T_SOFT || g[i] === T_CRATE) ++n;
+    return n;
+  }
+
+  Object.assign(NS.arena, {
+    N, idx, inside, tileAt, isBlock, rebuild, bombAtCell, playerCan, enemyCan, bombCan, hitBlock, reveal, countBricks
+  });
 })();

@@ -742,7 +742,7 @@
         icon: 'Games/bomberman/icon.svg',
         type: 'iframe',
         entry: 'Games/bomberman/index.html',
-        width: 640,
+        width: 960,
         height: 600,
         resizable: true,
         minimizable: true,
