@@ -1,275 +1,162 @@
 # Snake
 
-## Purpose
-
-Snake game with multiple game modes. Guide a growing snake to eat food while avoiding collisions. Choose from presets (Classic, Tron, Maze Runner, Battle Royale, Zen) or customize walls, obstacles, AI enemies, power-ups, field size, and speed. Part of the SynthelicZ Desktop game collection.
+The classic snake game grown into an adventure for the SynthelicZ Desktop. Follow Sola the garden snake through five worlds -- thirty levels with golden eggs to find and five guardian bosses to free -- to bring the stolen Sun Seeds home, or play endless Arcade, relaxing Zen, the seeded Daily Garden, Time Attack and Guardian Rush. Twelve power-ups, seven kinds of critters, ice, quicksand, spike traps, lava vents, laser gates, crates and portals, a 25-node tech tree, 20 skins, 14 trails, 14 hats and 8 board themes, six seasonal festivals, daily quests, streaks and 30 achievements -- all drawn with procedural canvas art, and every run saves itself.
 
 ## How It Works
 
-Canvas-based game with HiDPI support. The snake moves on a fixed-interval tick system with linear interpolation between ticks for smooth rendering. Grid size adapts to the selected field size (15x15, 20x20, or 80x60 at 20px logical cell size). The canvas scales to fill the available window viewport while preserving aspect ratio -- the window can be freely resized or maximized and the game scales to fit. A New Game options dialog appears at launch and on F2/Space, allowing full mode customization. Configuration persists to localStorage.
+The game runs a fixed 60 Hz simulation and draws one frame per display refresh. The view is a 1280 x 720 plane fitted into the window; the 30 x 17 board sits below a HUD strip and the theme's scenery fills every extra pixel of a wider or taller window. Pointer positions are mapped back into the plane on every event, so clicks stay exact after resizing or maximizing.
+
+The snake still moves one cell per step. Turns are queued (up to three, never a reversal), the step clock speeds up with Dash and slows in quicksand, and the head cannot turn while it slides across ice. Between steps every body segment glides from its previous cell, so movement is smooth while the rules stay on the grid. What the head runs into decides everything: fruit grows it and builds a combo (every three fruit in time raise the multiplier), power-ups apply at once, Scale Armor turns a crash into a bounce, a Sun Shard lets it smash crates, eat critters and ram guardians, and in Zen biting your own body only sheds the tail as petals. An occupancy grid of snakes, critters and the guardian is rebuilt each step, so every collision is a single array read.
+
+Levels are built from seeded layout motifs (open fields, pillars, rows, crosses, rings, zigzags, rooms, an arena and a braided maze) drawn with four-way symmetry, then hazards, portal pairs and crates are placed so nothing is ever cut off, unreachable pockets are walled in and three golden eggs are spread far from the start. Every story level is validated and then played to the end by the built-in autopilot in the tests -- the same breadth-first bot that plays the title-screen demo -- which proves all thirty levels, the five guardian fights included, can be cleared. Guardians telegraph every attack with flashing warning cells before it lands, and line attacks always run along the snake's heading so turning off them is always possible.
+
+All art is procedural and painted once into cached canvases: scale discs for every skin pattern, heads with blinking eyes and hats, fruit and tokens, critters and guardians in two animation frames, board tiles per theme composed into one cached board layer (rebuilt only when a crate breaks), and full scenery per theme. Per frame the game only blits sprites, adds glows and strokes; no blur filters are used. Effects come from a pooled particle system in flat typed arrays (glows, leaves, petals, stars, hearts, snow, confetti, bats, bubbles), shockwave rings, floating score text with a pop, screen shake, hit-stop, slow motion on a guardian's defeat and screen flashes. A busy board -- a 70-segment snake, a dozen critters, every aura and 800 particles -- costs about 4 ms of script per frame in Chromium.
+
+Progress lives in one versioned profile (scales, tree levels, story stars and best scores, freed guardians, owned and equipped cosmetics, achievements, statistics, streak, quests, festival tracks, Daily Garden bests, high scores). The old game's high-score list and options are carried over on first start (the Tron preset becomes the Light Cycle skin, veterans get the Pocket LCD board) and the old keys are left untouched. The run itself is plain data and is autosaved every three seconds, on pause, when the tab is hidden and when the page is left; Continue on the title restores it exactly, paused, and the tests prove a restored run plays on step for step like the original.
+
+The calendar drives the rest without any server: one of six festivals runs at any date (Frostfall, Bloom Festival, Sunfest, Harvest Moon, Hollow Night, Starfall Eve) with its own decor, colour wash, token and a five-tier reward track of exclusive skins, trails and hats; three daily quests and the Daily Garden board are seeded by the local date; Arcade gets a new mutator every ISO week; and playing on consecutive days pays a growing streak gift.
 
 ## Architecture
 
-- **`index.html`** -- Menu bar (Game/Help), canvas, status bar (score/length/level/effects), dialogs (Options, High Scores, Controls, About)
-- **`js/`** -- the game under `SZ.Snake`, one module per domain, loaded in dependency order:
-  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- cell/field/speed tables, colors, presets; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas and status refs, canvas setup; `js/core/effects.js` -- particle/shake/text/audio singletons; `js/core/rules.js` -- pure rules, occupancy and interpolation math
-  - `js/systems/obstacles.js` -- random/maze/growing obstacles; `js/systems/ai.js` -- AI snakes with BFS pathfinding; `js/systems/powerups.js` -- power-up engine; `js/systems/game.js` -- tick-based movement, eating, death, pause, new game
-  - `js/render/themes.js` -- zen leaves and maze brick/torch/coin decorations; `js/render/snake.js` -- snake bodies and Tron riders; `js/render/board.js` -- grid, food, overlays, frame composition, status bar
-  - `js/ui/highscores.js` -- high-score table and dialog; `js/ui/options.js` -- options dialog and config persistence; `js/ui/menu.js` -- menu bar; `js/ui/input.js` -- keyboard and pointer input
-  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
-- **`styles.css`** -- Game layout, options dialog fieldsets, status bar
-- **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
+The code lives in `js/` as plain scripts on the `SZ.Snake` namespace, loaded in order by `index.html` (no build step, no modules). All shared game state sits in one object, `SZ.Snake.state` (`G` in every module); each module states at its top what it owns.
 
-## Features
+- **`index.html`** -- Menu bar (Game: Title Screen, Pause, Tech Tree, Collection, Journal, High Scores, Exit; Help: How to Play, Controls, About), canvas, status bar, dialogs; loads the modules below in order
+- **`styles.css`** -- Window chrome: game frame, canvas, status bar, dialog tables
 
-### Game Modes & Options
+Core (`js/core/`):
 
-Every new game opens an options dialog with:
+- **`namespace.js`** -- The `SZ.Snake` namespace with one object per module
+- **`constants.js`** -- View plane, board size and placement, simulation clock, snake and combo timings, pool sizes, storage keys, UI palette and fonts
+- **`rng.js`** -- Seeded generators whose state is one number, string hashing, local day and ISO week keys, day distances, clamp, lerp and easing
+- **`data-worlds.js`** -- Seven board themes and the five worlds with six level recipes each (motif, fruit goal, speed, critters, hazards, crates, portals) and the five guardians
+- **`data-story.js`** -- The cast and every cinematic as a list of shots with scene, speaker and line
+- **`data-items.js`** -- Tile legend and hazard timing, fruit kinds, the twelve power-ups, the seven critters, the six modes
+- **`data-tree.js`** -- The tech tree: five branches, 25 nodes with costs per level, prerequisites, grid slots and stats
+- **`data-cosmetics.js`** -- Skins, trails, hats and board themes with their unlock rules
+- **`data-goals.js`** -- Achievements, the daily quest pool, streak gifts and the statistics list
+- **`seasons.js`** -- The six festivals from the local date, event ids, days left, the reward track, weekly mutators and the Daily Garden recipe
+- **`levels.js`** -- Seeded board building (motifs, hazards, portals, crates, sealed pockets, eggs), the timed hazard clock, neighbours through wrap edges and portals, and the level validator
+- **`rules.js`** -- Pure progression rules: default save and migration, tree states, purchases and stats, combo and fruit scoring, stars, scale rewards, story unlocks, cosmetic unlocks, the streak, quests and festival tiers
+- **`state.js`** -- The shared state object: screens and return targets, profile and stats, the run, calendar, feel timers, input, hit areas, per-screen UI
+- **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, the rising fruit scale for combos and the soft chime ambience
+- **`save.js`** -- The only module touching `localStorage`: the v2 profile with migration, the run snapshot, and the derived stats
 
-**Quick Presets:**
-- **Classic** -- solid walls, no obstacles, no enemies, no power-ups, medium, normal speed
-- **Tron** -- wrap-around, no obstacles, 2 AI, no power-ups, medium, fast speed. Activates Tron visual mode (see below)
-- **Maze Runner** -- solid walls, maze, no enemies, power-ups, large, normal speed
-- **Battle Royale** -- wrap-around, random blocks, 3 AI, power-ups, large, fast speed
-- **Zen** -- wrap-around, no obstacles, no enemies, power-ups, medium, slow speed
+Systems (`js/systems/`), one simulation concern each:
 
-**Configurable Options:**
-- Walls: solid (death on edge) or wrap-around (exit one side, enter opposite)
-- Obstacles: none, random blocks, maze (symmetric corridors), or growing walls (adds a block every 3 foods)
-- Enemies: 0-3 AI snakes with BFS pathfinding toward food
-- Power-ups: toggle on/off (6 types with timed effects)
-- Field size: small 15x15, medium 20x20, large 80x60
-- Speed: slow (200ms), normal (150ms), fast (100ms), insane (60ms)
+- **`fx.js`** -- Pooled particles in typed arrays, rings, floating texts, shake, flash, hit-stop and slow motion
+- **`board.js`** -- Tiles of the current run, the hazard clock state, guardian and imp marks (warnings turning into strikes, rocks, ice or crates), the occupancy grid, free-cell picking
+- **`food.js`** -- Fruit, gems, festival tokens, Sun Shards and Fruit Rain; the magnet; eating with combo, growth and scores
+- **`powerups.js`** -- The power-up on the board and every effect, timed or instant
+- **`enemies.js`** -- Critter spawning, step clocks and the seven behaviours, including rival snakes with path finding
+- **`bosses.js`** -- The five guardians as state machines with telegraphed attacks, recoils and phases
+- **`combat.js`** -- Venom spits, crate smashing, defeating critters, Quake and hazard strikes
+- **`snake.js`** -- The player's snake: turn queue, step clock, one grid step with everything the head can meet, armour, Zen cuts, death and the cosmetic trail
+- **`autopilot.js`** -- The breadth-first bot for the demo and the completability tests, aware of ice slides, portals, strikes and guardians
+- **`progress.js`** -- Statistics, quests, achievements, festival tokens and tiers, the streak gift, scale income and the toast queue
+- **`run.js`** -- Building runs for every mode, countdowns, the exit gate, Arcade stages, clocks, deaths and respawns, guardians falling, results and rewards, Save & Quit and restoring a snapshot
+- **`cine.js`** -- Plays cinematics shot by shot with typewriter text, skipping and hand-back
+- **`sim.js`** -- One fixed step: the calendar, feel timers and every system in order
 
-### Tron Mode
+Render (`js/render/`):
 
-Selecting the Tron preset activates a distinct visual and gameplay mode inspired by Tron light cycles:
+- **`view.js`** -- The canvas fitted to the window (letterboxed plane, capped backing resolution), resize and maximize, pointer mapping
+- **`art-kit.js`** -- Offscreen canvases, the sprite cache, colour maths, noise, glow, smoke and ring sprites, silhouettes
+- **`tile-art.js`** -- Floor, wall, crate, rock, ice, quicksand and hazard-base tiles per theme, composed into the cached board layer
+- **`snake-art.js`** -- Scale discs for every skin pattern, heads, hats, the light-cycle line, and the tapering body chain used by every snake
+- **`item-art.js`** -- Fruit, gems, eggs, shards, festival tokens, power-up orbs, the exit gate, the icon set and particle shapes
+- **`creature-art.js`** -- The critters and the guardians (with dirt mound and flight shadow)
+- **`backdrop.js`** -- Scenery per theme covering the whole window, drifting clouds and glows, the festival decor and colour wash
+- **`world.js`** -- The board in play: traps, portals, warnings and strikes, the gate, fruit, power-ups, venom, critters, rivals, the guardian, the player's snake with its auras, Firefly Night darkness
+- **`fx-render.js`** -- Particles in two layers, rings and floating texts
+- **`hud.js`** -- Score, combo meter, goal, guardian health, timers, lives, armour, venom and power-up timers; banners, countdown, captions, flash and toasts
+- **`cine-render.js`** -- The cinematic scenes, bars, dialogue box, portraits and typewriter text
+- **`frame.js`** -- One frame: the right background, the active screen, touch buttons, fades, flash and toasts
 
-- **Dark neon aesthetic** -- near-black background (`#050510`) with enhanced neon grid
-- **Enhanced neon grid** -- minor grid lines with subtle blue glow (`shadowBlur: 2`), major grid lines every 5 cells with prominent neon glow (`shadowBlur: 6`), bright glowing border (`shadowBlur: 8`)
-- **Neon line trails** -- player trail in cyan (`#00e5ff`), AI trails in orange/purple/red, drawn as glowing 5px lines with `shadowBlur` neon effect
-- **Motorcycle rider heads** -- top-down sporty rider sprite (pointed nose, handlebars, helmet) rendered via canvas paths, rotates with movement direction
-- **Permanent trails** -- no tail shrinking; trails grow indefinitely as light cycle walls
-- **Energy cube food** -- pulsing outlined cyan square with glow instead of the apple
-- **Tron-styled overlays** -- cyan text with neon glow on darker overlay background, title shows "TRON" instead of "SNAKE"
-- **Tron death particles** -- crash particles use the neon trail color of the crashed snake
+UI (`js/ui/`):
 
-All other game mechanics (AI pathfinding, collision, scoring, power-ups if enabled via custom config) remain the same. Switching to any other preset returns to standard snake rendering.
+- **`kit.js`** -- Text, panels, bars, stars, locks, icons, the scale counter and the logo
+- **`widgets.js`** -- Hit areas registered while drawing, the keyboard cursor, buttons
+- **`screens.js`** -- Screen switching, return targets, pause and resume, leaving to the title
+- **`title.js`** -- The title over the demo board: Continue, the modes, profile and quests, the festival card
+- **`map.js`** -- The world map with world tabs, the level trail and the level card
+- **`tree.js`** -- The tech tree screen with immediate effect mid-run
+- **`wardrobe.js`** -- The collection: skins, trails, hats and boards with previews, buying and equipping
+- **`journal.js`** -- Quests, streak and festival track; achievements; statistics and high scores
+- **`results.js`** -- The end of a run: headline, stars, score, numbers, scales and the way on
+- **`pause.js`** -- The pause menu with Save & Quit and a confirmed End Run
+- **`help.js`** -- Five illustrated How to Play pages
+- **`touch.js`** -- Swipe turning and the on-screen venom and pause buttons
+- **`status-bar.js`** -- The window status bar and the High Scores dialog
+- **`input.js`** -- Keyboard, mouse and touch, cinematic skipping, autosave when the page hides or closes
+- **`app.js`** -- Start-up, the menu bar and the fixed-step loop
 
-### Zen Mode
+Tests (`tests/`, run with `node tests/<name>.test.js`):
 
-Selecting the Zen preset activates a nature-themed visual mode with a calm atmosphere:
-
-- **Dark green background** -- very dark green (`#0a1a0a`) for a forest-at-night feel
-- **Floating leaves** -- ~18 animated leaf shapes drifting across the screen in various greens, with sinusoidal horizontal wobble, rotation, and edge wrapping. Leaves drift even while paused
-- **Leaf rendering** -- each leaf drawn as a colored ellipse with a central vein line and short stem
-- **Green-tinted grid** -- subtle green grid lines (`rgba(34,139,34,0.06)`) with green border
-- **Standard snake and food** -- green snake and apple food fit the nature theme naturally
-- **Green-tinted overlays** -- overlay text in green (`#81c784` / `#4caf50`), title shows "ZEN" instead of "SNAKE"
-
-### Maze Runner Mode
-
-Selecting the Maze Runner preset activates an ancient dungeon visual theme:
-
-- **Brick tile background** -- pre-rendered running bond brick pattern with position-seeded color variation and mortar lines, drawn as a single `drawImage()` each frame for performance
-- **Dark stone obstacles** -- maze walls rendered as dark stone blocks (`#5d4037`) with highlight/shadow edges instead of standard gray blocks
-- **Torch flame head** -- animated flickering flame as the snake head, composed of 4 layered ellipses with oscillating sizes from `sin/cos` at different frequencies, plus a bright core
-- **Ember trail body** -- body segments rendered as ember dots fading from orange (`#ff6d00`) to dark red (`#4e342e`) toward the tail, with subtle inner glow near the head
-- **Golden spinning coin food** -- food rendered as an animated golden coin with scale-X oscillation (spin effect), inner ring, `$` symbol when face-on, and a circling glint sparkle
-- **Orange tail trail particles** -- movement trail particles in orange (`rgba(255,109,0,0.4)`) instead of green
-- **Ember death particles** -- death explosion uses orange/ember colors instead of red/green
-- **Gold-themed overlays** -- overlay text in gold (`#ffd700`) on dark brown background, title shows "DUNGEON" instead of "SNAKE"
-
-### AI Enemies
-
-- 1-3 AI snakes with unique colors (orange, purple, cyan)
-- BFS pathfinding toward nearest food each tick, random fallback when no path exists
-- Grow when eating food, die on collision (walls/obstacles/any snake body/self)
-- Respawn after 3-second delay at random empty location
-- AI death awards player +50 bonus points with floating text
-
-### Power-ups
-
-One power-up on field at a time. Spawns 3s after previous collected/expired. 15s field lifetime (blinks last 3s). Six types:
-
-| Icon | Name | Effect | Duration |
-|------|------|--------|----------|
-| Lightning | Speed+ | Move 40% faster | 8s |
-| Clock | Slow | Move 40% slower | 8s |
-| Star | Shield | Survive one collision (absorbs hit) | until used |
-| Minus | Shrink | Lose up to 3 segments, +30 pts | instant |
-| Diamond | Magnet | Food spawns adjacent to head | 10s |
-| Circle | Ghost | Pass through own body | 5s |
-
-Active effects shown in status bar with remaining time.
-
-### Gameplay
-
-- Snake starts at center with length 3, moving right
-- Food spawns at random unoccupied positions (adjacent to head when magnet active)
-- Eating food grows the snake by 1 segment and awards points (10 x level)
-- Speed increases every 5 foods collected (base interval minus 10ms per level)
-- Opposite-direction input blocked to prevent instant self-collision
-- Obstacles rendered as dark gray inset blocks
-- Canvas scales to fill window viewport, preserving aspect ratio (supports resize and maximize)
-
-### Visual Effects
-
-- Smooth interpolated movement between ticks (lerp with wrap-around handling)
-- Snake head with animated eyes that follow direction
-- Body gradient from bright to dark with tapering segments
-- Shield indicator ring around head when shield active
-- Ghost transparency when ghost active
-- Food rendered as a detailed apple with pulsing glow
-- Power-up items with colored glow, icon shapes, and blink before expiry
-- Subtle grid overlay
-- Particle burst on food/power-up collection (multicolored)
-- Tail trail particles on movement
-- Death particle explosion (red burst from head, green scatter from body)
-- Screen shake on death
-- Floating score/effect text
-- "LEVEL X!" floating text on level-up
-
-### Game Management
-
-- New Game options dialog on launch, F2, and Space
-- Pause/resume (P key) -- game auto-pauses when dialog opens
-- Game over with final score display
-- High scores persisted to localStorage (top 5, tracks score and length, with reset option)
-- Game config persisted to localStorage across sessions
-- Status bar showing score, length, level, and active power-up effects
-
-### Controls
-
-- Arrow keys or WASD for directional movement
-- Space to open New Game dialog (from title screen or game over)
-- F2 to open New Game dialog
-- P to pause/resume
-- Enter to accept the focused dialog (Start in options, OK elsewhere)
-- Escape to close dialogs (Cancel on options dialog if game was paused)
-
-### Integration
-
-- Menu bar with Game menu (New Game..., Pause, High Scores, Exit) and Help menu (Controls, About)
-- SZ OS window management (auto-resize for field size, close via menu)
-- Dialog system for options, high scores, controls reference, and about info
+- **`harness.js`** -- A recording fake canvas, minimal DOM and storage, and the script loader
+- **`levels.test.js`** -- Every story level validates, every motif builds valid boards, and the autopilot clears all thirty levels including the five guardians
+- **`progression.test.js`** -- Tree costs, states and stats; scoring, stars and rewards; story unlocks; cosmetics; streaks; quests; festival dates, event ids and tracks; weekly and daily seeds
+- **`save.test.js`** -- Migration of the old keys, loading and repairing the profile, and exact restoration of autosaved runs
+- **`systems.test.js`** -- Every power-up, armour, Zen cuts, venom, critter behaviours, Arcade stages, the clocks of Time Attack and the Daily Garden, and a full Guardian Rush cleared by the autopilot
+- **`scene.test.js`** -- Boot, every screen and cinematic, modes from the keyboard, the draw-call budget of a busy board, no `shadowBlur`, a bounded sprite cache
 
 ## User Stories
 
-### Game Setup & Configuration
+### Playing
+- [x] As a player, I can steer with the arrow keys or WASD, queue quick turns and never reverse into myself by accident
+- [x] As a player, I can see my snake glide smoothly between cells with blinking eyes, a flicking tongue and a bulge travelling down after every bite
+- [x] As a player, I can build combos by eating quickly and watch the multiplier, the rising pitch and the bursts grow with them
+- [x] As a player, I can spit venom with Space to break crates, defeat critters and chip guardians
+- [x] As a player, I can click beside the snake's head or swipe on a touch screen to turn
 
-- As a player, I want to choose from quick presets (Classic, Tron, Maze Runner, Battle Royale, Zen) so that I can jump into a curated experience without configuring every option.
-- As a player, I want to customize walls, obstacles, enemies, power-ups, field size, and speed individually so that I can create my own game mode.
-- As a player, I want my game configuration to persist across sessions so that I don't have to reconfigure every time I play.
-- As a player, I want the options dialog to appear on launch, F2, and Space so that I can always start a new game easily.
-- As a player, I want to accept dialogs with Enter so that I can start games quickly from the keyboard.
-- As a player, I want to close dialogs with Escape so that I can cancel and return to a paused game.
+### Story
+- [x] As a player, I can follow Sola's journey through five worlds with an intro, chapter arrivals, guardian reveals, guardians freed and a finale, and skip any of it with a key, click or tap
+- [x] As a player, I can choose levels on a world map, see their goals, critters and hazards, and earn three stars per level: clear, all golden eggs, no crash
+- [x] As a player, I can eat the fruit goal and then reach the exit gate, deciding whether to grab the last eggs first
+- [x] As a player, I can fight five guardians with their own attacks - a burrowing mole, a stinging scorpion, a diving owl, a fire wyrm and the Hollow Eclipse - by eating Sun Shards and ramming them while I shine
 
-### Core Gameplay
+### Modes
+- [x] As a player, I can play endless Arcade with stages that speed up, change scenery, add crates and critters, and a weekly mutator
+- [x] As a player, I can relax in Zen with no crashes or clock, where biting my tail just sheds petals, to soft chimes
+- [x] As a player, I can play a new seeded Daily Garden every day, with two mutators and my best score kept per day
+- [x] As a player, I can race Time Attack, where golden apples buy seconds
+- [x] As a player, I can face every guardian I have freed back to back in Guardian Rush
 
-- As a player, I want to guide a snake that grows when eating food so that I have a clear objective and increasing difficulty.
-- As a player, I want food to spawn at random unoccupied positions so that each game feels different.
-- As a player, I want the game speed to increase every 5 foods collected so that the challenge ramps up as I progress.
-- As a player, I want opposite-direction input to be blocked so that I can't accidentally reverse into myself.
-- As a player, I want an input queue (up to 3 inputs) so that rapid direction changes are registered even between ticks.
-- As a player, I want to score points based on the current level (10 x level per food) so that later foods are worth more.
+### Power-ups, Critters and Hazards
+- [x] As a player, I can pick up twelve power-ups: Dash, Time Warp, Scale Armor, Magnet, Phase, Molt, Golden Fangs, Fruit Rain, Quake, Frost Nova, Sun Shard and Venom Sac
+- [x] As a player, I can meet ants to eat, marching beetles, hornets flying over walls, fruit-stealing hedgehogs, rival snakes, frost wisps and fire imps
+- [x] As a player, I can navigate ice, quicksand, spike traps, lava vents, laser gates, crates and portals, each with a clear warning before it hurts
 
-### Wall & Obstacle Modes
+### Progression and Collection
+- [x] As a player, I can earn scales in every mode and spend them on a 25-node tech tree from the title or the pause menu, with immediate effect
+- [x] As a player, I can collect and equip 20 skins, 14 trails, 14 hats and 8 board themes, bought with scales or earned through stars, guardians, achievements and festivals
+- [x] As a player, I can unlock 30 achievements with scale rewards and read my lifetime statistics and high scores in the journal
 
-- As a player, I want solid walls that kill on contact so that edge awareness is part of the challenge.
-- As a player, I want wrap-around walls where I exit one side and enter the opposite so that the field feels infinite.
-- As a player, I want random block obstacles so that I must navigate around unpredictable hazards.
-- As a player, I want maze obstacles with symmetric corridors so that I can play a maze-navigation variant.
-- As a player, I want growing walls that add a block every 3 foods so that the field becomes progressively harder.
+### Coming Back
+- [x] As a player, I can close the game at any moment and continue my run exactly where I left it
+- [x] As a player, I can play three new daily quests each day and get a growing gift for every day in a row
+- [x] As a player, I can enjoy the running festival's decor and collect its tokens for exclusive skins, trails and hats
+- [x] As a player, I can keep my high scores and favourite look from the old version of the game
 
-### Field Size & Viewport
+### Screens and Controls
+- [x] As a player, I can resize or maximize the window and keep exact click mapping, with the scenery filling the extra space
+- [x] As a player, I can have the game pause and save when the tab is hidden
+- [x] As a player, I can read five illustrated How to Play pages
 
-- As a player, I want to choose between small (15x15), medium (20x20), and large (80x60) field sizes so that I can pick the scale I prefer.
-- As a player, I want the canvas to scale to fill the window viewport while preserving aspect ratio so that the game looks good at any window size.
-- As a player, I want to resize and maximize the game window so that I can play at whatever size suits my screen.
+### Planned Features
+- [ ] As a player, I can race a friend on the same keyboard
+- [ ] As a player, I can design my own levels
 
-### AI Enemies
+## Controls
 
-- As a player, I want 1-3 AI snakes with BFS pathfinding so that I have competitive opponents seeking food.
-- As a player, I want AI snakes to die on collision and respawn after 3 seconds so that the field stays dynamic.
-- As a player, I want to earn +50 bonus points when an AI snake dies so that there is a reward for outlasting enemies.
-- As a player, I want AI snakes to have distinct colors (orange, purple, cyan) so that I can tell them apart.
-
-### Power-ups
-
-- As a player, I want one power-up on the field at a time, spawning 3 seconds after the previous one, so that power-ups feel special without cluttering the field.
-- As a player, I want power-ups to blink during their last 3 seconds and disappear after 15 seconds so that I know when they're about to expire.
-- As a player, I want a Speed+ power-up (lightning icon) that makes me 40% faster for 8 seconds so that I can collect food more aggressively.
-- As a player, I want a Slow power-up (clock icon) that makes me 40% slower for 8 seconds so that I get breathing room in tight situations.
-- As a player, I want a Shield power-up (star icon) that absorbs one collision so that I get a second chance.
-- As a player, I want a Shrink power-up (minus icon) that removes up to 3 segments and awards 30 points so that I can trim my tail.
-- As a player, I want a Magnet power-up (diamond icon) that spawns food adjacent to my head for 10 seconds so that I can eat rapidly.
-- As a player, I want a Ghost power-up (circle icon) that lets me pass through my own body for 5 seconds so that I can escape tight coils.
-- As a player, I want active effects shown in the status bar with remaining time so that I know what's active and when it expires.
-
-### Tron Mode
-
-- As a player, I want the Tron preset to activate a dark neon aesthetic with a near-black background so that it feels like Tron.
-- As a player, I want an enhanced neon grid with subtle minor lines and prominent glowing major lines every 5 cells so that the grid looks like a digital arena.
-- As a player, I want neon glowing line trails (cyan for player, orange/purple/red for AI) so that the light cycle look is convincing.
-- As a player, I want top-down motorcycle rider heads that rotate with movement direction so that the snakes look like light cycles.
-- As a player, I want permanent trails that never shrink so that they act as light cycle walls.
-- As a player, I want food rendered as a pulsing cyan energy cube so that it fits the Tron aesthetic.
-- As a player, I want Tron-styled overlays with cyan neon text and a "TRON" title so that the UI matches the theme.
-- As a player, I want crash particles in the neon trail color of the crashed snake so that deaths look dramatic.
-- As a player, I want switching to any other preset to return to standard snake rendering so that Tron mode is opt-in.
-
-### Zen Mode
-
-- As a player, I want the Zen preset to show a dark green nature background so that the atmosphere feels calm and peaceful.
-- As a player, I want floating animated leaves drifting across the screen in various shades of green so that the nature theme is immersive.
-- As a player, I want leaves to drift with sinusoidal wobble and rotation even while paused so that the background always feels alive.
-- As a player, I want a subtle green-tinted grid so that the cell boundaries are visible but unobtrusive.
-- As a player, I want green-tinted overlay text with a "ZEN" title so that the UI matches the nature theme.
-
-### Maze Runner Mode
-
-- As a player, I want the Maze Runner preset to show a brick tile dungeon background with running bond pattern so that the level feels like an ancient dungeon.
-- As a player, I want maze obstacles rendered as dark stone blocks with highlight/shadow edges so that walls look like dungeon stonework.
-- As a player, I want the snake head rendered as an animated flickering torch flame so that it feels like exploring a dungeon with a torch.
-- As a player, I want the snake body rendered as ember dots fading from orange to dark red toward the tail so that it looks like a glowing ember trail.
-- As a player, I want food rendered as a golden spinning coin with a dollar sign so that collecting food feels like finding treasure.
-- As a player, I want orange/ember-colored death particles instead of red/green so that death effects match the dungeon theme.
-- As a player, I want gold-themed overlay text with a "DUNGEON" title so that the UI matches the dungeon aesthetic.
-
-### Visual Effects
-
-- As a player, I want smooth interpolated movement between ticks so that the snake glides rather than jumps.
-- As a player, I want the snake head to have animated eyes that follow the movement direction so that it looks alive.
-- As a player, I want the snake to blink its eyes periodically so that it feels animated and lively.
-- As a player, I want a body gradient from bright to dark with tapering segments so that the snake has visual depth.
-- As a player, I want a shield indicator ring around the head when shield is active so that I know I'm protected.
-- As a player, I want ghost transparency when ghost is active so that the effect is visually obvious.
-- As a player, I want food rendered as a detailed apple with a pulsing glow so that it stands out on the field.
-- As a player, I want a visible grid overlay and border around the playfield so that I can see the cell boundaries on the dark background.
-- As a player, I want particle bursts on food and power-up collection so that pickups feel rewarding.
-- As a player, I want tail trail particles on movement so that the snake leaves a subtle wake.
-- As a player, I want a death particle explosion and screen shake so that game over feels impactful.
-- As a player, I want floating score and effect text so that I get immediate feedback on points earned and effects collected.
-- As a player, I want "LEVEL X!" floating text on level-up so that progression is celebrated.
-
-### Game Management
-
-- As a player, I want to pause and resume with the P key so that I can take breaks mid-game.
-- As a player, I want the game to auto-pause when a dialog opens so that I don't lose progress while navigating menus.
-- As a player, I want a game over screen showing my final score so that I know how I did.
-- As a player, I want high scores persisted to localStorage (top 5, tracking score and length) so that I can track my best runs.
-- As a player, I want a reset option for high scores so that I can start fresh.
-- As a player, I want a status bar showing score, length, level, and active effects so that I always know my current state.
-
-### Controls
-
-- As a player, I want to move with arrow keys or WASD so that I can use whichever feels natural.
-- As a player, I want Space to open the New Game dialog from the title screen or game over so that restarting is quick.
-- As a player, I want F2 to open the New Game dialog at any time so that I can restart mid-game.
-
-### Integration
-
-- As a player, I want a menu bar with Game (New Game, Pause, High Scores, Exit) and Help (Controls, About) so that all actions are discoverable.
-- As a player, I want the game to run inside the SZ OS window system with proper window management so that it integrates with the desktop environment.
-- As a player, I want dialog windows for options, high scores, controls reference, and about info so that information is organized and accessible.
+| Key | Action |
+|-----|--------|
+| Arrow keys / WASD | Turn the snake |
+| Space | Spit venom |
+| Mouse | Click beside the head to turn that way; right click spits |
+| Touch | Swipe to turn; buttons for venom and pause |
+| Esc / P | Pause |
+| T | Tech tree |
+| B | Buy the selected tech tree node |
+| H | How to Play |
+| Enter / Space | Choose in menus, continue in cinematics |
+| F2 | Title screen (the run is saved) |
