@@ -1,6 +1,7 @@
 /* One fixed simulation step: input intent, hit-stop and slow motion, then player, weapons,
    enemies, boss, hazards, shots, collisions, pickups, mission and effects in that order, and
-   the camera. Menu screens only advance clocks and effects. Owns G.time and the feel timers. */
+   the scroll and shake. Menu screens only advance clocks, the backdrop scroll and effects.
+   Owns G.time and the feel timers. */
 ;(function() {
   'use strict';
 
@@ -20,7 +21,10 @@
       if (G.ui.toast.t > 2.4) G.ui.toast = null;
     }
     if (G.screen !== 'playing') {
-      if (G.screen !== 'paused' && G.screen !== 'tree' && G.screen !== 'help') NS.fx.update(dt);
+      if (G.screen !== 'paused' && G.screen !== 'tree' && G.screen !== 'help') {
+        NS.fx.update(dt);
+        G.scroll.y += 40 * dt;
+      }
       if (G.screen === 'results' && G.ui.results) G.ui.results.t += dt;
       return;
     }
@@ -28,7 +32,7 @@
     NS.input.sample();
     if (G.hitStop > 0) {
       G.hitStop -= dt;
-      NS.camera.update(dt);
+      NS.camera.update(dt, 0);
       return;
     }
     let scale = 1;
@@ -52,7 +56,7 @@
     tickBeams(s);
     NS.missions.update(s);
     NS.fx.update(s);
-    NS.camera.update(dt);
+    NS.camera.update(dt, s);
     if (t0) {
       perf.sim = performance.now() - t0;
       ++perf.steps;

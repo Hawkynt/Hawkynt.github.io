@@ -1,6 +1,7 @@
 /* Stage generation, pure and seeded: campaign stages from the mission table, endless waves,
-   the daily gauntlet, the boss rush, wave composition from a budget, and the sector layout
-   (start, hazards, outposts, cores, convoy route). Never touches the DOM or G. */
+   the daily gauntlet, the boss rush, wave composition from a budget, and the stage layout for
+   the arcade field (start, the first hazards on screen, the outposts and data cores that scroll
+   in and when, the convoy and station positions). Never touches the DOM or G. */
 ;(function() {
   'use strict';
 
@@ -9,6 +10,7 @@
   const { makeRng, hashString, dist2 } = NS.rng;
   const { ENEMIES, BOSSES, BOSS_ORDER } = NS.enemyData;
   const { SECTORS, MISSIONS, missionId } = NS.campaign;
+  const { PF_W, PF_H } = NS.constants;
 
   const WAVE_TYPES = ['fighter', 'interceptor', 'drone', 'bomber', 'frigate', 'cloaker', 'lancer', 'carrier'];
 
@@ -67,7 +69,6 @@
     const sec = SECTORS[sector];
     return Object.assign({
       sector: sector,
-      size: sec.size,
       roster: sec.roster.slice(),
       hazards: Object.assign({}, sec.hazards),
       hpMul: 1 + sector * 0.16,
@@ -178,120 +179,49 @@
   }
 
   /* ── layout ── */
-  function far(p, list, d) {
-    const d2 = d * d;
-    for (let i = 0; i < list.length; ++i)
-      if (dist2(p.x, p.y, list[i].x, list[i].y) < d2 + (list[i].r || 0) * (list[i].r || 0) * 2)
-        return false;
-    return true;
-  }
-
-  function scatter(rng, S, n, margin, avoid, minD, tries) {
-    const out = [];
-    for (let i = 0; i < n; ++i) {
-      for (let t = 0; t < (tries || 40); ++t) {
-        const p = { x: rng.range(margin, S - margin), y: rng.range(margin, S - margin) };
-        if (far(p, avoid, minD) && far(p, out, minD * 0.6)) {
-          out.push(p);
-          break;
-        }
-      }
-    }
-    return out;
-  }
-
-  /* Places everything that exists before the first wave; the same seed gives the same sector */
+  /* Everything a stage starts with, and when its objectives scroll in; the same seed gives the
+     same stage. Coordinates are play field units (PF_W x PF_H, y grows down-screen). */
   function layoutStage(st) {
     const rng = makeRng(st.seed);
-    const S = st.size;
-    const C = S / 2;
-    const L = { start: { x: C, y: C + 300 }, rocks: [], mines: [], nebulae: [], hole: null,
-      outposts: [], cores: [], route: [], station: null };
-    const keep = [];
-
-    if (st.type === 'escort') {
-      L.start = { x: 520, y: C + 140 };
-      const len = Math.min(st.len, S - 900);
-      const x0 = (S - len) / 2;
-      for (let i = 0; i <= 5; ++i)
-        L.route.push({ x: x0 + len * i / 5, y: C + Math.sin(i * 1.3 + rng() * 0.5) * 520 * (i > 0 && i < 5 ? 1 : 0.3) });
-      for (let i = 0; i < L.route.length; ++i) keep.push({ x: L.route[i].x, y: L.route[i].y, r: 120 });
-    } else if (st.type === 'defend') {
-      L.station = { x: C, y: C };
-      L.start = { x: C, y: C + 260 };
-      keep.push({ x: C, y: C, r: 260 });
-    } else if (st.type === 'destroy') {
-      L.start = { x: C, y: S - 500 };
-      const base = rng() * Math.PI * 2;
-      for (let i = 0; i < st.n; ++i) {
-        const a = base + i * Math.PI * 2 / st.n + rng.range(-0.3, 0.3);
-        const r = S * rng.range(0.26, 0.36);
-        L.outposts.push({ x: C + Math.cos(a) * r, y: C - 120 + Math.sin(a) * r * 0.9 });
-      }
-      for (let i = 0; i < L.outposts.length; ++i) keep.push({ x: L.outposts[i].x, y: L.outposts[i].y, r: 240 });
-    } else if (st.type === 'boss') {
-      L.start = { x: C, y: C + 520 };
-    }
-    keep.push({ x: L.start.x, y: L.start.y, r: 380 });
-
+    const W = PF_W, H = PF_H;
+    const L = { start: { x: W / 2, y: H - 90 }, rocks: [], mines: [], nebulae: [],
+      outposts: [], cores: [], station: null, convoy: null, turrets: st.roster.indexOf('turret') >= 0 };
     const hz = st.hazards;
-    if (hz.hole) {
-      const bossHole = st.boss === 'maw';
-      if (bossHole) L.hole = { x: C, y: C - 300, r: 70, pull: 0 };
-      else {
-        /* the spot farthest from the start, the route and the objectives, among a few candidates */
-        let best = null, bestD = -1;
-        for (let t = 0; t < 16; ++t) {
-          const q = { x: rng.range(S * 0.25, S * 0.75), y: rng.range(S * 0.2, S * 0.8) };
-          let d = Infinity;
-          for (let k = 0; k < keep.length; ++k) d = Math.min(d, Math.hypot(q.x - keep[k].x, q.y - keep[k].y) - keep[k].r);
-          if (d > bestD) { bestD = d; best = q; }
-        }
-        L.hole = { x: best.x, y: best.y, r: 70, pull: 520 };
-      }
-      keep.push({ x: L.hole.x, y: L.hole.y, r: 520 });
-    }
-    for (let i = 0; i < hz.nebulae; ++i) {
-      const p = scatter(rng, S, 1, 500, [L.start].concat(L.hole ? [L.hole] : []), 600)[0];
-      if (p) L.nebulae.push({ x: p.x, y: p.y, r: rng.range(320, 520), seed: Math.floor(rng() * 1e9) });
-    }
-    if (st.type === 'collect') {
-      const inNeb = L.nebulae.length ? Math.min(L.nebulae.length, Math.ceil(st.n / 3)) : 0;
-      for (let i = 0; i < inNeb; ++i) {
-        const nb = L.nebulae[i];
-        L.cores.push({ x: nb.x + rng.range(-0.4, 0.4) * nb.r, y: nb.y + rng.range(-0.4, 0.4) * nb.r });
-      }
-      if (L.hole) {
-        for (let i = 0; i < 2 && L.cores.length < st.n; ++i) {
-          const a = rng() * Math.PI * 2;
-          L.cores.push({ x: L.hole.x + Math.cos(a) * 330, y: L.hole.y + Math.sin(a) * 330 });
-        }
-      }
-      const more = scatter(rng, S, st.n - L.cores.length, 320, keep.concat(L.cores), 420, 80);
-      L.cores = L.cores.concat(more);
-      for (let i = 0; i < L.cores.length; ++i) keep.push({ x: L.cores[i].x, y: L.cores[i].y, r: 90 });
-    }
-    const avoid = keep.concat(L.hole ? [{ x: L.hole.x, y: L.hole.y, r: 380 }] : []);
-    const rocks = scatter(rng, S, hz.rocks, 150, avoid, 170, 30);
-    for (let i = 0; i < rocks.length; ++i)
-      L.rocks.push({ x: rocks[i].x, y: rocks[i].y, size: rng() < 0.35 ? 3 : rng() < 0.6 ? 2 : 1, seed: Math.floor(rng() * 1e9) });
-    L.mines = scatter(rng, S, hz.mines, 200, avoid.concat(L.rocks), 220, 30);
-    return L;
-  }
 
-  /* Where enemies of a wave appear: off-screen around the anchor, inside the sector */
-  function spawnPoint(rng, S, ax, ay, minR, maxR) {
-    for (let t = 0; t < 12; ++t) {
-      const a = rng() * Math.PI * 2;
-      const r = rng.range(minR, maxR);
-      const x = ax + Math.cos(a) * r, y = ay + Math.sin(a) * r;
-      if (x > 80 && y > 80 && x < S - 80 && y < S - 80) return { x: x, y: y };
+    if (st.type === 'defend') {
+      L.station = { x: W / 2, y: H - 70 };
+      L.start = { x: W / 2, y: H - 190 };
+    } else if (st.type === 'escort') {
+      L.convoy = { x: W / 2, y: H - 230 };
+      L.start = { x: W / 2 - 150, y: H - 90 };
+    } else if (st.type === 'destroy') {
+      /* outposts arrive one by one in two lanes, so two never overlap; the next comes early if one falls */
+      const first = rng() < 0.5 ? 1 : -1;
+      for (let i = 0; i < st.n; ++i) {
+        const side = i % 2 ? -first : first;
+        L.outposts.push({ x: W / 2 + side * rng.range(150, 175), at: 4 + i * 26 });
+      }
+    } else if (st.type === 'collect') {
+      for (let i = 0; i < st.n; ++i)
+        L.cores.push({ x: rng.range(90, W - 90), at: 3 + i * 8.5 });
     }
-    return { x: Math.min(S - 100, Math.max(100, ax + minR)), y: Math.min(S - 100, Math.max(100, ay)) };
+
+    /* a few rocks already on screen, never in the pilot's lane */
+    const rocks = Math.min(4, Math.round(hz.rocks / 7));
+    for (let i = 0; i < rocks; ++i) {
+      for (let t = 0; t < 20; ++t) {
+        const q = { x: rng.range(60, W - 60), y: rng.range(40, H * 0.45) };
+        if (Math.abs(q.x - L.start.x) < 120 || L.rocks.some(o => dist2(o.x, o.y, q.x, q.y) < 150 * 150)) continue;
+        L.rocks.push({ x: q.x, y: q.y, size: rng() < 0.4 ? 2 : 1, seed: Math.floor(rng() * 1e9) });
+        break;
+      }
+    }
+    if (hz.nebulae > 0) L.nebulae.push({ x: rng.range(160, W - 160), y: rng.range(60, 180), r: rng.range(150, 210), seed: Math.floor(rng() * 1e9) });
+    return L;
   }
 
   Object.assign(NS.waves, {
     WAVE_TYPES, MUTATORS, intensity, composeWave, campaignStage, endlessStage, dailyPlan, bossRushPlan,
-    layoutStage, spawnPoint
+    layoutStage
   });
 })();

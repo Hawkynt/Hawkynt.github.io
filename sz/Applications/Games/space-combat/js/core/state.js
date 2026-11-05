@@ -27,8 +27,8 @@
     stage: null,
     sector: 0,
 
-    /* world */
-    world: { w: 3400, h: 3400 },
+    /* world: the arcade play field in world units */
+    world: { w: 720, h: 720 },
     enemies: [],
     pBullets: [],
     eBullets: [],
@@ -54,8 +54,9 @@
     rings: [],
     texts: [],
 
-    /* camera in world coordinates (centre of the view) */
-    cam: { x: 0, y: 0, tx: 0, ty: 0, trauma: 0, ox: 0, oy: 0, zoom: 1 },
+    /* camera in world coordinates (centre of the view) and the forward scroll */
+    cam: { x: 360, y: 360, tx: 360, ty: 360, trauma: 0, ox: 0, oy: 0, zoom: 1 },
+    scroll: { y: 0, speed: 70 },
 
     /* feel */
     hitStop: 0,
@@ -69,6 +70,7 @@
 
     /* scoring */
     score: 0,
+    grazes: 0,
     combo: 0,
     comboT: 0,
     multiplier: 1,
@@ -76,12 +78,12 @@
     kills: 0,
     runScrap: 0,
 
-    /* input: keys by code, pointer in view coordinates */
+    /* input: keys by code, pointer in view coordinates; steer is 'keys' or 'mouse' (follow) */
     input: {
       keys: {},
       mouseX: 640, mouseY: 360, mouseDown: false, rightDown: false, mouseMoved: 0,
-      aimMode: 'mouse', touch: false,
-      moveX: 0, moveY: 0, aimX: 1, aimY: 0, firing: false, aiming: false,
+      steer: 'keys', touch: false,
+      moveX: 0, moveY: 0, firing: false, focus: false, followX: 0, followY: 0, follow: false,
     },
     hitAreas: [],
     menuCursor: 0,

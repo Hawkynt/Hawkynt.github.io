@@ -1,13 +1,14 @@
-/* Pooled projectiles: player bolts, homing missiles, flak shells and their shrapnel, proximity
-   mines; enemy bolts, pellets, plasma orbs and homing rockets. Movement, homing, fuses, trails,
-   time warp and clearing. Owns G.pBullets and G.eBullets; collisions live in combat.js. */
+/* Pooled projectiles: player bolts, homing missiles, flak shells and their shrapnel, lobbed
+   proximity mines; enemy bolts, pellets, plasma orbs and homing rockets. Movement, homing,
+   fuses, trails, time warp, culling at the play field edge and clearing.
+   Owns G.pBullets and G.eBullets; collisions live in combat.js. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceCombat || (SZ.SpaceCombat = {});
   const G = NS.state;
-  const { MAX_PLAYER_BULLETS, MAX_ENEMY_BULLETS, TAU } = NS.constants;
+  const { MAX_PLAYER_BULLETS, MAX_ENEMY_BULLETS, TAU, ENEMY_SHOT_SPEED } = NS.constants;
   const { createPool } = NS.grid;
   const { turnToward } = NS.rng;
   const R = NS.rng.fx;
@@ -25,7 +26,7 @@
     b.dmg = dmg; b.r = r; b.color = color;
     b.t = 0; b.target = null; b.blast = 0; b.crit = false; b.pierce = 0;
     b.ang = Math.atan2(vy, vx);
-    b.arm = 0; b.frags = 0; b.speed = 0; b.reflected = false;
+    b.arm = 0; b.frags = 0; b.speed = 0; b.reflected = false; b.grazed = false;
     return b;
   }
 
@@ -48,11 +49,17 @@
     return b;
   }
 
-  /* An aimed enemy shot at speed toward angle a */
+  /* An aimed enemy shot toward angle a; speeds are tuned for open space and scaled for the field */
   function enemyShot(kind, x, y, a, speed, dmg, color) {
     const r = kind === 'orb' ? 9 : kind === 'pellet' ? 5 : kind === 'rocket' ? 7 : 4;
-    const life = kind === 'orb' ? 5 : kind === 'rocket' ? 4.5 : 2.6;
-    return enemy(kind, x, y, Math.cos(a) * speed, Math.sin(a) * speed, life, dmg, r, color);
+    const life = kind === 'orb' ? 8 : kind === 'rocket' ? 4.5 : 4;
+    const s = speed * ENEMY_SHOT_SPEED;
+    return enemy(kind, x, y, Math.cos(a) * s, Math.sin(a) * s, life, dmg, r, color);
+  }
+
+  /* shots die once they leave the play field (homing ones get room to turn back) */
+  function outside(b, m) {
+    return b.x < -m || b.y < -m || b.x > G.world.w + m || b.y > G.world.h + m;
   }
 
   function update(dt) {
@@ -72,7 +79,8 @@
         else if (b.kind === 'pmine') updateMine(b, dt);
         b.x += b.vx * dt;
         b.y += b.vy * dt;
-        if (b.life <= 0) {
+        if (outside(b, b.kind === 'missile' ? 160 : 40)) b.alive = false;
+        else if (b.life <= 0) {
           if (b.kind === 'flak') burstFlak(b);
           else if (b.kind === 'missile' || b.kind === 'pmine') detonate(b);
           b.alive = false;
@@ -100,7 +108,7 @@
         if (b.kind === 'rocket') steerMissile(b, k, true);
         b.x += b.vx * k;
         b.y += b.vy * k;
-        if (b.life <= 0) b.alive = false;
+        if (b.life <= 0 || outside(b, b.kind === 'rocket' ? 120 : 30)) b.alive = false;
       }
       if (b.alive) {
         list[j] = b;
@@ -152,8 +160,9 @@
   }
 
   function updateMine(b, dt) {
-    b.vx *= 1 - 2 * dt;
-    b.vy *= 1 - 2 * dt;
+    b.vx *= 1 - 3 * dt;
+    b.vy *= 1 - 3 * dt;
+    b.y += G.scroll.speed * dt;
     if (b.arm > 0) { b.arm -= dt; return; }
     const grid = NS.combat.grid;
     grid.query(b.x, b.y, 70, near);

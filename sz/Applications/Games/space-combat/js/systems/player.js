@@ -1,6 +1,7 @@
 /* The player ship: creation from the save and derived stats (re-applied live when the tree
-   changes), twin-stick flight with inertia, drift and banking, boost heat, dodge roll with
-   i-frames, the five ship specials, shields and hull damage, Last Stand and death.
+   changes), responsive 8-way arcade flight inside the play field (keys, or following the
+   pointer), focus mode, the sideways dash with i-frames, outside pushes (gravity, blasts), the
+   five ship specials, shields and hull damage, Last Stand and death. The ship always faces up.
    Owns G.player; reads G.input, G.stats and G.save. */
 ;(function() {
   'use strict';
@@ -10,11 +11,13 @@
   const G = NS.state;
   const C = NS.constants;
   const { SHIPS, PRIMARIES, SECONDARIES, SKINS, TRAILS, ENGINES, byId } = NS.ships;
-  const { clamp, turnToward, angleDiff } = NS.rng;
+  const { clamp } = NS.rng;
   const R = NS.rng.fx;
   const { armorDamage } = NS.rules;
   const fx = NS.fx;
   const { sfx } = NS.audio;
+
+  const UP = -Math.PI / 2;
 
   function shipColors(save, ship) {
     const skin = SKINS[save.style.skin];
@@ -26,12 +29,12 @@
     const ship = byId(SHIPS, st.ship) || SHIPS[0];
     const p = {
       alive: true, kind: 'player',
-      x: x, y: y, vx: 0, vy: 0, r: C.PLAYER_RADIUS,
-      angle: -Math.PI / 2, aimX: x, aimY: y - 200, bank: 0, turnRate: 0,
+      x: x, y: y, vx: 0, vy: 0, ex: 0, ey: 0, r: C.PLAYER_RADIUS, hitR: C.PLAYER_HITBOX,
+      angle: UP, aimX: x, aimY: y - 400, bank: 0,
       ship: ship,
       hull: st.hull, maxHull: st.hull, shield: st.shield, maxShield: st.shield,
-      shieldT: 99, heat: 0, overheated: false, boosting: false, thrusting: 0,
-      rollT: 0, rollCd: 0, rollDir: 0, rollSpin: 0,
+      shieldT: 99, focus: false, thrusting: 0, lastDir: 1,
+      dashT: 0, dashCd: 0, dashVx: 0, dashVy: 0, dashSpin: 0, dashDir: 1, dashTrailT: 0,
       iframes: 0, hitFlash: 0,
       abilityCd: 0, abilityT: 0,
       overdrive: 0, aegis: 0,
@@ -41,7 +44,7 @@
       primaryCd: 0, secondaryCd: 0, ammo: 0, maxAmmo: 0, firing: false, beamOn: false,
       lastStand: st.lastStand, deadT: 0,
       shieldFlare: 0, shieldFlareA: 0,
-      inNebula: false, trailT: 0, burnT: 0, ramHit: null,
+      inNebula: false, trailT: 0, ramHit: null,
       shots: 0, hits: 0, damageTaken: 0,
     };
     p.maxAmmo = Math.round(p.secondary.ammo * st.ammoMul);
@@ -91,75 +94,61 @@
     const st = G.stats;
     const inp = G.input;
 
-    /* movement intent */
+    /* movement intent: keys or a stick give a direction, the pointer gives a place to go */
     let mx = inp.moveX, my = inp.moveY;
     const ml = Math.sqrt(mx * mx + my * my);
     if (ml > 1) { mx /= ml; my /= ml; }
-
-    /* boost and heat */
-    const wantBoost = inp.boost && ml > 0.1 && !p.overheated;
-    p.boosting = wantBoost;
-    if (p.boosting) {
-      p.heat += C.BOOST_HEAT_RATE / st.boostCap * dt;
-      if (p.heat >= 1) {
-        p.heat = 1;
-        p.overheated = true;
-        p.boosting = false;
-        sfx('error', { volume: 0.5 });
+    p.focus = !!inp.focus;
+    const speed = st.speed * (p.focus ? C.FOCUS_MUL : 1) * (p.inNebula ? 0.75 : 1) * (p.overdrive > 0 ? 1.12 : 1);
+    let tvx = mx * speed, tvy = my * speed;
+    if (ml < 0.1 && inp.follow) {
+      const dx = clamp(inp.followX, 0, G.world.w) - p.x, dy = clamp(inp.followY, 0, G.world.h) - p.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > 2) {
+        const v = Math.min(speed, d * 9);
+        tvx = dx / d * v;
+        tvy = dy / d * v;
+        mx = dx / d;
+        my = dy / d;
       }
-    } else {
-      p.heat = Math.max(0, p.heat - C.BOOST_COOL_RATE * dt);
-      if (p.overheated && p.heat <= C.OVERHEAT_RECOVER) p.overheated = false;
     }
+    /* near-instant arcade response, smoothed over a couple of frames */
+    const k = 1 - Math.exp(-C.PLAYER_RESPONSE * dt);
+    p.vx += (tvx - p.vx) * k;
+    p.vy += (tvy - p.vy) * k;
+    if (Math.abs(mx) > 0.2) p.lastDir = mx > 0 ? 1 : -1;
+    p.thrusting = clamp(0.55 - p.vy / Math.max(1, st.speed) * 0.45, 0.25, 1);
 
-    const nebula = p.inNebula ? 0.7 : 1;
-    const thrust = st.thrust * (p.boosting ? C.BOOST_MUL : 1) * nebula;
-    const maxSpeed = st.speed * (p.boosting ? C.BOOST_MUL : 1) * nebula;
-    p.vx += mx * thrust * dt;
-    p.vy += my * thrust * dt;
-    p.thrusting = Math.min(1, ml) * (p.boosting ? 1.6 : 1);
-
-    /* drift: light drag when thrusting, firmer when coasting; grip from the tree */
-    const drag = C.PLAYER_DRAG * st.grip * (ml > 0.1 ? 0.6 : 1);
-    const k = Math.max(0, 1 - drag * dt);
-    p.vx *= k;
-    p.vy *= k;
-    const sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-    const cap = p.rollT > 0 ? maxSpeed * 1.9 : maxSpeed;
-    if (sp > cap) {
-      const s = cap + (sp - cap) * Math.max(0, 1 - 6 * dt);
-      p.vx *= s / sp;
-      p.vy *= s / sp;
+    /* dash */
+    if (p.dashCd > 0) p.dashCd -= dt;
+    if (inp.dashQ) {
+      inp.dashQ = false;
+      if (p.dashCd <= 0) startDash(p, mx, my);
+      else sfx('error', { volume: 0.25 });
     }
-
-    /* dodge roll */
-    if (p.rollCd > 0) p.rollCd -= dt;
-    if (inp.rollQ) {
-      inp.rollQ = false;
-      if (p.rollCd <= 0) startRoll(p, mx, my);
-    }
-    if (p.rollT > 0) {
-      p.rollT -= dt;
-      p.rollSpin += dt * 15 * p.rollDir;
-      if (p.rollT <= 0) p.rollSpin = 0;
+    let dvx = 0, dvy = 0;
+    if (p.dashT > 0) {
+      p.dashT -= dt;
+      p.dashSpin += dt * 34 * p.dashDir;
+      dvx = p.dashVx;
+      dvy = p.dashVy;
+      dashWake(p, dt);
+      if (p.dashT <= 0) p.dashSpin = 0;
     }
     if (p.iframes > 0) p.iframes -= dt;
 
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    keepInside(p, dt);
+    p.x += (p.vx + p.ex + dvx) * dt;
+    p.y += (p.vy + p.ey + dvy) * dt;
+    const ke = Math.exp(-C.EXT_DECAY * dt);
+    p.ex *= ke;
+    p.ey *= ke;
+    keepInside(p);
+    p.aimX = p.x;
+    p.aimY = p.y - 400;
 
-    /* aim and facing */
-    p.aimX = inp.aimWX;
-    p.aimY = inp.aimWY;
-    const want = Math.atan2(p.aimY - p.y, p.aimX - p.x);
-    const before = p.angle;
-    p.angle = turnToward(p.angle, want, 15 * dt);
-    p.turnRate = angleDiff(before, p.angle) / dt;
-    /* bank into lateral motion and turns */
-    const lat = (-Math.sin(p.angle) * p.vx + Math.cos(p.angle) * p.vy) / Math.max(200, st.speed);
-    const bankTarget = clamp(lat * 1.4 + p.turnRate * 0.06, -1, 1);
-    p.bank += (bankTarget - p.bank) * Math.min(1, dt * 8);
+    /* bank into sideways motion */
+    const bankTarget = clamp(p.vx / Math.max(200, st.speed) * 1.3, -1, 1);
+    p.bank += (bankTarget - p.bank) * Math.min(1, dt * 10);
 
     /* shields */
     p.shieldT += dt;
@@ -182,64 +171,66 @@
       else sfx('error', { volume: 0.4 });
     }
 
-    emitTrail(p, mx, my, dt);
+    emitTrail(p, dt);
   }
 
-  function startRoll(p, mx, my) {
+  /* A short burst in the stick direction (sideways when there is none) with i-frames */
+  function startDash(p, mx, my) {
     let dx = mx, dy = my;
-    if (Math.abs(dx) + Math.abs(dy) < 0.1) {
-      /* no stick input: roll sideways relative to the nose */
-      dx = -Math.sin(p.angle);
-      dy = Math.cos(p.angle);
-    }
+    if (Math.abs(dx) + Math.abs(dy) < 0.1) { dx = p.lastDir; dy = 0; }
     const l = Math.sqrt(dx * dx + dy * dy) || 1;
     dx /= l; dy /= l;
-    p.vx += dx * C.ROLL_IMPULSE;
-    p.vy += dy * C.ROLL_IMPULSE;
-    p.rollT = C.ROLL_TIME;
-    p.iframes = Math.max(p.iframes, C.ROLL_IFRAMES);
-    p.rollCd = G.stats.rollCd;
-    p.rollDir = (-Math.sin(p.angle) * dx + Math.cos(p.angle) * dy) >= 0 ? 1 : -1;
+    const v = C.DASH_DIST * G.stats.dashLen / C.DASH_TIME;
+    p.dashVx = dx * v;
+    p.dashVy = dy * v;
+    p.dashT = C.DASH_TIME;
+    p.dashDir = dx >= 0 ? 1 : -1;
+    p.iframes = Math.max(p.iframes, C.DASH_IFRAMES);
+    p.dashCd = G.stats.dashCd;
     p.ramHit = {};
-    sfx('whoosh', { volume: 0.7 });
-    for (let i = 0; i < 8; ++i)
-      fx.glow(p.x - dx * i * 8, p.y - dy * i * 8, 16 - i, p.engineColor, 0.25 + i * 0.02);
+    p.dashTrailT = 0;
+    sfx('whoosh', { volume: 0.7, pitch: 1.3 });
+    for (let i = 0; i < 6; ++i)
+      fx.glow(p.x - dx * i * 10, p.y - dy * i * 10, 15 - i, p.engineColor, 0.22 + i * 0.02);
   }
 
-  function keepInside(p, dt) {
-    const W = G.world.w, H = G.world.h, m = 40;
-    p.outside = false;
-    if (p.x < m) { p.vx += C.BOUNDARY_PUSH * dt; p.outside = true; }
-    if (p.x > W - m) { p.vx -= C.BOUNDARY_PUSH * dt; p.outside = true; }
-    if (p.y < m) { p.vy += C.BOUNDARY_PUSH * dt; p.outside = true; }
-    if (p.y > H - m) { p.vy -= C.BOUNDARY_PUSH * dt; p.outside = true; }
-    p.x = clamp(p.x, -60, W + 60);
-    p.y = clamp(p.y, -60, H + 60);
+  /* afterimages, and the Afterburner Wake upgrade's burning trail */
+  function dashWake(p, dt) {
+    p.dashTrailT -= dt;
+    if (p.dashTrailT > 0) return;
+    p.dashTrailT = 0.03;
+    fx.glow(p.x, p.y, 20, p.colors.glow, 0.25);
+    if (G.stats.burn) {
+      G.zones.push({ alive: true, x: p.x, y: p.y, r: 30, t: 0, life: 1.4, dps: 60, team: 'player', kind: 'burn', vy: G.scroll.speed });
+      fx.glow(p.x, p.y, 28, '#ff8a2a', 0.5);
+    }
   }
 
-  /* engine exhaust and the cosmetic trail */
-  function emitTrail(p, mx, my, dt) {
+  /* the ship never leaves the play field; the top band belongs to the bosses */
+  function keepInside(p) {
+    const m = p.r * 0.8;
+    p.x = clamp(p.x, m, G.world.w - m);
+    p.y = clamp(p.y, C.PLAYER_TOP, G.world.h - m - 4);
+  }
+
+  /* engine exhaust streams down-screen and the cosmetic trail */
+  function emitTrail(p, dt) {
     p.trailT -= dt;
     if (p.trailT > 0) return;
     p.trailT = 1 / 60;
-    const ca = Math.cos(p.angle), sa = Math.sin(p.angle);
     const power = 0.35 + p.thrusting * 0.65;
-    const back = 20;
-    const bx = p.x - ca * back, by = p.y - sa * back;
-    const ev = -260 * power;
+    const bx = p.x, by = p.y + 20;
     const colors = p.trail;
     const c = colors ? colors[Math.floor(G.time * 12) % colors.length] : p.engineColor;
-    fx.exhaust(bx + (R() - 0.5) * 6, by + (R() - 0.5) * 6, p.vx * 0.3 + ca * ev, p.vy * 0.3 + sa * ev, 5 + power * 6, c, null);
-    if (p.boosting && R() < 0.7)
-      fx.exhaust(bx, by, p.vx * 0.2 + ca * ev * 1.5, p.vy * 0.2 + sa * ev * 1.5, 9, '#ffffff', null);
-    if (p.boosting && G.stats.burn) {
-      p.burnT -= 1 / 60;
-      if (p.burnT <= 0) {
-        p.burnT = 0.08;
-        G.zones.push({ alive: true, x: bx, y: by, r: 34, t: 0, life: 1.4, dps: 40, team: 'player', kind: 'burn' });
-        fx.glow(bx, by, 30, '#ff8a2a', 0.6);
-      }
-    }
+    fx.exhaust(bx + (R() - 0.5) * 6, by + (R() - 0.5) * 4, p.vx * 0.2 + (R() - 0.5) * 20, 160 + 200 * power, 5 + power * 6, c, null);
+  }
+
+  /* Pushes from outside (gravity, blasts, bumps); they fade on their own */
+  function push(vx, vy) {
+    const p = G.player;
+    if (!p || !p.alive) return;
+    p.ex += vx;
+    p.ey += vy;
   }
 
   /* ── specials ── */
@@ -254,11 +245,11 @@
         fx.ring(p.x, p.y, 20, 120, 0.4, p.colors.trim, 6);
         break;
       case 'blink': {
-        const ang = p.angle;
+        /* straight up-screen; steered sideways when a direction is held */
         const ox = p.x, oy = p.y;
-        const d = 280;
-        p.x = clamp(p.x + Math.cos(ang) * d, 60, G.world.w - 60);
-        p.y = clamp(p.y + Math.sin(ang) * d, 60, G.world.h - 60);
+        const inp = G.input;
+        p.x = clamp(p.x + (inp.moveX || 0) * 160, 30, G.world.w - 30);
+        p.y = clamp(p.y - 220, C.PLAYER_TOP, G.world.h - 30);
         p.iframes = Math.max(p.iframes, 0.6);
         for (let i = 0; i <= 10; ++i)
           fx.glow(ox + (p.x - ox) * i / 10, oy + (p.y - oy) * i / 10, 22, p.colors.glow, 0.4 + i * 0.02);
@@ -273,9 +264,9 @@
         fx.ring(p.x, p.y, 30, 70, 0.4, '#ffd27a', 8);
         break;
       case 'nova':
-        NS.combat.blast(p.x, p.y, 360, 150 * G.stats.dmgMul, 'player', { push: 600 });
-        NS.projectiles.clearEnemyBullets(p.x, p.y, 380);
-        fx.shockwave(p.x, p.y, 380, '#ff9ab8');
+        NS.combat.blast(p.x, p.y, 300, 150 * G.stats.dmgMul, 'player', { push: 400 });
+        NS.projectiles.clearEnemyBullets(p.x, p.y, 320);
+        fx.shockwave(p.x, p.y, 320, '#ff9ab8');
         fx.flash('#ffd0e0', 0.35);
         fx.hitStop(0.06);
         sfx('explode', { pitch: 1.4 });
@@ -283,7 +274,7 @@
       case 'warp':
         G.warp = ab.time;
         sfx('zap', { pitch: 0.5 });
-        fx.ring(p.x, p.y, 20, 900, 0.9, '#8affe0', 5);
+        fx.ring(p.x, p.y, 20, 760, 0.9, '#8affe0', 5);
         break;
     }
   }
@@ -320,7 +311,7 @@
       fx.sparks(p.x, p.y, Math.atan2(p.y - sy, p.x - sx), 1.5, 10, '#ffb070', 340, 0.35);
       sfx('hurt');
     }
-    p.iframes = Math.max(p.iframes, C.HIT_IFRAMES);
+    p.iframes = Math.max(p.iframes, rest > 0 ? C.HIT_IFRAMES : 0.12);
     if (p.hull <= 0) {
       if (p.lastStand) {
         p.lastStand = false;
@@ -357,6 +348,6 @@
   }
 
   Object.assign(NS.player, {
-    create, applyStats, applyLooks, update, damage, heal, useAbility
+    create, applyStats, applyLooks, update, damage, heal, useAbility, push, keepInside
   });
 })();

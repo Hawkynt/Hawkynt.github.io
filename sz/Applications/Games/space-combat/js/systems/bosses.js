@@ -1,7 +1,8 @@
-/* The five multi-part bosses: warp-in intro, movement styles (hover, serpent, stalk), parts that
-   follow the hull (turrets, shield emitters, beam emitters, launchers, orbiting shards, serpent
-   segments), weak points and core shields, phase changes, the attack library and the death
-   sequence with slow motion. Owns G.boss. */
+/* The five multi-part bosses of the arcade field: they descend from the top, then hold the
+   upper band (hovering, swaying, stalking) or, for the serpent, weave through the whole field;
+   parts follow the hull (turrets, shield emitters, beam emitters, launchers, orbiting shards,
+   serpent segments), weak points and core shields, phase changes, the attack library and the
+   death sequence with slow motion. Owns G.boss. */
 ;(function() {
   'use strict';
 
@@ -15,12 +16,29 @@
   const fx = NS.fx;
   const { sfx, sfxAt } = NS.audio;
 
-  function spawn(id, x, y) {
+  const DOWN = Math.PI / 2;
+  const INTRO = 2.6;
+
+  /* how far the hull and its parts reach from the core */
+  function extentOf(def) {
+    let e = def.r;
+    for (let i = 0; i < def.parts.length; ++i) {
+      const q = def.parts[i];
+      e = Math.max(e, (q.orbit || Math.sqrt(q.x * q.x + q.y * q.y)) + q.r);
+    }
+    return e;
+  }
+
+  /* The boss enters above the field at `x`; it descends to its hover line during the intro */
+  function spawn(id, x) {
     const def = BOSSES[id];
     const st = G.stage;
-    const hpMul = st && st.bossHpMul ? st.bossHpMul : 1;
+    const hpMul = (st && st.bossHpMul ? st.bossHpMul : 1) * NS.constants.BOSS_HP;
+    const ext = extentOf(def);
+    const y = -ext - 40;
     const b = {
-      alive: true, kind: 'boss', id: id, def: def, x: x, y: y, vx: 0, vy: 0, angle: Math.PI / 2, spin: 0,
+      alive: true, kind: 'boss', id: id, def: def, x: x, y: y, vx: 0, vy: 0, angle: DOWN, spin: 0,
+      extent: ext, homeY: Math.min(240, Math.max(170, ext + 50)), entryY: y,
       r: def.r, hp: def.hp * hpMul, maxHp: def.hp * hpMul, flash: 0, t: 0, phase: 0, attackT: 3, attackIdx: 0,
       parts: [], introT: 2.6, deathT: 0, dying: false, shieldHit: 0, mouth: 0, mouthT: 0, gravity: def.move.gravity || 0,
       spiralT: 0, spiralA: 0, spiralArms: 2, spiralCd: 0, chargeT: 0, beamT: 0, beamCharge: 0, beamA: 0, beamDir: 1,
@@ -30,11 +48,11 @@
     if (def.move.type === 'serpent') {
       for (let i = 0; i < def.move.segments; ++i)
         addPart(b, { type: 'segment', hp: 200, r: i === def.move.segments - 1 ? 22 : 28 - i * 0.6, idx: i + 1 }, hpMul);
-      for (let i = 0; i < 400; ++i) b.trail.push({ x: x, y: y + i * 6 });
+      for (let i = 0; i < 400; ++i) b.trail.push({ x: x, y: y - i * 6 });
     }
     G.boss = b;
     updateParts(b, 0);
-    G.banner = { title: def.name, sub: def.title, t: 0, life: 3.2, color: '#ff5c6c' };
+    G.banner = { title: 'WARNING', sub: def.name + ' - ' + def.title + ' approaching', t: 0, life: 3.2, color: '#ff5c6c' };
     sfx('lose', { pitch: 0.5, volume: 0.6 });
     fx.shake(0.4);
     return b;
@@ -86,12 +104,12 @@
       updateDeath(b, dt);
       return;
     }
+    checkPhase(b);
     if (b.introT > 0) {
       b.introT -= dt;
-      if (R() < 0.5) fx.glow(b.x + (R() - 0.5) * b.r * 3, b.y + (R() - 0.5) * b.r * 3, 30, '#ff8aa0', 0.3);
-    }
-    checkPhase(b);
-    move(b, step);
+      intro(b, dt);
+    } else
+      move(b, step);
     updateParts(b, step);
     if (b.introT <= 0) {
       attacks(b, step);
@@ -128,50 +146,72 @@
     }
   }
 
+  /* the descent from above the field; the serpent swims in along its own path */
+  function intro(b, dt) {
+    if (b.def.move.type === 'serpent') {
+      move(b, dt);
+      return;
+    }
+    const k = 1 - Math.max(0, b.introT) / INTRO;
+    const e = k * (2 - k);
+    b.y = b.entryY + (b.homeY - b.entryY) * e;
+    b.vx = 0;
+    b.vy = (b.homeY - b.entryY) / INTRO;
+    const spin = b.def.phases[0].spin !== undefined ? b.def.phases[0].spin : b.def.move.spin || 0;
+    b.spin += spin * dt;
+    if (R() < 0.4) fx.exhaust(b.x + (R() - 0.5) * b.r, b.y - b.r * 0.8, 0, -160, 16, '#ff8aa0', null);
+  }
+
   function move(b, dt) {
     const p = G.player;
     const m = b.def.move;
     const ph = b.def.phases[b.phase];
-    const tx = p && p.alive ? p.x : G.world.w / 2, ty = p && p.alive ? p.y : G.world.h / 2;
+    const W = G.world.w;
+    const tx = p && p.alive ? p.x : W / 2, ty = p && p.alive ? p.y : G.world.h - 100;
     const dx = tx - b.x, dy = ty - b.y;
     const d = Math.sqrt(dx * dx + dy * dy) || 1;
     if (m.type === 'serpent') {
-      const speed = m.speed * b.speedMul * (b.chargeT > 0 ? 2.4 : 1);
+      /* the head weaves a figure through the field; charges dive at the pilot */
+      const speed = m.speed * b.speedMul * (b.chargeT > 0 ? 2.2 : 1);
       if (b.chargeT > 0) b.chargeT -= dt;
-      const wave = b.chargeT > 0 ? 0 : Math.sin(b.t * 1.5) * 0.9;
-      const want = Math.atan2(dy, dx) + wave + (d < m.dist ? 1.3 : 0);
-      b.angle = turnToward(b.angle, want, (b.chargeT > 0 ? 3 : 1.7) * dt);
+      const gx = W / 2 + Math.sin(b.t * 0.55) * W * 0.36;
+      const gy = 220 + Math.sin(b.t * 1.1) * 150;
+      const want = b.chargeT > 0 ? Math.atan2(dy, dx) : Math.atan2(gy - b.y, gx - b.x);
+      b.angle = turnToward(b.angle, want, (b.chargeT > 0 ? 2.6 : 1.9) * dt);
       b.vx = Math.cos(b.angle) * speed;
       b.vy = Math.sin(b.angle) * speed;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
+      b.x = clamp(b.x, 40, W - 40);
+      b.y = clamp(b.y, -200, G.world.h - 80);
       const last = b.trail[0];
       if ((b.x - last.x) * (b.x - last.x) + (b.y - last.y) * (b.y - last.y) > 36) {
         b.trail.unshift({ x: b.x, y: b.y });
         if (b.trail.length > 420) b.trail.pop();
       }
     } else {
+      /* hold the upper band, swaying across it */
       const spin = ph.spin !== undefined ? ph.spin : m.spin || 0;
-      const radial = (d - m.dist) / 200;
-      const tang = Math.sin(b.t * 0.4) * 0.6;
-      b.vx += (dx / d * radial - dy / d * tang) * m.speed * 2 * dt;
-      b.vy += (dy / d * radial + dx / d * tang) * m.speed * 2 * dt;
-      b.vx *= 1 - 1.2 * dt;
-      b.vy *= 1 - 1.2 * dt;
-      const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-      if (sp > m.speed * 1.5) { b.vx *= m.speed * 1.5 / sp; b.vy *= m.speed * 1.5 / sp; }
+      const span = Math.max(0, W / 2 - b.extent - 20);
+      const gx = W / 2 + Math.sin(b.t * 0.32) * span * 0.85;
+      const gy = b.homeY + Math.sin(b.t * 0.7) * 26;
+      const k = Math.min(1, 2 * dt);
+      b.vx += (clamp((gx - b.x) * 1.5, -m.speed * 1.5, m.speed * 1.5) - b.vx) * k;
+      b.vy += (clamp((gy - b.y) * 1.5, -m.speed, m.speed) - b.vy) * k;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      if (m.type === 'stalk' || b.id === 'maw') b.angle = turnToward(b.angle, Math.atan2(dy, dx), (m.turn || 0.6) * dt);
-      else b.spin += spin * dt;
+      if (m.type === 'stalk' || b.id === 'maw') {
+        /* faces down-screen, leaning toward the pilot */
+        const want = DOWN + clamp(angleDiff(DOWN, Math.atan2(dy, dx)), -0.7, 0.7);
+        b.angle = turnToward(b.angle, want, (m.turn || 0.6) * dt);
+      } else
+        b.spin += spin * dt;
+      b.x = clamp(b.x, b.extent * 0.6, W - b.extent * 0.6);
     }
-    b.x = clamp(b.x, 200, G.world.w - 200);
-    b.y = clamp(b.y, 200, G.world.h - 200);
     /* the Maw drags the player in */
     if (b.gravity && p && p.alive && d < 1500 && b.introT <= 0) {
       const pull = b.gravity * (1 - d / 1500) * 2;
-      p.vx -= dx / d * pull * dt;
-      p.vy -= dy / d * pull * dt;
+      NS.player.push(-dx / d * pull * dt, -dy / d * pull * dt);
     }
   }
 
@@ -269,7 +309,7 @@
         const n = +parts[2] || 3;
         for (let i = 0; i < n; ++i) {
           const a = R() * TAU;
-          NS.enemies.spawn(parts[1], b.x + Math.cos(a) * (b.r + 80), b.y + Math.sin(a) * (b.r + 80), {});
+          NS.enemies.launch(parts[1], b.x + Math.cos(a) * (b.r + 30), b.y + Math.abs(Math.sin(a)) * (b.r + 30), {});
         }
         sfxAt('drop', b.x, b.y, { pitch: 0.5 });
         break;
@@ -374,10 +414,11 @@
       b.teleportT -= dt;
       if (b.teleportT > 0.6) b.fadeT = Math.min(1, b.fadeT + dt * 2);
       else if (b.fadeT >= 1) {
-        const p = G.player;
-        const a = R() * TAU;
-        b.x = clamp((p ? p.x : b.x) + Math.cos(a) * 560, 250, G.world.w - 250);
-        b.y = clamp((p ? p.y : b.y) + Math.sin(a) * 560, 250, G.world.h - 250);
+        /* reappears somewhere else across the upper band */
+        const W = G.world.w;
+        b.x = clamp(W / 2 + (R() - 0.5) * (W - 2 * b.extent), b.extent * 0.7, W - b.extent * 0.7);
+        b.y = b.homeY + (R() - 0.5) * 60;
+        b.vx = b.vy = 0;
         b.fadeT = 0.99;
         fx.shockwave(b.x, b.y, 240, '#c070ff');
         run(b, 'ring');
@@ -402,7 +443,7 @@
       const s = src[i];
       const a = b.beamA + (i === 0 ? 0 : (i % 2 ? 0.5 : -0.5));
       const x1 = s.x + Math.cos(a) * 1300, y1 = s.y + Math.sin(a) * 1300;
-      if (p && p.alive && segPointDist2(s.x, s.y, x1, y1, p.x, p.y) < (p.r + 14) * (p.r + 14))
+      if (p && p.alive && segPointDist2(s.x, s.y, x1, y1, p.x, p.y) < (p.hitR + 14) * (p.hitR + 14))
         NS.player.damage(45 * dt * 4, s.x, s.y);
       if (R() < 0.3) fx.sparks(s.x + Math.cos(a) * 30, s.y + Math.sin(a) * 30, a, 0.6, 1, '#ffd0a0', 400, 0.2);
     }

@@ -1,5 +1,6 @@
-/* Fixed numbers: the 1280 x 720 view plane, the simulation clock, pool and grid sizes, player
-   handling, combo and feel timings, and the UI palette. Owns nothing that changes. */
+/* Fixed numbers: the 1280 x 720 view plane with the 720 x 720 arcade play field centred in it,
+   the scroll speed, the simulation clock, pool and grid sizes, player handling, combo and feel
+   timings, and the UI palette. Owns nothing that changes. */
 ;(function() {
   'use strict';
 
@@ -11,6 +12,12 @@
     VIEW_H: 720,
     TAU: Math.PI * 2,
 
+    /* the play field: world units, drawn centred in the plane between the two HUD panels */
+    PF_W: 720,
+    PF_H: 720,
+    PF_X: 280,
+    SCROLL_SPEED: 70,
+
     /* fixed 60 Hz simulation, at most 5 catch-up steps after a stall */
     STEP: 1 / 60,
     STEP_MS: 1000 / 60,
@@ -18,7 +25,7 @@
     STEP_SNAP_MS: 2.5,
 
     /* spatial grid and pools */
-    GRID_CELL: 160,
+    GRID_CELL: 120,
     MAX_PARTICLES: 2600,
     MAX_PLAYER_BULLETS: 700,
     MAX_ENEMY_BULLETS: 900,
@@ -26,16 +33,21 @@
 
     /* player handling (base values, the tree and ships scale them) */
     PLAYER_RADIUS: 18,
-    PLAYER_DRAG: 1.35,
-    BOOST_MUL: 1.75,
-    BOOST_HEAT_RATE: 0.42,
-    BOOST_COOL_RATE: 0.3,
-    OVERHEAT_RECOVER: 0.35,
-    ROLL_IMPULSE: 620,
-    ROLL_TIME: 0.42,
-    ROLL_IFRAMES: 0.38,
-    HIT_IFRAMES: 0.18,
-    BOUNDARY_PUSH: 900,
+    PLAYER_HITBOX: 8,
+    PLAYER_RESPONSE: 40,
+    PLAYER_TOP: 130,
+    FOCUS_MUL: 0.45,
+    DASH_DIST: 150,
+    DASH_TIME: 0.16,
+    DASH_IFRAMES: 0.34,
+    HIT_IFRAMES: 0.5,
+    EXT_DECAY: 4.5,
+    GRAZE_R: 22,
+
+    /* enemy shots fly slower than in open space so patterns stay readable; bosses take longer to
+       break because every shot from below finds them */
+    ENEMY_SHOT_SPEED: 0.68,
+    BOSS_HP: 1.6,
 
     /* combo: kills within the window keep the chain; multiplier steps */
     COMBO_WINDOW: 2.6,
@@ -43,12 +55,6 @@
 
     /* feel */
     MAX_SHAKE: 22,
-    LOOK_AHEAD: 0.22,
-    LOOK_VEL: 0.32,
-    CAM_LERP: 7,
-
-    /* radar */
-    RADAR_R: 74,
 
     /* power-up durations */
     OVERCHARGE_TIME: 9,

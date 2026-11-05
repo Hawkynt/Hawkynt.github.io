@@ -19,7 +19,8 @@ check('six mission types are used', types.size === 6, [...types].join());
 check('every sector mixes at least five mission types', MISSIONS.every(m => new Set(m.map(x => x.type)).size >= 5));
 check('mission types are known', [...types].every(t => MISSION_TYPES[t]));
 
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const { PF_W, PF_H } = NS.constants;
+const inField = (q, m) => q.x >= m && q.x <= PF_W - m && q.y >= m && q.y <= PF_H - m;
 let bad = [];
 for (let s = 0; s < 5; ++s) for (let i = 0; i < 6; ++i) {
   const st = W.campaignStage(s, i);
@@ -31,20 +32,17 @@ for (let s = 0; s < 5; ++s) for (let i = 0; i < 6; ++i) {
   if (!st.roster.every(t => ENEMIES[t])) bad.push(id + ' roster');
   if (!(st.budget > 0 && st.period > 0 && st.maxAlive > 0)) bad.push(id + ' spawner');
   const L = W.layoutStage(st);
-  if (L.start.x < 200 || L.start.y < 200 || L.start.x > st.size - 200 || L.start.y > st.size - 200) bad.push(id + ' start edge');
-  if (L.rocks.some(r => dist(r, L.start) < 300)) bad.push(id + ' rock on start');
-  if (L.mines.some(m => dist(m, L.start) < 380)) bad.push(id + ' mine near start');
-  if (L.hole && L.hole.pull && dist(L.hole, L.start) < 600) bad.push(id + ' hole near start');
-  if (st.type === 'collect' && L.cores.length !== st.n) bad.push(id + ' cores ' + L.cores.length);
-  if (st.type === 'collect' && L.cores.some(c => c.x < 100 || c.y < 100 || c.x > st.size - 100 || c.y > st.size - 100)) bad.push(id + ' core outside');
-  if (st.type === 'collect' && L.hole && L.hole.pull && L.cores.some(c => dist(c, L.hole) < 250)) bad.push(id + ' core in the hole');
-  if (st.type === 'destroy' && L.outposts.length !== st.n) bad.push(id + ' outposts');
-  if (st.type === 'destroy' && L.outposts.some((o, k) => L.outposts.some((q, j) => j > k && dist(o, q) < 400))) bad.push(id + ' outposts overlap');
-  if (st.type === 'escort' && (L.route.length < 3 || L.route.some(p => p.x < 100 || p.y < 100 || p.x > st.size - 100 || p.y > st.size - 100))) bad.push(id + ' route');
-  if (st.type === 'defend' && !L.station) bad.push(id + ' station');
-  if (L.mines.length !== st.hazards.mines || L.rocks.length < st.hazards.rocks * 0.8) bad.push(id + ' hazards placed ' + L.mines.length + '/' + L.rocks.length);
+  if (!inField(L.start, 40) || L.start.y < PF_H * 0.6) bad.push(id + ' start not low in the field');
+  if (L.rocks.some(r => !inField(r, 20) || Math.abs(r.x - L.start.x) < 100)) bad.push(id + ' rock in the start lane');
+  if (st.type === 'collect' && (L.cores.length !== st.n || L.cores.some(c => c.x < 60 || c.x > PF_W - 60 || !(c.at > 0)))) bad.push(id + ' cores');
+  if (st.type === 'destroy' && (L.outposts.length !== st.n || L.outposts.some(o => o.x < 100 || o.x > PF_W - 100))) bad.push(id + ' outposts');
+  if (st.type === 'escort' && !(L.convoy && inField(L.convoy, 60))) bad.push(id + ' convoy');
+  if (st.type === 'defend' && !(L.station && L.station.y > PF_H * 0.8)) bad.push(id + ' station');
+  if (L.turrets !== (st.roster.indexOf('turret') >= 0)) bad.push(id + ' terrain sentries');
 }
-check('all 30 campaign stages are valid and safely laid out', bad.length === 0, bad.join('; '));
+check('all 30 campaign stages are valid and laid out inside the play field', bad.length === 0, bad.join('; '));
+const schedule = W.layoutStage(W.campaignStage(1, 3)).cores.map(c => c.at);
+check('data cores arrive one after another', schedule.every((t, k) => k === 0 || t > schedule[k - 1]));
 
 const a = W.layoutStage(W.campaignStage(3, 0)), b = W.layoutStage(W.campaignStage(3, 0));
 check('layouts are deterministic', JSON.stringify(a) === JSON.stringify(b));

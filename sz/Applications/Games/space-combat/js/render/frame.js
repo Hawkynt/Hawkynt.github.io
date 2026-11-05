@@ -1,6 +1,6 @@
-/* One rendered frame: the backdrop (following the camera in flight, drifting in menus), the
-   battle and HUD while a run is open, the active screen on top, then flash and toasts.
-   Clears the hit areas that the screens re-register. Owns the draw-time measurement. */
+/* One rendered frame: the backdrop (streaming down in flight, drifting in menus), the play
+   field and the HUD panels while a run is open, the active screen on top, then flash and
+   toasts. Clears the hit areas that the screens re-register. Owns the draw-time measurement. */
 ;(function() {
   'use strict';
 
@@ -12,9 +12,9 @@
   const perf = { draw: 0, avg: 0, frames: 0 };
   let cursor = '';
 
-  /* the reticle replaces the system cursor while flying with the mouse */
+  /* the pointer marker replaces the system cursor while the ship follows the mouse */
   function setCursor() {
-    const want = G.screen === 'playing' && G.input.aimMode === 'mouse' && !G.input.touch ? 'none' : 'default';
+    const want = G.screen === 'playing' && G.input.steer === 'mouse' && !G.input.touch ? 'none' : 'default';
     if (want !== cursor) {
       cursor = want;
       NS.view.canvas.style.cursor = want;
@@ -27,12 +27,13 @@
     NS.view.begin();
     const run = NS.screens.inRun() && G.stage;
     if (run) {
-      NS.backdrop.draw(G.cam.x + G.cam.ox * 0.3, G.cam.y + G.cam.oy * 0.3, 0.32);
+      NS.backdrop.draw(G.cam.x + G.cam.ox * 0.3, G.cam.y + G.cam.oy * 0.3, 0.32, G.scroll.y);
       NS.world.draw();
+      NS.hud.drawFrame();
       if (G.screen === 'playing') NS.hud.draw();
     } else {
       const t = G.time;
-      NS.backdrop.draw(G.world.w / 2 + Math.sin(t * 0.05) * 900, G.world.h / 2 + Math.cos(t * 0.037) * 600);
+      NS.backdrop.draw(G.world.w / 2 + Math.sin(t * 0.05) * 600, G.world.h / 2 + Math.cos(t * 0.037) * 300, 0, G.scroll.y);
     }
     switch (G.screen) {
       case 'title': NS.title.draw(); break;
