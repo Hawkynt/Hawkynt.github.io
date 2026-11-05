@@ -1,217 +1,164 @@
 # Pac-Man
 
-## Purpose
-
-Classic arcade maze chase game where the player navigates Pac-Man through a maze, eating dots and power pellets while avoiding four ghosts with distinct AI personalities. Features world themes that change every 4 levels, a powerup system, boss encounters, rich visual effects, and resizable window support. Part of the SynthelicZ Desktop game collection.
+The maze chase for the SynthelicZ Desktop, grown into a full campaign. The Hollow King has swallowed the five Lumens that light Pac-Land; with Pip, the last spark, Pac-Man eats his way through Neon Downtown, Sugarcane Gardens, Glacier Grid, Hollow Woods and Ember Core - twenty mazes, five bosses, cinematics between the chapters. Around the story sit Arcade score attack, a relaxing Zen mode, a seeded Daily Maze and Boss Rush; twelve power-ups, seven kinds of ghost, tile twists, a tech tree, skins, trails, maze themes, daily quests, a play streak, achievements and seasonal events. Runs save themselves and continue after a reload. All art is procedural canvas drawing.
 
 ## How It Works
 
-Canvas-based game rendered at 448x496 (28x31 tile grid, 16px tiles) with HiDPI support and dynamic canvas scaling via ResizeObserver. The maze is defined as a 2D array with wall, dot, power pellet, empty, ghost house, and gate tile types. Walls are pre-rendered to an offscreen cache with glow effects for performance. Four ghosts (Blinky, Pinky, Inky, Clyde) use authentic chase/scatter AI algorithms with Cruise Elroy speed bonuses. Game effects come from the shared `game-effects.js` module.
+The game runs a fixed 60 Hz simulation and draws one frame per display refresh. The view is a 1280 x 720 plane fitted into the window: the 28 x 31 tile maze sits in the middle with the HUD panels beside it, and each world's scenery fills every extra pixel of a wider or taller window. Pointer positions are mapped back into the plane on every event, so clicks stay exact after resizing or maximizing.
+
+Movement is tile-exact: an actor travels along its direction and decides at every tile centre (wrapping through tunnels). Pac-Man takes a buffered turn as soon as the way opens, can reverse at any time (except on ice or right after an arrow pad), and with Slick Turns corners a third of a tile early. Blinky, Pinky, Inky and Clyde keep their original targeting, scatter/chase rhythm, house release and Cruise Elroy; the Gobbler hunts the nearest dots (eat it frightened for a jackpot), the Dasher charges down straight halls when it sees you, and the Phantom drifts straight through walls. Dots eaten in quick succession build a chain and fill the multiplier (up to x5, x8 with the tree); it drains when you dawdle and resets when you are caught.
+
+Mazes are plain data. The original layout is kept; all others come from a seeded generator that opens and closes segments of a mirror-symmetric corridor lattice around the standard ghost house, keeping every node at two or more exits and the network connected, then places the world's twists (arrow pads, taffy, ice runs, portal pairs, fire vents) and the four power pellets. A validator proves each maze symmetric, fully reachable and free of dead ends, and a second pass treats pads and portals as one-way moves to prove there are no traps. Every story stage is additionally cleared by the autopilot in the real simulation in the tests. Boss stages use an open arena: the boss floats through the walls, telegraphs charges, fires shard rings, drops sticky puddles, calls minions or blinks away, and can only be bitten while Pac-Man is powered up - one bite per pellet, with pellets growing back.
+
+All art is painted once into cached canvases: the maze layer per maze and look (rounded wall shapes from the tile grid, a soft glow, a bright rim, a gradient body with the world's texture), Pac-Man in sixteen skins with seven mouth frames, ghosts per colour and kind with two skirt frames, eyes per direction, frightened bodies, the five bosses with scared and hit-flash variants, capsules, fruit, tokens, icons and six painted backdrops with seasonal decor. Per frame the game only blits sprites, draws additive glows and a few paths; no blur filters are used. Effects are pooled particles (glows, sparks, chunks, confetti, trail shapes), shockwave rings, floating scores, screen shake, hit-stop, slow motion, flashes, an iris wipe and squash-and-stretch. A busy frame (every power-up active, hundreds of particles) issues about 1,500 canvas calls and takes under 2 ms of script.
+
+Progress lives in one versioned profile in `localStorage` (shards, tree, cosmetics, story stars, bests, high scores, statistics, achievements, quests, streak, season track); the first version's high-score list is migrated into it once, with a shard bonus for veterans. The current run is a separate plain-data record saved every four seconds, on pause, after every maze and when the page is hidden or closed; Continue on the title restores it exactly.
 
 ## Architecture
 
-- **`index.html`** -- Menu bar (Game/Help), canvas, status bar (score/lives/level/effects), dialogs (High Scores, Controls, About); loads the modules under `js/` in dependency order
-- **`js/`** -- the game under `SZ.Pacman`, one module per domain:
-  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- tile, timing, scoring, theme and storage tunables; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas, context and canvas scaling; `js/core/effects.js` -- particle, shake and floating-text singletons
-  - `js/data/maze-data.js` -- the 28x31 maze; `js/data/level-data.js` -- fruit rewards, powerup definitions, per-level configs, boss roster
-  - `js/systems/` -- maze helpers, entities, movement, mode timers, collisions, powerups, Pac-Man, ghosts, boss, level flow, pause
-  - `js/render/` -- wall tiles, maze cache, maze, Pac-Man, ghosts, fruit, powerup item, boss, intermission, overlays, one frame in order
-  - `js/ui/` -- status bar cells, high scores, menu bar actions, keyboard and swipe input
-  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
-- **`tests/`** -- behavior pin: a scripted session recorded against the game, digest-checked for exact behavioral equality
-- **`styles.css`** -- Flex layout for resizable canvas and visual styling
-- **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
+The code lives in `js/` as plain scripts on the `SZ.Pacman` namespace, loaded in order by `index.html` (no build step, no modules). All shared state sits in one object, `SZ.Pacman.state` (`G` in every module); each module states at its top what it owns.
 
-## Features
+- **`index.html`** -- Menu bar (Game: Title Screen, Continue, Pause, Tech Tree, Wardrobe, Goals, High Scores, Exit; Help: How to Play, Controls, About), canvas, status bar, dialogs; loads the modules below in order
+- **`styles.css`** -- Window chrome: game frame, canvas, status bar, dialog tables
 
-### Resizable Window
+Core (`js/core/`):
 
-- Window is resizable and maximizable via the SZ OS window manager
-- Canvas scales to fill the game frame while preserving the correct 448:496 aspect ratio
-- ResizeObserver automatically adjusts display size on window resize
-- Internal rendering resolution stays fixed at 448x496 with HiDPI scaling for crisp visuals at any display size
+- **`namespace.js`** -- The `SZ.Pacman` namespace with one object per module, so modules can call modules that load after them
+- **`constants.js`** -- View plane and maze placement, simulation clock, tile, wall, dot, feature and direction codes, speeds, timings, scoring, pool sizes, UI palette
+- **`rng.js`** -- Seeded mulberry32 generators, string hashing, local day, day-number and week keys, easing
+- **`data-worlds.js`** -- The cast, five worlds (palette, backdrop, twists, roster, four maze seeds, boss), five bosses and every cinematic script
+- **`data-items.js`** -- Twelve power-ups, seven ghost kinds, the fruit ladder, the five modes and six daily modifiers
+- **`data-tree.js`** -- The tech tree: five branches, 25 nodes with costs, prerequisites, placement and per-level text
+- **`data-cosmetics.js`** -- Sixteen skins, twelve trails, six maze themes with their unlocks, six seasonal events with dates, tokens and reward tracks
+- **`data-goals.js`** -- 28 achievements, the daily quest templates, the lifetime statistics, the streak bonus
+- **`mazes.js`** -- The classic layout, the lattice generator, twist placement, the validator and the one-way play check
+- **`rules.js`** -- Pure rules: the profile and its migration, tree states and derived stats, difficulty per maze, shard payouts, high scores, cosmetics, stats, quests, streak, achievements
+- **`seasons.js`** -- The running event from the local date, event keys across new year, days left, reward tiers, the daily maze and weekly twist
+- **`state.js`** -- The shared state object
+- **`save.js`** -- The only module touching `localStorage`: profile load, migration and write, the run autosave, day roll-over
+- **`audio.js`** -- Sound effects through `SZ.GameAudio`, the alternating chomp, Zen's soft chimes
 
-### World Theme System
+Systems (`js/systems/`), one simulation concern each:
 
-- 8 distinct color themes cycle every 4 levels (1 world = 4 levels)
-- Themes: Classic Blue, Red, Green, Magenta, Yellow, Cyan, Orange, Purple
-- Each theme defines wall color, wall glow, background, and dot color
-- Maze cache is rebuilt on theme change for glowing wall rendering
+- **`grid.js`** -- Tile lookups with tunnel wrap, walkability per walker, the travel routine with decisions at tile centres, breadth-first distance maps
+- **`fx.js`** -- Pooled particles, rings, floating texts, shake, flashes, hit-stop, slow motion
+- **`level.js`** -- Building a maze for the mode and stage, the phase machine, scatter/chase and fright clocks, scoring with the multiplier, being caught (shield, Second Wind, Zen bump, a life)
+- **`pac.js`** -- Pac-Man: speed, turns, reversing, cornering, pads, ice, taffy, portals, eating, the chain, the magnet, the blaster, trails
+- **`ghosts.js`** -- The house, classic targeting, Elroy, the Gobbler, Dasher and Phantom, fright, freezing, stuns, eating ghosts, the touch with Pac-Man
+- **`powerups.js`** -- Switching power-ups on, banners, timers, the Boo Bomb blast, the Decoy
+- **`pickups.js`** -- Power-up capsules, bonus fruit and seasonal tokens: spawning, blinking, collecting, the event track
+- **`hazards.js`** -- Blaster shots, boss shards and puddles, fire vents, the boss arena's pellets growing back
+- **`boss.js`** -- Boss fights: entrance, hunting and fleeing, the attack cycle, bites, chip damage, enrage, the slow-motion death
+- **`run.js`** -- A run per mode, Continue, per-step clocks and autosave, advancing after a maze (chapters, relightings, the ending), shard payouts, the final tally
+- **`autopilot.js`** -- The attract-mode player: a danger map from every threat and a safe breadth-first search to the next goal (also used to prove levels completable)
+- **`cinematics.js`** -- The cinematic sequencer: shots, sound cues, typing, skipping, remembering what was seen
+- **`sim.js`** -- One fixed step: clocks, cinematics, input or autopilot, hit-stop, slow motion, the run and the maze
 
-### Gameplay
+Render (`js/render/`):
 
-- Full maze with dots (10pts each) and 4 power pellets (50pts each)
-- 4 ghosts with authentic AI behaviors:
-  - **Blinky (Red)** -- Targets Pac-Man directly; gains Cruise Elroy speed boost when few dots remain
-  - **Pinky (Pink)** -- Targets 4 tiles ahead of Pac-Man (with original up-left bug)
-  - **Inky (Cyan)** -- Uses Blinky's position to calculate target via vector doubling
-  - **Clyde (Orange)** -- Chases when far (>8 tiles), scatters when close
-- Ghost mode alternation: Scatter (7s) / Chase (20s) cycling with authentic timing
-- Frightened mode from power pellets (duration scales per level: 6s down to 2s)
-- Ghost eating with escalating points: 200, 400, 800, 1600 (affected by score multiplier)
-- Eaten ghosts return to ghost house as eyes
-- Ghost house with staggered release timers
-- Tunnel wrapping on the sides of the maze with ghost speed reduction in tunnels
-- Directional restriction zones (ghosts can't go up at certain intersections)
+- **`art-kit.js`** -- Offscreen canvases, the sprite cache, colour maths, value noise, glow, halo and ring sprites
+- **`view.js`** -- Canvas fitting, backing resolution cap, the visible plane, pointer mapping, resize and maximize
+- **`maze-art.js`** -- The cached maze layer (floor, wall shapes, glow, rim, texture, gate, twists), dot and pellet sprites
+- **`actor-art.js`** -- Pac-Man skins and mouth frames, the death, ghost bodies per kind, eyes, frightened bodies, ice, the bosses
+- **`item-art.js`** -- The glyph icon set, power-up capsules, fruit, seasonal tokens, trail and weather shapes
+- **`backdrop.js`** -- Six painted backdrops, seasonal decor, pooled ambient weather
+- **`fx-render.js`** -- Particles, rings and floating texts
+- **`world.js`** -- The play field: the look (world, theme, season), bezel, maze, dots, twists, items, decoy, ghosts, boss, Pac-Man, shots, darkness
+- **`hud.js`** -- The side panels, boss bar, call-outs and banners, plus flash, wipe, toasts and achievement pop-ups
+- **`cine-render.js`** -- Cinematic scenes: Pac-Land, the theft, talking heads, chapter cards, boss entrances, relightings, credits, the intermission
+- **`frame.js`** -- One frame: cinematic or world and HUD, then the active screen and overlays
 
-### Level Progression
+UI (`js/ui/`):
 
-- 5-tier level configuration controlling Pac-Man speed, ghost speed, frightened duration, tunnel speed, and Cruise Elroy thresholds
-- Cruise Elroy: Blinky gets faster when remaining dots fall below thresholds (elroy1 and elroy2 tiers)
-- Tunnel speed: ghosts slow down in tunnel zones (x < 6 or x > 21)
-- Frightened duration decreases per level tier (6000ms → 2000ms)
-- Intermission screen plays between worlds with animated Pac-Man/ghost chase scene
+- **`kit.js`** -- Text, fitted and wrapped text, cached neon panels, bars, stars, locks, icons, shards, the logo
+- **`widgets.js`** -- Hit areas registered while drawing, buttons, tabs, the keyboard cursor
+- **`screens.js`** -- Screen switching, pause and resume, return targets, starting each mode with its cinematics, Continue, toasts, pop-ups
+- **`status-bar.js`** -- The window status bar and the High Scores dialog
+- **`touch.js`** -- Swipe steering, the on-screen pad and pause button
+- **`title.js`** -- The title over the attract demo: Continue, modes, shortcuts, player card, season and daily panels, confirm box
+- **`map.js`** -- The world map with islands, stars, stage buttons
+- **`tree.js`** -- The tech tree screen with immediate effect mid-run
+- **`wardrobe.js`** -- Skins, trails and maze themes: equip, buy, unlock hints, live preview
+- **`goals.js`** -- Quests and streak, achievements, lifetime records and high scores
+- **`season.js`** -- The seasonal event: track, calendar, weekly twist
+- **`help.js`** -- Five illustrated How to Play pages
+- **`pause.js`** -- The pause menu
+- **`results.js`** -- The end of a run
+- **`input.js`** -- Keyboard, mouse and touch routing, buffered turns, saving on page hide
+- **`app.js`** -- The loop, the menu bar, art pre-painting, start-up
 
-### Powerup System
+Tests (`tests/`, run with `node tests/<name>.test.js`):
 
-- Powerup items spawn on random empty tiles after 30 dots eaten, every 15 seconds
-- Items blink when about to expire (after 7s of 10s lifetime) and disappear at 10s
-- 6 powerup types:
-  - **Speed+** (yellow lightning) -- Pac-Man moves 40% faster for 5s
-  - **Freeze** (cyan snowflake) -- All non-eaten ghosts freeze in place for 4s
-  - **2x Score** (orange star) -- All scoring doubled for 8s
-  - **Extra Life** (green heart) -- Immediately grants 1 extra life
-  - **Magnet** (magenta diamond) -- Auto-collects dots within 3-tile Manhattan distance for 6s
-  - **Phase** (white circle) -- Pac-Man can walk through walls for 3s (semi-transparent visual)
-- Active effects displayed in status bar with remaining duration
-- Effects cleared on death
-
-### Boss Encounters
-
-- Boss fight triggers every 4th level (end of each world)
-- 4 boss types cycling: Shadow King (summon), Phantom Queen (teleport), Spectral Lord (freeze), Clyde Supreme (split)
-- Boss is a 2.5x sized ghost with crown, floating above the maze, chasing Pac-Man
-- Boss HP scales: 8 base + 4 per boss number
-- Boss uses its special ability every ~5 seconds, then becomes stunned for 1.5s
-- Eating a power pellet while boss is stunned makes the boss vulnerable
-- Touching a vulnerable boss deals 1 HP damage (2s invulnerability cooldown)
-- At half HP, boss enters Phase 2: faster movement, shorter ability cooldown
-- Boss abilities:
-  - **Summon** -- Spawns 2 mini-ghost minions that chase Pac-Man for 8s
-  - **Teleport** -- Boss warps to a random position with particle burst
-  - **Freeze** -- Slows Pac-Man to 50% speed for 3s
-  - **Split** -- Creates 2 minion copies that chase for 6s
-- Minions can be eaten during frightened mode for 200 points
-- Defeating boss awards 5000 x boss number points, triggers massive celebration effects
-- Maze refills with dots if cleared during boss fight (ensures power pellets stay available)
-- Boss intro screen with "WARNING" flash and boss name reveal
-- Boss victory screen before advancing to next world
-
-### Fruit System
-
-- Fruit spawns at 70 and 170 dots eaten
-- 8 fruit types with level-based progression: Cherry (100), Strawberry (300), Orange (500), Apple (700), Melon (1000), Galaxian (2000), Bell (3000), Key (5000)
-- 9-second timeout per fruit appearance
-- Fruit has pulsing glow and bobbing animation
-
-### Enhanced Visual Effects
-
-- **Glowing maze walls**: Pre-rendered to offscreen cache with shadowBlur for efficient per-frame rendering
-- **Golden Pac-Man aura**: drawGlow wrapper for golden glow effect
-- **Pac-Man trail**: Golden trail particles emitted every 3 frames while moving
-- **Ghost glow**: Normal ghosts have subtle shadow glow matching their color
-- **Frightened ghost aura**: Blue glow around frightened ghosts
-- **Dot chain system**: Consecutive dots eaten within 500ms build a chain; sparkle count scales with chain length; confetti burst at 5/10/20/50 chain thresholds with floating "Nx CHAIN!" text
-- **Electric arcs**: Brief lightning arc from Pac-Man to eaten ghost
-- **Ghost eating effects**: 25-particle burst + confetti + screen shake (4, 200ms) + electric arc
-- **Death effects**: 50-particle golden burst + screen shake (12, 600ms)
-- **Level complete celebration**: Confetti center burst + sparkle bursts in corners + floating "LEVEL COMPLETE!" text + maze blue/white flash
-- **Power pellet pulsing glow**: Animated size and glow intensity
-- **Fruit pulsing and bobbing**: Sinusoidal vertical bob + size pulse with glow
-- **Powerup item rendering**: Pulsing glow with blinking near expiry; unique icon per type (lightning, snowflake, star, heart, diamond, circle)
-- **Boss rendering**: Large ghost body with crown, tracking eyes, glow aura, wavy skirt; pulsing in Phase 2; stunned flicker; HP bar with color gradient
-- **Phasing visual**: Semi-transparent flickering Pac-Man during Phase powerup
-- Animated Pac-Man mouth (opening/closing with direction rotation)
-- Ghost body with wavy animated skirt
-- Direction-tracking ghost eyes
-- Frightened ghost with squiggly mouth and blue body
-- Flashing blue/white warning before frightened mode ends
-- Dying animation (Pac-Man shrinks)
-
-### Game Management
-
-- 3 lives per game
-- Game states: idle, ready, playing, dying, paused, gameover, levelcomplete, intermission, bossIntro, bossVictory
-- "READY!" text before each life starts
-- Level progression with configurable speed/difficulty tiers
-- High scores persisted to localStorage (top 5, with reset option)
-- Status bar showing score, lives, level, and active powerup effects
-
-### Controls
-
-- Arrow keys or WASD for directional movement
-- Queued direction input (direction change buffers for next intersection)
-- P to pause/resume
-- Space to start game / restart after game over
-- F2 for new game
-- Escape to close dialogs
-
-### Integration
-
-- Menu bar with Game menu (New Game, Pause, High Scores, Exit) and Help menu (Controls, About)
-- SZ OS window management (resizable, maximizable, close via menu)
-- Dialog system for high scores, controls reference, and about info
+- **`harness.js`** -- A recording fake canvas, a minimal DOM and storage, the loader in `index.html` order, stepping and the autopilot playing a maze
+- **`boot.test.js`** -- Every screen, tab and cinematic, every mode starting, the tree from the pause menu with immediate effect, no shadowBlur per frame
+- **`mazes.test.js`** -- The classic maze, 400 generated mazes with every twist, boss arenas, determinism, all 25 story stages valid, and the autopilot clearing every one in the real simulation
+- **`progression.test.js`** -- Tree states, costs and stats, difficulty, shards, high scores, cosmetics, quests, streak, achievements
+- **`save.test.js`** -- Migration of the old high scores, repair of damaged profiles, round trip, autosave and exact Continue after a reload, storage failures
+- **`seasons.test.js`** -- Event boundaries, keys across new year, days left, reward tiers, daily and weekly seeds
+- **`art.test.js`** -- Every sprite paints and is cached, draw-call budgets for busy play, darkness, a boss and every menu, no canvases created per frame
 
 ## User Stories
 
-### Core Gameplay
-- [x] As a user, I can navigate Pac-Man through the maze so that I can eat all the dots
-- [x] As a user, I can encounter four ghosts with different AI personalities so that the game has strategic depth
-- [x] As a user, I can eat power pellets to turn ghosts blue so that I can eat them for bonus points
-- [x] As a user, I can see ghost eating points escalate (200-1600) so that I am rewarded for chaining
-- [x] As a user, I can see eaten ghosts return to the ghost house as eyes so that they can respawn
-- [x] As a user, I can see a flashing warning before frightened mode ends so that I know when to retreat
-- [x] As a user, I can eat fruit that appears for bonus points so that there are extra scoring opportunities
-- [x] As a user, I can see the maze flash when I complete a level so that it feels celebratory
-- [x] As a user, I can use tunnel wrapping on the side passages as escape routes
-- [x] As a user, I can queue directional input so that I can plan turns in advance
-- [x] As a user, I can start each life with a "READY!" countdown so that I can prepare
+### Maze & Ghosts
+- [x] As a player, I can steer Pac-Man with the arrows or WASD, with turns remembered until the corner
+- [x] As a player, I can eat dots and power pellets and turn the tables on frightened ghosts for 200, 400, 800 and 1600 points
+- [x] As a player, I can face Blinky, Pinky, Inky and Clyde with their original personalities, plus the dot-stealing Gobbler, the charging Dasher and the wall-drifting Phantom
+- [x] As a player, I can wrap through tunnels and use arrow pads, taffy, ice, portals, darkness and fire vents
+- [x] As a player, I can build a dot chain and a multiplier of up to x8
 
-### Progression & Difficulty
-- [x] As a user, I can see difficulty scale per level (ghost speed, frightened duration, Cruise Elroy) so that later levels are challenging
-- [x] As a user, I can see world themes change every 4 levels so that the game stays visually fresh
-- [x] As a user, I can watch intermission screens between worlds for a brief visual break
+### Power-ups
+- [x] As a player, I can collect twelve power-ups: Turbo Sneakers, Freeze Ray, Double Points, Dot Magnet, Bubble Shield, Ghost Walk, Pellet Blaster, Boo Bomb, Mega Chomp, Decoy Pac, Time Warp and Extra Heart
+- [x] As a player, I can see what is active with icons and timers and a banner when it starts
+- [x] As a player, I can eat bonus fruit from cherry to key
 
-### Powerup System
-- [x] As a user, I can collect powerup items that spawn on random empty tiles for temporary strategic advantages
-- [x] As a user, I can grab a speed boost powerup so that I can outrun ghosts when needed
-- [x] As a user, I can grab a freeze powerup so that I can safely navigate through ghosts
-- [x] As a user, I can grab a score multiplier powerup so that I can maximize my score
-- [x] As a user, I can grab an extra life powerup as a rare survival bonus
-- [x] As a user, I can grab a magnet powerup to vacuum nearby dots automatically
-- [x] As a user, I can grab a phase powerup to walk through walls as a shortcut
-- [x] As a user, I can see active powerup effects shown in the status bar so that I know what is active
+### Story
+- [x] As a player, I can follow Pac-Man and Pip through five worlds of four mazes and a boss each on a world map with stars
+- [x] As a player, I can watch an intro, chapter openings with dialogue, boss entrances, relightings and an ending with credits
+- [x] As a player, I can fight five bosses that charge, shoot, drop puddles, summon minions and blink, and bite them while powered up
+- [x] As a player, I can skip any cinematic with a key, click or tap
 
-### Boss Encounters
-- [x] As a user, I can face boss fights every 4 levels for an exciting challenge
-- [x] As a user, I can see bosses with unique abilities so that each fight feels different
-- [x] As a user, I can see a boss HP bar so that I can track my progress during the fight
-- [x] As a user, I can see bosses enter Phase 2 at half health for escalating tension
-- [x] As a user, I can see massive celebration effects when defeating a boss for a sense of accomplishment
+### Modes
+- [x] As a player, I can play Arcade with endless mazes, rising speed, intermissions and a high-score table
+- [x] As a player, I can relax in Zen mode with no game over, slow ghosts and soft chimes
+- [x] As a player, I can play the Daily Maze, the same three mazes and modifiers for everyone on a day
+- [x] As a player, I can play Boss Rush once the second world is cleared
+- [x] As a player, I can switch on the weekly Arcade twist
 
-### Visual Effects
-- [x] As a user, I can see glowing walls and particle effects so that the game looks modern and polished
-- [x] As a user, I can see dot chains reward fast eating with visual celebrations
-- [x] As a user, I can see electric arcs when eating ghosts for dramatic impact
-- [x] As a user, I can see a dying animation so that life loss has visual feedback
+### Progression
+- [x] As a player, I can spend shards earned in every mode on a 25-node tech tree from the title or the pause menu, with immediate effect
+- [x] As a player, I can complete three daily quests and keep a play streak for growing shard bonuses
+- [x] As a player, I can unlock 28 achievements and see my lifetime records
+- [x] As a player, I can collect sixteen skins, twelve trails and six maze themes in the wardrobe
 
-### Persistence & OS Integration
-- [x] As a user, I can see my high scores saved so that I can track my best performances
-- [x] As a user, I can resize the window so that I can play at any size
-- [x] As a user, I can access the Game menu (New Game, Pause, High Scores, Exit) and Help menu (Controls, About)
+### Seasons
+- [x] As a player, I can play six seasonal events through the year (Starlight Festival, Night of Lanterns, Frostfall, Bloom Parade, Sunsplash, Harvest Moon) with their own scenery, weather and maze colours
+- [x] As a player, I can collect the season's tokens in every mode and earn its exclusive skin and trail on a reward track
 
-### Planned
-- [ ] As a user, I can hear sound effects for dot eating, ghost eating, death, and level completion
-- [ ] As a user, I can see a two-player alternating mode for competitive play
-- [ ] As a user, I can see bonus stages with unique maze layouts between worlds
-- [ ] As a user, I can customize control bindings in a settings dialog
-- [ ] As a user, I can see additional powerup types beyond the current six
+### Persistence & Controls
+- [x] As a player, I can close the page at any time and continue my run exactly where it was
+- [x] As a player, I can keep my old high scores, with shards for them
+- [x] As a player, I can play with the keyboard, the mouse or a touch screen (swipe or on-screen pad)
+- [x] As a player, I can resize or maximize the window with exact click mapping and the scenery filling the extra space
+- [x] As a player, I can have the game pause when the tab is hidden
 
-## Known Limitations
+### Planned Features
+- [ ] As a player, I can design my own mazes and share them as a code
 
-- Boss movement is free-floating (not tile-constrained) since 2.5x size cannot navigate standard corridors
-- Powerup spawn positions exclude the ghost house area but may rarely spawn in hard-to-reach corridor sections
-- Phase powerup allows Pac-Man through walls but not through the ghost house gate
-- Magnet powerup only pulls regular dots, not power pellets
-- Boss freeze ability slows Pac-Man but does not affect powerup timers
-- Electric arc visual is purely decorative (randomized path each frame)
+## Controls
+
+| Key | Action |
+|-----|--------|
+| Arrow keys / WASD | Steer Pac-Man |
+| Mouse button (held) | Steer toward the pointer |
+| Swipe / on-screen pad | Steer on touch screens |
+| Esc / P / Space | Pause |
+| T | Tech tree |
+| H | How to Play (menus) |
+| B | Buy the selected tech node |
+| Arrows + Enter | Navigate menus |
+| Any key / click | Skip a cinematic |
+| F2 | Title screen (the run stays saved) |
+
+## SEO Keywords
+
+pac-man, pacman online, free maze game, arcade maze chase, pac-man story mode, pac-man boss fights, browser arcade game, power-ups, tech tree, seasonal events, SynthelicZ game

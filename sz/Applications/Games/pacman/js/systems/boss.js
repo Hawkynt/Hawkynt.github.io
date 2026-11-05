@@ -1,249 +1,307 @@
+/* Boss fights: a giant ghost that floats through the arena walls, entering from above, hunting
+   Pac-Man and cycling its attacks (telegraphed charges, ice shard rings, sticky puddles,
+   minion ghosts, blinking away). It is only vulnerable while Pac-Man is powered up: each bite
+   costs it hit points (Boss Bite can double them) and the next bite needs a fresh pellet.
+   Enrages at half health; dies in a slow-motion blast that clears the stage. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Pacman || (SZ.Pacman = {});
+  const G = NS.state;
   const C = NS.constants;
-  const T = NS.data;
-  const S = NS.state;
-  const D = NS.dom;
-  const E = NS.effects;
-  NS.boss.startBossIntro = function startBossIntro() {
-    S.bossWarningTimer = C.BOSS_WARNING_DURATION;
-    S.gameState = 'bossIntro';
-    SZ.GameAudio.play('lose', { pitch: 0.6, volume: 0.7 });
+  const { COLS, ROWS, TAU } = C;
+  const { BOSSES } = NS.worlds;
+  const grid = NS.grid;
+  const FX = NS.fx;
+  const R = NS.rules;
+  const { sfx } = NS.audio;
+  const rnd = NS.rng.fx;
 
-    /* Prepare S.maze for S.boss fight */
-    S.maze = NS.maze.cloneMaze();
-    S.totalDots = NS.maze.countDots(S.maze);
-    S.dotsEaten = 0;
-    S.fruitActive = false;
-    S.fruitTimer = 0;
-    S.fruitShown = 0;
-    NS.flow.resetPositions();
+  const MINION_KINDS = ['blinky', 'pinky', 'inky', 'clyde'];
 
-    S.pacman.speed = 2 * S.levelConfig.pac;
-    for (const g of S.ghosts)
-      g.speed = 1.5 * S.levelConfig.ghost;
-
-    /* Create S.boss */
-    const bossIndex = Math.floor((S.level - 1) / C.BOSS_EVERY) % T.BOSS_TYPES.length;
-    const bossNum = Math.floor((S.level - 1) / C.BOSS_EVERY) + 1;
-    S.boss = {
-      x: C.CANVAS_W / 2,
-      y: 6 * C.TILE,
-      hp: C.BOSS_BASE_HP + (bossNum - 1) * C.BOSS_HP_PER_BOSS,
-      maxHp: C.BOSS_BASE_HP + (bossNum - 1) * C.BOSS_HP_PER_BOSS,
-      speed: C.BOSS_SPEED_BASE,
-      type: T.BOSS_TYPES[bossIndex],
-      bossNumber: bossNum,
-      vulnerable: false,
-      stunned: false,
-      stunTimer: 0,
-      vulnerableTimer: 0,
-      invulnTimer: 0,
-      abilityTimer: 5000,
-      abilityCD: 5000,
-      phase2: false
+  function create(id, run) {
+    const d = BOSSES[id];
+    const hp = Math.round(d.hp * (run.mode === 'bossrush' ? 1 + run.n * 0.08 : 1));
+    return {
+      id: id, x: 14, y: -3, hp: hp, maxHp: hp, state: 'enter', t: 0, atkT: 3.5, atkIdx: 0, vx: 0, vy: 0,
+      vuln: false, flash: 0, size: d.size, enraged: false, tx: 0, ty: 0, alpha: 1, squash: 0, bob: 0, face: 1, shots: 0,
     };
-    S.bossActive = true;
-    S.bossMinions = [];
-
-    /* Reset powerup state */
-    S.fieldPowerup = null;
-    S.activePowerups = [];
-    S.scoreMultiplier = 1;
-    S.pacmanPhasing = false;
-    S.ghostsFrozen = false;
-    S.pacmanSlowed = false;
-    S.pacmanSlowTimer = 0;
   }
 
-  NS.boss.updateBoss = function updateBoss(dt) {
-    if (!S.boss)
-      return;
-
-    const ms = dt * 1000;
-
-    /* Invulnerability cooldown */
-    if (S.boss.invulnTimer > 0)
-      S.boss.invulnTimer -= ms;
-
-    /* Stun timer */
-    if (S.boss.stunned) {
-      S.boss.stunTimer -= ms;
-      if (S.boss.stunTimer <= 0) {
-        S.boss.stunned = false;
-        S.boss.vulnerable = false;
-      }
-    }
-
-    /* Vulnerability timer */
-    if (S.boss.vulnerable) {
-      S.boss.vulnerableTimer -= ms;
-      if (S.boss.vulnerableTimer <= 0)
-        S.boss.vulnerable = false;
-    }
-
-    /* Don't move when stunned */
-    if (S.boss.stunned) {
-      NS.boss.updateBossMinions(dt);
-      return;
-    }
-
-    /* Ability timer */
-    S.boss.abilityTimer -= ms;
-    if (S.boss.abilityTimer <= 0) {
-      NS.boss.useBossAbility();
-      S.boss.stunned = true;
-      S.boss.stunTimer = 1500;
-      S.boss.abilityTimer = S.boss.phase2 ? S.boss.abilityCD * 0.7 : S.boss.abilityCD;
-    }
-
-    /* Movement: gravitate toward Pac-Man */
-    const dx = S.pacman.x - S.boss.x;
-    const dy = S.pacman.y - S.boss.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 1) {
-      const nx = dx / dist;
-      const ny = dy / dist;
-      const spd = S.boss.speed * (S.boss.phase2 ? 1.3 : 1.0);
-      S.boss.x += nx * spd * (60 * dt);
-      S.boss.y += ny * spd * (60 * dt);
-    }
-
-    /* Clamp to S.maze bounds */
-    const halfSize = C.TILE * C.BOSS_SIZE / 2;
-    S.boss.x = Math.max(halfSize, Math.min(C.CANVAS_W - halfSize, S.boss.x));
-    S.boss.y = Math.max(halfSize + 2 * C.TILE, Math.min(C.CANVAS_H - halfSize - C.TILE, S.boss.y));
-
-    NS.boss.updateBossMinions(dt);
+  function reset(b) {
+    b.x = 14;
+    b.y = 5.5;
+    b.state = 'roam';
+    b.t = 0;
+    b.atkT = 3;
+    b.alpha = 1;
   }
 
-  NS.boss.updateBossMinions = function updateBossMinions(dt) {
-    for (let i = S.bossMinions.length - 1; i >= 0; --i) {
-      const m = S.bossMinions[i];
-      const mdx = S.pacman.x - m.x;
-      const mdy = S.pacman.y - m.y;
-      const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
-      if (mdist > 1) {
-        m.x += (mdx / mdist) * 1.5 * (60 * dt);
-        m.y += (mdy / mdist) * 1.5 * (60 * dt);
-      }
-      m.life -= dt * 1000;
-      if (m.life <= 0)
-        S.bossMinions.splice(i, 1);
+  function radius(b) {
+    return b.size * 0.42;
+  }
+
+  function idle(lvl, dt) {
+    const b = lvl.boss;
+    b.bob += dt;
+    if (b.state === 'enter') {
+      b.t += dt;
+      b.y = -3 + Math.min(1, b.t / 1.5) * 8.5;
     }
   }
 
-  NS.boss.useBossAbility = function useBossAbility() {
-    switch (S.boss.type.ability) {
-      case 'summon':
-        for (let i = 0; i < 2; ++i) {
-          S.bossMinions.push({
-            x: S.boss.x + (Math.random() - 0.5) * C.TILE * 2,
-            y: S.boss.y + (Math.random() - 0.5) * C.TILE * 2,
-            color: S.boss.type.color,
-            life: 8000
-          });
+  function setState(b, s) {
+    b.state = s;
+    b.t = 0;
+  }
+
+  function moveToward(b, tx, ty, sp) {
+    const dx = tx - b.x, dy = ty - b.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const k = Math.min(sp, d);
+    b.x += dx / d * k;
+    b.y += dy / d * k;
+    if (Math.abs(dx) > 0.2) b.face = dx < 0 ? -1 : 1;
+    b.x = Math.max(1.5, Math.min(COLS - 1.5, b.x));
+    b.y = Math.max(1.5, Math.min(ROWS - 1.5, b.y));
+  }
+
+  function update(run, dt) {
+    const lvl = run.lvl;
+    const b = lvl.boss;
+    const pac = lvl.pac;
+    const def = BOSSES[b.id];
+    b.t += dt;
+    b.bob += dt;
+    if (b.flash > 0) b.flash -= dt;
+    if (b.squash > 0) b.squash = Math.max(0, b.squash - dt * 3);
+    const scared = b.vuln && (lvl.frightT > 0 || lvl.effects.mega > 0);
+    const sp = def.speed * (b.enraged ? 1.25 : 1) * (lvl.effects.slowmo > 0 ? 0.5 : 1) * dt;
+    const frozen = lvl.effects.freeze > 0;
+    switch (b.state) {
+      case 'enter':
+        b.y = -3 + Math.min(1, b.t / 1.5) * 8.5;
+        if (b.t > 1.5) setState(b, 'roam');
+        return;
+      case 'dying':
+        if (rnd() < 0.5) {
+          const a = rnd() * TAU, r = rnd() * radius(b);
+          FX.burst(grid.px(b.x + Math.cos(a) * r), grid.py(b.y + Math.sin(a) * r), 8, rnd() < 0.5 ? def.color : '#ffffff', 220, 0.5, 6, 0);
         }
-        break;
-      case 'teleport':
-        S.boss.x = (4 + Math.random() * (C.COLS - 8)) * C.TILE;
-        S.boss.y = (4 + Math.random() * (C.ROWS - 8)) * C.TILE;
-        E.particles.burst(S.boss.x, S.boss.y, 20, { color: S.boss.type.color, speed: 4 });
-        break;
-      case 'freeze':
-        S.pacmanSlowed = true;
-        S.pacmanSlowTimer = 3000;
-        break;
-      case 'split':
-        for (let i = 0; i < 2; ++i) {
-          S.bossMinions.push({
-            x: S.boss.x + (i === 0 ? -C.TILE * 2 : C.TILE * 2),
-            y: S.boss.y,
-            color: S.boss.type.color,
-            life: 6000
-          });
+        if (b.t > 2.6) {
+          FX.ring(grid.px(b.x), grid.py(b.y), 20, 400, 0.9, '#ffffff', 12);
+          FX.confetti(grid.px(b.x), grid.py(b.y), 90, 6);
+          FX.flash('#ffffff', 0.8);
+          FX.addShake(16);
+          sfx('explode');
+          sfx('win');
+          if (!run.demo) {
+            ++run.tally.bosses;
+            R.bump(G.profile, 'bosses', 1);
+            G.profile.seen['boss:' + b.id] = true;
+          }
+          NS.level.clear(run);
         }
-        break;
+        return;
+      case 'hurt':
+        moveToward(b, b.tx, b.ty, sp * 2.5);
+        if (b.t > 1.2) setState(b, 'roam');
+        return;
+      case 'blinkOut':
+        b.alpha = Math.max(0, 1 - b.t / 0.5);
+        if (b.t > 0.5) {
+          const pos = NS.pickups.freeTile(lvl, 6) || { x: 14, y: 6 };
+          b.x = pos.x;
+          b.y = pos.y;
+          FX.ring(grid.px(b.x), grid.py(b.y), 60, 6, 0.5, def.color, 5);
+          setState(b, 'blinkIn');
+        }
+        return;
+      case 'blinkIn':
+        b.alpha = Math.min(1, b.t / 0.5);
+        if (b.t > 0.5) { b.alpha = 1; setState(b, 'roam'); }
+        return;
+      case 'tele':
+        b.x += (rnd() - 0.5) * 0.08;
+        if (b.t > 0.8) {
+          setState(b, 'charge');
+          sfx('whoosh', { pitch: 0.6 });
+        }
+        return;
+      case 'charge':
+        if (!frozen) moveToward(b, b.tx, b.ty, sp * 3.2);
+        if (b.t > 1.1 || (Math.abs(b.x - b.tx) < 0.2 && Math.abs(b.y - b.ty) < 0.2)) {
+          setState(b, 'roam');
+          FX.addShake(5);
+          FX.ring(grid.px(b.x), grid.py(b.y), 10, 70, 0.4, def.color, 4);
+        }
+        touch(run, b);
+        return;
+      case 'shards':
+        if (b.t > 0.3 && b.shots === 0) { volley(run, b, 0); b.shots = 1; }
+        if (b.t > 0.75 && b.shots === 1) { volley(run, b, Math.PI / 10); b.shots = 2; }
+        if (b.t > 1) setState(b, 'roam');
+        touch(run, b);
+        return;
     }
-
-    SZ.GameAudio.play('whoosh', { pitch: 0.7 });
-    E.particles.burst(S.boss.x, S.boss.y, 15, { color: S.boss.type.color, speed: 3 });
-    E.floatingText.add(S.boss.x, S.boss.y - C.TILE, S.boss.type.ability.toUpperCase() + '!', {
-      color: S.boss.type.color, font: 'bold 14px sans-serif'
-    });
+    /* roam: hunt, or flee while Pac-Man is powered */
+    if (!frozen) {
+      if (scared) moveToward(b, b.x + (b.x - pac.x) * 2, b.y + (b.y - pac.y) * 2, sp * 0.55);
+      else moveToward(b, pac.x, pac.y, sp);
+    }
+    b.atkT -= dt;
+    if (b.atkT <= 0 && !scared && !frozen) attack(run, b, def);
+    touch(run, b);
   }
 
-  NS.boss.checkBossCollision = function checkBossCollision() {
-    if (!S.bossActive || !S.boss)
-      return;
-
-    const dist = NS.movement.distance(S.pacman.x, S.pacman.y, S.boss.x, S.boss.y);
-    const hitDist = C.TILE * C.BOSS_SIZE / 2 + C.TILE / 2;
-
-    if (dist < hitDist) {
-      if (S.boss.vulnerable && S.boss.invulnTimer <= 0)
-        NS.boss.damageBoss();
-      else if (!S.boss.vulnerable && !S.boss.stunned)
-        NS.flow.startDying();
-    }
-
-    /* Check minions */
-    for (const m of S.bossMinions) {
-      const mdist = NS.movement.distance(S.pacman.x, S.pacman.y, m.x, m.y);
-      if (mdist < C.TILE * 0.8) {
-        if (S.frightenedTimer > 0) {
-          m.life = 0;
-          S.score += 200 * S.scoreMultiplier;
-          SZ.GameAudio.play('smallExplode');
-          E.particles.burst(m.x, m.y, 10, { color: m.color, speed: 3 });
-        } else {
-          NS.flow.startDying();
-          return;
+  function attack(run, b, def) {
+    const lvl = run.lvl;
+    const pac = lvl.pac;
+    const kind = def.attacks[b.atkIdx % def.attacks.length];
+    ++b.atkIdx;
+    b.atkT = (b.enraged ? 3.2 : 4.6) * (run.mode === 'bossrush' ? 0.85 : 1);
+    b.squash = 1;
+    switch (kind) {
+      case 'charge':
+        b.tx = pac.x;
+        b.ty = pac.y;
+        setState(b, 'tele');
+        sfx('hurt', { pitch: 0.5, volume: 0.5 });
+        break;
+      case 'shards':
+        b.shots = 0;
+        setState(b, 'shards');
+        break;
+      case 'puddles':
+        for (let i = 0; i < 3; ++i) {
+          const x = Math.max(1, Math.min(COLS - 2, Math.floor(pac.x + (rnd() - 0.5) * 8))) + 0.5;
+          const y = Math.max(1, Math.min(ROWS - 2, Math.floor(pac.y + (rnd() - 0.5) * 8))) + 0.5;
+          NS.hazards.puddle(run, x, y);
+          FX.burst(grid.px(x), grid.py(y), 10, def.color, 160, 0.5, 6, 0);
         }
+        sfx('drop', { pitch: 0.6 });
+        break;
+      case 'minions': {
+        let n = 0;
+        for (let i = 0; i < lvl.ghosts.length; ++i) if (lvl.ghosts[i].minion && lvl.ghosts[i].mode !== 'eyes') ++n;
+        for (let k = 0; k < 2 && n < 4; ++k, ++n) {
+          const pos = nearestOpen(lvl.maze, b.x, b.y);
+          const g = NS.level.makeGhost(MINION_KINDS[(b.atkIdx + k) % 4], 0, 0);
+          g.x = pos.x;
+          g.y = pos.y;
+          g.mode = 'out';
+          g.minion = true;
+          g.squash = 1;
+          g.dir = k === 0 ? 0 : 2;
+          lvl.ghosts.push(g);
+          FX.ring(grid.px(g.x), grid.py(g.y), 4, 40, 0.4, g.color, 4);
+        }
+        sfx('jump', { pitch: 0.6 });
+        break;
       }
+      case 'blink':
+        setState(b, 'blinkOut');
+        sfx('zap', { pitch: 0.4 });
+        break;
     }
   }
 
-  NS.boss.damageBoss = function damageBoss() {
-    --S.boss.hp;
-    S.boss.invulnTimer = 2000;
-    S.boss.vulnerable = false;
+  function volley(run, b, off) {
+    const n = b.enraged ? 12 : 9;
+    for (let i = 0; i < n; ++i) NS.hazards.shard(run, b.x, b.y, off + i * TAU / n, 4.6);
+    sfx('laser', { pitch: 0.7, volume: 0.5 });
+    FX.ring(grid.px(b.x), grid.py(b.y), 10, 60, 0.3, '#8af0ff', 4);
+  }
 
-    E.screenShake.trigger(6, 300);
-    SZ.GameAudio.play('hit');
-    E.particles.burst(S.boss.x, S.boss.y, 30, { color: '#FFFFFF', speed: 5 });
-    E.floatingText.add(S.boss.x, S.boss.y, '-1 HP', { color: '#FF4444', font: 'bold 16px sans-serif' });
+  function nearestOpen(m, x, y) {
+    let best = { x: 13.5, y: 11.5 }, bd = Infinity;
+    for (let ty = 1; ty < ROWS - 1; ++ty)
+      for (let tx = 1; tx < COLS - 1; ++tx) {
+        if (m.walls[ty * COLS + tx] !== C.W_OPEN) continue;
+        const d = (tx + 0.5 - x) * (tx + 0.5 - x) + (ty + 0.5 - y) * (ty + 0.5 - y);
+        if (d < bd) { bd = d; best = { x: tx + 0.5, y: ty + 0.5 }; }
+      }
+    return best;
+  }
 
-    if (S.boss.hp <= S.boss.maxHp / 2 && !S.boss.phase2) {
-      S.boss.phase2 = true;
-      E.floatingText.add(S.boss.x, S.boss.y - 20, 'PHASE 2!', { color: '#FF0000', font: 'bold 18px sans-serif' });
+  function touch(run, b) {
+    const lvl = run.lvl;
+    const pac = lvl.pac;
+    if (b.alpha < 0.6 || lvl.phase !== 'play') return;
+    const r = radius(b) + 0.35;
+    if (grid.dist2(pac.x, pac.y, b.x, b.y) > r * r) return;
+    const powered = b.vuln && (lvl.frightT > 0 || lvl.effects.mega > 0);
+    if (powered && b.state !== 'hurt') hit(run, b);
+    else if (!powered && b.state !== 'hurt' && lvl.effects.freeze <= 0) NS.level.caught(run, null);
+  }
+
+  function hit(run, b) {
+    const lvl = run.lvl;
+    const def = BOSSES[b.id];
+    const crit = rnd() < G.stats.bossCrit;
+    const dmg = crit ? 2 : 1;
+    b.hp = Math.max(0, b.hp - dmg);
+    b.vuln = false;
+    b.flash = 0.5;
+    b.squash = 1;
+    const x = grid.px(b.x), y = grid.py(b.y);
+    NS.level.addScore(run, 1000 * dmg, x, y - 40, crit ? '#ffd23a' : '#ffffff', crit ? 30 : 24);
+    if (crit) FX.floater(x, y - 70, 'CRITICAL BITE!', '#ffd23a', 22, 1.3);
+    FX.burst(x, y, 40, def.color, 380, 0.7, 8, 0);
+    FX.chunks(x, y, 14, '#ffffff', 300);
+    FX.ring(x, y, 20, 160, 0.5, '#ffffff', 8);
+    FX.addShake(12);
+    FX.hitStop(0.16);
+    FX.flash(def.color, 0.3);
+    sfx('explode', { pitch: 1.4, volume: 0.6 });
+    sfx('hurt', { pitch: 0.6 });
+    /* knocked away from Pac-Man */
+    const pac = lvl.pac;
+    const dx = b.x - pac.x, dy = b.y - pac.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    b.tx = Math.max(2, Math.min(COLS - 2, b.x + dx / d * 7));
+    b.ty = Math.max(2, Math.min(ROWS - 2, b.y + dy / d * 7));
+    if (b.hp <= 0) {
+      setState(b, 'dying');
+      FX.slowMo(2.6, 0.35);
+      lvl.shots.length = 0;
+      for (let i = lvl.ghosts.length - 1; i >= 0; --i) if (lvl.ghosts[i].minion) NS.ghosts.sendHome(lvl.ghosts[i]);
+      return;
     }
-
-    if (S.boss.hp <= 0)
-      NS.boss.defeatBoss();
+    setState(b, 'hurt');
+    if (!b.enraged && b.hp <= b.maxHp / 2) {
+      b.enraged = true;
+      FX.floater(x, y - 90, 'ENRAGED!', '#ff3b3b', 26, 1.6);
+      sfx('lose', { pitch: 1.6, volume: 0.4 });
+    }
   }
 
-  NS.boss.defeatBoss = function defeatBoss() {
-    const pts = 5000 * S.boss.bossNumber;
-    S.score += pts * S.scoreMultiplier;
-
-    E.screenShake.trigger(12, 800);
-    SZ.GameAudio.play('explode');
-    SZ.GameAudio.play('win');
-    E.particles.burst(S.boss.x, S.boss.y, 60, { color: S.boss.type.color, speed: 6, gravity: 0.03, life: 1 });
-    E.particles.confetti(S.boss.x, S.boss.y, 40);
-    E.floatingText.add(S.boss.x, S.boss.y, String(pts), { color: '#FFD700', font: 'bold 20px sans-serif', decay: 0.008 });
-
-    S.bossActive = false;
-    S.boss = null;
-    S.bossMinions = [];
-
-    S.gameState = 'bossVictory';
-    S.bossVictoryTimer = C.BOSS_VICTORY_DURATION;
-    NS.status.updateStatus();
+  /* chip damage from blaster shots and bombs (cannot finish a boss off) */
+  function chip(run, amount) {
+    const b = run.lvl.boss;
+    if (!b || b.state === 'dying' || b.state === 'enter') return;
+    b.hp = Math.max(0.5, b.hp - amount);
+    b.flash = 0.15;
+    FX.sparks(grid.px(b.x), grid.py(b.y), 6, '#ffffff', 200);
+    sfx('hit', { pitch: 0.8, volume: 0.4 });
   }
 
+  function blast(run, x, y) {
+    const b = run.lvl.boss;
+    if (b && grid.dist2(x, y, b.x, b.y) < 64) chip(run, 1);
+  }
+
+  function frighten(b) {
+    if (b.state !== 'dying') b.vuln = true;
+  }
+
+  function hitTest(b, x, y) {
+    const r = radius(b);
+    return b.alpha > 0.5 && b.state !== 'dying' && (x - b.x) * (x - b.x) + (y - b.y) * (y - b.y) < r * r;
+  }
+
+  Object.assign(NS.boss, {
+    create, reset, idle, update, chip, blast, frighten, hitTest, radius
+  });
 })();

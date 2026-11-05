@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Pac-Man game -- play directly in your browser">
+<meta name="description" content="Free online Pac-Man with a story campaign across five worlds, bosses, Arcade, Zen, Daily Maze and Boss Rush modes, 12 power-ups, a tech tree, skins and seasonal events">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Pac-Man -- »SynthelicZ« Desktop">
-<meta property="og:description" content="Free online Pac-Man game -- play directly in your browser">
+<meta property="og:description" content="Free online Pac-Man with a story campaign across five worlds, bosses, Arcade, Zen, Daily Maze and Boss Rush modes, 12 power-ups, a tech tree, skins and seasonal events">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/pacman/index.html">
 <link rel="canonical" href="https://hawkynt.github.io/sz/Applications/Games/pacman/index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Pac-Man",
   "url": "https://hawkynt.github.io/sz/Applications/Games/pacman/index.html",
-  "description": "Free online Pac-Man game -- play directly in your browser",
+  "description": "Free online Pac-Man with a story campaign across five worlds, bosses, Arcade, Zen, Daily Maze and Boss Rush modes, 12 power-ups, a tech tree, skins and seasonal events",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,19 +26,23 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=e8a6852e">
+<link rel="stylesheet" href="styles.css?v=2670765b">
 <script defer src="../../vision-renderer.js?v=1cb8ea77"></script>
 </head>
 <body>
-<noscript><p>Free online Pac-Man game -- play directly in your browser. <a href="../../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
+<noscript><p>Free online Pac-Man: a story across five worlds with bosses, plus Arcade, Zen, Daily Maze and Boss Rush, power-ups, a tech tree, skins and seasonal events. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="continue">Continue Saved Run</div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...<span class="shortcut">T</span></div>
+      <div class="menu-entry" data-action="wardrobe">Wardrobe...</div>
+      <div class="menu-entry" data-action="goals">Goals and Records...</div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
@@ -46,7 +50,9 @@
   </div>
   <div class="menu-item" data-menu="help">Help
     <div class="menu-dropdown">
+      <div class="menu-entry" data-action="tutorial">How to Play...<span class="shortcut">H</span></div>
       <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="about">About Pac-Man</div>
     </div>
   </div>
@@ -54,15 +60,15 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-cell" id="statusScore">Score: 0</div>
-  <div class="status-cell" id="statusLives">Lives: 3</div>
-  <div class="status-cell" id="statusLevel">Level: 1</div>
-  <div class="status-cell" id="statusEffects" style="display:none"></div>
+  <div class="status-section" id="statusScore">Shards: 0</div>
+  <div class="status-section" id="statusLives">Streak: 0</div>
+  <div class="status-section" id="statusLevel">Title</div>
+  <div class="status-section" id="statusEffects"></div>
 </div>
 
 <!-- High Scores Dialog -->
@@ -72,112 +78,133 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Score</th><th>Level</th></tr>
+          <tr><th>#</th><th>Score</th><th>Mode</th><th>Detail</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
     </div>
     <div class="dialog-buttons">
       <button data-result="reset" type="button">Reset</button>
-      <button data-result="ok" type="button">OK</button>
+      <button data-result="ok" data-default type="button">OK</button>
     </div>
   </div>
 </div>
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Arrow Keys</td><td>Move Pac-Man</td></tr>
-        <tr><td>W / A / S / D</td><td>Move Pac-Man</td></tr>
-        <tr><td>P</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
-        <tr><td>Space</td><td>Start game</td></tr>
+        <tr><td>Arrow keys / WASD</td><td>Steer Pac-Man (turns are remembered)</td></tr>
+        <tr><td>Mouse</td><td>Hold the button to steer toward the pointer</td></tr>
+        <tr><td>Touch</td><td>Swipe anywhere or use the on-screen pad</td></tr>
+        <tr><td>Esc / P / Space</td><td>Pause</td></tr>
+        <tr><td>T</td><td>Tech tree (pauses a run)</td></tr>
+        <tr><td>H</td><td>How to Play (in menus)</td></tr>
+        <tr><td>B</td><td>Buy the selected tech node</td></tr>
+        <tr><td>Arrows + Enter</td><td>Navigate menus</td></tr>
+        <tr><td>Any key / click</td><td>Skip a cinematic</td></tr>
+        <tr><td>F2</td><td>Title screen (the run stays saved)</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
-      <button data-result="ok" type="button">OK</button>
+      <button data-result="ok" data-default type="button">OK</button>
     </div>
   </div>
 </div>
 
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">About Pac-Man</div>
     <div class="dialog-body">
       <strong>Pac-Man</strong><br><br>
-      Classic arcade maze chase game.<br><br>
-      Navigate the maze, eat all the dots, and avoid the ghosts. Power pellets let you turn the tables and eat the ghosts for bonus points.<br><br>
+      The Hollow King has swallowed the five Lumens that light Pac-Land. With Pip, the last spark, Pac-Man eats his way through Neon Downtown, Sugarcane Gardens, Glacier Grid, Hollow Woods and Ember Core - twenty mazes and five bosses.<br><br>
+      Plus Arcade score attack, a relaxing Zen mode, a seeded Daily Maze and Boss Rush; twelve power-ups, seven kinds of ghost, a 25-node tech tree, skins, trails, maze themes, daily quests, achievements and seasonal events. Your run saves itself.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
-      <button data-result="ok">OK</button>
+      <button data-result="ok" data-default type="button">OK</button>
     </div>
   </div>
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Pac-Man - Free Classic Arcade Maze Chase Game Online</h1>
-<p>Play the classic Pac-Man arcade game in your browser. Navigate the maze, eat dots, grab power pellets to eat ghosts, collect fruit bonuses, use powerups, and battle bosses across themed worlds with authentic ghost AI.</p>
+<h1>Pac-Man - Free Online Maze Chase with a Story Campaign, Bosses, Power-ups, Tech Tree and Seasonal Events</h1>
+<p>Play Pac-Man in your browser: eat every dot, turn the tables with power pellets and relight the five Lumens of Pac-Land across a story campaign with cinematics, boss fights and a world map. No sign-up - progress is saved in your browser and runs continue where you left off.</p>
 <h2>Features</h2>
 <ul>
-<li>Classic maze gameplay with dots, power pellets, and tunnel wrapping</li>
-<li>Four ghosts with authentic AI: Blinky, Pinky, Inky, and Clyde with unique chase behaviors</li>
-<li>Escalating ghost-eating points: 200, 400, 800, 1600</li>
-<li>8 world themes cycling every 4 levels with glowing wall rendering</li>
-<li>Boss encounters every 4 levels with unique abilities and HP bars</li>
-<li>6 powerup types: Speed+, Freeze, 2x Score, Extra Life, Magnet, Phase</li>
-<li>8 fruit types with level-based progression from Cherry to Key</li>
-<li>Dot chain combo system with confetti at milestone thresholds</li>
-<li>Cruise Elroy speed bonuses for Blinky on later levels</li>
-<li>Intermission scenes between worlds</li>
-<li>Resizable window with HiDPI canvas scaling</li>
-<li>Persistent top-5 high scores via localStorage</li>
+<li>Story mode: 5 worlds with 4 mazes and a boss each, chapter cinematics and dialogue</li>
+<li>Arcade score attack with a multiplier and dot chains, a relaxing Zen mode, the seeded Daily Maze and Boss Rush</li>
+<li>12 power-ups: Turbo Sneakers, Freeze Ray, Double Points, Dot Magnet, Bubble Shield, Ghost Walk, Pellet Blaster, Boo Bomb, Mega Chomp, Decoy Pac, Time Warp, Extra Heart</li>
+<li>7 ghosts: Blinky, Pinky, Inky and Clyde with authentic targeting plus the dot-eating Gobbler, the charging Dasher and the wall-drifting Phantom</li>
+<li>Tile twists: arrow pads, taffy, ice, portals, darkness and fire vents</li>
+<li>25-node tech tree in five branches, 16 skins, 12 trails and 6 maze themes</li>
+<li>Daily quests, a play streak bonus, 28 achievements and lifetime records</li>
+<li>Seasonal events through the year with their own tokens, decorations and rewards</li>
+<li>Autosave and Continue, keyboard, mouse and touch controls, resizable window</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=22e641ef"></script>
-<script src="js/core/constants.js?v=87effe7c"></script>
-<script src="js/data/maze-data.js?v=a2b8b64c"></script>
-<script src="js/data/level-data.js?v=74bc4a3c"></script>
-<script src="js/core/state.js?v=74f0bdef"></script>
-<script src="js/core/dom.js?v=f768264b"></script>
-<script src="js/core/effects.js?v=1d62479e"></script>
-<script src="js/systems/maze.js?v=5f83b04e"></script>
-<script src="js/systems/entities.js?v=fb6d7226"></script>
-<script src="js/systems/movement.js?v=9c555504"></script>
-<script src="js/systems/modes.js?v=566d61ed"></script>
-<script src="js/systems/collisions.js?v=d228f2b7"></script>
-<script src="js/systems/powerups.js?v=f2cd0837"></script>
-<script src="js/systems/pacman.js?v=5646b123"></script>
-<script src="js/systems/ghosts.js?v=acba26b3"></script>
-<script src="js/systems/boss.js?v=5f491009"></script>
-<script src="js/systems/flow.js?v=ee78e4c6"></script>
-<script src="js/systems/pause.js?v=2e0a4935"></script>
-<script src="js/render/wall-tile.js?v=306a842e"></script>
-<script src="js/render/maze-cache.js?v=8d9d9de0"></script>
-<script src="js/render/maze.js?v=aa4a29bd"></script>
-<script src="js/render/pacman.js?v=d6e3d941"></script>
-<script src="js/render/ghosts.js?v=ae472b5a"></script>
-<script src="js/render/fruit.js?v=0ae0b326"></script>
-<script src="js/render/powerup-item.js?v=0872a21e"></script>
-<script src="js/render/boss.js?v=da011511"></script>
-<script src="js/render/intermission.js?v=f8959c00"></script>
-<script src="js/render/overlay.js?v=97ecf5c3"></script>
-<script src="js/render/scene.js?v=850f2f7e"></script>
-<script src="js/ui/status.js?v=4b6fea82"></script>
-<script src="js/ui/highscores.js?v=98e659ce"></script>
-<script src="js/ui/menu.js?v=aa46484a"></script>
-<script src="js/ui/input.js?v=d7ce06c7"></script>
-<script src="js/app.js?v=4905f262"></script>
+<script src="js/core/namespace.js?v=0e67ad87"></script>
+<script src="js/core/constants.js?v=ee9b251e"></script>
+<script src="js/core/rng.js?v=80044eef"></script>
+<script src="js/core/data-worlds.js?v=9aff6829"></script>
+<script src="js/core/data-items.js?v=d9993e84"></script>
+<script src="js/core/data-tree.js?v=02b7c4a2"></script>
+<script src="js/core/data-cosmetics.js?v=9133e5bd"></script>
+<script src="js/core/data-goals.js?v=4a0fb83e"></script>
+<script src="js/core/mazes.js?v=b56e4da1"></script>
+<script src="js/core/rules.js?v=68834eab"></script>
+<script src="js/core/seasons.js?v=bafe76fc"></script>
+<script src="js/core/state.js?v=d407b0bf"></script>
+<script src="js/core/save.js?v=2b741193"></script>
+<script src="js/core/audio.js?v=760d2f05"></script>
+<script src="js/systems/grid.js?v=c4e5af53"></script>
+<script src="js/systems/fx.js?v=5911a7ff"></script>
+<script src="js/systems/level.js?v=072f755a"></script>
+<script src="js/systems/pac.js?v=79a5b2c7"></script>
+<script src="js/systems/ghosts.js?v=2d4f1db5"></script>
+<script src="js/systems/powerups.js?v=bdc45c41"></script>
+<script src="js/systems/pickups.js?v=b68c2e80"></script>
+<script src="js/systems/hazards.js?v=8c211d7d"></script>
+<script src="js/systems/boss.js?v=5a68d017"></script>
+<script src="js/systems/run.js?v=744fe08e"></script>
+<script src="js/systems/autopilot.js?v=d3196efd"></script>
+<script src="js/systems/cinematics.js?v=922bc4c7"></script>
+<script src="js/systems/sim.js?v=94a64115"></script>
+<script src="js/render/art-kit.js?v=fbe654c1"></script>
+<script src="js/render/view.js?v=37d2e16b"></script>
+<script src="js/render/maze-art.js?v=5165b14b"></script>
+<script src="js/render/actor-art.js?v=559a42a6"></script>
+<script src="js/render/item-art.js?v=b11bd09d"></script>
+<script src="js/render/backdrop.js?v=735c2a02"></script>
+<script src="js/render/fx-render.js?v=d0666dfb"></script>
+<script src="js/render/world.js?v=2e1baf6b"></script>
+<script src="js/ui/kit.js?v=a1f7e1cc"></script>
+<script src="js/ui/widgets.js?v=874903a9"></script>
+<script src="js/ui/screens.js?v=d28b92e6"></script>
+<script src="js/ui/status-bar.js?v=2dace093"></script>
+<script src="js/ui/touch.js?v=433faaa6"></script>
+<script src="js/render/hud.js?v=8faadecb"></script>
+<script src="js/render/cine-render.js?v=129b9e9a"></script>
+<script src="js/ui/title.js?v=1be1fd23"></script>
+<script src="js/ui/map.js?v=01bfaf4b"></script>
+<script src="js/ui/tree.js?v=7451d11a"></script>
+<script src="js/ui/wardrobe.js?v=a6c8d019"></script>
+<script src="js/ui/goals.js?v=c72f0cfb"></script>
+<script src="js/ui/season.js?v=0ac51a31"></script>
+<script src="js/ui/help.js?v=bbf29101"></script>
+<script src="js/ui/pause.js?v=50b8532b"></script>
+<script src="js/ui/results.js?v=91c98fd5"></script>
+<script src="js/render/frame.js?v=673e3bfa"></script>
+<script src="js/ui/input.js?v=7cfc0476"></script>
+<script src="js/app.js?v=fd98c00a"></script>
 </body>
 </html>
