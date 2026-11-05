@@ -1,56 +1,39 @@
-/* The one shared mutable state object every module reads and writes. */
+/* The one explicit state object G: clocks, the active screen and menu cursor, input, UI
+   transients, the player profile and derived stats, the current run (plain data, saved as is),
+   the running cinematic, hit-stop and slow motion, and today's date with its season. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Pacman || (SZ.Pacman = {});
-  const S = NS.state = NS.state || {};
+  const G = NS.state;
 
-  S.maze = undefined;
-  S.totalDots = undefined;
-  S.dotsEaten = undefined;
-  S.score = undefined;
-  S.lives = undefined;
-  S.level = undefined;
-  S.gameState = undefined;
-  S.animFrameId = undefined;
-  S.lastTime = undefined;
-  S.pacman = undefined;
-  S.ghosts = undefined;
-  S.modeTimer = undefined;
-  S.modeIndex = undefined;
-  S.currentMode = undefined;
-  S.frightenedTimer = undefined;
-  S.ghostsEatenThisRound = undefined;
-  S.fruitActive = undefined;
-  S.fruitTimer = undefined;
-  S.fruitDotsThreshold1 = undefined;
-  S.fruitDotsThreshold2 = undefined;
-  S.fruitShown = undefined;
-  S.readyTimer = undefined;
-  S.dyingTimer = undefined;
-  S.levelCompleteTimer = undefined;
-  S.levelFlashCount = undefined;
-  S.currentTheme = undefined;
-  S.mazeCache = undefined;
-  S.trailCounter = undefined;
-  S.dotChainCount = undefined;
-  S.dotChainTimer = undefined;
-  S.electricArcs = undefined;
-  S.fieldPowerup = undefined;
-  S.lastPowerupTime = undefined;
-  S.activePowerups = undefined;
-  S.scoreMultiplier = undefined;
-  S.pacmanPhasing = undefined;
-  S.ghostsFrozen = undefined;
-  S.levelConfig = undefined;
-  S.intermissionTimer = undefined;
-  S.boss = undefined;
-  S.bossActive = undefined;
-  S.bossWarningTimer = undefined;
-  S.bossVictoryTimer = undefined;
-  S.bossMinions = undefined;
-  S.pacmanSlowed = undefined;
-  S.pacmanSlowTimer = undefined;
-  S.highScores = [];
+  Object.assign(G, {
+    time: 0,
+    screen: 'title',
+    screenT: 0,
+    menuCursor: 0,
+    hitAreas: [],
+    input: {
+      keys: {}, mouseX: 640, mouseY: 360, mouseMoved: 0, touch: false, want: -1, wantT: 0,
+    },
+    ui: {
+      toast: null, popups: [], banners: [], treeSel: 'a_speed', treeFlash: 0, treeFlashId: '',
+      wardrobeTab: 'skin', wardrobeSel: 0, goalsTab: 'quests', helpPage: 0, mapSel: 0, results: null,
+      flash: 0, flashColor: '#ffffff', titleSel: 0,
+    },
+    profile: null,
+    stats: null,
+    run: null,
+    cine: null,
+    hitStop: 0,
+    slowMo: 0,
+    slowScale: 1,
+    treeReturn: 'title',
+    helpReturn: 'title',
+    wardrobeReturn: 'title',
+    date: new Date(),
+    season: null,
+    savedRun: null,
+  });
 })();

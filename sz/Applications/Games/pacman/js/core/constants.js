@@ -1,124 +1,107 @@
-/* Every tunable number in the game: maze geometry, tile and direction codes, ghost modes,
-   colors and scatter corners, mode timings, chain and powerup timing, world themes, boss numbers. */
+/* Fixed numbers: the 1280 x 720 view plane and where the maze sits on it, the simulation clock,
+   tile and direction codes, base speeds and timings, scoring, pool sizes and the UI palette.
+   Owns nothing that changes. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Pacman || (SZ.Pacman = {});
-  const C = NS.constants = NS.constants || {};
 
-  const COLS = 28;
-  const ROWS = 31;
-  const TILE = 16;
-  const CANVAS_W = COLS * TILE;   // 448
-  const CANVAS_H = ROWS * TILE;   // 496
+  const COLS = 28, ROWS = 31, TILE = 22;
 
-  const STORAGE_KEY = 'sz-pacman-high-scores';
-  const MAX_HIGH_SCORES = 5;
+  Object.assign(NS.constants, {
+    VIEW_W: 1280,
+    VIEW_H: 720,
+    TAU: Math.PI * 2,
+    FONT: '"Trebuchet MS", "Segoe UI", Tahoma, Verdana, sans-serif',
 
-  /* Tile types */
-  const T_WALL  = 0;
-  const T_DOT   = 1;
-  const T_POWER = 2;
-  const T_EMPTY = 3;
-  const T_GHOST_HOUSE = 4;
-  const T_GATE  = 5;
+    /* fixed 60 Hz simulation, at most 5 catch-up steps after a stall */
+    STEP: 1 / 60,
+    STEP_MS: 1000 / 60,
+    MAX_STEPS: 5,
+    STEP_SNAP_MS: 2.5,
 
-  /* Directions */
-  const DIR_LEFT  = 0;
-  const DIR_UP    = 1;
-  const DIR_RIGHT = 2;
-  const DIR_DOWN  = 3;
-  const DIR_NONE  = -1;
+    /* the maze grid and its place on the plane */
+    COLS: COLS,
+    ROWS: ROWS,
+    TILE: TILE,
+    MAZE_W: COLS * TILE,
+    MAZE_H: ROWS * TILE,
+    MAZE_X: Math.round((1280 - COLS * TILE) / 2),
+    MAZE_Y: Math.round((720 - ROWS * TILE) / 2),
 
-  const DX = [-1, 0, 1, 0];
-  const DY = [0, -1, 0, 1];
+    /* wall codes */
+    W_OPEN: 0,
+    W_WALL: 1,
+    W_HOUSE: 2,
+    W_GATE: 3,
 
-  /* Ghost modes */
-  const MODE_SCATTER    = 0;
-  const MODE_CHASE      = 1;
-  const MODE_FRIGHTENED = 2;
-  const MODE_EATEN      = 3;
+    /* dot codes */
+    D_NONE: 0,
+    D_DOT: 1,
+    D_POWER: 2,
 
-  /* Ghost colors */
-  const GHOST_COLORS = ['#FF0000', '#FFB8FF', '#00FFFF', '#FFB852'];
-  const GHOST_NAMES = ['Blinky', 'Pinky', 'Inky', 'Clyde'];
+    /* feature codes (tile twists) */
+    F_NONE: 0,
+    F_PAD_L: 1,
+    F_PAD_U: 2,
+    F_PAD_R: 3,
+    F_PAD_D: 4,
+    F_TAFFY: 5,
+    F_PORTAL: 6,
+    F_VENT: 7,
+    F_ICE: 8,
 
-  /* Scatter corners (tile coords) */
-  const SCATTER_TARGETS = [
-    { x: 25, y: -3 },  // Blinky: top-right
-    { x: 2,  y: -3 },  // Pinky: top-left
-    { x: 27, y: 34 },  // Inky: bottom-right
-    { x: 0,  y: 34 }   // Clyde: bottom-left
-  ];
+    /* directions: left, up, right, down */
+    DX: [-1, 0, 1, 0],
+    DY: [0, -1, 0, 1],
+    NONE: -1,
 
-  /* Ghost house entry/exit */
-  const GHOST_HOUSE_DOOR = { x: 13, y: 11 };
-  const GHOST_HOUSE_EXIT = { x: 13, y: 14 };
-  const GHOST_START_POS = [
-    { x: 13, y: 11 },  // Blinky starts outside
-    { x: 13, y: 14 },  // Pinky in house center
-    { x: 11, y: 14 },  // Inky in house left
-    { x: 15, y: 14 }   // Clyde in house right
-  ];
+    /* the ghost house (identical in every maze) */
+    DOOR: { x: 13, y: 11 },
+    HOUSE_SLOTS: [{ x: 14, y: 11.5 }, { x: 14, y: 14.5 }, { x: 12, y: 14.5 }, { x: 16, y: 14.5 }],
+    HOUSE_CENTER: { x: 14, y: 14.5 },
+    PAC_START: { x: 14, y: 23.5 },
 
-  /* Pac-Man start */
-  const PACMAN_START = { x: 13, y: 23 };
+    /* speeds in tiles per second */
+    PAC_SPEED: 7.6,
+    GHOST_SPEED: 6.9,
+    FRIGHT_SPEED: 4.3,
+    EYES_SPEED: 15,
+    TUNNEL_SPEED: 3.9,
 
-  /* Mode alternation timings (seconds): [scatter, chase, scatter, chase, ...] */
-  const MODE_TIMINGS = [7, 20, 7, 20, 5, 20, 5, Infinity];
+    /* classic scatter/chase rhythm (seconds) */
+    MODE_TIMES: [7, 20, 7, 20, 5, 20, 5, Infinity],
 
-  /* Frightened flash warning time */
-  const FRIGHTENED_FLASH_TIME = 2000;
+    /* scoring */
+    DOT_POINTS: 10,
+    POWER_POINTS: 50,
+    GHOST_POINTS: [200, 400, 800, 1600],
+    EXTRA_LIFE_EVERY: 10000,
+    CHAIN_WINDOW: 0.55,
+    MULT_STEPS: [0, 20, 50, 90, 140, 200, 280, 380],
 
-  /* Ghost eating sequence points */
-  const GHOST_EAT_POINTS = [200, 400, 800, 1600];
+    /* pools */
+    MAX_PARTICLES: 1400,
+    MAX_FLOATERS: 40,
 
-  /* --- World Themes --- */
-  const WORLD_THEMES = [
-    { wall: '#2121DE', wallGlow: '#4444FF', bg: '#000000', dotColor: '#FFB8AE' },
-    { wall: '#DE2121', wallGlow: '#FF4444', bg: '#0A0000', dotColor: '#FFDDAA' },
-    { wall: '#21DE21', wallGlow: '#44FF44', bg: '#000A00', dotColor: '#FFFFAA' },
-    { wall: '#DE21DE', wallGlow: '#FF44FF', bg: '#0A000A', dotColor: '#FFB8FF' },
-    { wall: '#DEDE21', wallGlow: '#FFFF44', bg: '#0A0A00', dotColor: '#FFFFFF' },
-    { wall: '#21DEDE', wallGlow: '#44FFFF', bg: '#000A0A', dotColor: '#FFE0B8' },
-    { wall: '#FF6600', wallGlow: '#FF8844', bg: '#0A0500', dotColor: '#FFD700' },
-    { wall: '#8844FF', wallGlow: '#AA66FF', bg: '#050008', dotColor: '#EEDDFF' }
-  ];
-  const WORLD_SIZE = 4;
-  const TRAIL_INTERVAL = 3;
+    /* autosave cadence while playing (seconds) */
+    AUTOSAVE_EVERY: 4,
 
-  /* --- Dot Chains --- */
-  const DOT_CHAIN_WINDOW = 500;
-  const DOT_CHAIN_THRESHOLDS = [5, 10, 20, 50];
-
-  const POWERUP_SPAWN_INTERVAL = 15000;
-  const POWERUP_LIFETIME = 10000;
-  const POWERUP_BLINK_START = 7000;
-  const POWERUP_MIN_DOTS = 30;
-
-  const INTERMISSION_DURATION = 4000;
-
-  /* --- Boss --- */
-  const BOSS_EVERY = 4;
-  const BOSS_BASE_HP = 8;
-  const BOSS_HP_PER_BOSS = 4;
-  const BOSS_SIZE = 2.5;
-  const BOSS_SPEED_BASE = 1.2;
-  const BOSS_WARNING_DURATION = 2500;
-  const BOSS_VICTORY_DURATION = 3000;
-
-  Object.assign(C, {
-    COLS, ROWS, TILE, CANVAS_W, CANVAS_H, STORAGE_KEY, MAX_HIGH_SCORES, T_WALL,
-    T_DOT, T_POWER, T_EMPTY, T_GHOST_HOUSE, T_GATE, DIR_LEFT, DIR_UP,
-    DIR_RIGHT, DIR_DOWN, DIR_NONE, DX, DY, MODE_SCATTER, MODE_CHASE,
-    MODE_FRIGHTENED, MODE_EATEN, GHOST_COLORS, GHOST_NAMES, SCATTER_TARGETS,
-    GHOST_HOUSE_DOOR, GHOST_HOUSE_EXIT, GHOST_START_POS, PACMAN_START,
-    MODE_TIMINGS, FRIGHTENED_FLASH_TIME, GHOST_EAT_POINTS, WORLD_THEMES,
-    WORLD_SIZE, TRAIL_INTERVAL, DOT_CHAIN_WINDOW, DOT_CHAIN_THRESHOLDS,
-    POWERUP_SPAWN_INTERVAL, POWERUP_LIFETIME, POWERUP_BLINK_START,
-    POWERUP_MIN_DOTS, INTERMISSION_DURATION, BOSS_EVERY, BOSS_BASE_HP,
-    BOSS_HP_PER_BOSS, BOSS_SIZE, BOSS_SPEED_BASE, BOSS_WARNING_DURATION,
-    BOSS_VICTORY_DURATION
+    UI: {
+      text: '#eef2ff',
+      textDim: '#9aa6cc',
+      textMute: '#5c6688',
+      accent: '#ffd23a',
+      accent2: '#4ad8ff',
+      good: '#5cff9a',
+      bad: '#ff5a6a',
+      gold: '#ffcc33',
+      goldDeep: '#b07a00',
+      shard: '#7af0ff',
+      token: '#ff9ad8',
+      panelTop: 'rgba(24,22,58,0.94)',
+      panelBottom: 'rgba(8,8,26,0.96)',
+    },
   });
 })();

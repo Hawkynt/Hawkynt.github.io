@@ -1,5 +1,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body {
+  height: 100%;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -8,44 +12,48 @@ body {
   -webkit-user-select: none;
   display: flex;
   flex-direction: column;
-  height: 100vh;
 }
 
 /* ---- Game Frame ---- */
 .game-frame {
   border: 3px solid;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
   margin: 4px;
-  padding: 5px;
-  background: var(--sz-color-button-face);
+  background: #000;
+  position: relative;
   flex: 1;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .game-frame canvas {
   display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+  touch-action: none;
+  outline: none;
 }
 
 /* ---- Status Bar ---- */
 .status-bar {
   display: flex;
-  border-top: 1px solid var(--sz-color-button-shadow);
+  align-items: center;
+  height: 20px;
   background: var(--sz-color-button-face);
-  font-size: 11px;
-  padding: 2px 4px;
+  border-top: 1px solid var(--sz-color-button-shadow);
+  padding: 0 4px;
+  flex-shrink: 0;
+  gap: 2px;
 }
 
-.status-cell {
-  padding: 1px 8px;
+.status-section {
   border: 1px solid;
   border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  flex: 1;
+  padding: 1px 6px;
+  font-size: 11px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--sz-color-menu-text);
+  flex: 1;
 }
 
 /* ---- High Scores Table ---- */
@@ -77,12 +85,6 @@ body {
   font-family: 'Consolas', 'Courier New', monospace;
 }
 
-.high-scores-table td:nth-child(3) {
-  text-align: right;
-  font-size: 10px;
-  color: var(--sz-color-button-shadow);
-}
-
 /* ---- Controls Info ---- */
 .controls-table {
   width: 100%;
@@ -97,5 +99,5 @@ body {
 .controls-table td:first-child {
   font-weight: bold;
   white-space: nowrap;
-  width: 100px;
+  width: 130px;
 }
