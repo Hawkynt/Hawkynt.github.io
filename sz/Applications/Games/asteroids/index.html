@@ -3,21 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Asteroids game -- play directly in your browser with classic arcade shooting gameplay">
-<meta name="keywords" content="asteroids game, online asteroids, browser game, arcade game, space shooter, classic arcade, free game, retro game, asteroid shooting">
+<meta name="description" content="Free online Asteroids game -- the classic rock-shattering arcade shooter rebuilt: a five-chapter story campaign with 30 missions and five titan bosses, Arcade, Zen, Daily and Boss Rush modes, 13 power-ups, a 29-node tech tree, seasonal events, skins and autosave">
+<meta name="keywords" content="asteroids game, online asteroids, browser game, arcade game, space shooter, classic arcade, free game, retro game, boss fights, story campaign, zen mode">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Asteroids -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online Asteroids game -- play directly in your browser">
+<meta property="og:title" content="Asteroids: Starfall -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Free online Asteroids game -- the classic rock-shattering arcade shooter rebuilt: a five-chapter story campaign with 30 missions and five titan bosses, Arcade, Zen, Daily and Boss Rush modes, 13 power-ups, a 29-node tech tree, seasonal events, skins and autosave">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/asteroids/index.html">
 <link rel="canonical" href="https://hawkynt.github.io/sz/Applications/Games/asteroids/index.html">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  "name": "Asteroids",
+  "name": "Asteroids: Starfall",
   "url": "https://hawkynt.github.io/sz/Applications/Games/asteroids/index.html",
-  "description": "Free online Asteroids game -- play directly in your browser",
+  "description": "Free online Asteroids game -- the classic rock-shattering arcade shooter rebuilt: a five-chapter story campaign with 30 missions and five titan bosses, Arcade, Zen, Daily and Boss Rush modes, 13 power-ups, a 29-node tech tree, seasonal events, skins and autosave",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -27,19 +27,22 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=a58ca6ac">
+<link rel="stylesheet" href="styles.css?v=2ab078b1">
 <script defer src="../../vision-renderer.js?v=1cb8ea77"></script>
 </head>
 <body>
-<noscript><p>Free online Asteroids game -- play directly in your browser. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+<noscript><p>Free online Asteroids game: a story campaign with five titans, Arcade, Zen, Daily and Boss Rush modes, power-ups, a tech tree and seasonal events. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...</div>
+      <div class="menu-entry" data-action="wardrobe">Hangar...</div>
+      <div class="menu-entry" data-action="goals">Goals...</div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
@@ -47,6 +50,7 @@
   </div>
   <div class="menu-item" data-menu="help">Help
     <div class="menu-dropdown">
+      <div class="menu-entry" data-action="tutorial">How to Play...<span class="shortcut">H</span></div>
       <div class="menu-entry" data-action="controls">Controls...</div>
       <div class="menu-entry" data-action="about">About Asteroids</div>
     </div>
@@ -55,15 +59,15 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-cell">Score: <span id="statusScore">0</span></div>
-  <div class="status-cell">Lives: <span id="statusLives">3</span></div>
-  <div class="status-cell"><span id="statusLevelLabel">Level</span>: <span id="statusLevel">1</span></div>
-  <div class="status-cell">Mode: <span id="statusMode">Classic</span></div>
+  <div class="status-cell" id="statusScore">Stardust: 0</div>
+  <div class="status-cell" id="statusLives"></div>
+  <div class="status-cell" id="statusLevel"></div>
+  <div class="status-cell" id="statusMode">Title</div>
 </div>
 
 <!-- High Scores Dialog -->
@@ -73,7 +77,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Score</th><th>Level</th><th>Mode</th></tr>
+          <tr><th>#</th><th>Score</th><th>Wave</th><th>Mode</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -91,56 +95,21 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Left / A</td><td>Rotate left</td></tr>
-        <tr><td>Right / D</td><td>Rotate right</td></tr>
-        <tr><td>Up / W</td><td>Thrust</td></tr>
-        <tr><td>Space</td><td>Shoot (hold for auto-fire)</td></tr>
-        <tr><td>Down / S</td><td>Hyperspace</td></tr>
-        <tr><td>P</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game (mode select)</td></tr>
-        <tr><td>1&ndash;4</td><td>Select game mode</td></tr>
-        <tr><td>&larr; / &rarr;</td><td>Change field size (mode select)</td></tr>
+        <tr><td>A / D or Left / Right</td><td>Rotate</td></tr>
+        <tr><td>W or Up</td><td>Thrust</td></tr>
+        <tr><td>S or Down</td><td>Brake</td></tr>
+        <tr><td>Space (hold)</td><td>Fire</td></tr>
+        <tr><td>Shift or X</td><td>Hyperspace jump</td></tr>
+        <tr><td>E or Q</td><td>Overdrive blast (when charged)</td></tr>
+        <tr><td>Esc or P</td><td>Pause menu (tech tree, hangar, goals)</td></tr>
+        <tr><td>F2</td><td>Title screen (the run is kept for Continue)</td></tr>
+        <tr><td>H</td><td>How to Play (on the title)</td></tr>
+        <tr><td>Mouse</td><td>Aim at the pointer; left button fires, right button thrusts</td></tr>
+        <tr><td>Touch</td><td>Drag on the left to steer and thrust; guns fire on their own; HYPER and OVER buttons</td></tr>
       </table>
       <div class="controls-section">
-        <strong>Game Modes</strong>
-        <div class="controls-mode">Classic &ndash; 3 lives, progressive levels</div>
-        <div class="controls-mode">Survival &ndash; 1 life, endless waves</div>
-        <div class="controls-mode">Zen &ndash; Infinite lives, 3-min timer</div>
-        <div class="controls-mode">Hardcore &ndash; 1 life, 1.5&times; speed, 2&times; score</div>
-      </div>
-      <div class="controls-section">
-        <strong>Rock Types</strong>
-        <div class="controls-mode"><span class="rt-icon rt-normal">N</span> Normal &ndash; 1 hit to destroy</div>
-        <div class="controls-mode"><span class="rt-icon rt-iron">I</span> Iron (grey, level 3+) &ndash; 2 hits, 1.5&times; points</div>
-        <div class="controls-mode"><span class="rt-icon rt-crystal">C</span> Crystal (blue, level 6+) &ndash; 3 hits, 2&times; points</div>
-        <div class="controls-mode"><span class="rt-icon rt-exploding">X</span> Exploding (orange, level 9+) &ndash; 2 hits, AoE on death</div>
-        <div class="controls-mode"><span class="rt-icon rt-ice">F</span> Ice (white, level 12+) &ndash; 2 hits, slow zone on death</div>
-        <div class="controls-mode"><span class="rt-icon rt-lava">L</span> Lava (dark, level 15+) &ndash; 3 hits, fire trail + patches</div>
-        <div class="controls-mode"><span class="rt-icon rt-electric">E</span> Electric (yellow, level 18+) &ndash; 2 hits, EMP on death</div>
-      </div>
-      <div class="controls-section">
-        <strong>Enemy Ships</strong>
-        <div class="controls-mode"><span class="en-icon en-ufo">U</span> UFO (level 1+) &ndash; random or aimed shots</div>
-        <div class="controls-mode"><span class="en-icon en-drone">D</span> Drone (level 5+) &ndash; kamikaze charge, spawns in groups</div>
-        <div class="controls-mode"><span class="en-icon en-gunship">G</span> Gunship (level 8+) &ndash; burst fire, strafing</div>
-        <div class="controls-mode"><span class="en-icon en-minelayer">M</span> Mine-Layer (level 11+) &ndash; drops proximity mines</div>
-        <div class="controls-mode"><span class="en-icon en-stealth">S</span> Stealth (level 14+) &ndash; cloaks, aimed shots</div>
-        <div class="controls-mode"><span class="en-icon en-boss">B</span> Boss (every 5 levels from 10) &ndash; multi-attack, high HP</div>
-      </div>
-      <div class="controls-section">
-        <strong>Allies</strong>
-        <div class="controls-mode"><span class="en-icon en-ally">A</span> Fighter ally spawns every 5 levels (from 5). Follows you and shoots enemies. Max 2.</div>
-      </div>
-      <div class="controls-section">
-        <strong>Powerups</strong>
-        <div class="controls-mode"><span class="pu-icon pu-shield">S</span> Shield &ndash; absorbs one hit</div>
-        <div class="controls-mode"><span class="pu-icon pu-triple">T</span> Triple Shot &ndash; 3-way spread</div>
-        <div class="controls-mode"><span class="pu-icon pu-rapid">R</span> Rapid Fire &ndash; faster shooting</div>
-        <div class="controls-mode"><span class="pu-icon pu-piercing">P</span> Piercing &ndash; bullets pass through</div>
-        <div class="controls-mode"><span class="pu-icon pu-spread">W</span> Spread Shot &ndash; 5-way burst</div>
-        <div class="controls-mode"><span class="pu-icon pu-homing">H</span> Homing &ndash; bullets track asteroids</div>
-        <div class="controls-mode"><span class="pu-icon pu-life">+</span> Extra Life</div>
-        <div class="controls-mode"><span class="pu-icon pu-nuke">N</span> Nuke &ndash; destroys all asteroids</div>
+        <strong>Menus</strong>
+        <div class="controls-mode">Arrows move the cursor, Enter or Space selects, Esc goes back, Tab switches tabs, B buys in the tech tree.</div>
       </div>
     </div>
     <div class="dialog-buttons">
@@ -154,9 +123,9 @@
   <div class="dialog">
     <div class="dialog-title">About Asteroids</div>
     <div class="dialog-body">
-      <strong>Asteroids &ndash; Enhanced Edition</strong><br><br>
-      Classic arcade space shooter with modern visuals, powerups, progressive difficulty, and multiple game modes.<br><br>
-      Destroy asteroids and enemy ships while collecting powerups. Build combos for score multipliers. Face 7 rock types with unique death effects, 6 enemy ship types including bosses, and recruit ally fighters as you advance. Choose from Classic, Survival, Zen, or Hardcore modes with selectable field sizes.<br><br>
+      <strong>Asteroids: Starfall</strong><br><br>
+      The classic rock-shattering shooter, rebuilt. Fly the Kestrel through five belts in the Starfall story, from the Kuiper Drift to the Maw, and bring down five titans. Chase high scores in Arcade, drift in Zen, take on the seeded Daily and the Boss Rush.<br><br>
+      Thirteen power-ups, raiders and hazards, a 29-node tech tree, ship skins, trails and shot colours, achievements, daily quests, play streaks and seasonal events. Everything is stored in this browser and your run autosaves.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -166,60 +135,82 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Asteroids - Free Online Arcade Game</h1>
-<p>Play the classic Asteroids arcade game directly in your browser. Pilot your spaceship, shoot and destroy asteroids, avoid collisions, and compete for high scores in this faithful recreation of the retro arcade classic.</p>
+<h1>Asteroids: Starfall - Free Online Arcade Game</h1>
+<p>Play Asteroids in your browser: rotate, thrust and shatter rocks on a wrapping field, now with a story campaign, boss fights, power-ups, a tech tree and seasonal events.</p>
 <h2>Features</h2>
 <ul>
-<li>Classic arcade-style space shooting gameplay</li>
-<li>Destroy asteroids that split into smaller pieces</li>
-<li>Smooth ship rotation and thrust controls</li>
-<li>Progressive difficulty with more asteroids each level</li>
-<li>Score tracking and lives system</li>
-<li>Retro vector-style graphics</li>
-<li>Keyboard controls for movement and shooting</li>
+<li>Story campaign: five chapters, thirty hand-designed missions, five titan bosses, cinematics and dialogue</li>
+<li>Arcade, Zen, Daily challenge and Boss Rush modes with a high-score table</li>
+<li>Thirteen rock types including seasonal rocks, seven raider types and hazards like black holes and lightning storms</li>
+<li>Thirteen power-ups: shields, tri-shot, lance rounds, seekers, Sunbeam laser, orbit blades, chrono field, Nova Bomb, singularity and more</li>
+<li>A 29-node tech tree, ship skins, engine trails and shot colours</li>
+<li>Achievements, daily quests, play streaks, lifetime records and seasonal event tracks</li>
+<li>Autosave and Continue, keyboard, mouse and touch controls</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=565a37d3"></script>
-<script src="js/core/constants.js?v=94edebfd"></script>
-<script src="js/data/tables.js?v=33bb2148"></script>
-<script src="js/core/state.js?v=2638840e"></script>
-<script src="js/core/dom.js?v=63ab1918"></script>
-<script src="js/core/os.js?v=3a2b481e"></script>
-<script src="js/core/rules.js?v=df0a8394"></script>
-<script src="js/systems/entities.js?v=a5cdb0fd"></script>
-<script src="js/systems/zones.js?v=9678a134"></script>
-<script src="js/systems/powerups.js?v=a3feca80"></script>
-<script src="js/systems/combo.js?v=35e94268"></script>
-<script src="js/systems/shockwaves.js?v=f63312f3"></script>
-<script src="js/systems/warp.js?v=19ea2aa8"></script>
-<script src="js/systems/shooting.js?v=8761d526"></script>
-<script src="js/systems/destruction.js?v=4bdc8460"></script>
-<script src="js/systems/collision.js?v=10c43232"></script>
-<script src="js/systems/spawn.js?v=11023652"></script>
-<script src="js/systems/homing.js?v=a36f8abf"></script>
-<script src="js/systems/background.js?v=9c1d4650"></script>
-<script src="js/systems/flow.js?v=9904ad40"></script>
-<script src="js/render/starfield.js?v=08fa3351"></script>
-<script src="js/render/ship.js?v=158ff06a"></script>
-<script src="js/render/asteroids.js?v=5e7553d7"></script>
-<script src="js/render/bullets.js?v=95143fc8"></script>
-<script src="js/render/enemies.js?v=b7e2b872"></script>
-<script src="js/render/powerups.js?v=3114b9cf"></script>
-<script src="js/render/zones.js?v=2ff556f0"></script>
-<script src="js/render/effects.js?v=6eadd17e"></script>
-<script src="js/render/hud.js?v=cef45c49"></script>
-<script src="js/render/screens.js?v=72f1361e"></script>
-<script src="js/render/scene.js?v=a56df54f"></script>
-<script src="js/ui/status.js?v=c571427e"></script>
-<script src="js/ui/highscores.js?v=36cf3f64"></script>
-<script src="js/ui/menu.js?v=0dfc3578"></script>
-<script src="js/ui/input.js?v=aa922967"></script>
-<script src="js/app.js?v=7057c6ec"></script>
+<script src="js/core/namespace.js?v=d3a0ce51"></script>
+<script src="js/core/constants.js?v=f36486d9"></script>
+<script src="js/core/rng.js?v=ec6ca551"></script>
+<script src="js/core/data-rocks.js?v=e1787a37"></script>
+<script src="js/core/data-enemies.js?v=51a61eb2"></script>
+<script src="js/core/data-powerups.js?v=cc7a3c54"></script>
+<script src="js/core/data-campaign.js?v=cc86596c"></script>
+<script src="js/core/data-tree.js?v=b8f41431"></script>
+<script src="js/core/data-cosmetics.js?v=ddc35c94"></script>
+<script src="js/core/data-goals.js?v=5285936f"></script>
+<script src="js/core/seasons.js?v=be12d949"></script>
+<script src="js/core/rules.js?v=f6470c97"></script>
+<script src="js/core/state.js?v=27c7437a"></script>
+<script src="js/core/save.js?v=8233c149"></script>
+<script src="js/core/audio.js?v=5e5d99d9"></script>
+<script src="js/systems/grid.js?v=87f047fd"></script>
+<script src="js/systems/fx.js?v=3cace4eb"></script>
+<script src="js/systems/ship.js?v=2535d5aa"></script>
+<script src="js/systems/weapons.js?v=079b68dd"></script>
+<script src="js/systems/rocks.js?v=503aceff"></script>
+<script src="js/systems/enemies.js?v=35de3a4a"></script>
+<script src="js/systems/bosses.js?v=9ed1ce85"></script>
+<script src="js/systems/powerups.js?v=3846e03c"></script>
+<script src="js/systems/hazards.js?v=2493b9a8"></script>
+<script src="js/systems/collision.js?v=5586d692"></script>
+<script src="js/systems/waves.js?v=4d33eefd"></script>
+<script src="js/systems/progress.js?v=32a82ee8"></script>
+<script src="js/systems/snapshot.js?v=16dc991e"></script>
+<script src="js/systems/cinematics.js?v=02a3c2ea"></script>
+<script src="js/systems/bot.js?v=ed6ed2c8"></script>
+<script src="js/systems/sim.js?v=3dd0a3e0"></script>
+<script src="js/render/art-kit.js?v=0fc0a952"></script>
+<script src="js/render/rock-art.js?v=0b3d5799"></script>
+<script src="js/render/ship-art.js?v=2f371d64"></script>
+<script src="js/render/enemy-art.js?v=dfd9e092"></script>
+<script src="js/render/prop-art.js?v=ababf3e7"></script>
+<script src="js/render/view.js?v=0db054f5"></script>
+<script src="js/render/backdrop.js?v=06d5f611"></script>
+<script src="js/render/world.js?v=a6ed4bdf"></script>
+<script src="js/render/fx-render.js?v=04a9147b"></script>
+<script src="js/render/hud.js?v=58bc5158"></script>
+<script src="js/render/cine-render.js?v=345b1c59"></script>
+<script src="js/render/frame.js?v=31270ead"></script>
+<script src="js/ui/kit.js?v=b2ecb15a"></script>
+<script src="js/ui/widgets.js?v=5d20364d"></script>
+<script src="js/ui/screens.js?v=77c4a3f7"></script>
+<script src="js/ui/title.js?v=d9f07a53"></script>
+<script src="js/ui/map.js?v=53aa191e"></script>
+<script src="js/ui/story.js?v=d6310d08"></script>
+<script src="js/ui/tree.js?v=0dc9d184"></script>
+<script src="js/ui/wardrobe.js?v=ef3f9341"></script>
+<script src="js/ui/goals.js?v=13ff3fce"></script>
+<script src="js/ui/results.js?v=a0a33c0d"></script>
+<script src="js/ui/pause.js?v=003b1c39"></script>
+<script src="js/ui/help.js?v=5c279864"></script>
+<script src="js/ui/touch.js?v=3f2e830d"></script>
+<script src="js/ui/status-bar.js?v=e1dd4093"></script>
+<script src="js/ui/input.js?v=3717ae90"></script>
+<script src="js/app.js?v=75b5431a"></script>
 </body>
 </html>

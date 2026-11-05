@@ -1,143 +1,217 @@
-/* Input: keyboard for rotation/fire/hyperspace/pause/mode keys and dialog Escape,
-   pointer for aiming, shooting, right-click thrust and mode-card clicks. */
+/* Keyboard, mouse and touch input: held keys and the pointer (mapped into the view plane at any
+   window size) in G.input; flight intents sampled each step (rotate/thrust/brake/fire, or aim at
+   the pointer, hyperspace and overdrive as one-shot requests); skipping cinematics and advancing
+   dialogue; menu navigation with the shared cursor; per-screen keys; pause when the tab hides
+   and autosave when the page goes away. Owns G.input. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Asteroids || (SZ.Asteroids = {});
-  const C = NS.constants;
-  const S = NS.state;
-  const D = NS.dom;
+  const G = NS.state;
+  const { canvas, toPlane } = NS.view;
+  const W = NS.widgets;
+  const scr = NS.screens;
+  const inp = G.input;
+  const intent = { turn: 0, thrust: false, brake: false, fire: false, aimAngle: null, hyperQ: false, overQ: false };
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      SZ.Dialog.close('highScoresBackdrop');
-      SZ.Dialog.close('controlsBackdrop');
-      SZ.Dialog.close('dlg-about');
-      return;
-    }
+  SZ.GameAutoPause.attach({
+    isRunning: () => G.screen === 'playing',
+    pause: () => scr.pause(),
+  });
 
-    /* Mode selection */
-    if (S.modeSelectActive) {
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        NS.os.cycleFieldSize(-1);
-        return;
-      }
-      if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        NS.os.cycleFieldSize(1);
-        return;
-      }
-      const modeKeys = { '1': 'classic', '2': 'survival', '3': 'zen', '4': 'hardcore' };
-      if (modeKeys[e.key]) {
-        e.preventDefault();
-        S.modeSelectActive = false;
-        NS.app.newGame(modeKeys[e.key]);
-      }
-      return;
-    }
+  /* the run is written away whenever the page may be leaving */
+  function saveNow() {
+    NS.snapshot.autosave(true);
+    NS.save.writeSave();
+  }
+  window.addEventListener('pagehide', saveNow);
+  window.addEventListener('beforeunload', saveNow);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
 
+  const BLOCK = { Space: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Tab: 1 };
+
+  document.addEventListener('keydown', (e) => {
+    inp.keys[e.code] = true;
     if (e.key === 'F2') {
       e.preventDefault();
-      NS.app.showModeSelect();
+      if (scr.inRun()) scr.quitToTitle();
+      else scr.setScreen('title');
       return;
     }
-
-    if (e.key === 'p' || e.key === 'P') {
+    if (G.screen === 'cine') {
       e.preventDefault();
-      NS.flow.togglePause();
+      if (!e.repeat) NS.cinematics.skip();
       return;
     }
-
-    S.keys[e.key] = true;
-
-    if (e.key === ' ') e.preventDefault();
-
-    if (!S.gameActive || S.gamePaused || S.gameOverFlag) return;
-
-    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+    if (G.screen === 'story') {
       e.preventDefault();
-      NS.shooting.hyperspace();
-    }
-  });
-
-  document.addEventListener('keyup', e => { S.keys[e.key] = false; });
-
-  /* ── Click/Tap to start + mouse controls ── */
-  D.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  D.canvas.addEventListener('pointerdown', (e) => {
-    const pos = NS.os.canvasCoords(e);
-    S.mouseX = pos.x;
-    S.mouseY = pos.y;
-    S.mouseActive = true;
-
-    const isRight = e.button === 2;
-    if (isRight)
-      S.mouseRightDown = true;
-    else
-      S.mouseDown = true;
-
-    /* Mode select: click a mode card to start (left only) */
-    if (!isRight && S.modeSelectActive) {
-      const modes = ['classic', 'survival', 'zen', 'hardcore'];
-      const cardH = 56 * S.uiS;
-      const cardW = 280 * S.uiS;
-      const startY = 170 * S.uiS;
-      const gap = 12 * S.uiS;
-      const cardX = (S.W - cardW) / 2;
-
-      for (let i = 0; i < modes.length; ++i) {
-        const y = startY + i * (cardH + gap);
-        if (pos.x >= cardX && pos.x <= cardX + cardW && pos.y >= y && pos.y <= y + cardH) {
-          S.modeSelectActive = false;
-          NS.app.newGame(modes[i]);
-          return;
-        }
-      }
-
-      /* Click field size arrows */
-      const fieldY = 125 * S.uiS;
-      if (pos.y >= fieldY - 15 * S.uiS && pos.y <= fieldY + 25 * S.uiS) {
-        if (pos.x < S.W / 2)
-          NS.os.cycleFieldSize(-1);
-        else
-          NS.os.cycleFieldSize(1);
-      }
+      if (e.repeat) return;
+      if (e.code === 'Escape') NS.story.end();
+      else NS.story.advance();
       return;
     }
-
-    /* Game over / not active: show mode select (left only) */
-    if (!isRight && (!S.gameActive || S.gameOverFlag)) {
-      NS.app.showModeSelect();
+    if (G.screen === 'playing') {
+      onFlightKey(e);
       return;
     }
+    onMenuKey(e);
+  });
 
-    /* In-game left click: shoot; right click: small thrust toward mouse */
-    if (S.gameActive && !S.gamePaused && !S.gameOverFlag && !S.warpState) {
-      if (!isRight)
-        NS.shooting.shoot();
-      else if (S.ship) {
-        /* Single right-click = small thrust impulse toward cursor */
-        const thrustAngle = Math.atan2(S.mouseY - S.ship.y, S.mouseX - S.ship.x);
-        S.ship.vx += Math.cos(thrustAngle) * C.SHIP_THRUST * 0.5;
-        S.ship.vy += Math.sin(thrustAngle) * C.SHIP_THRUST * 0.5;
+  document.addEventListener('keyup', (e) => {
+    inp.keys[e.code] = false;
+  });
+
+  window.addEventListener('blur', () => {
+    inp.keys = {};
+    inp.mouseDown = false;
+    inp.rightDown = false;
+  });
+
+  function onFlightKey(e) {
+    if (BLOCK[e.code]) e.preventDefault();
+    if (e.repeat) return;
+    switch (e.code) {
+      case 'ArrowLeft': case 'ArrowRight': case 'KeyA': case 'KeyD': inp.aimMouse = false; inp.touch = false; break;
+      case 'ShiftLeft': case 'ShiftRight': case 'KeyX': inp.hyperQ = true; break;
+      case 'KeyE': case 'KeyQ': inp.overQ = true; break;
+      case 'Escape': case 'KeyP': scr.pause(); break;
+    }
+  }
+
+  const TAB_KEYS = {
+    wardrobe: () => { const t = NS.wardrobe.TABS; const i = t.findIndex(x => x[0] === G.ui.wardrobeTab); G.ui.wardrobeTab = t[(i + 1) % t.length][0]; },
+    goals: () => { const t = NS.goals.TABS; const i = t.findIndex(x => x[0] === G.ui.goalsTab); G.ui.goalsTab = t[(i + 1) % t.length][0]; },
+  };
+
+  function onMenuKey(e) {
+    if (G.screen === 'tree' && e.code === 'KeyB') { e.preventDefault(); NS.tree.buy(G.ui.treeSel); return; }
+    if (G.screen === 'help' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+      e.preventDefault();
+      NS.help.turn(e.code === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
+    if (e.code === 'Tab' && TAB_KEYS[G.screen]) {
+      e.preventDefault();
+      TAB_KEYS[G.screen]();
+      return;
+    }
+    switch (e.code) {
+      case 'ArrowUp': case 'KeyW': e.preventDefault(); W.moveCursorDir(0, -1); break;
+      case 'ArrowDown': case 'KeyS': e.preventDefault(); W.moveCursorDir(0, 1); break;
+      case 'ArrowLeft': case 'KeyA': e.preventDefault(); W.moveCursorDir(-1, 0); break;
+      case 'ArrowRight': case 'KeyD': e.preventDefault(); W.moveCursorDir(1, 0); break;
+      case 'Enter': case 'NumpadEnter': case 'Space':
+        e.preventDefault();
+        if (!e.repeat) W.activate(G.hitAreas[G.menuCursor]);
+        break;
+      case 'KeyH':
+        if (G.screen === 'title') scr.open('help', 'title');
+        break;
+      case 'Escape': case 'KeyP':
+        e.preventDefault();
+        escape();
+        break;
+    }
+  }
+
+  function escape() {
+    switch (G.screen) {
+      case 'paused': scr.resume(); break;
+      case 'tree': scr.back('tree'); break;
+      case 'wardrobe': scr.back('wardrobe'); break;
+      case 'goals': scr.back('goals'); break;
+      case 'help': scr.back('help'); break;
+      case 'map': scr.setScreen('title'); break;
+      case 'results': scr.setScreen(G.ui.results && G.ui.results.mode === 'story' ? 'map' : 'title'); break;
+    }
+  }
+
+  /* ── pointer ── */
+  canvas.addEventListener('pointerdown', (e) => {
+    if (window.focus) window.focus();
+    const p = toPlane(e.clientX, e.clientY);
+    inp.mouseX = p.x;
+    inp.mouseY = p.y;
+    if (G.screen === 'cine') { NS.cinematics.skip(); return; }
+    if (e.pointerType === 'touch') {
+      inp.touch = true;
+      if (G.screen === 'playing') {
+        if (e.preventDefault) e.preventDefault();
+        NS.touch.down(e.pointerId, p.x, p.y);
+        return;
       }
+    } else inp.touch = false;
+    if (G.screen === 'playing') {
+      if (e.button === 2) inp.rightDown = true;
+      else inp.mouseDown = true;
+      inp.aimMouse = true;
+      return;
+    }
+    const i = W.hitAt(p.x, p.y);
+    if (i >= 0) {
+      G.menuCursor = i;
+      W.activate(G.hitAreas[i]);
     }
   });
 
-  D.canvas.addEventListener('pointermove', (e) => {
-    const pos = NS.os.canvasCoords(e);
-    S.mouseX = pos.x;
-    S.mouseY = pos.y;
-    S.mouseActive = true;
+  canvas.addEventListener('pointermove', (e) => {
+    const p = toPlane(e.clientX, e.clientY);
+    const dx = p.x - inp.mouseX, dy = p.y - inp.mouseY;
+    inp.mouseX = p.x;
+    inp.mouseY = p.y;
+    if (e.pointerType === 'touch') {
+      NS.touch.move(e.pointerId, p.x, p.y);
+      return;
+    }
+    ++inp.mouseMoved;
+    if (G.screen === 'playing' && Math.abs(dx) + Math.abs(dy) > 4) inp.aimMouse = true;
   });
 
-  D.canvas.addEventListener('pointerup', (e) => {
-    if (e.button === 2)
-      S.mouseRightDown = false;
-    else
-      S.mouseDown = false;
+  function release(e) {
+    if (e.pointerType === 'touch') NS.touch.up(e.pointerId);
+    if (e.button === 2) inp.rightDown = false;
+    else inp.mouseDown = false;
+  }
+
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  /* ── per-step intent ── */
+  function k(code) {
+    return !!inp.keys[code];
+  }
+
+  function sample() {
+    intent.turn = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
+    intent.thrust = k('KeyW') || k('ArrowUp');
+    intent.brake = k('KeyS') || k('ArrowDown');
+    intent.fire = k('Space') || k('KeyJ') || k('KeyZ');
+    intent.aimAngle = null;
+    intent.hyperQ = inp.hyperQ;
+    intent.overQ = inp.overQ;
+    inp.hyperQ = false;
+    inp.overQ = false;
+    inp.aimAngle = null;
+    inp.thrust = false;
+    inp.fire = false;
+    if (NS.touch.sample(inp)) {
+      intent.fire = intent.fire || inp.fire;
+      intent.thrust = intent.thrust || inp.thrust;
+      if (inp.aimAngle !== null) intent.aimAngle = inp.aimAngle;
+      return intent;
+    }
+    if (inp.aimMouse && !intent.turn && G.ship && !G.ship.dead) {
+      const s = G.ship;
+      intent.aimAngle = Math.atan2(inp.mouseY - s.y, inp.mouseX - s.x);
+      intent.fire = intent.fire || inp.mouseDown;
+      intent.thrust = intent.thrust || inp.rightDown;
+    }
+    return intent;
+  }
+
+  Object.assign(NS.input, {
+    sample, saveNow
   });
 })();

@@ -1,129 +1,97 @@
-/* The main loop with its fixed-step clock, the mode-select and new-game entry
-   points, and the boot sequence that starts everything. */
+/* Bootstrap: the fixed 60 Hz loop (as many simulation steps as are due, then one draw), the
+   window menu bar, idle pre-painting of chapter art, the season's opening on the first visit of
+   a season, and start-up. Owns the loop clock. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Asteroids || (SZ.Asteroids = {});
-  const C = NS.constants;
-  const S = NS.state;
-  const D = NS.dom;
+  const G = NS.state;
+  const { STEP, STEP_MS, MAX_STEPS, STEP_SNAP_MS } = NS.constants;
+  const scr = NS.screens;
+  const User32 = SZ.Dlls && SZ.Dlls.User32;
 
-  function gameLoop(timestamp) {
-    S.animFrameId = requestAnimationFrame(gameLoop);
+  let last = 0;
+  let acc = 0;
 
-    if (!S.lastTime) S.lastTime = timestamp;
-    let elapsed = timestamp - S.lastTime;
-    S.lastTime = timestamp;
-
-    /* Snap refresh jitter around 60 Hz to exactly one step; cap catch-up after stalls */
-    if (Math.abs(elapsed - C.SIM_STEP) < C.SIM_SNAP)
-      elapsed = C.SIM_STEP;
-    S.simAccumulator = Math.min(S.simAccumulator + elapsed, C.SIM_STEP * C.SIM_MAX_STEPS);
-    while (S.simAccumulator >= C.SIM_STEP) {
-      S.simAccumulator -= C.SIM_STEP;
-      if (S.gameActive && !S.gamePaused && !S.gameOverFlag && !S.modeSelectActive)
-        NS.flow.update(C.SIM_STEP);
+  function loop(ts) {
+    if (!last) last = ts;
+    let elapsed = ts - last;
+    last = ts;
+    if (Math.abs(elapsed - STEP_MS) < STEP_SNAP_MS) elapsed = STEP_MS;
+    acc = Math.min(acc + elapsed, STEP_MS * MAX_STEPS);
+    while (acc >= STEP_MS) {
+      acc -= STEP_MS;
+      NS.sim.update(STEP);
     }
-
-    NS.scene.render();
+    NS.frame.draw();
+    NS.rockArt.warmStep(G.screen === 'playing' ? 1 : 3);
+    NS.statusBar.tick(elapsed / 1000);
+    if (G.screen !== 'playing' && G.time > 0.6) NS.backdrop.prewarm();
+    requestAnimationFrame(loop);
   }
 
-  function showModeSelect() {
-    if (S.animFrameId) {
-      cancelAnimationFrame(S.animFrameId);
-      S.animFrameId = null;
-    }
-    S.gameActive = false;
-    S.gamePaused = false;
-    S.gameOverFlag = false;
-    S.modeSelectActive = true;
-    S.warpState = null;
-    S.gameTime = 0;
-    S.lastTime = null;
-    S.animFrameId = requestAnimationFrame(gameLoop);
+  if (SZ.MenuBar) {
+    new SZ.MenuBar({
+      onAction(action) {
+        switch (action) {
+          case 'new':
+            if (scr.inRun()) scr.quitToTitle();
+            else scr.setScreen('title');
+            break;
+          case 'pause':
+            if (G.screen === 'playing') scr.pause();
+            else if (G.screen === 'paused') scr.resume();
+            break;
+          case 'tree':
+            if (G.screen === 'playing') scr.pause();
+            if (G.screen === 'paused') scr.open('tree', 'paused');
+            else if (scr.isMenu()) scr.open('tree', G.screen === 'tree' ? G.returns.tree : G.screen);
+            break;
+          case 'wardrobe':
+            if (G.screen === 'playing') scr.pause();
+            if (G.screen === 'paused') scr.open('wardrobe', 'paused');
+            else if (scr.isMenu()) scr.open('wardrobe', G.screen === 'wardrobe' ? G.returns.wardrobe : G.screen);
+            break;
+          case 'goals':
+            if (G.screen === 'playing') scr.pause();
+            if (G.screen === 'paused') scr.open('goals', 'paused');
+            else if (scr.isMenu()) scr.open('goals', G.screen === 'goals' ? G.returns.goals : G.screen);
+            break;
+          case 'high-scores':
+            if (G.screen === 'playing') scr.pause();
+            NS.statusBar.showHighScores();
+            break;
+          case 'exit': if (User32) User32.DestroyWindow(); break;
+          case 'tutorial':
+            if (G.screen === 'playing') scr.pause();
+            if (G.screen === 'paused') scr.open('help', 'paused');
+            else if (scr.isMenu()) scr.open('help', G.screen === 'help' ? G.returns.help : G.screen);
+            break;
+          case 'controls': SZ.Dialog.show('controlsBackdrop'); break;
+          case 'about': SZ.Dialog.show('dlg-about'); break;
+        }
+      },
+    });
   }
 
-  function newGame(mode) {
-    if (S.animFrameId) {
-      cancelAnimationFrame(S.animFrameId);
-      S.animFrameId = null;
-    }
-
-    S.gameMode = mode || 'classic';
-    const cfg = NS.rules.modeConfig();
-    SZ.GameAudio.play('select');
-
-    S.score = 0;
-    S.lives = cfg.lives;
-    S.level = 1;
-    S.gameActive = true;
-    S.gamePaused = false;
-    S.gameOverFlag = false;
-    S.modeSelectActive = false;
-    S.invulnTimer = C.INVULN_DURATION;
-    S.hyperspaceCooldown = 0;
-    S.enemySpawnTimer = cfg.ufoInterval;
-    S.shootCooldownTimer = 0;
-    S.respawnTimer = 0;
-    S.lastTime = null;
-    S.simAccumulator = 0;
-    S.gameTime = 0;
-    S.warpState = null;
-
-    S.bullets = [];
-    S.enemies = [];
-    S.enemyBullets = [];
-    S.allies = [];
-    S.allyBullets = [];
-    S.zones = [];
-    S.collectiblePowerups = [];
-    S.powerupState = NS.powerups.initPowerupState();
-    S.combo = { count: 0, timer: 0, displayScale: 0 };
-    S.shockwaves = [];
-    S.screenFlashAlpha = 0;
-    S.empActive = false;
-    S.empTimer = 0;
-    S.fireDamageCooldown = 0;
-    S.bossActive = false;
-    S.allySpawnedForLevel = false;
-
-    S.stats = {
-      asteroidsDestroyed: 0,
-      shotsFired: 0,
-      shotsHit: 0,
-      powerupsCollected: 0,
-      maxCombo: 0
-    };
-
-    if (S.gameMode === 'zen')
-      S.zenTimer = cfg.timeLimit;
-    if (S.gameMode === 'survival')
-      S.survivalSpawnTimer = cfg.spawnInterval;
-
-    S.nextExtraLife = cfg.bonusLifeEvery || 0;
-
-    D.particles.clear();
-    D.floatingText.clear();
-
-    S.ship = NS.entities.createShip();
-    NS.flow.spawnLevelAsteroids();
-    NS.status.updateDisplays();
-
-    S.animFrameId = requestAnimationFrame(gameLoop);
+  if (User32) {
+    User32.EnableVisualStyles && User32.EnableVisualStyles();
+    User32.SetWindowText && User32.SetWindowText('Asteroids');
   }
+  if (SZ.GameAudio) SZ.GameAudio.attachMuteButton();
+  document.body.tabIndex = -1;
 
-  function init() {
-    SZ.Dlls.User32.EnableVisualStyles();
-    NS.os.setupField();
-    NS.os.setupCanvasScaling();
-    NS.highscores.loadHighScores();
-    showModeSelect();
-    NS.os.requestWindowResize();
-    SZ.GameAudio.attachMuteButton();
+  NS.backdrop.setChapter(-1);
+  for (const t of ['normal', 'iron', 'crystal', 'gold', 'ice', G.cal.seasonDef.token, 'explosive', 'lava', 'electric', 'void']) NS.rockArt.want(t);
+  NS.statusBar.update();
+  NS.sim.startDemo();
+  NS.cinematics.seasonIntro(() => scr.setScreen('title'));
+  if (!G.save.seenHelp) {
+    G.save.seenHelp = true;
+    NS.save.writeSave();
+    scr.toast('New pilot? Press H for How to Play', '#5ad8ff');
   }
-
-  Object.assign(NS.app, { gameLoop, showModeSelect, newGame, init });
-
-  init();
+  if (NS.snapshot.has()) scr.toast('Your last flight is waiting - Continue', '#6dff9a');
+  requestAnimationFrame(loop);
 })();

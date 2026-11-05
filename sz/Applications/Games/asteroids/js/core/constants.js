@@ -1,78 +1,82 @@
-/* Tunables: field sizes, ship and bullet physics, asteroid sizes, effect radii
-   and the fixed-step simulation clock. */
+/* Fixed numbers: the 1280 x 720 view plane (which is also the wrapping play field), the
+   simulation clock, pools, flight and weapon tuning, rock sizes, feel timings and the UI palette.
+   Owns nothing that changes. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Asteroids || (SZ.Asteroids = {});
 
-  const FIELD_SIZES = {
-    small:  { label: 'Small',  size: 520  },
-    medium: { label: 'Medium', size: 800  },
-    large:  { label: 'Large',  size: 1200 },
-    huge:   { label: 'Huge',   size: 1600 }
-  };
-  const FIELD_SIZE_KEYS = Object.keys(FIELD_SIZES);
-
-  const STORAGE_KEY = 'sz-asteroids-high-scores';
-  const FIELD_STORAGE_KEY = 'sz-asteroids-field-size';
-  const MAX_HIGH_SCORES = 5;
-  const SHIP_SIZE = 12;
-  const SHIP_ROTATION_SPEED = 0.07;
-  const SHIP_THRUST = 0.12;
-  const SHIP_FRICTION = 0.99;
-  const BULLET_SPEED = 8;
-  const BULLET_LIFETIME = 55;
-  const INVULN_DURATION = 2000;
-  const HYPERSPACE_COOLDOWN = 500;
-  const UFO_SPEED = 2;
-  const BASE_STAR_COUNT = 120;
-  const SHOOT_COOLDOWN = 180;
-  const SHOOT_COOLDOWN_RAPID = 70;
-  const MAX_BULLETS_NORMAL = 4;
-  const MAX_BULLETS_RAPID = 8;
-  const COMBO_TIMEOUT = 1500;
-  const POWERUP_LIFETIME = 10000;
-  const POWERUP_COLLECT_RADIUS = 18;
-  const WARP_DURATION = 1800;
-
-  const ASTEROID_SIZES = {
-    large:  { radius: 40, points: 20,  speed: 1.2, dropRate: 0.05, craters: [3, 5] },
-    medium: { radius: 20, points: 50,  speed: 2,   dropRate: 0.12, craters: [2, 3] },
-    small:  { radius: 10, points: 100, speed: 3,   dropRate: 0.18, craters: [1, 2] }
-  };
-
-  const EXPLOSION_RADIUS = 120;
-  const ICE_ZONE_RADIUS = 80;
-  const ICE_ZONE_DURATION = 5000;
-  const FIRE_PATCH_RADIUS = 25;
-  const FIRE_PATCH_DURATION = 3000;
-  const LAVA_TRAIL_INTERVAL = 500;
-  const EMP_DURATION = 3000;
-  const MINE_RADIUS = 30;
-  const MINE_DURATION = 15000;
-  const MAX_ENEMIES = 3;
-  const MAX_ALLIES = 2;
-  const ALLY_SHOOT_INTERVAL = 800;
-  const ALLY_FOLLOW_DIST = 100;
-  const FIRE_DAMAGE_COOLDOWN = 500;
-  const RESPAWN_DELAY = 1500;
-
-  /* Simulation runs in fixed 60 Hz steps regardless of display refresh rate */
-  const SIM_STEP = 1000 / 60;
-  const SIM_MAX_STEPS = 3;
-  const SIM_SNAP = 0.5;
-
   Object.assign(NS.constants, {
-    FIELD_SIZES, FIELD_SIZE_KEYS, STORAGE_KEY, FIELD_STORAGE_KEY, MAX_HIGH_SCORES,
-    SHIP_SIZE, SHIP_ROTATION_SPEED, SHIP_THRUST, SHIP_FRICTION, BULLET_SPEED,
-    BULLET_LIFETIME, INVULN_DURATION, HYPERSPACE_COOLDOWN, UFO_SPEED, BASE_STAR_COUNT,
-    SHOOT_COOLDOWN, SHOOT_COOLDOWN_RAPID, MAX_BULLETS_NORMAL, MAX_BULLETS_RAPID,
-    COMBO_TIMEOUT, POWERUP_LIFETIME, POWERUP_COLLECT_RADIUS, WARP_DURATION,
-    ASTEROID_SIZES, EXPLOSION_RADIUS, ICE_ZONE_RADIUS, ICE_ZONE_DURATION,
-    FIRE_PATCH_RADIUS, FIRE_PATCH_DURATION, LAVA_TRAIL_INTERVAL, EMP_DURATION,
-    MINE_RADIUS, MINE_DURATION, MAX_ENEMIES, MAX_ALLIES, ALLY_SHOOT_INTERVAL,
-    ALLY_FOLLOW_DIST, FIRE_DAMAGE_COOLDOWN, RESPAWN_DELAY,
-    SIM_STEP, SIM_MAX_STEPS, SIM_SNAP
+    VIEW_W: 1280,
+    VIEW_H: 720,
+    /* the toroidal play field: leaving one edge enters the opposite one */
+    FIELD_W: 1280,
+    FIELD_H: 720,
+    TAU: Math.PI * 2,
+
+    /* fixed 60 Hz simulation, at most 5 catch-up steps after a stall */
+    STEP: 1 / 60,
+    STEP_MS: 1000 / 60,
+    MAX_STEPS: 5,
+    STEP_SNAP_MS: 2.5,
+
+    /* pools and broad phase */
+    MAX_PARTICLES: 2200,
+    MAX_ROCKS: 160,
+    MAX_MOTES: 260,
+    GRID_CELL: 96,
+
+    /* flight */
+    SHIP_R: 15,
+    THRUST: 520,
+    TURN: 4.6,
+    DRAG: 0.55,
+    MAX_SPEED: 560,
+    INVULN: 2.4,
+    HYPER_CD: 3,
+    HYPER_TIME: 0.5,
+
+    /* weapons */
+    BULLET_SPEED: 720,
+    BULLET_LIFE: 0.95,
+    FIRE_DELAY: 0.16,
+    BULLETS_MAX: 5,
+
+    /* rocks: radius, base score, speed, debris per size class 1..3 (4 = colossal) */
+    ROCK_R: [0, 15, 27, 46, 74],
+    ROCK_SCORE: [0, 100, 50, 20, 10],
+    ROCK_SPEED: [0, 92, 64, 44, 26],
+
+    /* combo and overdrive */
+    COMBO_WINDOW: 2.2,
+    OVERDRIVE_PER_KILL: 0.045,
+    OVERDRIVE_R: 270,
+
+    /* autosave cadence while flying */
+    AUTOSAVE_EVERY: 4,
+
+    /* feel */
+    MAX_SHAKE: 16,
+
+    FONT: '"Segoe UI", "Trebuchet MS", Tahoma, Arial, sans-serif',
+    MONO: 'Consolas, "Courier New", monospace',
+
+    UI: {
+      bg0: '#03050c',
+      panelTop: 'rgba(18,24,46,0.94)',
+      panelBottom: 'rgba(6,9,20,0.96)',
+      accent: '#5ad8ff',
+      accentDeep: '#1a6a9a',
+      gold: '#ffd25a',
+      goldDeep: '#c08a10',
+      good: '#6dff9a',
+      bad: '#ff5a6a',
+      warn: '#ffb04a',
+      text: '#e8f0ff',
+      textDim: '#9fb0d0',
+      textMute: '#5a6888',
+      violet: '#c08aff',
+    },
   });
 })();

@@ -1,297 +1,179 @@
-# Asteroids -- Enhanced Edition
+# Asteroids: Starfall
 
-## Purpose
-
-Classic arcade-style space shooter with modern visuals, powerups, progressive difficulty, combo scoring, multiple enemy types, ally ships, and multiple game modes. Part of the SynthelicZ Desktop game collection.
+The classic rock-shattering arcade shooter for the SynthelicZ Desktop, rebuilt. Rotate, thrust and fire on a wrapping field -- now with a five-chapter story campaign of 30 hand-designed missions and five titan bosses, Arcade, Zen, Daily and Boss Rush modes, thirteen power-ups, fourteen rock types, seven raider types, a 29-node tech tree, ship skins, trails and shot colours, achievements, daily quests, play streaks and seasonal events -- all drawn with procedural canvas art and saved in the browser, with the current run autosaved for Continue.
 
 ## How It Works
 
-Canvas-based game with selectable field sizes (520 to 1600) and HiDPI support. The player controls a ship through an asteroid field, destroying asteroids and enemy ships while collecting powerups and building combos. Game effects (particles, screen shake, floating score text, shockwaves, electric arcs, zone effects) provide rich visual feedback. A procedurally generated nebula background with drifting stars and warp-speed level transitions set the atmosphere. Progressive difficulty introduces tougher rock types, enemy ship types, boss fights, and ally fighters as levels advance.
+The game runs a fixed 60 Hz simulation and draws one frame per display refresh. The view is a 1280 x 720 plane fitted into the window, and that plane is also the play field: a torus where everything leaving one edge comes back on the other. When the window is wider or taller than 16:9 the letterbox bars are not black -- the backdrop fills them and every object is drawn at each wrapped copy that is visible, so the bars show the field continuing around the torus (a faint dashed line marks the seam). Pointer positions are mapped back into the plane on every event, so clicks, mouse aiming and touch stay exact after resizing or maximizing.
+
+The ship flies like the original: rotate, thrust with inertia, brake, fire, jump through hyperspace. It can also turn toward the mouse pointer (left button fires, right thrusts) or a touch stick. Rocks are bucketed each step into a toroidal spatial grid; shots, blades, blasts, beams and the ship query it with wrap-aware distances. Each kill feeds a combo (up to x8 score) and charges Overdrive, a blast around the ship. Rock types have their own death effects -- volatile rocks explode, ice leaves frost that slows, magma drips fire, storm rocks chain lightning, void rocks bend shots and ships, gold showers stardust, seasonal rocks drop event tokens.
+
+Story missions are hand-designed data (objective, opening rocks, reinforcement waves, raider schedule, hazard, par time) and are proven completable: a test lets the autopilot fly all thirty with the base ship. Arcade and Daily waves come from a generator (the Daily is seeded by the local date with two modifiers); titans join every eighth wave. The five titans are a core plus parts with phases at 65% and 30% health.
+
+All art is procedural and painted once into cached canvases at twice its size: lumpy lit rocks with craters, ore, crystal facets, molten veins, frost, storm veins, swirls and seasonal looks; ships in four hulls and seventeen paint schemes; raiders and titans; capsules, tokens and icons; chapter backdrops (fbm nebulae, lit planets with rings, a black hole) with three drifting star tiles and seasonal decor computed from the clock. Per frame the game only blits sprites, draws additive glows and strokes; no blur filters are used. Effects come from pooled particles (glows with colour ramps, sparks batched per colour, smoke, rock chips, embers, seasonal shapes, shockwave rings) plus hit-stop, slow motion, camera shake and punch, screen flashes and floating score text. Rock shapes are pre-painted a few per frame before a level needs them. A busy scene with 65 rocks, five raiders, three active power-ups and about a thousand particles costs roughly 0.3 ms of simulation and 0.7 ms of drawing script per frame (`tests/art.test.js` checks it stays under 6 ms).
+
+Everything lives in `localStorage` under two keys: the versioned save (stardust, tree, stars and best times, cosmetics, achievements, statistics, high scores, bests, daily quests, streak, per-season event tracks, settings) and the autosaved run snapshot (mode, level spec, ship, every world list, score, combo and the seeded generator's position), written every four seconds of play, on pause, between waves and when the page hides. The first version's high-score list is migrated once into the save, with a stardust bonus for veterans.
 
 ## Architecture
 
-- **`index.html`** -- Menu bar (Game/Help), canvas, status bar, dialogs (High Scores, Controls, About)
-- **`js/`** -- the game under `SZ.Asteroids`, one module per domain, loaded in dependency order:
-  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- field sizes, ship/bullet physics, rock and effect tunables, simulation clock; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas/context, particle/shake/text singletons, status refs; `js/core/os.js` -- field setup, canvas scaling, window resize and field-size cycling; `js/core/rules.js` -- wrapping distance, level scaling, shape/crater/crack generation
-  - `js/data/tables.js` -- mode configs, rock types and palettes, enemy and powerup definitions, star colors
-  - `js/systems/entities.js` -- ship, asteroid, bullet, enemy, ally, powerup and zone factories; `js/systems/zones.js` -- ice/lava/mine zones and mine detonation; `js/systems/powerups.js` -- activation, timers, nuke and drops; `js/systems/combo.js` -- kill chain and multiplier; `js/systems/shockwaves.js` -- rings and screen flash; `js/systems/warp.js` -- level-transition warp; `js/systems/shooting.js` -- player fire, enemy fire and hyperspace; `js/systems/destruction.js` -- asteroid splits with rock-type death effects, ship loss, enemy/ally deaths, bonus lives; `js/systems/collision.js` -- the per-step collision pass; `js/systems/spawn.js` -- level-gated enemy selection; `js/systems/homing.js` -- homing bullet steering; `js/systems/background.js` -- nebula background and star drift; `js/systems/flow.js` -- the fixed-step update, level start/advance, pause and game over
-  - `js/render/` -- `starfield.js`, `ship.js`, `asteroids.js`, `bullets.js`, `enemies.js`, `powerups.js`, `zones.js`, `effects.js`, `hud.js`, `screens.js` (mode select, game over, pause) and `scene.js` for one frame in draw order
-  - `js/ui/status.js` -- score/lives/level cells with mode-dependent labels; `js/ui/highscores.js` -- persistence and results dialog; `js/ui/menu.js` -- menu bar actions; `js/ui/input.js` -- keyboard and mouse/touch control
-  - `js/app.js` -- loaded last: the requestAnimationFrame loop with fixed simulation steps, mode select/new-game resets and start-up
-- **`tests/`** -- behavior-pinning harness: a scripted session recorded against the game, digest-checked for exact behavioral equality
-- **`styles.css`** -- Game layout (flex for resizable window), status bar, dialog styling, powerup/rock/enemy icon styles
-- **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
+The code lives in `js/` as plain scripts on the `SZ.Asteroids` namespace, loaded in order by `index.html` (no build step, no modules). All shared game state sits in one object, `SZ.Asteroids.state` (`G` in every module); each module states at its top what it owns and what it reads.
 
-## Features
+- **`index.html`** -- Menu bar (Game: Title Screen, Pause, Tech Tree, Hangar, Goals, High Scores, Exit; Help: How to Play, Controls, About), canvas, status bar, dialogs; loads the modules below in order
+- **`styles.css`** -- Window chrome: game frame, canvas, status bar, dialog tables
 
-### Visuals
-- Deep space background with procedural nebula clouds and radial gradient
-- Drifting stars with varying colors (white, blue, gold, pink) and brightness -- parallax motion during gameplay
-- Warp-speed star-streak animation between levels (stars radiate outward from center)
-- Filled gradient asteroids with 7 rock types, each with unique visual effects (shimmer, glow, pulsing, magma cracks, frost, electric arcs)
-- Damage visualization: crack patterns appear on hit, HP pips below multi-hit asteroids
-- Metallic gradient ship with cockpit light and engine flame
-- Bullet trails with directional gradients and cyan/red/green glow
-- 6 enemy ship types with unique silhouettes and glow effects
-- Ally fighter ships with green engine trails
-- Zone effects: translucent ice fields, flickering fire patches, pulsing proximity mines
-- Electric arcs between nearby electric asteroids using procedural lightning
-- Boss HP bar and shield aura
-- Shockwave rings on all explosions
-- Screen flash on big impacts (ship death, large asteroid, nuke, explosions)
-- Shield bubble around ship (shimmering blue ring)
-- Glowing, spinning powerup collectibles with fade-out before despawn
-- Animated game over screen with pulsing title
+Core (`js/core/`):
 
-### Field Sizes
-- **Small** (520) -- Original arcade size
-- **Medium** (800) -- More room to maneuver
-- **Large** (1200) -- Wide-open space
-- **Huge** (1600) -- Massive arena for extended play
-- Selected on mode screen via left/right arrow keys; persisted to localStorage
-- Asteroid count and star density scale with field area
+- **`namespace.js`** -- The `SZ.Asteroids` namespace with one object per module, so modules can call modules that load after them
+- **`constants.js`** -- View plane and wrapping field, simulation clock, pools and grid cell, flight and weapon tuning, rock sizes and scores, combo and overdrive, autosave cadence, UI palette
+- **`rng.js`** -- Seeded mulberry32 generators with saveable state, string hashing, local day and ISO week keys, wrap-aware deltas, angle helpers
+- **`data-rocks.js`** -- Fourteen rock types (hit points, score and stardust multipliers, palettes, death effects, arcade unlock wave) including six seasonal ones
+- **`data-enemies.js`** -- Seven raider types and the five titans
+- **`data-powerups.js`** -- Thirteen power-ups (icon, colour, duration, drop weight) and the eight Daily modifiers
+- **`data-campaign.js`** -- The cast, five chapters (theme, map position, briefing and debriefing dialogue) with six missions each, the opening dialogue, the five modes
+- **`data-tree.js`** -- The tech tree: five branches, 29 nodes with costs, prerequisites, placement and per-level stats
+- **`data-cosmetics.js`** -- Seventeen ship skins, eleven trails and eight shot colours, each with how it unlocks
+- **`data-goals.js`** -- 35 achievements, the daily quest pool, the lifetime records list
+- **`seasons.js`** -- Calendar logic: seasons and festivals by local date, per-season track keys, track tiers and rewards, the Daily spec, daily quests, the weekly featured chapter, the play streak
+- **`rules.js`** -- Pure rules: save shape, repair and migration of the old keys, tree states and purchases, derived ship stats, cosmetics, scoring and combo, rock hit points, stars and rewards, unlock order, arcade waves, achievements, high scores
+- **`state.js`** -- The shared state object: screens and return targets, save, calendar, run, entity lists, feel timers, scoring, input, per-screen UI
+- **`save.js`** -- Loads and writes the save and the run snapshot (the only module touching `localStorage`), refreshes stats and the calendar (daily rollover at local midnight)
+- **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, throttled per name, quieter in Zen where kills play a pentatonic melody
 
-### Resizable Window
-- Window is resizable and maximizable within the SZ OS
-- Canvas scales to fill available space while maintaining square aspect ratio
-- Flex layout with ResizeObserver for responsive sizing
-- UI text scales proportionally with field size (uiS factor)
+Systems (`js/systems/`), one simulation concern each:
 
-### Game Modes
-- **Classic** -- 3 lives, progressive levels, extra life every 10,000 points
-- **Survival** -- 1 life, endless asteroid spawning that speeds up over time, no levels
-- **Zen** -- Infinite lives, 3-minute countdown timer, score attack
-- **Hardcore** -- 1 life, 1.5x asteroid speed, more asteroids per wave, faster enemies, 2x score multiplier
+- **`grid.js`** -- The toroidal spatial grid (wrapping circle queries, each object once), object pools, in-place list compaction
+- **`fx.js`** -- Pooled particles, rings and floating texts; shake, camera punch, hit-stop, slow motion, flash and banners
+- **`ship.js`** -- Flight (rotate or aim, thrust, brake, drag, frost), engine trails per style, hyperspace with safe landing, overdrive, getting hit (shield, last stand, Zen knock-back, losing a ship) and respawning
+- **`weapons.js`** -- The cannon with every modifier (twin barrels, tri-shot, rapid, lance, seekers, ricochet, criticals), the Sunbeam, wingdrones, orbit blades, shot motion for both sides
+- **`rocks.js`** -- Spawning at the edges, drifting and tumbling, magma drips, damage, shattering into children with each type's death effect, stardust, shards, tokens and drops
+- **`enemies.js`** -- The seven raiders' behaviour, damage, death and loot
+- **`bosses.js`** -- The five titans: entry, parts, phases, attack patterns, open/shielded cores, death sequence
+- **`powerups.js`** -- Drops, capsules, shards and tokens, stardust motes and the tractor reach, collecting, each power-up's effect and expiry
+- **`hazards.js`** -- Frost and fire patches, mines, black holes and the friendly Singularity, gravity bending, implosions, the Maw's pull, lightning strikes, comets, arc fading
+- **`collision.js`** -- The collision pass: shots against rocks, raiders, titan parts and mines; the ship against everything that hurts; blades, blasts, the Sunbeam, nearest-target queries
+- **`waves.js`** -- Starting runs in every mode, setting up levels and waves, raider schedules, reinforcements, pods, Zen refills and ambience, objectives
+- **`progress.js`** -- Score and combo, overdrive charge, stardust, statistics and quests, seasonal tokens and track rewards, ships lost and game over, titans, level and wave completion, high scores, streak, achievements
+- **`snapshot.js`** -- The autosaved run: taking, writing on a cadence, describing and restoring it exactly
+- **`cinematics.js`** -- The cinematic sequencer and the story flow into a mission (opening, chapter arrival, briefing, titan reveal) and out of a chapter (debriefing, finale), the season opening
+- **`bot.js`** -- The autopilot that flies the title's attract scene and the completability tests
+- **`sim.js`** -- The fixed step: the run's seeded generator, the chrono world clock, hit-stop and slow motion, the system order, the attract scene, toasts, autosave
 
-### Rock Types (Progressive Difficulty)
-- **Normal** (all levels) -- 1 HP, standard points, brown/olive/red palettes
-- **Iron** (level 3+) -- 2 HP, 1.5x points, grey/metallic palettes with animated shimmer highlight
-- **Crystal** (level 6+) -- 3 HP, 2x points, blue/teal/purple palettes with glowing edges and internal facets
-- **Exploding** (level 9+) -- 2 HP, 1.5x points, red/orange palettes with pulsing inner glow and ember cracks. Death triggers a large AoE explosion (120px radius) damaging all nearby asteroids, enemies, and the player. Chain reactions when exploding rocks destroy other exploding rocks.
-- **Ice** (level 12+) -- 2 HP, 1.5x points, white/cyan palettes with frosted surface and occasional sparkle particles. Death creates a slow zone (80px radius, 5s) that reduces speed of all entities passing through.
-- **Lava** (level 15+) -- 3 HP, 2x points, dark rock with glowing animated magma crack lines and ember particle trails. While alive, leaves small fire patches in its wake every 500ms. Death spawns 3-5 larger fire patches (25px radius, 3s) that damage the player on contact.
-- **Electric** (level 18+) -- 2 HP, 2x points, pale yellow/white palette with crackling surface effects. Renders electric arcs to any asteroid or enemy within 100px. Death triggers an EMP pulse that disables all active powerups for 3 seconds.
-- Hit flash on damage; crack patterns accumulate as HP decreases
-- Children inherit parent rock type when asteroids split
-- HP pips displayed below multi-hit asteroids
+Rendering (`js/render/`):
 
-### Zone Effects
-- **Ice zones** -- Translucent blue circles that slow all entities (asteroids, enemies, ship) passing through. Created by ice asteroid death.
-- **Fire patches** -- Flickering orange/red circles that damage the player on contact (with brief invulnerability cooldown). Created by lava asteroid death and lava asteroid trails.
-- **Proximity mines** -- Dropped by mine-layer enemies. Detonate on player or bullet proximity, dealing area damage. Pulsing red indicator with dotted range circle.
-- Zones fade visually as their timer depletes and are removed when expired.
+- **`art-kit.js`** -- Offscreen canvases and the sprite cache, colour maths, value noise and fbm, shared glow, puff, bolt, orb and ring sprites, silhouettes
+- **`rock-art.js`** -- Rocks per type, size and shape variant, crack overlays per damage stage, shine colours
+- **`ship-art.js`** -- Four hulls in every skin, hit-flash silhouettes, the shield bubble, wingdrones, escape pods
+- **`enemy-art.js`** -- Raiders, titans and their parts, the Maw's gullet, eyes
+- **`prop-art.js`** -- The icon set, capsules, shards, seasonal tokens, mines, enemy shots, blades, holes, frost and fire patches, chips, seasonal decor shapes
+- **`view.js`** -- Canvas sizing, letterboxing, resolution cap and pointer mapping into the plane
+- **`backdrop.js`** -- Chapter and title backdrops: fbm nebula, drifting star tiles, twinkles, the planet, the season's tint and decor
+- **`world.js`** -- The field, every object at each visible wrapped copy, under shake and punch
+- **`fx-render.js`** -- Particles, sparks, rings and floating texts
+- **`hud.js`** -- Score and combo, objective panel, titan health, ships, stardust, overdrive gauge, power-up timers, hyperspace gauge, banners, flash and toasts
+- **`cine-render.js`** -- The cinematics with letterbox bars and captions, Haven Station's art
+- **`frame.js`** -- One frame in draw order, screen fades, the draw-time measurement
 
-### Enemy Ships
-- **UFO** (level 1+) -- Classic flying saucer. Large UFO fires randomly (200pts), small UFO fires aimed shots (1000pts). Crosses the screen horizontally.
-- **Drone** (level 5+, 150pts) -- Small angular ship with red glow trail. Charges directly at the player (kamikaze). Spawns in groups of 2-3. Dies on contact.
-- **Gunship** (level 8+, 500pts, 3 HP) -- Heavy angular ship with turret glow. Fires bursts of 3 aimed shots. Strafes while shooting.
-- **Mine-Layer** (level 11+, 300pts, 2 HP) -- Boxy ship with yellow hazard coloring. Weaves across the field dropping proximity mines every 3 seconds.
-- **Stealth** (level 14+, 800pts, 2 HP) -- Flickering purple ship. Cycles between visible (2s) and cloaked (2s). Fires aimed shot when becoming visible. Only hittable when visible.
-- **Boss** (every 5 levels from 10, 2000pts base, 8+ HP scaling) -- Large imposing ship with shield aura and HP bar. Enters from top of screen. Cycles through 3 attack patterns: aimed burst, spread fire, and drone spawning. Must be killed before level asteroids spawn.
-- Max 3 concurrent non-boss enemies; 1 boss at a time
-- Nuke destroys all non-boss enemies
+UI (`js/ui/`):
 
-### Ally Ships
-- Fighter ally spawns during warp transition every 5 levels (starting at level 5)
-- "ALLY INCOMING!" announcement on spawn
-- AI follows player at ~100px offset, rotates toward nearest target, fires every 800ms
-- Green/teal color scheme with green engine trail and green bullet trails
-- Can be destroyed by enemy bullets, asteroids, or collision (3 HP)
-- On death: "ALLY LOST!" text, explosion, drops a powerup
-- Max 2 concurrent allies
+- **`kit.js`** -- Text, panels, bars, stars, locks, icons, the stardust amount and the logo
+- **`widgets.js`** -- Hit areas registered while drawing, the keyboard cursor, buttons
+- **`screens.js`** -- Screen switching with return targets, pause (autosaves), resume, Continue, quit and abandon, toasts
+- **`title.js`** -- The title over the attract scene: Continue, the modes, the Today card
+- **`map.js`** -- The world map with chapters, mission cards and briefing replays
+- **`story.js`** -- Dialogue as comic panels with painted portraits and typewriter text
+- **`tree.js`** -- The tech tree screen
+- **`wardrobe.js`** -- The hangar: skins, trails and shot colours with a live preview
+- **`goals.js`** -- Daily quests and streak, the season track and calendar, achievements, records, high scores
+- **`results.js`** -- Mission and run results and the way on
+- **`pause.js`** -- The pause menu
+- **`help.js`** -- Five illustrated How to Play pages
+- **`touch.js`** -- The touch stick and buttons
+- **`status-bar.js`** -- The window status bar and the High Scores dialog
+- **`input.js`** -- Keyboard, mouse and touch, flight intents, menu navigation, saving when the page hides
+- **`app.js`** -- The loop, the menu bar, pre-painting, the season opening and start-up
 
-### Level Progression
-| Level | New Content |
-|-------|------------|
-| 1 | 1 medium normal rock |
-| 3 | Iron rocks appear |
-| 5 | Drone enemies, first ally |
-| 6 | Crystal rocks |
-| 8 | Gunship enemies |
-| 9 | Exploding rocks |
-| 10 | First BOSS, ally |
-| 11 | Mine-layer enemies |
-| 12 | Ice rocks |
-| 14 | Stealth enemies |
-| 15 | Lava rocks, BOSS, ally |
-| 18 | Electric rocks |
-| 20+ | BOSS every 5 levels, all types mix |
+Tests (`tests/`, run with `node tests/<name>.test.js`):
 
-### Warp Transitions
-- When all asteroids and enemies are destroyed, a warp-speed animation plays before the next level
-- Stars accelerate outward from center, drawing streaks that intensify then fade
-- "LEVEL X" text appears during warp with glow effect
-- Ally announcements and boss fight announcements appear during warp
-- Screen flash on warp completion; ship is invulnerable throughout
-- Ship remains controllable during warp
-
-### Progressive Difficulty
-- Level 1 starts with just 1 medium rock (easy introduction)
-- Level 2+ spawns increasing numbers of large rocks
-- Asteroid speed increases 5% per level
-- New rock types, enemy types, and allies are progressively introduced (see level progression table)
-- Boss fights every 5 levels starting at level 10 -- asteroids don't spawn until boss is defeated
-- Asteroid count scales with field size
-
-### Powerups
-Dropped randomly from destroyed asteroids (5% large, 12% medium, 18% small), enemies (30%), bosses (80%), and destroyed allies (50%). Float in space for 10 seconds.
-- **Shield** (S, blue) -- Absorbs one hit, 15s duration, visible as a glowing ring around the ship
-- **Triple Shot** (T, orange) -- Fires 3 bullets in a spread pattern, 12s duration
-- **Rapid Fire** (R, red) -- Double bullet limit (8), faster auto-fire rate, 12s duration
-- **Piercing** (P, purple) -- Bullets pass through asteroids without stopping, 10s duration (disabled during EMP)
-- **Spread Shot** (W, green) -- Fires 5 bullets in a wide arc, 10s duration
-- **Homing** (H, cyan) -- Bullets gently curve toward nearest asteroid/enemy, 10s duration (disabled during EMP)
-- **Extra Life** (+, green) -- Instant +1 life
-- **Nuke** (N, yellow) -- Destroys all on-screen asteroids and non-boss enemies instantly with screen flash
-
-### Combo System
-- Rapid kills within 1.5 seconds build a combo multiplier (x2 through x8)
-- Multiplier applies to all scoring (asteroids, enemies)
-- Combo displayed as animated text in the HUD with color progression (white to gold to red to purple)
-- Breaking the combo chain (no kill for 1.5s) resets to x1
-
-### Gameplay
-- Ship rotation, thrust with inertia/friction, screen-edge wrapping
-- Auto-fire when holding Space (180ms normal, 70ms with Rapid Fire)
-- Hyperspace teleport with cooldown (500ms) and shockwave effect
-- Three asteroid sizes with cascading splits (large -> 2 medium -> 2 small)
-- Scoring: large = 20pts, medium = 50pts, small = 100pts (before rock type, combo, and mode multipliers)
-- Multiple enemy ship types with unique AI patterns (see Enemy Ships section)
-- Ally ships that assist the player (see Ally Ships section)
-- Ship collision bypasses asteroid HP (instant destruction)
-- Invulnerability period (2s) after respawning
-- EMP from electric asteroid death temporarily disables duration powerups (3s)
-- Zone effects from ice, lava, and mine-layer create environmental hazards
-
-### Game Management
-- Mode selection screen at startup (press 1-4)
-- Field size picker on mode select (left/right arrows)
-- Pause/resume (P key)
-- New game (F2 returns to mode select)
-- Game over screen with stats: asteroids destroyed, accuracy %, max combo, powerups collected
-- High scores persisted to localStorage (top 5, with mode tracking and reset option)
-- Status bar showing score, lives, level/time/wave, and current mode
-- Active powerup timers displayed as on-canvas HUD bars
-- EMP active warning indicator
-
-### Controls
-- Arrow keys or WASD for movement
-- Space to shoot (hold for auto-fire)
-- Down/S for hyperspace
-- P to pause
-- F2 for new game / mode select
-- 1-4 to select game mode
-- Left/Right arrows to change field size (mode select screen)
-- Escape to close dialogs
-
-### Integration
-- Menu bar with Game menu (New Game, Pause, High Scores, Exit) and Help menu (Controls, About)
-- SZ OS window management (resizable, maximizable, close via menu)
-- Dialog system for high scores, controls reference, and about info
+- **`harness.js`** -- A recording fake canvas, a minimal DOM, storage and an optional fixed date; loads the scripts in `index.html` order
+- **`boot.test.js`** -- Boots and drives every screen, mode, cinematic and the story flow across a chapter's end
+- **`levels.test.js`** -- Validates all 30 missions and lets the autopilot complete each one with the base ship
+- **`rules.test.js`** -- Tree, stats, cosmetics, scoring, stars, unlocks, arcade waves, achievements, high scores
+- **`save.test.js`** -- Migration of the old keys, save repair, the autosave round trip and Continue, storage failures
+- **`seasons.test.js`** -- Seasons and festivals by date, track keys and rewards, Daily and quests, weeks, streaks; booting into every season
+- **`art.test.js`** -- Every sprite paints once within budget, blits cost one call, no `shadowBlur`, module size, and the busy-scene frame budget
 
 ## User Stories
 
-### Core Gameplay
-- [x] As a player, I can steer my ship with arrow keys or WASD, thrust with inertia, and wrap around screen edges so that movement feels smooth and arcade-authentic
-- [x] As a player, I can shoot bullets with Space (hold for auto-fire) so that I can destroy asteroids and enemies without mashing keys
-- [x] As a player, I can see asteroids split into smaller pieces when destroyed (large to 2 medium to 2 small) so that each rock presents cascading threats
-- [x] As a player, I can hyperspace teleport on Down/S with a cooldown so that I have a last-resort escape from tight situations
-- [x] As a player, I can benefit from a brief invulnerability period after respawning so that I am not instantly killed in a cluttered field
-- [x] As a player, I can control my ship with mouse aim and click-to-shoot as an alternative input method so that mouse-only play is supported
+### Flight & Feel
+- [x] As a player, I can rotate, thrust with inertia, brake and fire on a field that wraps at every edge so that it plays like the arcade original
+- [x] As a player, I can aim with the mouse (the ship turns toward the pointer, left button fires, right button thrusts) so that I can play mouse-only
+- [x] As a player, I can jump through hyperspace to escape, with a cooldown, so that I have a last resort
+- [x] As a player, I can build combos up to x8 score and unleash Overdrive, a blast around my ship, when the gauge is full so that aggressive play pays
+- [x] As a player, I can feel hits through hit-stop, slow motion, camera shake and punch, flashes, squashing sprites and floating score text so that every moment lands
 
-### Game Modes
-- [x] As a player, I can choose from 4 game modes (Classic, Survival, Zen, Hardcore) on a mode select screen so that I can pick the experience that suits my mood
-- [x] As a player, I can play Classic mode with 3 lives and progressive levels so that I get the traditional arcade experience
-- [x] As a player, I can play Survival mode with 1 life and endlessly spawning, accelerating asteroids so that I can test my endurance
-- [x] As a player, I can play Zen mode with infinite lives and a 3-minute timer so that I can practice and score-attack without frustration
-- [x] As a player, I can play Hardcore mode with 1 life, faster asteroids, and 2x score so that I face a serious challenge with high reward
+### Story
+- [x] As a player, I can fly the Starfall campaign: five chapters (Kuiper Drift, Ember Belt, Crystal Reach, Storm Nebula, The Maw) of six missions each on a world map so that the game has a long arc
+- [x] As a player, I can play clear, survive, gather-shards, rescue-pods and titan missions so that missions stay varied
+- [x] As a player, I can meet Nova, her ship mind KITE, Commander Varga and the Shardmind in dialogue panels before and after each chapter, and replay them from the map
+- [x] As a player, I can watch an opening, a warp arrival for each chapter, a reveal for each titan and a finale, and skip any of them with a key, click or tap
+- [x] As a player, I can earn three stars per mission (clear, lose no ship, beat par) so that I have reasons to replay
+- [x] As a player, I can trust that every mission can be finished: an automated pilot completes all thirty in the tests
 
-### Field Sizes
-- [x] As a player, I can select a field size (Small/Medium/Large/Huge) on the mode select screen so that I can choose my preferred arena scale
-- [x] As a player, I can have my field size choice persisted to localStorage so that it is remembered next time I play
-- [x] As a player, I can see asteroid counts and star density scale with field area so that larger fields feel appropriately populated
+### Rocks, Raiders & Titans
+- [x] As a player, I can shatter fourteen rock types: stone, iron, crystal (splits in three), volatile (explodes), ice (frost slows), magma (fire), storm (chain lightning), void (bends shots), gold (stardust) and six seasonal rocks
+- [x] As a player, I can fight saucers, sniper saucers, hunter packs, gunships, mine-layers, phantoms and splitters, each with its own behaviour
+- [x] As a player, I can face five titans with parts and phases: the Glacier Titan behind orbiting plates, the Magma Wyrm and its segments, the Prism Warden's sweeping beams, the Tempest Core shielded by pylons and lightning, and the Maw that opens to pull me in
+- [x] As a player, I can deal with hazards: frost, fire, mines, black holes, lightning strikes and comets
 
-### Rock Types
-- [x] As a player, I can face Normal rocks (1 HP) from the start so that the early game is approachable
-- [x] As a player, I can face Iron rocks (2 HP, grey shimmer) from level 3 so that I encounter tougher targets requiring multiple hits
-- [x] As a player, I can face Crystal rocks (3 HP, blue glow and facets) from level 6 so that high-level play has durable, visually distinct obstacles
-- [x] As a player, I can face Exploding rocks (2 HP, orange pulse) from level 9 that detonate in a large AoE and chain-react so that I must consider positioning before shooting
-- [x] As a player, I can face Ice rocks (2 HP, frosted surface) from level 12 that leave a slow zone on death so that destroyed ice asteroids create lingering terrain hazards
-- [x] As a player, I can face Lava rocks (3 HP, magma cracks) from level 15 that leave fire trails and spawn fire patches on death so that they create dangerous areas over time
-- [x] As a player, I can face Electric rocks (2 HP, crackling arcs) from level 18 that arc lightning and trigger an EMP on death disabling powerups for 3 seconds so that they introduce a high-risk tactical element
-- [x] As a player, I can see child asteroids inherit their parent's rock type when splitting so that the type-specific challenge persists through the cascade
-- [x] As a player, I can see HP pips displayed below multi-hit asteroids so that I can gauge remaining damage
+### Power-ups
+- [x] As a player, I can collect thirteen power-ups -- Shield, Tri-Shot, Rapid Fire, Lance Rounds, Seeker Swarm, Sunbeam, Orbit Blades, Chrono Field, Tractor, Score x2, Nova Bomb, Singularity and Extra Ship -- with their own icons and timers
+- [x] As a player, I can stack timed power-ups so that they combine
 
-### Zone Effects
-- [x] As a player, I can see ice zones (translucent blue circles) slow all entities passing through so that destroyed ice asteroids reshape the battlefield
-- [x] As a player, I can see fire patches (flickering orange circles) damage me on contact with a brief cooldown so that lava hazards are dangerous but not instant-kill
-- [x] As a player, I can see proximity mines (pulsing red dots with range indicators) detonate on proximity so that mine-layer enemies create persistent threats
-- [x] As a player, I can see zones visually fade as they expire so that I can judge remaining duration at a glance
+### Modes
+- [x] As a player, I can play Arcade: endless waves, three ships, an extra ship every 10,000 points, titans every eighth wave and a top-10 high-score table
+- [x] As a player, I can relax in Zen: no death, no clock, slower rocks, quiet sound and a melody from my kills
+- [x] As a player, I can play the Daily: one ship, a field and two modifiers seeded by the local date, with today's best
+- [x] As a player, I can play Boss Rush against all five titans once I have beaten one
 
-### Enemy Ships
-- [x] As a player, I can face UFOs (large random-fire, small aimed-fire) from level 1 so that I have a classic secondary threat
-- [x] As a player, I can face Drone enemies (kamikaze swarms) from level 5 that charge directly at me so that I must react quickly
-- [x] As a player, I can face Gunship enemies (3 HP, burst fire, strafing) from level 8 so that I face tougher shooters
-- [x] As a player, I can face Mine-Layer enemies (2 HP, drops mines) from level 11 so that the field becomes littered with proximity hazards
-- [x] As a player, I can face Stealth enemies (2 HP, cloaking cycle) from level 14 that are only hittable when visible so that I must time my shots
-- [x] As a player, I can face Boss enemies (8+ HP, shield, multi-attack) every 5 levels from level 10 so that I have memorable milestone encounters
-- [x] As a player, I can see at most 3 non-boss enemies on screen at once so that the game remains challenging but not overwhelming
+### Progression
+- [x] As a player, I can earn stardust in every mode, banked the moment I touch it, so that every run counts
+- [x] As a player, I can spend it in a 29-node tech tree (Cannons, Hull, Engines, Salvage, Overdrive) from the title, results or pause menu, with immediate effect
+- [x] As a player, I can collect ship skins, trails and shot colours in the Hangar, bought with stardust or unlocked by achievements, story chapters and seasonal events
+- [x] As a player, I can chase 35 achievements, three daily quests and a play streak with growing bonuses, and see my lifetime records
 
-### Ally Ships
-- [x] As a player, I can receive a fighter ally every 5 levels (from level 5) with an "ALLY INCOMING!" announcement so that I get reinforcements as difficulty increases
-- [x] As a player, I can see my ally follow me, target the nearest threat, and fire autonomously so that it provides meaningful combat support
-- [x] As a player, I can see allies are destructible (3 HP) and drop a powerup on death so that they are valuable but temporary
-- [x] As a player, I can have at most 2 concurrent allies so that assistance is significant without trivializing the game
+### Seasons
+- [x] As a player, I can play in Deep Winter, Bloomtide, Solar Maximum and Amberfall, and in the Haunted Belt and Starfall festivals, each with its own tint, drifting decor, seasonal rocks and an opening
+- [x] As a player, I can climb each season's eight-tier event track with tokens for stardust, a trail, a ship skin, a shot colour and a champion badge
+- [x] As a player, I can see a featured chapter each week with extra stardust and a double-stardust rock type
 
-### Powerups
-- [x] As a player, I can collect 8 powerup types (Shield, Triple Shot, Rapid Fire, Piercing, Spread Shot, Homing, Extra Life, Nuke) so that gameplay variety increases over time
-- [x] As a player, I can see duration powerups displayed as on-canvas HUD bars so that I can track remaining time at a glance
-- [x] As a player, I can see powerup collectibles glow, spin, and fade out before despawning so that they are visually clear and urgent
-- [x] As a player, I can use the Nuke to destroy all on-screen asteroids and non-boss enemies so that it serves as a powerful screen-clear
-- [x] As a player, I can see the EMP from electric asteroid death suppress active duration powerups for 3 seconds with a HUD warning so that I can plan around the vulnerability
+### Screens & Controls
+- [x] As a player, I can navigate every screen with the mouse or the keyboard
+- [x] As a player, I can read five illustrated How to Play pages
+- [x] As a player, I can play on a touch screen with a steering stick, automatic fire and buttons for hyperspace, overdrive and pause
+- [x] As a player, I can resize or maximize the window and keep exact pointer mapping, with the field wrapping into the extra space
 
-### Combo System
-- [x] As a player, I can build a combo multiplier (x2 through x8) by making rapid kills within 1.5 seconds so that skillful play is rewarded
-- [x] As a player, I can see the combo HUD with animated text and color progression so that my streak feels exciting
-
-### Warp Transitions
-- [x] As a player, I can see a warp-speed star-streak animation between levels so that transitions feel dramatic
-- [x] As a player, I can see "LEVEL X", "BOSS FIGHT!", or "ALLY INCOMING!" announcements during warp so that I know what to expect next
-- [x] As a player, I can remain invulnerable and controllable during warp so that I can reposition safely
-
-### Scoring and Progression
-- [x] As a player, I can see score account for rock type, combo, and mode multipliers so that all difficulty factors contribute to my final score
-- [x] As a player, I can have high scores persisted to localStorage (top 5) with mode tracking and reset option so that my best runs are remembered
-- [x] As a player, I can see a game over screen with stats (asteroids destroyed, accuracy, max combo, powerups collected) so that I can review my performance
-- [x] As a player, I can earn an extra life every 10,000 points in Classic mode so that sustained play is rewarded
-
-### Visuals and Feedback
-- [x] As a player, I can see each rock type with a unique color palette, glow, and surface effect so that I can instantly identify threats
-- [x] As a player, I can see each enemy type with a distinct silhouette and color so that I can recognize their behavior on sight
-- [x] As a player, I can see shockwave rings, screen flashes, and particle bursts on explosions so that destruction feels impactful
-- [x] As a player, I can see electric arcs rendered between nearby electric asteroids so that the battlefield looks spectacular
-- [x] As a player, I can see the boss's HP bar and shield aura so that I can track fight progress
-- [x] As a player, I can see a dashed/dimmed shield bubble during EMP so that I have a visual cue that my shield is suppressed
-
-### Window and UI
-- [x] As a player, I can resize and maximize the game window within SZ OS with the canvas scaling to fit so that I can play at any window size
-- [x] As a player, I can see a status bar showing score, lives, level/time/wave, and mode so that key info is always visible
-- [x] As a player, I can access a Controls dialog listing all keys, rock types, enemy types, powerups, and allies so that I can learn the game without external docs
-- [x] As a player, I can access menu bar for New Game, Pause, High Scores, and Exit so that standard game management is a click away
+### Persistence
+- [x] As a player, I can close the window at any moment and Continue exactly where I was: the run autosaves every few seconds, on pause, between waves and when the page hides
+- [x] As a player, I can keep my high scores from the earlier version of the game, with a stardust bonus for them
+- [x] As a player, I can keep everything in this browser only; nothing is sent to a server
 
 ### Planned Features
-- [ ] As a player, I can hear sound effects for shooting, explosions, powerup collection, and warp so that the game has audio feedback
-- [ ] As a player, I can see powerup rarity scale by level so that later levels drop rarer powerups more often
-- [ ] As a player, I can see high scores separated by game mode so that each mode has its own leaderboard
-- [ ] As a player, I can see ally ships with improved AI (formations, coordination) so that allies feel more intelligent
-- [ ] As a player, I can face an EMP resistance mechanic for certain powerups so that electric rocks have more nuanced counterplay
+- [ ] As a player, I can play co-op with a second ship on the same keyboard
 
-## Known Limitations
+## Controls
 
-- No sound effects (browser audio requires user interaction to initialize)
-- Powerup types are evenly weighted; no rarity scaling by level
-- Survival mode difficulty ramp is linear (may become overwhelming after several minutes)
-- High scores are not separated by mode (shared leaderboard)
-- On very large field sizes (1600) with small windows, entities appear small
-- EMP disables all duration powerups equally (no resistance mechanic)
-- Ally AI is simple (follow + shoot nearest); no formation or coordination
+| Key | Action |
+|-----|--------|
+| A / D or Left / Right | Rotate |
+| W or Up | Thrust |
+| S or Down | Brake |
+| Space (hold) | Fire |
+| Shift or X | Hyperspace jump |
+| E or Q | Overdrive (when charged) |
+| Mouse | Aim at the pointer; left button fires, right button thrusts |
+| Esc or P | Pause menu |
+| B | Buy the selected tech tree node |
+| Tab | Switch tabs in the hangar and goals |
+| H | How to Play (title) |
+| F2 | Title screen (the run is kept for Continue) |
+| Touch | Drag on the left to steer and thrust; guns fire on their own; HYPER, OVER and pause buttons |
