@@ -9,7 +9,7 @@
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
   const G = NS.state;
   const C = NS.constants;
-  const { TAU, SHIP_R, SHIP_DRAG, BOOST_MUL, BOUNDARY_PUSH } = C;
+  const { TAU, SHIP_R, SHIP_DRAG, SHIP_TURN, BOOST_MUL, BOUNDARY_PUSH } = C;
   const { angleDiff, clamp } = NS.rng;
   const R = NS.rng.fx;
   const near = [];
@@ -46,6 +46,16 @@
     const st = G.stats;
     const inp = G.input;
     let mx = s.control ? inp.moveX : 0, my = s.control ? inp.moveY : 0;
+    /* ship-relative keys: turn the nose, thrust along it (reverse at half power) */
+    const turnKey = s.control ? inp.turn || 0 : 0;
+    const axis = s.control ? inp.thrustAxis || 0 : 0;
+    const relative = turnKey !== 0 || axis !== 0;
+    if (turnKey) s.angle += turnKey * SHIP_TURN * dt;
+    if (axis) {
+      const f = axis > 0 ? 1 : -0.5;
+      mx += Math.cos(s.angle) * f;
+      my += Math.sin(s.angle) * f;
+    }
     const ml = Math.sqrt(mx * mx + my * my);
     if (ml > 1) { mx /= ml; my /= ml; }
     const want = ml > 0.1 && s.fuel > 0;
@@ -76,11 +86,13 @@
     s.y += s.vy * dt;
     /* face the thrust, else the laser aim, else keep heading */
     let target = s.angle;
-    if (want) target = Math.atan2(my, mx);
+    if (relative) target = s.angle;
+    else if (want) target = Math.atan2(my, mx);
     else if (inp.firing) target = Math.atan2(inp.aimWY - s.y, inp.aimWX - s.x);
     const d = angleDiff(s.angle, target);
-    const turn = clamp(d, -7 * dt, 7 * dt);
-    s.angle += turn;
+    const auto = clamp(d, -7 * dt, 7 * dt);
+    s.angle += auto;
+    const turn = auto + turnKey * SHIP_TURN * dt;
     s.turnRate += (turn / Math.max(dt, 1e-4) - s.turnRate) * Math.min(1, dt * 8);
     s.bank = clamp(s.turnRate / 6, -1, 1);
     edges(s, dt);

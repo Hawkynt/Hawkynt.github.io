@@ -8,7 +8,7 @@ In every belt you can found an outpost: 23 buildings on a build grid - rigs, sip
 
 The game runs a fixed 60 Hz simulation in world units and draws one frame per display refresh. The view is a 1280 x 720 plane fitted into the window: menus stay letterboxed inside it, while the belt, the scenery and the HUD use every extra pixel of a wider or taller window. Pointer positions are mapped back into the plane on every event, so clicks stay exact after resizing or maximizing.
 
-A trip is one flight into a belt of 6,400 x 4,600 px. The belt is laid out from a seed: two warped bands of rubble plus clumps from value noise, open space round the dock, each rock's ore drawn from the belt's mix (rare ore boosted by research, uranium gathering in radiation fields). The ship flies with inertia; WASD thrusts in screen directions (or the right mouse button thrusts toward the cursor) and the nose turns to the thrust or the laser. The laser is a ray cast through a uniform spatial grid to the first rock, pirate or wreck. Damage heats a rock and chips ore off it; at zero hit points it cracks into two or three rocks one size smaller plus ore nuggets, with chunks, dust, sparks, a shockwave, screen shake and hit-stop for the big ones. Volatile rocks explode and set off their neighbours. Nuggets drift until the tractor beam reels them in, as long as the hold has space; mining drones pick their own rocks, drill, sweep up and fly their baskets home.
+A trip is one flight into a belt of 6,400 x 4,600 px. The belt is laid out from a seed: two warped bands of rubble plus clumps from value noise, open space round the dock, each rock's ore drawn from the belt's mix (rare ore boosted by research, uranium gathering in radiation fields). The ship flies with inertia; W and S thrust along the nose and back, A and D turn the ship (or the right mouse button thrusts toward the cursor, and the nose then turns to the thrust or the laser). The laser is a ray cast through a uniform spatial grid to the first rock, pirate or wreck. Damage heats a rock and chips ore off it; at zero hit points it cracks into two or three rocks one size smaller plus ore nuggets, with chunks, dust, sparks, a shockwave, screen shake and hit-stop for the big ones. Volatile rocks explode and set off their neighbours. Nuggets drift until the tractor beam reels them in, as long as the hold has space; mining drones pick their own rocks, drill, sweep up and fly their baskets home.
 
 Docking (slowly, inside the dock ring) plays the docking sequence and ends the trip: the hold goes to the station warehouse, the bill for fuel and repairs is paid, and one market cycle passes. Each ore has a mean-reverting random-walk price factor, a saturation that your own sales push up and that recovers every cycle, booms and busts announced in the news, and a price history. A refinery smelts three ore into one bar worth more; contracts ask for ore or bars and pay credits plus research data. Credits buy hulls, hangar upgrades (six of them, ten levels each, rising costs), station modules (which appear on the station) and belt licences; research data, earned from rare ore, discoveries, contracts and achievements, buys the tech tree, whose purchases take effect at once - also from the pause menu mid-trip.
 
@@ -146,7 +146,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 ## User Stories
 
 ### Flight & Mining
-- [x] As a player, I can fly my mining ship with inertia using WASD or the arrows, or thrust toward the cursor with the right mouse button
+- [x] As a player, I can fly my mining ship with inertia ship-relative: W/S thrust along the nose and A/D turn it, or thrust toward the cursor with the right mouse button
 - [x] As a player, I can drill with the mining laser at the cursor, or with Space and auto-aim, and see the beam glow, the rock heat up and sparks and dust fly
 - [x] As a player, I can crack asteroids of four sizes into smaller rocks and ore nuggets with chunks, dust, shockwaves, screen shake and hit-stop
 - [x] As a player, I can reel nuggets into my hold with the tractor beam and see the hold fill by ore colour
@@ -234,7 +234,8 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 | Key | Action |
 |-----|--------|
-| WASD / Arrow keys | Fly |
+| W / S or Up / Down | Thrust forward / reverse |
+| A / D or Left / Right | Turn the ship |
 | Right mouse | Fly toward the cursor |
 | Left mouse | Drill at the cursor |
 | Space | Drill with auto-aim |

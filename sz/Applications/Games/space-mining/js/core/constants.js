@@ -29,6 +29,7 @@
     /* flight */
     SHIP_R: 20,
     SHIP_DRAG: 0.42,
+    SHIP_TURN: 3.8,
     BOOST_MUL: 1.9,
     BOUNDARY_PUSH: 700,
     COLLIDE_DMG: 0.05,

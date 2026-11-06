@@ -303,7 +303,7 @@
 
   function hints(v, run) {
     if (run.mode !== 'career' || G.save.stats.trips > 1 || run.t > 40) return;
-    const lines = ['WASD / arrows fly  -  Mouse aims, hold left button to drill',
+    const lines = ['W/S thrust, A/D turn  -  Mouse aims, hold left button to drill',
       'Break rocks, the tractor beam pulls the ore in',
       'Fly back into the DOCK ring to sell at the station'];
     const i = Math.min(2, Math.floor(run.t / 13));
