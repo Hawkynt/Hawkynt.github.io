@@ -253,9 +253,11 @@
   }
 
   const origSetup = module.setup;
-  module.setup = function(ctx, canvas, W, H) {
-    origSetup.call(this, ctx, canvas, W, H);
-    if (S._canvas) {
+  /* remember which pointer started a drag; one listener per canvas */
+  module.setup = function(ctx, canvas, W, H, host) {
+    origSetup.call(this, ctx, canvas, W, H, host);
+    if (S._canvas && !S._canvas.szTrackPointerFreeCell) {
+      S._canvas.szTrackPointerFreeCell = true;
       S._canvas.addEventListener('pointerdown', function(ev) {
         S._lastPointerId = ev.pointerId;
       });

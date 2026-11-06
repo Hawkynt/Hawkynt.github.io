@@ -218,9 +218,11 @@
   }
 
   const origSetup = module.setup;
+  /* remember which pointer started a drag; one listener per canvas */
   module.setup = function(ctx, canvas, W, H, host) {
     origSetup.call(this, ctx, canvas, W, H, host);
-    if (S._canvas) {
+    if (S._canvas && !S._canvas.szTrackPointerBakersDozen) {
+      S._canvas.szTrackPointerBakersDozen = true;
       S._canvas.addEventListener('pointerdown', function(ev) {
         S._lastPointerId = ev.pointerId;
       });
