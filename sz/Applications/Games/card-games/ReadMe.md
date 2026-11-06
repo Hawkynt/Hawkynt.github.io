@@ -1,18 +1,40 @@
 # Card Games Suite
 
-A collection of 72 card game variants with AI opponents, hint mode, card style theming, smooth card animations, and visual effects -- running inside the SynthelicZ Desktop WebOS. Games span solitaire, casino, shedding, trick-taking, rummy, simple/speed, and European categories, all sharing a unified card engine for rendering, hit testing, and animations.
+A collection of 72 card game variants with AI opponents on one living card table: illustrated cards that glide, flip and fly in when dealt, a lobby with a featured game of the day, cinematics, and a player profile with levels, trophies and earnable tables and card backs. Everything runs inside the SynthelicZ Desktop WebOS and keeps the rules of every game untouched -- the motivation layer only celebrates, it never changes what a card does.
 
 ## How It Works
 
-The suite is built on a modular variant architecture. A central controller under `js/core/` and `js/ui/` manages the game lifecycle: displaying a 6-column menu of all 72 variants, loading variant modules on demand via dynamic `<script>` injection, and delegating gameplay to each variant's module. All variants share the card engine under `js/engine/` for procedural card rendering (bezier suit symbols, proper pip layouts, face card artwork, diamond-pattern backs), hit testing, button drawing, deck creation, shuffle, and animation. A theme layer under `js/themes/` provides customizable table backgrounds, card back designs, and card face templates, all persisted via localStorage. Each variant implements its own rules engine, AI logic, and game flow while the controller provides shared visual effects (deal animation, flip transitions, winning glow, chip sparkle, floating text, screen shake).
+The suite is one engine plus 72 variant modules. The engine under `js/engine/` paints every card once into a sprite cache (paper texture, corner indices, pip layouts, ornate aces and double-headed court portraits; coloured action cards for the Uno-style games) and draws a frame as a few `drawImage` calls. Because variants draw cards by object, the engine's motion layer notices when the same card is drawn somewhere new and lets it glide there, lifted and tilted above the table; a card that appears where a card back lay flips over; a fresh deal flies in from the deck. Variants keep hit-testing their real positions, so no rule or AI code had to change.
+
+The table fills the whole window: the 900x600 board is letterboxed and the felt, wood or stone surface bleeds into the bars at any aspect ratio; pointer positions are mapped back into board space after every resize. The suite's own layer adds a lobby, title cards, victory and defeat scenes, a level-up medallion, toasts, pooled particles (sparks, coins, confetti, dust, suit stars) without any per-frame blur, and banners for the variants' floating texts.
+
+Results are noticed without touching the variants: from the host's round-over callback, from explicit win/lose banners and from result texts a variant paints. Each finished round is recorded once in the local profile (experience, per-game statistics, win and day streaks); levels, achievements and seasons unlock extra tables and card backs.
+
+Each variant lives in its own folder, split by concern (state, rules, flow, AI, render, input, index) with one explicit state object, plus shared family helpers in `js/variants/_shared/`. A seeded golden-master test per variant proved the split behaviour-identical.
 
 ## User Stories
 
-### Game Selection
-- [x] As a player, I can browse 72 game variants organized in a 6-column grid menu with game names and short descriptions
-- [x] As a player, I can click any variant to load it on demand (variant JS files loaded dynamically)
-- [x] As a player, I can return to the game selection menu via the canvas Menu button, menu bar, or F2 key
-- [x] As a player, I can see all variants grouped by category: Solitaire (12), Casino (7), Shedding (13), Trick-Taking (11), Rummy (8), Simple/Speed (11), European (10)
+### Lobby
+- [x] As a player, I can browse the 72 games by category tabs (with a count of how many I have conquered), my favourites and my recently played games
+- [x] As a player, I can see each game as a tile with a painted miniature, my wins and plays, my best streak, a crown once I have won it and a NEW ribbon until I try it
+- [x] As a player, I can star any game as a favourite
+- [x] As a player, I can play the featured game of the day for double experience
+- [x] As a player, I can return to the lobby via the table's Lobby button, the menu bar or F2
+
+### Progress and Rewards (local only)
+- [x] As a player, I earn experience for every finished round, more for wins, first wins, new games, win streaks and daily play, and level up with a medallion cinematic
+- [x] As a player, I can collect 33 trophies (wins, variety, streaks, days in a row, categories, time of day) in the trophy cabinet
+- [x] As a player, I can unlock 9 extra tables and 17 extra card backs by levels, trophies, the season I play in (winter, spring, summer, autumn) and short events (Yuletide, All Hallows, Sweethearts, Midsummer)
+- [x] As a player, I can review my statistics: rounds, wins, win rate, streaks, days played, per-category records and most played games
+- [x] As a player, I can keep my progress across sessions in this browser; nothing leaves the machine
+
+### Cinematics and Feel
+- [x] As a player, I see a short intro once a day: a riffle shuffle, a fan of royal cards and the gold title (any click or key skips it)
+- [x] As a player, I see a title card with the game's emblem, name and tagline when a game starts, then the cards fly in from the deck
+- [x] As a player, I see cards glide when they move, lift and tilt in flight, flip over when revealed and land with a little felt dust
+- [x] As a player, I see a victory scene with light rays, confetti and an experience tally, a gentle defeat scene, and a compact banner after each round of multi-round games
+- [x] As a player, I see big win/lose messages of the games as banners with a glow plate and sparkles, and coins burst when I win chips
+- [x] As a player, I can turn card motion or card shadows off in Table & Cards
 
 ### Hint System
 - [x] As a player, I can toggle hint mode to highlight playable cards with a golden glow effect
@@ -24,35 +46,22 @@ The suite is built on a modular variant architecture. A central controller under
 - [x] As a player, I can see auto-sort as a togglable canvas button for the 42+ variants that support hand sorting
 - [x] As a player, I can have my auto-sort preference persist via localStorage
 
-### Card Style Theming
-- [x] As a player, I can choose from 6 table themes: Classic Green, Midnight Blue, Casino Red, Oak Table, White Marble, Royal Purple
-- [x] As a player, I can choose from multiple card back designs (Navy Diamonds, custom color, and more)
-- [x] As a player, I can choose from multiple card face templates (French standard and variants)
-- [x] As a player, I can have all theme choices persist via localStorage and apply immediately
-- [x] As a player, I can access the Card Style button on both the menu screen and during gameplay
+### Table & Cards
+- [x] As a player, I can choose from 15 tables (6 free, 9 earnable) painted as felt with a printed table line, oak and mahogany planks, or marble and onyx
+- [x] As a player, I can choose from 22 card backs (5 free, 17 earnable) with a framed pattern and centre medallion, or a back in a custom colour
+- [x] As a player, I can choose from 4 card face styles (French, 4-Color, German with U/O/D, Minimal) shown as live previews
+- [x] As a player, I can see locked items with the way to earn them
+- [x] As a player, I can open Table & Cards from the lobby or the table's Style button; all choices persist via localStorage
 
 ### Mouse-Only Play
 - [x] As a player, I can use clickable canvas buttons for every game action in all 72 games (Hit/Stand, Bet/Fold/Call/Raise, Knock, SNAP!, etc.)
 - [x] As a player, I can play any variant without a keyboard since all interactions work via pointer/click
 
 ### Card Rendering Engine
-- [x] As a player, I can see cards procedurally drawn with bezier curve suit symbols (spades, hearts, diamonds, clubs)
-- [x] As a player, I can see multi-color rich suit pips with radial gradients, specular highlights, and thin outlines for French, 4-Color, and German templates (Minimal stays flat by design)
-- [x] As a player, I can see larger cards (80x110 vs previous 71x96) with proportionally scaled pips and margins
-- [x] As a player, I can see pip layouts follow standard playing card arrangements for ranks 2-10
-- [x] As a player, I can see face cards (J, Q, K) with center artwork
-- [x] As a player, I can see card backs with configurable designs (diamond patterns, solid colors, custom)
-- [x] As a player, I can see cards at variable dimensions with proportionally scaled pips, text, and borders (e.g., 0.55x for AI hands)
-- [x] As a player, I can click cards with pixel-accurate hit testing
-
-### Visual Effects
-- [x] As a player, I can see card deal animations with cards sliding smoothly from deck to player positions
-- [x] As a player, I can see card flip transitions with scale-X animation revealing the card face
-- [x] As a player, I can see winning hand glow with golden radiance on winning cards
-- [x] As a player, I can see chip sparkle effects with particle sparkles on chip stacks when winning
-- [x] As a player, I can see floating text for score changes and game events
-- [x] As a player, I can see screen shake as impact feedback on big wins or busts
-- [x] As a player, I can see confetti, bursts, and sparkle particle effects
+- [x] As a player, I can see cards with paper texture, crisp corner indices, standard pip layouts, an ornate ace of spades and double-headed king, queen and jack portraits (crowns, ruffs, robes, sword, flower and halberd)
+- [x] As a player, I can see coloured action cards (Uno family, Dos, 8-Color Duo, ONO 99, Skip-Bo) with a glossy field, the tilted white oval, four-colour wild ovals and corner indices
+- [x] As a player, I can see soft shadows under every card and cards at any size stay sharp on high-DPI screens
+- [x] As a player, I can click cards with pixel-accurate hit testing on the real card positions
 
 ### Score and Persistence
 - [x] As a player, I can have my high scores tracked per variant via localStorage
@@ -98,7 +107,7 @@ The suite is built on a modular variant architecture. A central controller under
 
 ### Trick-Taking Games (11)
 - [x] As a player, I can play Skat (3 players) with full bidding phase, Declarer vs. Defenders roles, and trick-based scoring
-- [x] As a player, I can play Doppelkopf (4 players) with hidden teams determined by Queens of Clubs
+- [x] As a player, I can play Doppelkopf (4 players, 48 cards) with the full trump order (both Dullen), hidden Re and Kontra teams found by the Queens of Clubs, a silent solo, 121-point wins, 90/60/30/schwarz and extra points (Fuchs, Karlchen, Doppelkopf) over an 8-round match
 - [x] As a player, I can play Hearts (4 players) avoiding hearts (1 pt each) and Queen of Spades (13 pts), with 3-card passing and shoot-the-moon
 - [x] As a player, I can play Spades (4 players) bidding tricks with spades always trump, 10x points for making bid, bag penalties at 10 overtricks
 - [x] As a player, I can play Euchre (2v2 teams) with 24-card deck (9-A), trump selection, right/left bower system, first to 10 points
@@ -167,40 +176,50 @@ The suite is built on a modular variant architecture. A central controller under
 | Ctrl+Z | Undo (Solitaire, FreeCell, Spider, Forty Thieves, Canfield) |
 | F2 | New game / Return to menu |
 | Escape | Pause / Resume |
-| Menu button | Return to game selection (top-right corner) |
+| Lobby button | Return to the lobby (top-right corner) |
+| Arrow Up / Down | Lobby: switch category tab |
+| Any click or key | Skip the intro, a title card or a result scene |
 | Sort button | Toggle auto-sort for player's hand (top-right, when supported) |
-| Style button | Open card style theme picker |
+| Style button | Open Table & Cards (tables, backs, faces, motion and shadow options) |
 
 ## Technical Details
 
-- Canvas size: 900x600 pixels with DPR scaling
+- Board: 900x600 logical units letterboxed into the full window with DPR scaling; the table bleeds into the bars
 - Game loop uses requestAnimationFrame with delta-time capped at 50ms
 - Variant modules loaded on demand via dynamic `<script>` injection and `SZ.CardGames.registerVariant()` callback
 - Card engine accepts both named suits (`'spades'`) and unicode (`'\u2660'`) transparently
 - All card rendering is procedural (no image assets for cards)
 - Hit testing uses AABB rectangle checks with card-level precision
-- localStorage keys prefixed with `sz-card-games-` for high scores, hints, auto-sort, and theme settings
+- localStorage keys prefixed with `sz-card-games-` for high scores, hints, auto-sort, theme settings, card motion options and the player profile
+- Cards, backs, shadows, tables and lobby miniatures are painted once into cached canvases; a frame draws in about 1 ms in every variant
 
 ## Architecture
 
-- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
-- `js/` -- the suite under `SZ.CardEngine`, `SZ.CardThemes` and `SZ.CardGames`, one module per domain, loaded in dependency order:
-  - `js/engine/core.js` -- suits, ranks, card metrics, pip layouts, deck creation and shuffle; `js/engine/draw.js` -- procedural card face/back drawing (80x110 cards) with bezier suit symbols and pip layouts, variable-size support, rounded rectangles, buttons, felt, hit-test helpers and hint glow; `js/engine/fx.js` -- particle effects, fireworks and win-card animations
-  - `js/themes/state.js` -- active theme load/save/apply; `js/themes/table-themes.js` -- 6 table backgrounds; `js/themes/card-backs.js` -- card back designs; `js/themes/card-faces.js` -- card face templates (French/4-Color with gradient pips, German with gradient Bavarian shapes, Minimal flat); `js/themes/shimmer.js` -- card shimmer animation; `js/themes/settings.js` -- theme picker overlay with preview tiles, all persisted via localStorage
-  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- canvas size, state names, storage keys, the 72-variant catalog and category groups; `js/core/state.js` -- the one shared state object; `js/core/dom.js` -- canvas, context and window handle; `js/core/effects.js` -- particle/shake/floating-text singletons and outcome sounds; `js/core/animations.js` -- deal, flip and glow animations; `js/core/variants.js` -- `registerVariant` and on-demand module loading; `js/core/host.js` -- the host object handed to every variant (deal animation, flip, glow, sparkle); `js/core/game.js` -- variant selection, reset and AI tick; `js/core/os.js` -- window-procedure registration, window title and resize
-  - `js/ui/status.js` -- status bar text and high-score persistence; `js/ui/input.js` -- pointer and keyboard routing with the category-grouped fieldset menu hit tests (7 categories, alphabetically sorted, auto-shrinking labels) and hint/sort toggles; `js/ui/draw.js` -- menu, in-game buttons and overlays; `js/ui/menu.js` -- menu-bar actions incl. the postMessage close bridge
-  - `js/variants/` -- 72 variant modules, each registering itself via `SZ.CardGames.registerVariant()` and implementing rules, AI, game flow and rendering for one card game
-  - `js/app.js` -- loaded last: the requestAnimationFrame game loop and start-up
-- `tests/` -- `harness.js` replays the real `index.html` script list in a sandboxed browser stub and streams every observable effect (DOM writes, sfx, storage, window calls) of a scripted session; `boot.test.js` pins the whole suite by SHA-256 digest against `baseline.json`
-- `styles.css` -- Layout and theming
-- `icon.svg` -- Desktop icon (cards + chips)
+Plain browser JavaScript, IIFE modules on `SZ.CardEngine`, `SZ.CardThemes` and `SZ.CardGames`, loaded in dependency order by `index.html` (no build step).
+
+- `index.html` -- entry point with SEO meta, menu bar, canvas, status bar, dialogs and the script list
+- `js/engine/` -- the card engine shared by all variants
+  - `core.js` -- suits, ranks, card metrics, pip layouts, deck creation and shuffle
+  - `draw.js` -- rounded rectangles, suit symbols, empty slots, selection and hint glows, glossy hover buttons
+  - `fx.js` -- the variants' particle helpers (cached glow sprites, no blur) and the solitaire win cascade
+  - `card-art.js` -- card face artwork: paper, indices, pips, ornate aces, double-headed court portraits
+  - `motion.js` -- automatic card motion by object identity: glides, flips, pops and the deal fly-in
+  - `sprites.js` -- the sprite cache for faces, backs and shadows and the public `drawCardFace` / `drawCardBack` / `drawCard` / `drawSpriteCard`
+  - `color-cards.js` -- the coloured action cards of the Uno-style games
+- `js/themes/` -- `state.js` (active theme, persistence), `table-themes.js` (15 cached tables), `card-backs.js` (22 framed back designs), `card-faces.js` (French, 4-Color, German, Minimal suit painters), `shimmer.js` (sweep and pulse highlights), `settings.js` (the Table & Cards panel with previews and locks)
+- `js/core/` -- `namespace.js`, `constants.js` (board size, states, storage keys, the 72-variant catalogue and categories), `state.js` (the one shared state object), `dom.js` (full-window canvas, letterboxed board, pointer mapping), `effects.js` (particles, shake, floating texts and their sounds), `animations.js` (host deal flights and glows), `variants.js` (registry and on-demand loading), `host.js` (the object handed to every variant), `game.js` (game start, title cards, reset, AI tick), `os.js` (window title and resize)
+- `js/stage/` -- the suite's own presentation: `paint.js` (gold text, panels, ribbons, bars, rays, category emblems), `fx.js` (pooled sparks, coins, confetti, dust and rings), `floaters.js` (popping texts and banners), `scenes.js` (intro, title card, victory/defeat, level-up, toasts)
+- `js/meta/` -- `profile.js` (experience, levels, per-game statistics, streaks, daily featured game, seasons and unlocks in localStorage), `achievements.js` (33 trophies), `outcomes.js` (notices round results and starts the scenes)
+- `js/ui/` -- `lobby.js` (tabs, featured game, tiles), `screens.js` (trophy cabinet, statistics), `status.js` (status bar, high scores), `input.js` (board-space pointer and keyboard routing), `draw.js` (frame composition and overlays), `menu.js` (menu-bar actions)
+- `js/variants/<id>/` -- one folder per game, split by concern: `state.js` (constants and the one state object on `SZ.CardGames.v.<id>`), `rules.js`, `flow.js` / `game.js` (dealing, turns, round end), `ai.js`, `layout.js` / `anim.js` (solitaires), `render.js`, `input.js`, and `index.js` (the module object and `registerVariant`)
+- `js/variants/_shared/` -- family helpers: solitaire fallback drawing, casino chips, quick-game piles and hands, shedding hand sorting and drawing, trick-taking rules and paint, rummy cards and melds, European card and layout helpers
+- `js/app.js` -- loaded last: the frame loop, profile events and start-up
+- `tests/` -- `harness.js` replays the real script list in a sandboxed browser stub and streams every observable effect into a digest; `boot.test.js` pins a lobby-to-table session; `variants.test.js` pins a seeded session per variant (`variants-baseline.json`); `doppelkopf.test.js` checks the Doppelkopf rules
+- `styles.css`, `icon.svg` -- layout and desktop icon
 
 ### Planned Features
 - [ ] As a player, I can select AI difficulty levels (easy, medium, hard) per variant so that I can adjust the challenge
 - [ ] As a player, I can use drag-and-drop for all card games (not just solitaire) so that interaction is more intuitive
-- [ ] As a player, I can hear sound effects for card dealing, flipping, and shuffling so that the games have audio feedback
-- [ ] As a player, I can see animated card dealing with physics-based motion so that deals look more realistic
-- [ ] As a player, I can view game statistics and win/loss records per variant so that I can track my progress across all games
 
 ## Known Limitations
 
@@ -208,6 +227,7 @@ The suite is built on a modular variant architecture. A central controller under
 - Drag-and-drop is only available for solitaire variants; other games use click-to-select
 - No multiplayer support; all opponents are AI-controlled
 - Card engine renders procedurally; no photorealistic card images
+- Doppelkopf plays the normal game only: no announcements, no Hochzeit and no chosen solos
 - Some complex variants (Bridge bidding, Pinochle melds) use simplified rule sets compared to tournament play
 
 ## SEO Keywords
