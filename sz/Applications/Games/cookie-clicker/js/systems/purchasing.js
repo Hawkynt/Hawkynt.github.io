@@ -1,69 +1,120 @@
-/* Buying and clicking: building and upgrade purchases with their affordability
-   feedback, and the big-cookie click with its ripple, squish and floating text. */
+/* Buying and selling: the buy amount (1, 10, and with Bulk Orders 100 or max), producer
+   purchases with bulk costs, selling one back for a quarter of its price, the upgrades the
+   store reveals (sorted by price) and buying them, with sounds, particles and quest credit. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.CookieClicker || (SZ.CookieClicker = {});
-  const S = NS.state;
-  const { CANVAS_W, CANVAS_H, BLDG_ROW_TOTAL, COOKIE_CX, COOKIE_CY, COOKIE_R } = NS.constants;
-  const BUILDING_DEFS = NS.buildingDefs;
-  const UPGRADE_DEFS = NS.upgradeDefs;
-  const particles = NS.dom.particles;
-  const floatingText = NS.dom.floatingText;
-  /* ── Buy Building ── */
-  function buyBuilding(defIndex) {
-    const def = BUILDING_DEFS[defIndex];
-    const cost = NS.economy.buildingCost(def);
-    if (S.cookies >= cost) {
-      S.cookies -= cost;
-      ++S.buildings[def.id];
-      NS.economy.recalcCPS();
-      S.purchaseGlowTimer = 0.6;
-      S.purchaseGlowIndex = defIndex;
-      particles.burst(650, 80 + defIndex * BLDG_ROW_TOTAL, 8, { r: 255, g: 215, b: 0 }, 0.6);
-      SZ.GameAudio.play('coin');
-    } else
-      SZ.GameAudio.play('error', { volume: 0.5 });
+  const G = NS.state;
+  const C = NS.constants;
+  const E = NS.economy;
+  const { UPGRADES, BY_ID: U_BY_ID } = NS.upgradeData;
+  const { BY_ID: B_BY_ID } = NS.buildingData;
+  const { sfx } = NS.audio;
+
+  function bulkAllowed() {
+    return E.treeStat(G.profile, 'bulk') > 0;
   }
 
-  /* ── Buy Upgrade ── */
-  function buyUpgrade(defIndex) {
-    const def = UPGRADE_DEFS[defIndex];
-    if (S.upgradePurchased[def.id])
-      return;
-    if (S.cookies < def.cost) {
-      SZ.GameAudio.play('error', { volume: 0.5 });
-      return;
+  function buyAmount() {
+    const steps = C.BUY_STEPS;
+    let i = G.ui.buyIndex;
+    if (!bulkAllowed() && i > 1) i = 0;
+    return steps[i];
+  }
+
+  function cycleAmount() {
+    const max = bulkAllowed() ? C.BUY_STEPS.length : 2;
+    G.ui.buyIndex = (G.ui.buyIndex + 1) % max;
+    sfx('click', { volume: 0.4 });
+  }
+
+  /* n to buy and its price for the store row */
+  function quote(id) {
+    const run = G.active();
+    const st = G.st;
+    let n = buyAmount();
+    if (n < 0) n = Math.max(1, E.maxAffordable(run, st, id));
+    return { n: n, cost: E.buildingCost(run, st, id, n) };
+  }
+
+  function buyBuilding(id, x, y) {
+    const run = G.active();
+    const q = quote(id);
+    if (run.cookies < q.cost) {
+      sfx('error', { volume: 0.5 });
+      return false;
     }
-    S.cookies -= def.cost;
-    S.upgradePurchased[def.id] = true;
-    if (def.target === 'click')
-      S.clickMultiplier *= def.multiplier;
-    else if (def.target === 'global')
-      S.globalMultiplier *= def.multiplier;
-    else
-      S.buildingMultipliers[def.target] *= def.multiplier;
-    NS.economy.recalcCPS();
-    NS.economy.recalcClickValue();
-    particles.burst(400, 300, 12, { r: 180, g: 100, b: 255 }, 0.8);
-    SZ.GameAudio.play('powerup');
-  }
-  /* ── Cookie Click ── */
-  function handleCookieClick(x, y) {
-    S.cookies += S.clickValue;
-    S.cookiesBaked += S.clickValue;
-    S.cookiesBakedAllTime += S.clickValue;
-    ++S.totalClicks;
-
-    particles.burst(x || CANVAS_W / 2, y || CANVAS_H / 2, 8, { r: 210, g: 160, b: 60 }, 0.5);
-    floatingText.add(x || CANVAS_W / 2, (y || CANVAS_H / 2) - 30, '+' + NS.format.formatNumber(S.clickValue), { color: '#fff' });
-    S.clickRipple = { x: COOKIE_CX, y: COOKIE_CY, radius: COOKIE_R * 0.5, alpha: 0.7 };
-    particles.burst(COOKIE_CX, COOKIE_CY, 5, { r: 160, g: 120, b: 60 }, 0.4);
-    S.cookieScale = 0.95;
-    S.cookieScaleV = 0.3;
-    SZ.GameAudio.play('bounce', { pitch: 0.9 + Math.random() * 0.3, volume: 0.5 });
+    run.cookies -= q.cost;
+    run.buildings[id] += q.n;
+    run.built += q.n;
+    G.profile.stats.built += q.n;
+    G.ui.lastBuy = id;
+    G.ui.lastBuyT = 1;
+    NS.production.invalidate();
+    sfx('drop', { pitch: 0.9 + Math.min(0.6, run.buildings[id] * 0.004) });
+    if (x != null) NS.fx.burst(x, y, 10, [B_BY_ID[id].main, B_BY_ID[id].accent, '#ffffff'], 'stars', 200, 300, 4);
+    NS.progression.quest('buy', q.n);
+    const owned = run.buildings[id];
+    if (owned === 1 || owned % 50 === 0) {
+      const rows = NS.sceneRender.rows();
+      const ry = NS.constants.LAYOUT.sceneY + 32 + rows.indexOf(B_BY_ID[id]) * NS.constants.LAYOUT.rowH - G.ui.sceneScroll + 46;
+      NS.fx.text(NS.constants.LAYOUT.sceneX + 220, Math.max(140, Math.min(620, ry)), owned === 1 ? 'New: ' + B_BY_ID[id].name + '!' : owned + ' ' + B_BY_ID[id].name, C.UI.gold, 26, 1.6);
+      sfx('levelup', { volume: 0.5 });
+    }
+    return true;
   }
 
-  Object.assign(NS.purchasing, { buyBuilding, buyUpgrade, handleCookieClick });
+  function sellBuilding(id) {
+    const run = G.active();
+    const v = E.sellValue(run, G.st, id);
+    if (!run.buildings[id]) return false;
+    run.buildings[id] -= 1;
+    run.cookies += v;
+    NS.production.invalidate();
+    sfx('coin', { pitch: 0.7, volume: 0.5 });
+    NS.screens.toast('Sold a ' + B_BY_ID[id].name + ' for ' + NS.format.short(v), C.UI.textDim);
+    return true;
+  }
+
+  function visibleUpgrades() {
+    const run = G.active();
+    const out = [];
+    for (let i = 0; i < UPGRADES.length; ++i) {
+      const u = UPGRADES[i];
+      if (!run.upgrades[u.id] && E.upgradeRevealed(run, G.profile, u)) out.push(u);
+    }
+    out.sort((a, b) => a.cost - b.cost);
+    return out;
+  }
+
+  function buyUpgrade(id) {
+    const run = G.active();
+    const u = U_BY_ID[id];
+    const cost = E.upgradeCost(G.st, id);
+    if (run.upgrades[id] || run.cookies < cost) {
+      sfx('error', { volume: 0.5 });
+      return false;
+    }
+    run.cookies -= cost;
+    run.upgrades[id] = true;
+    ++run.upgradesBought;
+    ++G.profile.stats.upgrades;
+    NS.production.invalidate();
+    sfx('powerup', { volume: 0.6 });
+    NS.progression.quest('upgrades', 1);
+    if (u.kind === 'deco') {
+      const L = C.LAYOUT;
+      NS.fx.ring(L.treatX, L.treatY, L.treatR * 0.6, L.treatR * 1.8, 0.7, C.UI.gold, 6);
+      NS.fx.burst(L.treatX, L.treatY - 40, 40, ['#ffffff', '#ffd25a', '#ff9ac0'], 'stars', 360, 300);
+      NS.fx.flash(0.35, '#fff4d0');
+      NS.fx.shake(6);
+      G.treatSquashV -= 12;
+      NS.screens.toast('The treat gets ' + u.name + '!', C.UI.gold, 'deco');
+    } else NS.screens.toast('Upgrade: ' + u.name + ' - ' + u.desc, C.UI.good);
+    return true;
+  }
+
+  Object.assign(NS.purchasing, { bulkAllowed, buyAmount, cycleAmount, quote, buyBuilding, sellBuilding, visibleUpgrades, buyUpgrade });
 })();
