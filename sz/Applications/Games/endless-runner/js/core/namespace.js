@@ -6,9 +6,12 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.EndlessRunner || (SZ.EndlessRunner = {});
 
-  /* state and view are owned by their own modules, not pre-created here */
-  const MODULES = ['constants', 'rules', 'spawn', 'collision', 'flow', 'background',
-    'entities', 'hud', 'scene', 'status', 'highscores', 'input', 'menu', 'app'];
+  const MODULES = ['constants', 'rng', 'worlds', 'story', 'items', 'treeData', 'cosmetics', 'goals', 'seasons',
+    'physics', 'course', 'solver', 'rules', 'state', 'audio', 'save',
+    'fx', 'stream', 'player', 'hazards', 'pickups', 'powers', 'bosses', 'progress', 'run', 'autopilot', 'cine', 'sim',
+    'view', 'artKit', 'backdropArt', 'backdrop', 'runnerArt', 'propArt', 'bossArt', 'world', 'actors', 'fxRender', 'hud',
+    'cineRender', 'kit', 'widgets', 'screens', 'title', 'map', 'tree', 'wardrobe', 'journal', 'results', 'help',
+    'pause', 'touch', 'statusBar', 'frame', 'input', 'app'];
   for (let i = 0; i < MODULES.length; ++i)
     NS[MODULES[i]] = NS[MODULES[i]] || {};
 })();
