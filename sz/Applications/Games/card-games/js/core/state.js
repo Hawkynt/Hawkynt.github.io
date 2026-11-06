@@ -35,4 +35,6 @@
   /* ── Round bookkeeping ── */
   S.roundStartScore = 0;
   S.lastOutcomeSound = 0;
+  S.skipTitles = false;
+  S.reducedMotion = false;
 })();

@@ -104,239 +104,45 @@
   }
 
   /* ================================================================
-   *  DRAWING - Pips
-   * ================================================================ */
-
-  function drawPips(cx, card, x, y, w, h) {
-    const color = CE.resolveSuitColor(card.suit);
-    const rankNum = (card.value != null ? card.value : CE.RANKS.indexOf(card.rank)) + 1;
-
-    const pipLeft = x + 12;
-    const pipTop = y + 24;
-    const pipW = w - 24;
-    const pipH = h - 48;
-
-    cx.fillStyle = color;
-
-    if (rankNum === 1) {
-      drawSuitSymbol(cx, card.suit, pipLeft + pipW * 0.5, pipTop + pipH * 0.5, 28);
-      return;
-    }
-
-    const layout = CE.PIP_LAYOUTS[rankNum];
-    if (!layout)
-      return;
-
-    const pipSize = 13;
-
-    for (const [relX, relY] of layout) {
-      const px = pipLeft + pipW * relX;
-      const py = pipTop + pipH * relY;
-
-      if (relY > 0.5) {
-        cx.save();
-        cx.translate(px, py);
-        cx.rotate(Math.PI);
-        drawSuitSymbol(cx, card.suit, 0, 0, pipSize);
-        cx.restore();
-      } else
-        drawSuitSymbol(cx, card.suit, px, py, pipSize);
-    }
-  }
-
-  /* ================================================================
-   *  DRAWING - Face Card Center
-   * ================================================================ */
-
-  function drawFaceCardCenter(cx, x, y, card, cw, ch) {
-    const w0 = cw || CE.CARD_W;
-    const h0 = ch || CE.CARD_H;
-    const color = CE.resolveSuitColor(card.suit);
-    const centerX = x + w0 / 2;
-    const centerY = y + h0 / 2;
-    const scaleX = w0 / CE.CARD_W;
-    const scaleY = h0 / CE.CARD_H;
-    const frameW = 40 * scaleX;
-    const frameH = 52 * scaleY;
-
-    drawRoundedRect(cx, centerX - frameW / 2, centerY - frameH / 2, frameW, frameH, 3);
-    cx.fillStyle = color === '#d00' ? '#ffe8e8' : '#e8e8f0';
-    cx.fill();
-    cx.strokeStyle = color;
-    cx.lineWidth = 2;
-    cx.stroke();
-
-    drawRoundedRect(cx, centerX - frameW / 2 + 3, centerY - frameH / 2 + 3, frameW - 6, frameH - 6, 2);
-    cx.strokeStyle = color;
-    cx.lineWidth = 0.5;
-    cx.stroke();
-
-    let displayRank = card.rank;
-    const CT = SZ.CardThemes;
-    if (CT) {
-      const tpl = CT.CARD_FACE_TEMPLATES[CT.activeTheme.cardFace];
-      if (tpl && tpl.rankLabels && tpl.rankLabels[card.rank])
-        displayRank = tpl.rankLabels[card.rank];
-    }
-
-    const fontSize = Math.round(24 * Math.min(scaleX, scaleY));
-    cx.font = 'bold ' + fontSize + 'px serif';
-    cx.fillStyle = color;
-    cx.textAlign = 'center';
-    cx.textBaseline = 'middle';
-    cx.fillText(displayRank, centerX, centerY - 4 * scaleY);
-
-    cx.fillStyle = color;
-    drawSuitSymbol(cx, card.suit, centerX, centerY + 16 * scaleY, 12 * Math.min(scaleX, scaleY));
-  }
-
-  /* ================================================================
-   *  DRAWING - Card Face
-   * ================================================================ */
-
-  function drawCardFace(cx, x, y, card, w, h) {
-    const cw = w || CE.CARD_W;
-    const ch = h || CE.CARD_H;
-    const cr = CE.CARD_RADIUS * Math.min(cw / CE.CARD_W, ch / CE.CARD_H);
-    drawRoundedRect(cx, x, y, cw, ch, cr);
-
-    let cardBg = '#fff';
-    let displayRank = card.rank;
-    const CT = SZ.CardThemes;
-    if (CT) {
-      const tpl = CT.CARD_FACE_TEMPLATES[CT.activeTheme.cardFace];
-      if (tpl) {
-        if (tpl.cardBg) cardBg = tpl.cardBg;
-        if (tpl.rankLabels && tpl.rankLabels[card.rank])
-          displayRank = tpl.rankLabels[card.rank];
-      }
-    }
-
-    cx.fillStyle = cardBg;
-    cx.fill();
-    cx.strokeStyle = '#333';
-    cx.lineWidth = 1;
-    cx.stroke();
-
-    const color = CE.resolveSuitColor(card.suit);
-    const sx = cw / CE.CARD_W;
-    const sy = ch / CE.CARD_H;
-    const ss = Math.min(sx, sy);
-
-    const fontSize = Math.round(13 * ss);
-    cx.font = 'bold ' + fontSize + 'px serif';
-    cx.fillStyle = color;
-    cx.textAlign = 'left';
-    cx.textBaseline = 'top';
-    cx.fillText(displayRank, x + 4 * sx, y + 4 * sy);
-
-    cx.fillStyle = color;
-    drawSuitSymbol(cx, card.suit, x + 8 * sx, y + 24 * sy, 8 * ss);
-
-    cx.save();
-    cx.translate(x + cw - 4 * sx, y + ch - 4 * sy);
-    cx.rotate(Math.PI);
-    cx.font = 'bold ' + fontSize + 'px serif';
-    cx.fillStyle = color;
-    cx.textAlign = 'left';
-    cx.textBaseline = 'top';
-    cx.fillText(displayRank, 0, 0);
-    cx.restore();
-
-    cx.save();
-    cx.translate(x + cw - 8 * sx, y + ch - 24 * sy);
-    cx.rotate(Math.PI);
-    cx.fillStyle = color;
-    drawSuitSymbol(cx, card.suit, 0, 0, 8 * ss);
-    cx.restore();
-
-    cx.fillStyle = color;
-    if (card.rank === 'J' || card.rank === 'Q' || card.rank === 'K')
-      drawFaceCardCenter(cx, x, y, card, cw, ch);
-    else
-      drawPips(cx, card, x, y, cw, ch);
-  }
-
-  /* ================================================================
-   *  DRAWING - Card Back
+   *  DRAWING - Card Back (theme design; the sprite cache wraps this)
    * ================================================================ */
 
   function drawCardBack(cx, x, y, w, h) {
     const CT = SZ.CardThemes;
-    if (CT) {
-      const design = CT.CARD_BACK_DESIGNS[CT.activeTheme.cardBack];
-      if (design) {
-        design.draw(cx, x, y, w || CE.CARD_W, h || CE.CARD_H);
-        return;
-      }
-    }
+    const design = CT && CT.CARD_BACK_DESIGNS && (CT.CARD_BACK_DESIGNS[CT.activeTheme.cardBack] || CT.CARD_BACK_DESIGNS.navy_diamonds);
     const cw = w || CE.CARD_W;
     const ch = h || CE.CARD_H;
-    const cr = CE.CARD_RADIUS * Math.min(cw / CE.CARD_W, ch / CE.CARD_H);
-    drawRoundedRect(cx, x, y, cw, ch, cr);
-    cx.fillStyle = '#fff';
-    cx.fill();
-    cx.strokeStyle = '#333';
-    cx.lineWidth = 1;
-    cx.stroke();
-
-    const m = 3;
-    drawRoundedRect(cx, x + m, y + m, cw - m * 2, ch - m * 2, Math.max(cr - 1, 1));
+    if (design) {
+      design.draw(cx, x, y, cw, ch);
+      return;
+    }
+    drawRoundedRect(cx, x, y, cw, ch, CE.CARD_RADIUS);
     cx.fillStyle = '#1a237e';
     cx.fill();
-
-    cx.strokeStyle = '#3949ab';
-    cx.lineWidth = 0.5;
-    const step = 8;
-    cx.save();
-    cx.beginPath();
-    drawRoundedRect(cx, x + m, y + m, cw - m * 2, ch - m * 2, Math.max(cr - 1, 1));
-    cx.clip();
-    for (let dy = y + m; dy < y + ch - m; dy += step) {
-      for (let dx = x + m; dx < x + cw - m; dx += step) {
-        const cx2 = dx + step / 2;
-        const cy2 = dy + step / 2;
-        cx.beginPath();
-        cx.moveTo(cx2, cy2 - step / 2 + 1);
-        cx.lineTo(cx2 + step / 2 - 1, cy2);
-        cx.lineTo(cx2, cy2 + step / 2 - 1);
-        cx.lineTo(cx2 - step / 2 + 1, cy2);
-        cx.closePath();
-        cx.stroke();
-      }
-    }
-    cx.restore();
-
-    drawRoundedRect(cx, x + m, y + m, cw - m * 2, ch - m * 2, Math.max(cr - 1, 1));
-    cx.strokeStyle = '#c5cae9';
-    cx.lineWidth = 1;
-    cx.stroke();
   }
 
   /* ================================================================
-   *  DRAWING - Card (face up or back) / Empty Slot / Selection
+   *  DRAWING - Slots, highlights, hint glow
    * ================================================================ */
-
-  function drawCard(cx, x, y, card, w, h) {
-    if (card.faceUp)
-      drawCardFace(cx, x, y, card, w, h);
-    else
-      drawCardBack(cx, x, y, w, h);
-  }
 
   function drawEmptySlot(cx, x, y, label, w, h) {
     const cw = w || CE.CARD_W;
     const ch = h || CE.CARD_H;
-    const cr = CE.CARD_RADIUS * Math.min(cw / CE.CARD_W, ch / CE.CARD_H);
+    const cr = CE.CARD_RADIUS * Math.min(cw / CE.CARD_W, ch / CE.CARD_H) + 1;
     drawRoundedRect(cx, x, y, cw, ch, cr);
-    cx.strokeStyle = 'rgba(255,255,255,0.25)';
-    cx.lineWidth = 2;
+    cx.fillStyle = 'rgba(0,0,0,0.22)';
+    cx.fill();
+    drawRoundedRect(cx, x + 1.5, y + 1.5, cw - 3, ch - 3, Math.max(1, cr - 1));
+    cx.strokeStyle = 'rgba(255,236,170,0.32)';
+    cx.lineWidth = 1.4;
+    cx.setLineDash && cx.setLineDash([5, 4]);
     cx.stroke();
+    cx.setLineDash && cx.setLineDash([]);
 
     if (label) {
       const fontSize = Math.round(28 * Math.min(cw / CE.CARD_W, ch / CE.CARD_H));
-      cx.font = fontSize + 'px serif';
-      cx.fillStyle = 'rgba(255,255,255,0.3)';
+      cx.font = fontSize + 'px Georgia, serif';
+      cx.fillStyle = 'rgba(255,240,200,0.3)';
       cx.textAlign = 'center';
       cx.textBaseline = 'middle';
       cx.fillText(label, x + cw / 2, y + ch / 2);
@@ -345,13 +151,15 @@
 
   function drawSelectionHighlight(cx, x, y, h, w) {
     const cw = w || CE.CARD_W;
-    const cr = CE.CARD_RADIUS * (cw / CE.CARD_W);
+    const cr = CE.CARD_RADIUS * (cw / CE.CARD_W) + 1;
     cx.save();
-    cx.strokeStyle = '#ffff00';
-    cx.lineWidth = 3;
-    cx.shadowColor = '#ffff00';
-    cx.shadowBlur = 6;
+    drawRoundedRect(cx, x - 3, y - 3, cw + 6, h + 6, cr + 3);
+    cx.strokeStyle = 'rgba(120,220,255,0.35)';
+    cx.lineWidth = 5;
+    cx.stroke();
     drawRoundedRect(cx, x - 1, y - 1, cw + 2, h + 2, cr + 1);
+    cx.strokeStyle = '#8fe3ff';
+    cx.lineWidth = 2;
     cx.stroke();
     cx.restore();
   }
@@ -359,14 +167,16 @@
   function drawHintGlow(cx, x, y, w, h, time) {
     const cw = w || CE.CARD_W;
     const ch = h || CE.CARD_H;
-    const cr = CE.CARD_RADIUS * (cw / CE.CARD_W);
-    const pulse = 0.4 + 0.3 * Math.sin((time || 0) * 4);
+    const cr = CE.CARD_RADIUS * (cw / CE.CARD_W) + 1;
+    const pulse = 0.5 + 0.5 * Math.sin((time || 0) * 4);
     cx.save();
-    cx.strokeStyle = 'rgba(255, 255, 0, ' + pulse + ')';
+    drawRoundedRect(cx, x - 4, y - 4, cw + 8, ch + 8, cr + 4);
+    cx.strokeStyle = 'rgba(255, 210, 60, ' + (0.12 + 0.18 * pulse) + ')';
+    cx.lineWidth = 6;
+    cx.stroke();
+    drawRoundedRect(cx, x - 1.5, y - 1.5, cw + 3, ch + 3, cr + 1.5);
+    cx.strokeStyle = 'rgba(255, 226, 110, ' + (0.55 + 0.4 * pulse) + ')';
     cx.lineWidth = 2;
-    cx.shadowColor = '#ffff00';
-    cx.shadowBlur = 4 + 3 * Math.sin((time || 0) * 4);
-    drawRoundedRect(cx, x - 1, y - 1, cw + 2, ch + 2, cr + 1);
     cx.stroke();
     cx.restore();
   }
@@ -378,9 +188,6 @@
   function drawFelt(cx, w, h) {
     cx.fillStyle = CE.GREEN;
     cx.fillRect(0, 0, w, h);
-    cx.fillStyle = CE.DARK_GREEN;
-    cx.fillRect(0, 0, w, 2);
-    cx.fillRect(0, 0, 2, h);
   }
 
   /* ================================================================
@@ -390,23 +197,16 @@
   function drawRecycleSymbol(cx, x, y, w, h) {
     const cw = w || CE.CARD_W;
     const ch = h || CE.CARD_H;
-    const cr = CE.CARD_RADIUS * Math.min(cw / CE.CARD_W, ch / CE.CARD_H);
-    drawRoundedRect(cx, x, y, cw, ch, cr);
-    cx.strokeStyle = 'rgba(255,255,255,0.25)';
-    cx.lineWidth = 2;
-    cx.stroke();
-
+    drawEmptySlot(cx, x, y, null, cw, ch);
     const centerX = x + cw / 2;
     const centerY = y + ch / 2;
-    const r = 16;
-
-    cx.strokeStyle = 'rgba(255,255,255,0.35)';
+    const r = 16 * Math.min(cw / CE.CARD_W, ch / CE.CARD_H);
+    cx.strokeStyle = 'rgba(255,236,170,0.5)';
     cx.lineWidth = 3;
     cx.lineCap = 'round';
     cx.beginPath();
     cx.arc(centerX, centerY, r, -Math.PI * 0.7, Math.PI * 0.7);
     cx.stroke();
-
     const angle = Math.PI * 0.7;
     const ax = centerX + r * Math.cos(angle);
     const ay = centerY + r * Math.sin(angle);
@@ -419,33 +219,67 @@
   }
 
   /* ================================================================
-   *  DRAWING - Button
+   *  DRAWING - Button (glossy, lifts under the pointer)
    * ================================================================ */
+
+  CE.pointer = { x: -1, y: -1 };
+
+  function shadeColor(c, amt) {
+    return CE.art && CE.art.shade && /^#/.test(c) ? CE.art.shade(c, amt) : c;
+  }
 
   function drawButton(cx, x, y, w, h, label, opts) {
     const bg = (opts && opts.bg) || '#1a3a1a';
     const border = (opts && opts.border) || '#4a4';
     const textColor = (opts && opts.textColor) || '#fff';
     const fontSize = (opts && opts.fontSize) || 14;
-    cx.fillStyle = bg;
-    cx.strokeStyle = border;
-    cx.lineWidth = 2;
-    drawRoundedRect(cx, x, y, w, h, 6);
+    const p = CE.pointer;
+    const hover = p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h;
+    const r = Math.min(8, h * 0.3);
+    const lift = hover ? 1 : 0;
+    drawRoundedRect(cx, x, y + 2, w, h, r);
+    cx.fillStyle = 'rgba(0,0,0,0.35)';
     cx.fill();
+    drawRoundedRect(cx, x, y - lift, w, h, r);
+    if (/^#/.test(bg)) {
+      const g = cx.createLinearGradient(0, y - lift, 0, y - lift + h);
+      g.addColorStop(0, shadeColor(bg, hover ? 0.38 : 0.24));
+      g.addColorStop(0.55, shadeColor(bg, hover ? 0.1 : 0));
+      g.addColorStop(1, shadeColor(bg, -0.32));
+      cx.fillStyle = g;
+    } else
+      cx.fillStyle = bg;
+    cx.fill();
+    cx.strokeStyle = hover ? '#ffe7a0' : border;
+    cx.lineWidth = 1.5;
     cx.stroke();
-    cx.fillStyle = textColor;
-    cx.font = 'bold ' + fontSize + 'px sans-serif';
+    drawRoundedRect(cx, x + 2, y - lift + 2, w - 4, h * 0.42, Math.max(1, r - 2));
+    cx.fillStyle = 'rgba(255,255,255,0.13)';
+    cx.fill();
+    cx.font = 'bold ' + fontSize + 'px "Segoe UI", "Trebuchet MS", Arial, sans-serif';
     cx.textAlign = 'center';
     cx.textBaseline = 'middle';
-    cx.fillText(label, x + w / 2, y + h / 2);
+    cx.fillStyle = 'rgba(0,0,0,0.5)';
+    cx.fillText(label, x + w / 2 + 0.5, y - lift + h / 2 + 1.5);
+    cx.fillStyle = textColor;
+    cx.fillText(label, x + w / 2, y - lift + h / 2);
+  }
+
+  function drawCardFace(cx, x, y, card, w, h) {
+    CE.art.drawFace(cx, x, y, card, w || CE.CARD_W, h || CE.CARD_H);
+  }
+
+  function drawCard(cx, x, y, card, w, h) {
+    if (card.faceUp)
+      CE.drawCardFace(cx, x, y, card, w, h);
+    else
+      CE.drawCardBack(cx, x, y, w, h);
   }
 
   Object.assign(CE, {
     // Drawing primitives
     drawRoundedRect,
     drawSuitSymbol,
-    drawPips,
-    drawFaceCardCenter,
     drawCardFace,
     drawCardBack,
     drawCard,

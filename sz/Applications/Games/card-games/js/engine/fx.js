@@ -4,6 +4,33 @@
   const SZ = window.SZ || (window.SZ = {});
   const CE = SZ.CardEngine;
 
+  /* cached radial glow per colour: particles never use shadowBlur */
+  const glowCache = new Map();
+  function glowSprite(color) {
+    let c = glowCache.get(color);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = c.height = 32;
+      const g = c.getContext('2d');
+      if (g) {
+        const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+        gr.addColorStop(0, '#ffffff');
+        gr.addColorStop(0.25, color);
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = gr;
+        g.fillRect(0, 0, 32, 32);
+      }
+      glowCache.set(color, c);
+    }
+    return c;
+  }
+
+  function drawOne(cx, p) {
+    const r = p.size + (p.glow || 4) * 0.6;
+    cx.globalAlpha = p.alpha;
+    cx.drawImage(glowSprite(p.color), p.x - r * 1.6, p.y - r * 1.6, r * 3.2, r * 3.2);
+  }
+
   /* ================================================================
    *  FIREWORK PARTICLES
    * ================================================================ */
@@ -58,13 +85,7 @@
         continue;
       }
       cx.save();
-      cx.globalAlpha = p.alpha;
-      cx.shadowColor = p.color;
-      cx.shadowBlur = p.glow * p.alpha;
-      cx.fillStyle = p.color;
-      cx.beginPath();
-      cx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      cx.fill();
+      drawOne(cx, p);
       cx.restore();
     }
   }
@@ -90,13 +111,7 @@
         continue;
       }
       cx.save();
-      cx.globalAlpha = p.alpha;
-      cx.shadowColor = p.color;
-      cx.shadowBlur = p.glow * p.alpha;
-      cx.fillStyle = p.color;
-      cx.beginPath();
-      cx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      cx.fill();
+      drawOne(cx, p);
       cx.restore();
     }
   }
@@ -158,7 +173,7 @@
         cx.globalAlpha = t.alpha;
         cx.translate(t.x + CE.CARD_W / 2, t.y + CE.CARD_H / 2);
         cx.rotate(ac.angle);
-        CE.drawCardFace(cx, -CE.CARD_W / 2, -CE.CARD_H / 2, ac.card);
+        CE.paintCardFace(cx, -CE.CARD_W / 2, -CE.CARD_H / 2, ac.card);
         cx.restore();
         t.alpha *= 0.6;
       }
@@ -166,7 +181,7 @@
       cx.save();
       cx.translate(ac.x + CE.CARD_W / 2, ac.y + CE.CARD_H / 2);
       cx.rotate(ac.angle);
-      CE.drawCardFace(cx, -CE.CARD_W / 2, -CE.CARD_H / 2, ac.card);
+      CE.paintCardFace(cx, -CE.CARD_W / 2, -CE.CARD_H / 2, ac.card);
       cx.restore();
     }
 

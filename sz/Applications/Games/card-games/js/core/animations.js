@@ -55,18 +55,30 @@
       const ease = 1 - (1 - p) * (1 - p);
       const x = a.fromX + (a.toX - a.fromX) * ease;
       const y = a.fromY + (a.toY - a.fromY) * ease;
-      CE.drawCardBack(D.ctx, x, y);
+      const arc = Math.sin(p * Math.PI);
+      D.ctx.save();
+      D.ctx.translate(x + CE.CARD_W / 2, y + CE.CARD_H / 2);
+      D.ctx.rotate((1 - p) * 0.5 * (a.toX >= a.fromX ? 1 : -1));
+      D.ctx.scale(1 + 0.06 * arc, 1 + 0.06 * arc);
+      CE.paintCardShadow(D.ctx, -CE.CARD_W / 2 + 3, -CE.CARD_H / 2 + 4 + arc * 8, CE.CARD_W, CE.CARD_H);
+      CE.paintCardBack(D.ctx, -CE.CARD_W / 2, -CE.CARD_H / 2, CE.CARD_W, CE.CARD_H);
+      D.ctx.restore();
     }
   };
 
   A.drawGlowEffects = function() {
     for (const g of S.glowCards) {
-      const alpha = 0.5 * (1 - g.t / g.duration);
+      const k = 1 - g.t / g.duration;
+      const pulse = 0.5 + 0.5 * Math.sin(g.t * 6);
       D.ctx.save();
-      D.ctx.shadowColor = '#fc0';
-      D.ctx.shadowBlur = 20 + 10 * Math.sin(g.t * 6);
-      D.ctx.fillStyle = 'rgba(255, 200, 0, ' + alpha + ')';
-      CE.drawRoundedRect(D.ctx, g.x - 3, g.y - 3, g.w + 6, g.h + 6, CE.CARD_RADIUS + 2);
+      for (let i = 3; i >= 1; --i) {
+        CE.drawRoundedRect(D.ctx, g.x - i * 3, g.y - i * 3, g.w + i * 6, g.h + i * 6, CE.CARD_RADIUS + i * 3);
+        D.ctx.strokeStyle = 'rgba(255, 200, 40, ' + (0.18 * k * (0.6 + 0.4 * pulse) / i) + ')';
+        D.ctx.lineWidth = 4;
+        D.ctx.stroke();
+      }
+      D.ctx.fillStyle = 'rgba(255, 220, 90, ' + (0.18 * k) + ')';
+      CE.drawRoundedRect(D.ctx, g.x - 2, g.y - 2, g.w + 4, g.h + 4, CE.CARD_RADIUS + 2);
       D.ctx.fill();
       D.ctx.restore();
     }

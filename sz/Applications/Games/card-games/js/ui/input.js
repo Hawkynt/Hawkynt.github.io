@@ -1,5 +1,6 @@
-/* Canvas pointer and keyboard input: settings panel intercept, menu hit tests,
-   button toggles and forwarding to the active variant module. */
+/* Pointer and keyboard routing in board space: cinematics swallow input while
+   they run, the style panel and the lobby take their own clicks, the table
+   buttons toggle hints/sort, everything else goes to the active variant. */
 ;(function() {
   'use strict';
 
@@ -14,11 +15,18 @@
   const OS = NS.os;
   const I = NS.input = NS.input || {};
 
+  I.pointer = { x: -1, y: -1, down: false };
+
   /* ══════════════════════════════════════════════════════════════════
      CLICK HANDLING
      ══════════════════════════════════════════════════════════════════ */
 
   I.handleCanvasClick = function(mx, my) {
+    if (NS.scenes && NS.scenes.blocking()) {
+      NS.scenes.skip();
+      return;
+    }
+
     // Settings panel intercepts all clicks when open
     if (SZ.CardThemes?.settingsPanelOpen) {
       SZ.CardThemes.handleSettingsClick(mx, my);
@@ -26,45 +34,10 @@
     }
 
     if (S.state === K.STATE_MENU) {
-      const btnW = 120;
-      const btnH = 26;
-      const gapX = 8;
-      const gapY = 3;
-      const cols = 6;
-      const totalW = cols * btnW + (cols - 1) * gapX;
-      const marginX = (K.CANVAS_W - totalW) / 2;
-      const fieldsetGap = 4;
-      const padTop = 10;
-      const padBot = 4;
-
-      let curY = 28;
-
-      for (const cat of K.SORTED_CATS) {
-        const rows = Math.ceil(cat.games.length / cols);
-        const innerH = rows * (btnH + gapY) - gapY;
-        const fieldH = padTop + innerH + padBot;
-
-        for (let i = 0; i < cat.games.length; ++i) {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const bx = marginX + col * (btnW + gapX);
-          const by = curY + padTop + row * (btnH + gapY);
-          if (CE.isInRect(mx, my, bx, by, btnW, btnH)) {
-            E.sound('select');
-            G.selectGame(cat.games[i].variant.id);
-            return;
-          }
-        }
-
-        curY += fieldH + fieldsetGap;
-      }
-
-      // Style button
-      if (SZ.CardThemes) {
-        if (CE.isInRect(mx, my, K.CANVAS_W / 2 - 48, curY, 96, 26)) {
-          SZ.CardThemes.settingsPanelOpen = true;
-          return;
-        }
+      const id = NS.lobby.click(mx, my);
+      if (id) {
+        E.sound('select');
+        G.selectGame(id);
       }
       return;
     }
@@ -74,7 +47,7 @@
         G.initGame();
       else {
         ++S.roundNumber;
-        G.selectGame(S.currentVariant.id);
+        G.selectGame(S.currentVariant.id, { nextRound: true });
       }
       return;
     }
@@ -110,6 +83,7 @@
 
     // Forward to active variant module
     if (S.activeVariantModule) {
+      if (NS.outcomes) NS.outcomes.onPlayerAction();
       E.sound('click', { volume: 0.7 });
       if (S.activeVariantModule.handleClick) S.activeVariantModule.handleClick(mx, my);
     }
@@ -117,44 +91,67 @@
 
   let pointerDownAt = null;
 
+  function track(p) {
+    I.pointer.x = p.x;
+    I.pointer.y = p.y;
+    CE.pointer.x = p.x;
+    CE.pointer.y = p.y;
+  }
+
   D.canvas.addEventListener('pointerdown', (e) => {
-    const rect = D.canvas.getBoundingClientRect();
-    const scaleX = K.CANVAS_W / rect.width;
-    const scaleY = K.CANVAS_H / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
-    pointerDownAt = { x: mx, y: my };
-    I.handleCanvasClick(mx, my);
+    const p = D.toBoard(e.clientX, e.clientY);
+    track(p);
+    I.pointer.down = true;
+    CE.motion.pointerDown = true;
+    pointerDownAt = { x: p.x, y: p.y };
+    I.handleCanvasClick(p.x, p.y);
   });
 
   D.canvas.addEventListener('pointermove', (e) => {
+    const p = D.toBoard(e.clientX, e.clientY);
+    track(p);
+    if (S.state === K.STATE_MENU) {
+      NS.lobby.pointerMove(p.x, p.y);
+      return;
+    }
+    if (NS.scenes && NS.scenes.blocking()) return;
     if (!S.activeVariantModule || !S.activeVariantModule.handlePointerMove) return;
-    const rect = D.canvas.getBoundingClientRect();
-    const scaleX = K.CANVAS_W / rect.width;
-    const scaleY = K.CANVAS_H / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
-    S.activeVariantModule.handlePointerMove(mx, my);
+    S.activeVariantModule.handlePointerMove(p.x, p.y);
   });
 
-  D.canvas.addEventListener('pointerup', (e) => {
+  function release(e) {
+    I.pointer.down = false;
+    CE.motion.pointerDown = false;
     if (!S.activeVariantModule || !S.activeVariantModule.handlePointerUp) return;
-    const rect = D.canvas.getBoundingClientRect();
-    const scaleX = K.CANVAS_W / rect.width;
-    const scaleY = K.CANVAS_H / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
-    if (pointerDownAt && S.state === K.STATE_PLAYING && Math.hypot(mx - pointerDownAt.x, my - pointerDownAt.y) > 12)
+    if (NS.scenes && NS.scenes.blocking()) return;
+    const p = D.toBoard(e.clientX, e.clientY);
+    if (pointerDownAt && S.state === K.STATE_PLAYING && Math.hypot(p.x - pointerDownAt.x, p.y - pointerDownAt.y) > 12)
       E.sound('drop', { volume: 0.6 });
     pointerDownAt = null;
-    S.activeVariantModule.handlePointerUp(mx, my, e);
-  });
+    S.activeVariantModule.handlePointerUp(p.x, p.y, e);
+  }
+  D.canvas.addEventListener('pointerup', release);
+  D.canvas.addEventListener('pointercancel', () => { I.pointer.down = false; CE.motion.pointerDown = false; });
 
   /* ══════════════════════════════════════════════════════════════════
      KEYBOARD HANDLING
      ══════════════════════════════════════════════════════════════════ */
 
   window.addEventListener('keydown', (e) => {
+    if (NS.scenes && NS.scenes.blocking()) {
+      e.preventDefault();
+      NS.scenes.skip();
+      return;
+    }
+    if (SZ.CardThemes?.settingsPanelOpen && e.key === 'Escape') {
+      e.preventDefault();
+      SZ.CardThemes.settingsPanelOpen = false;
+      return;
+    }
+    if (S.state === K.STATE_MENU && e.key !== 'F2') {
+      NS.lobby.key(e);
+      return;
+    }
     if (e.key === 'F2') {
       e.preventDefault();
       if (S.currentVariant)
@@ -179,6 +176,7 @@
 
     // Forward to active variant module
     if (S.activeVariantModule) {
+      if (NS.outcomes) NS.outcomes.onPlayerAction();
       if (S.activeVariantModule.handleKey) S.activeVariantModule.handleKey(e);
     }
   });
