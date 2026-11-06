@@ -8,6 +8,7 @@
   const S = V.S;
   const { UNO_COLORS, PLAYER_COUNT, PLAYER_NAMES, CANVAS_W, CANVAS_H, WIN_SCORE, DEAL_COUNT } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function createPartyDeck() {
     const d = [];
@@ -49,8 +50,17 @@
     return false;
   }
 
+  /* finished players have left the turn order */
   function nextPlayer() {
-    S.currentPlayer = (S.currentPlayer + S.direction + PLAYER_COUNT) % PLAYER_COUNT;
+    S.currentPlayer = PL.nextActive(S, S.currentPlayer, S.direction, PLAYER_COUNT);
+  }
+
+  /* seats the player may trade hands with: everybody still holding cards */
+  function tradeTargets() {
+    const t = [];
+    for (let p = 1; p < PLAYER_COUNT; ++p)
+      if (!PL.isFinished(S, p)) t.push(p);
+    return t;
   }
 
   function cardPoints(card) {
@@ -59,15 +69,24 @@
     return parseInt(card.value) || 0;
   }
 
+  /* an empty hand takes the player out; true once that has ended the round */
   function checkWin(playerIndex) {
-    if (S.hands[playerIndex].length > 0) return false;
-    S.roundOver = true;
+    if (S.roundOver) return true;
+    if (!PL.recordFinish(S, playerIndex, S.hands[playerIndex], PLAYER_COUNT, PLAYER_NAMES[playerIndex], CANVAS_W / 2, 300)) return false;
+    S.drawPending = 0;
+    S.tradeChoiceActive = false;
+    PL.presentPodium(S, S.hands, PLAYER_COUNT, PLAYER_NAMES, cardPoints, settleRound);
+    return true;
+  }
+
+  /* the first player out scores the points of every card still held at round end */
+  function settleRound(winner) {
     let pts = 0;
     for (let p = 0; p < PLAYER_COUNT; ++p)
-      if (p !== playerIndex)
+      if (p !== winner)
         for (const c of S.hands[p])
           pts += cardPoints(c);
-    if (playerIndex === 0) {
+    if (winner === 0) {
       S.score += pts;
       if (S.score >= WIN_SCORE) S.gameOver = true;
       if (S._host) {
@@ -77,11 +96,10 @@
       }
     } else {
       if (S._host) {
-        S._host.floatingText.add(CANVAS_W / 2, 300, PLAYER_NAMES[playerIndex] + ' WINS!', { color: '#f44', size: 28 });
+        S._host.floatingText.add(CANVAS_W / 2, 300, PLAYER_NAMES[winner] + ' WINS!', { color: '#f44', size: 28 });
         S._host.onScoreChanged(S.score);
       }
     }
-    return true;
   }
 
   function playCard(playerIndex, cardIndex, chosenColor) {
@@ -97,27 +115,30 @@
       nextPlayer(); // skip
     } else if (card.value === 'Reverse') {
       if (card.color !== 'wild') S.currentColor = card.color;
-      if (PLAYER_COUNT === 2) nextPlayer();
+      if (PL.activeCount(S, PLAYER_COUNT) === 2) nextPlayer();
       else S.direction = -S.direction;
     } else if (card.value === 'Draw Two') {
       if (card.color !== 'wild') S.currentColor = card.color;
       S.drawPending += 2;
     } else if (card.value === 'Wild Everyone Draw') {
       S.currentColor = chosenColor || S.currentColor;
-      // All other players draw 2
+      // All other players still in the round draw 2
       for (let p = 0; p < PLAYER_COUNT; ++p)
-        if (p !== playerIndex)
+        if (p !== playerIndex && !PL.isFinished(S, p))
           SH.drawCards(S, p, 2);
       if (S._host)
         S._host.floatingText.add(CANVAS_W / 2, 250, 'Everyone draws 2!', { color: '#f88', size: 18 });
     } else if (card.value === 'Wild Trade Hands') {
       S.currentColor = chosenColor || S.currentColor;
-      // Trade hands — handled after color choice for human, AI picks immediately
-      if (playerIndex !== 0) {
+      // Trade hands — handled after color choice for human, AI picks immediately;
+      // a player who went out with this card has no hand left to trade
+      if (hand.length === 0) {
+        // nothing to trade
+      } else if (playerIndex !== 0) {
         // AI trades with player who has fewest cards (maximize advantage)
         let target = -1, minCards = Infinity;
         for (let p = 0; p < PLAYER_COUNT; ++p)
-          if (p !== playerIndex && S.hands[p].length < minCards) { minCards = S.hands[p].length; target = p; }
+          if (p !== playerIndex && !PL.isFinished(S, p) && S.hands[p].length < minCards) { minCards = S.hands[p].length; target = p; }
         if (target >= 0) {
           const tmp = S.hands[playerIndex];
           S.hands[playerIndex] = S.hands[target];
@@ -203,11 +224,12 @@
     S.pendingWildIndex = -1;
     S.pendingTradeType = '';
     S.aiTurnTimer = 0;
+    PL.resetPlaces(S);
     if (S._host)
       for (let i = 0; i < S.hands[0].length; ++i)
         S._host.dealCardAnim(S.hands[0][i], CANVAS_W / 2, -CE.CARD_H, 100 + i * 55, 450, i * 0.1);
   }
 
-  Object.assign(V, { nextPlayer, playCard, canPlay, setupGame });
+  Object.assign(V, { nextPlayer, tradeTargets, cardPoints, playCard, canPlay, setupGame });
 
 })();

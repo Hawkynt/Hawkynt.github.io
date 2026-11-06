@@ -6,11 +6,16 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['unoparty'];
   const S = V.S;
-  const { CANVAS_W, PLAYER_NAMES, PLAYER_COUNT, UNO_COLORS } = V;
+  const { CANVAS_W, PLAYER_NAMES, UNO_COLORS } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function handleClick(mx, my) {
-    if (S.roundOver || S.gameOver) { if (S._host) S._host.onRoundOver(S.gameOver); return; }
+    if (S.roundOver || S.gameOver) {
+      if (PL.settlePending(S)) return;
+      if (S._host) S._host.onRoundOver(S.gameOver);
+      return;
+    }
 
     // Color choice overlay
     if (S.colorChoiceActive) {
@@ -30,7 +35,7 @@
     // Trade choice overlay
     if (S.tradeChoiceActive) {
       let col = 0;
-      for (let p = 1; p < PLAYER_COUNT; ++p) {
+      for (const p of V.tradeTargets()) {
         const bx = CANVAS_W / 2 - 200 + col * 85;
         if (CE.isInRect(mx, my, bx, 230, 78, 36)) {
           S.tradeChoiceActive = false;

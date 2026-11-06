@@ -8,9 +8,14 @@
   const S = V.S;
   const { CANVAS_W } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function handleClick(mx, my) {
-    if (S.roundOver || S.gameOver) { if (S._host) S._host.onRoundOver(S.gameOver); return; }
+    if (S.roundOver || S.gameOver) {
+      if (PL.settlePending(S)) return;
+      if (S._host) S._host.onRoundOver(S.gameOver);
+      return;
+    }
     if (S.currentPlayer !== 0) return;
 
     // Color choice overlay

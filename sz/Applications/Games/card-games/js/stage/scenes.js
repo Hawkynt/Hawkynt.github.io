@@ -333,6 +333,123 @@
     });
   };
 
+  /* ════════════ podium (Siegertreppchen) after a shedding round ════════════ */
+  const MEDAL = [
+    { top: '#fff3b0', mid: '#e0a526', low: '#8a6210', label: '1' },
+    { top: '#ffffff', mid: '#b8c2cc', low: '#6b7682', label: '2' },
+    { top: '#ffd9b0', mid: '#c27a3a', low: '#6e3e14', label: '3' }
+  ];
+  const STEPS = [
+    { place: 1, dx: 0, h: 150, at: 1.15 },
+    { place: 2, dx: -170, h: 108, at: 0.75 },
+    { place: 3, dx: 170, h: 76, at: 0.35 }
+  ];
+
+  /* entries: [{ name, isPlayer, cards }] in finishing order (index 0 = winner) */
+  SC.podium = function(entries, onEnd) {
+    const top = entries.slice(0, 3);
+    const rest = entries.slice(3);
+    const fired = {};
+    SC.push({
+      type: 'podium', dur: 0, freeze: true, blocking: true, minTime: 0.8, skipTo: 1.9,
+      onEnd,
+      onStart() { sound('whoosh', { volume: 0.5 }); },
+      tick() {
+        for (const st of STEPS) {
+          if (!top[st.place - 1] || fired[st.place] || this.t < st.at + 0.35) continue;
+          fired[st.place] = true;
+          const x = W / 2 + st.dx, y = 470 - st.h;
+          FX.burst(x, y, { count: st.place === 1 ? 40 : 18, speed: st.place === 1 ? 260 : 160, colors: [MEDAL[st.place - 1].mid, '#ffffff'], gravity: 160, life: 1, size: 2.6 });
+          if (st.place === 1) {
+            FX.confetti(-60, W + 120, 140);
+            FX.ring(x, y - 60, '#ffd54f', 140);
+            sound(top[0].isPlayer ? 'win' : 'levelup', { volume: 0.7 });
+          } else sound('thud', { volume: 0.5, pitch: 1.2 });
+        }
+      },
+      draw(cx, ext, t) {
+        const fade = PA.clamp01(t / 0.35);
+        cx.save();
+        cx.fillStyle = 'rgba(0,0,0,' + (0.78 * fade) + ')';
+        cx.fillRect(ext.x, ext.y, ext.w, ext.h);
+        if (t > 1.3) PA.rays(cx, W / 2, 260, 380, t, 'rgba(255,214,110,0.28)', 16);
+        cx.globalAlpha = fade;
+        PA.goldText(cx, 'Siegertreppchen', W / 2, 62, 40, { shine: PA.clamp01((t - 0.2) / 1.2) });
+        for (const st of STEPS) {
+          const e = top[st.place - 1];
+          const rise = PA.ease.back(PA.clamp01((t - st.at) / 0.45));
+          const x = W / 2 + st.dx, base = 470, hgt = st.h * rise, bw = 150;
+          const m = MEDAL[st.place - 1];
+          if (hgt > 0.5) {
+            const g = cx.createLinearGradient(x - bw / 2, 0, x + bw / 2, 0);
+            g.addColorStop(0, m.low); g.addColorStop(0.35, m.top); g.addColorStop(0.6, m.mid); g.addColorStop(1, m.low);
+            cx.fillStyle = g;
+            cx.fillRect(x - bw / 2, base - hgt, bw, hgt);
+            cx.fillStyle = 'rgba(255,255,255,0.35)';
+            cx.fillRect(x - bw / 2, base - hgt, bw, 4);
+            cx.strokeStyle = 'rgba(0,0,0,0.4)';
+            cx.lineWidth = 1.5;
+            cx.strokeRect(x - bw / 2, base - hgt, bw, hgt);
+            if (hgt > 40) PA.text(cx, m.label, x, base - hgt / 2 + 4, 46, 'rgba(60,40,10,0.55)', { serif: true, shadow: false });
+          }
+          if (!e || rise < 0.98) continue;
+          /* medallion with the player's initial and the name */
+          const my = base - st.h - 64;
+          const pop = PA.ease.back(PA.clamp01((t - st.at - 0.35) / 0.35));
+          cx.save();
+          cx.translate(x, my);
+          cx.scale(pop, pop);
+          cx.beginPath();
+          cx.arc(0, 0, 34, 0, Math.PI * 2);
+          const mg = cx.createRadialGradient(-10, -12, 4, 0, 0, 34);
+          mg.addColorStop(0, m.top); mg.addColorStop(0.6, m.mid); mg.addColorStop(1, m.low);
+          cx.fillStyle = mg;
+          cx.fill();
+          cx.lineWidth = 3;
+          cx.strokeStyle = e.isPlayer ? '#8fe3ff' : 'rgba(255,255,255,0.8)';
+          cx.stroke();
+          PA.text(cx, e.isPlayer ? '★' : String(e.name).replace(/^AI\s*/, '').slice(0, 2), 0, 2, e.isPlayer ? 30 : 22, '#3a2404', { serif: true, shadow: false });
+          cx.restore();
+          if (pop > 0.6) {
+            PA.text(cx, e.isPlayer ? 'You' : e.name, x, base - st.h - 16, 16, e.isPlayer ? '#8fe3ff' : '#fff4d6', { serif: true });
+            if (st.place === 1) {
+              const bob = Math.sin(t * 3) * 3;
+              cx.save();
+              cx.translate(x, my - 52 + bob);
+              cx.fillStyle = '#ffd54f';
+              cx.beginPath();
+              cx.moveTo(-22, 10); cx.lineTo(-22, -8); cx.lineTo(-11, 2); cx.lineTo(0, -14); cx.lineTo(11, 2); cx.lineTo(22, -8); cx.lineTo(22, 10);
+              cx.closePath();
+              cx.fill();
+              cx.strokeStyle = '#8a6210';
+              cx.lineWidth = 1.5;
+              cx.stroke();
+              cx.restore();
+            }
+          }
+        }
+        /* the rest of the table */
+        if (t > 1.6 && rest.length) {
+          cx.globalAlpha = fade * PA.clamp01((t - 1.6) / 0.4);
+          const line = rest.map((e, i) => (i + 4) + '. ' + (e.isPlayer ? 'You' : e.name) + (e.cards != null ? ' (' + e.cards + ' cards)' : '')).join('    ');
+          PA.text(cx, line, W / 2, 500, 13, '#d8c8a0', { weight: 'normal' });
+        }
+        const you = entries.findIndex(e => e.isPlayer);
+        if (t > 1.7 && you >= 0) {
+          cx.globalAlpha = fade * PA.clamp01((t - 1.7) / 0.4);
+          const ord = ['1st', '2nd', '3rd'][you] || (you + 1) + 'th';
+          PA.goldText(cx, you === 0 ? 'You win the round!' : 'You finished ' + ord, W / 2, 534, 24,
+            you < 3 ? {} : { colors: ['#eceff1', '#b0bec5', '#78909c', '#cfd8dc'] });
+        }
+        if (t > 1.9) {
+          cx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 4);
+          PA.text(cx, 'Click to continue', W / 2, 570, 13, '#f3e6c8', { weight: 'normal' });
+        }
+        cx.restore();
+      }
+    });
+  };
+
   /* ════════════ level up ════════════ */
   SC.levelUp = function(level, unlocks) {
     SC.push({

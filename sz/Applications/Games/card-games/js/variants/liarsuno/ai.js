@@ -7,6 +7,7 @@
   const S = V.S;
   const { UNO_COLORS, NUM_PLAYERS, AI_TURN_DELAY, CHALLENGE_WINDOW } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function aiShouldBluff(playerIndex) {
     const hand = S.hands[playerIndex];
@@ -44,7 +45,7 @@
       if (S.lastPlayInfo && S.lastPlayInfo.player !== S.currentPlayer) {
         // Each AI after the player can challenge during challenge phase
         for (let p = 1; p < NUM_PLAYERS; ++p) {
-          if (p === S.lastPlayInfo.player) continue;
+          if (p === S.lastPlayInfo.player || PL.isFinished(S, p)) continue;
           if (aiShouldChallenge(S.lastPlayInfo)) {
             V.doChallenge(p);
             return;
@@ -117,7 +118,7 @@
     // Challenge phase timer
     if (S.challengePhase && S.lastPlayInfo) {
       S.challengeTimer += dt;
-      if (S.challengeTimer >= CHALLENGE_WINDOW) {
+      if (S.challengeTimer >= PL.aiDelay(S, CHALLENGE_WINDOW)) {
         // Time's up — no challenge
         if (S.currentPlayer !== 0 || S.lastPlayInfo.player === 0) {
           // AI challenge decision already happened or human didn't challenge
@@ -132,10 +133,10 @@
 
     if (S.currentPlayer !== 0) {
       S.aiTurnTimer += dt;
-      if (S.aiTurnTimer >= AI_TURN_DELAY) { S.aiTurnTimer = 0; aiTurn(); }
+      if (S.aiTurnTimer >= PL.aiDelay(S, AI_TURN_DELAY)) { S.aiTurnTimer = 0; aiTurn(); }
     }
   }
 
-  Object.assign(V, { tick });
+  Object.assign(V, { tick, aiTurn });
 
 })();

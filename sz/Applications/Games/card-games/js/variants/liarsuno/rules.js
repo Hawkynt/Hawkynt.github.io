@@ -8,6 +8,7 @@
   const S = V.S;
   const { UNO_COLORS, NUM_PLAYERS, PLAYER_NAMES, CANVAS_W, CANVAS_H, INITIAL_HAND_SIZE } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function createLiarsDeck() {
     const d = [];
@@ -38,22 +39,27 @@
     return false;
   }
 
+  /* finished players have left the turn order */
+  function nextSeat(from) {
+    return PL.nextActive(S, from, S.direction, NUM_PLAYERS);
+  }
+
   function nextPlayer() {
-    S.currentPlayer = (S.currentPlayer + S.direction + NUM_PLAYERS) % NUM_PLAYERS;
+    S.currentPlayer = nextSeat(S.currentPlayer);
   }
 
   function resolveAction(claimedValue, claimedColor) {
     if (claimedValue === 'Skip')
       nextPlayer();
     else if (claimedValue === 'Reverse') {
-      if (NUM_PLAYERS === 2) nextPlayer();
+      if (PL.activeCount(S, NUM_PLAYERS) === 2) nextPlayer();
       else S.direction = -S.direction;
     } else if (claimedValue === 'Draw Two') {
-      const target = (S.currentPlayer + S.direction + NUM_PLAYERS) % NUM_PLAYERS;
+      const target = nextSeat(S.currentPlayer);
       SH.drawCards(S, target, 2);
       nextPlayer();
     } else if (claimedValue === 'Wild Draw Four') {
-      const target = (S.currentPlayer + S.direction + NUM_PLAYERS) % NUM_PLAYERS;
+      const target = nextSeat(S.currentPlayer);
       SH.drawCards(S, target, 4);
       nextPlayer();
     }
@@ -62,10 +68,18 @@
       S.currentColor = claimedColor;
   }
 
+  /* an empty hand takes the player out; true once that has ended the round */
   function checkWin(playerIndex) {
-    if (S.hands[playerIndex].length > 0) return false;
-    S.roundOver = true;
-    if (playerIndex === 0) {
+    if (S.roundOver) return true;
+    if (!PL.recordFinish(S, playerIndex, S.hands[playerIndex], NUM_PLAYERS, PLAYER_NAMES[playerIndex], CANVAS_W / 2, 300)) return false;
+    S.challengePhase = false;
+    PL.presentPodium(S, S.hands, NUM_PLAYERS, PLAYER_NAMES, null, settleRound);
+    return true;
+  }
+
+  /* the first player out scores the flat win bonus */
+  function settleRound(winner) {
+    if (winner === 0) {
       S.score += 100;
       if (S._host) {
         S._host.floatingText.add(CANVAS_W / 2, 300, 'YOU WIN!', { color: '#4f4', size: 28 });
@@ -73,10 +87,9 @@
         S._host.onScoreChanged(S.score);
       }
     } else if (S._host) {
-      S._host.floatingText.add(CANVAS_W / 2, 300, PLAYER_NAMES[playerIndex] + ' WINS!', { color: '#f44', size: 28 });
+      S._host.floatingText.add(CANVAS_W / 2, 300, PLAYER_NAMES[winner] + ' WINS!', { color: '#f44', size: 28 });
       S._host.onScoreChanged(S.score);
     }
-    return true;
   }
 
   function doPlay(playerIndex, cardIndex, faceDown, claimedColor, claimedValue) {
@@ -117,6 +130,12 @@
 
     if (checkWin(playerIndex)) {
       S.lastPlayInfo = null;
+      return true;
+    }
+
+    // Going out with the last card cannot be challenged: its claim resolves at once
+    if (PL.isFinished(S, playerIndex)) {
+      finishTurn();
       return true;
     }
 
@@ -200,11 +219,12 @@
     S.bluffCardIndex = -1;
     S.challengeResult = null;
     S.aiTurnTimer = 0;
+    PL.resetPlaces(S);
     if (S._host)
       for (let i = 0; i < S.hands[0].length; ++i)
         S._host.dealCardAnim(S.hands[0][i], CANVAS_W / 2, -CE.CARD_H, 140 + i * 60, 440, i * 0.1);
   }
 
-  Object.assign(V, { isLegalPlay, nextPlayer, doPlay, finishTurn, doChallenge, setupGame });
+  Object.assign(V, { isLegalPlay, nextPlayer, nextSeat, doPlay, finishTurn, doChallenge, setupGame });
 
 })();

@@ -6,7 +6,8 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['unoextreme'];
   const S = V.S;
-  const { NUM_PLAYERS, CANVAS_W, colorChoiceRects, targetChoiceRects } = V;
+  const { CANVAS_W, colorChoiceRects, targetChoiceRects } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function handleClick(mx, my) {
     if (S.waitingForTargetChoice) {
@@ -31,14 +32,18 @@
         }
       return;
     }
-    if (S.roundOver || S.gameOver) { if (S._host) S._host.onRoundOver(S.gameOver); return; }
+    if (S.roundOver || S.gameOver) {
+      if (PL.settlePending(S)) return;
+      if (S._host) S._host.onRoundOver(S.gameOver);
+      return;
+    }
     if (S.currentPlayer !== 0) return;
 
     // Launcher click
     const lx = CANVAS_W / 2 + CE.CARD_W + 20;
     if (CE.isInRect(mx, my, lx, 255, 70, 50)) {
       V.launcherDraw(0);
-      S.currentPlayer = (S.currentPlayer + S.direction + NUM_PLAYERS) % NUM_PLAYERS;
+      S.currentPlayer = V.nextSeat(S.currentPlayer);
       return;
     }
 

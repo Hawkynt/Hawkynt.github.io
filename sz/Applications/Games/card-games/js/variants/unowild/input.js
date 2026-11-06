@@ -7,6 +7,7 @@
   const V = SZ.CardGames.v['unowild'];
   const S = V.S;
   const { CANVAS_W, DRAW_PILE_Y, DRAW_PILE_X, gapChoiceRects, targetChoiceRects } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function handleClick(mx, my) {
     if (S.waitingForTargetChoice) {
@@ -45,6 +46,7 @@
     }
 
     if (S.roundOver || S.gameOver) {
+      if (PL.settlePending(S)) return;
       if (S._host) S._host.onRoundOver(S.gameOver);
       return;
     }

@@ -7,6 +7,7 @@
   const V = SZ.CardGames.v['unoparty'];
   const S = V.S;
   const { COLOR_DARK, COLOR_HEX, UNO_COLORS, CANVAS_W, CANVAS_H, PLAYER_NAMES, PLAYER_COUNT, AI_CARD_H, AI_CARD_W, PLAYER_POS } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function cardLabel(card) {
     if (card.value === 'Skip') return '\u00D8';
@@ -46,7 +47,7 @@
     S._ctx.textAlign = 'center';
     S._ctx.fillText('Choose a player to trade hands with', CANVAS_W / 2, 200);
     let col = 0;
-    for (let p = 1; p < PLAYER_COUNT; ++p) {
+    for (const p of V.tradeTargets()) {
       const bx = CANVAS_W / 2 - 200 + col * 85;
       const by = 230;
       CE.drawButton(S._ctx, bx, by, 78, 36, PLAYER_NAMES[p] + ' (' + S.hands[p].length + ')', { bg: '#446', border: '#88a', fontSize: 11 });
@@ -97,6 +98,8 @@
         CE.drawHintGlow(S._ctx, x, 450, CE.CARD_W, CE.CARD_H, S._host.hintTime);
     }
 
+    PL.drawPlaceBadge(S._ctx, S, 0, CANVAS_W / 2, 450 + CE.CARD_H / 2, 'center', 26);
+
     // AI hands (positions 1-5)
     for (let p = 1; p < PLAYER_COUNT; ++p) {
       const pp = PLAYER_POS[p];
@@ -104,6 +107,7 @@
       S._ctx.font = '11px sans-serif';
       S._ctx.textAlign = 'center';
       S._ctx.fillText(PLAYER_NAMES[p] + ' (' + S.hands[p].length + ')', pp.x, pp.labelY);
+      if (PL.drawPlaceBadge(S._ctx, S, p, pp.x, pp.labelY + 15 + AI_CARD_H / 2, 'center', 20)) continue;
       const maxShow = Math.min(S.hands[p].length, 7);
       const startX = pp.x - (maxShow * 14) / 2;
       for (let i = 0; i < maxShow; ++i)
@@ -120,6 +124,8 @@
       else
         S._ctx.fillText('Click a card to play, or click the draw pile to draw', CANVAS_W / 2, CANVAS_H - 8);
     }
+
+    PL.drawFinishedStatus(S._ctx, S, CANVAS_W / 2, CANVAS_H - 8);
 
     // Overlays
     if (S.colorChoiceActive) drawColorOverlay();

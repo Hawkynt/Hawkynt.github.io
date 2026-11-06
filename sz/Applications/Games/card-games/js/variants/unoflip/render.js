@@ -7,6 +7,7 @@
   const V = SZ.CardGames.v['unoflip'];
   const S = V.S;
   const { WILD_HEX, DARK_HEX, LIGHT_HEX, CANVAS_W, CANVAS_H, NUM_PLAYERS } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function getHex(color) {
     if (LIGHT_HEX[color]) return LIGHT_HEX[color];
@@ -91,6 +92,8 @@
         CE.drawHintGlow(S._ctx, x, 440, CE.CARD_W, CE.CARD_H, S._host.hintTime);
     }
 
+    PL.drawPlaceBadge(S._ctx, S, 0, 120 + CE.CARD_W / 2, 440 + CE.CARD_H / 2, 'center', 26);
+
     // AI hands
     S._ctx.fillStyle = '#aaa';
     S._ctx.font = '12px sans-serif';
@@ -100,6 +103,7 @@
       S._ctx.textAlign = 'left';
       S._ctx.fillStyle = S.currentPlayer === p ? '#ff0' : '#aaa';
       S._ctx.fillText('AI ' + p + ' (' + S.hands[p].length + ')', lx, ly - 8);
+      if (PL.drawPlaceBadge(S._ctx, S, p, lx, ly + CE.CARD_H * 0.25, 'left', 22)) continue;
       for (let i = 0; i < Math.min(S.hands[p].length, 8); ++i)
         CE.drawCardBack(S._ctx, lx + i * 16, ly, CE.CARD_W * 0.5, CE.CARD_H * 0.5);
     }
@@ -120,6 +124,8 @@
       else
         S._ctx.fillText('Click a card to play, or click the draw pile to draw', CANVAS_W / 2, CANVAS_H - 12);
     }
+
+    PL.drawFinishedStatus(S._ctx, S, CANVAS_W / 2, CANVAS_H - 12);
 
     if (S.colorChoiceActive)
       drawColorOverlay();

@@ -49,6 +49,14 @@
       ST.updateStatus();
       ST.saveHighScores();
     },
+    /* shedding games: the finishing order of a round (index 0 = winner), shown on
+       the podium; onDone runs when the player clicks it away */
+    showPodium(entries, onDone) {
+      const you = entries.findIndex(e => e.isPlayer);
+      if (NS.outcomes && you >= 0) NS.outcomes.reportPlacement(you + 1, entries.length);
+      if (NS.scenes) NS.scenes.podium(entries, onDone);
+      else if (onDone) onDone();
+    },
     dealCardAnim(card, fromX, fromY, toX, toY, delay) {
       if (CE.motion) CE.motion.cancelDeal();
       card._dealing = true;

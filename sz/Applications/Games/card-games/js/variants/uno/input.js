@@ -6,7 +6,8 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['uno'];
   const S = V.S;
-  const { CANVAS_W, colorChoiceRects, swapChoiceRects, settingsRects } = V;
+  const { CANVAS_W, colorChoiceRects, swapChoiceRects, settingsRects, PLAYER_NAMES } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function handleClick(mx, my) {
     // Settings overlay
@@ -41,7 +42,7 @@
           S.unoHands[S.swapChoicePlayer] = S.unoHands[r.target];
           S.unoHands[r.target] = tmp;
           if (S._host)
-            S._host.floatingText.add(CANVAS_W / 2, 200, 'Swapped with ' + (r.target === 0 ? 'You' : 'AI ' + r.target) + '!', { color: '#ff0', size: 16 });
+            S._host.floatingText.add(CANVAS_W / 2, 200, 'Swapped with ' + PLAYER_NAMES[r.target] + '!', { color: '#ff0', size: 16 });
           V.checkWin(S.swapChoicePlayer);
           S.swapChoicePlayer = -1;
           return;
@@ -65,6 +66,7 @@
     }
 
     if (S.roundOver || S.gameOver) {
+      if (PL.settlePending(S)) return;
       if (S._host) S._host.onRoundOver(S.gameOver);
       return;
     }
@@ -96,10 +98,11 @@
     if (CE.isInRect(mx, my, CANVAS_W / 2 - CE.CARD_W - 20, 240, CE.CARD_W, CE.CARD_H) && S.unoCurrentPlayer === 0) {
       if (S.drawStack > 0) {
         V.applyDrawStack(0);
-        S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
-      } else if (S.unoDeck.length > 0) {
-        S.unoHands[0].push(S.unoDeck.pop());
-        S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
+        S.unoCurrentPlayer = V.nextSeat(S.unoCurrentPlayer);
+      } else {
+        const drawn = V.drawUnoCard();
+        if (drawn) S.unoHands[0].push(drawn);
+        S.unoCurrentPlayer = V.nextSeat(S.unoCurrentPlayer);
       }
     }
   }

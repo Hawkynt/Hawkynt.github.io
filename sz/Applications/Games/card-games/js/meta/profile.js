@@ -185,7 +185,7 @@
   };
 
   /* outcome: 'win' | 'loss' | 'draw'; returns the reward breakdown */
-  P.recordResult = function(id, outcome) {
+  P.recordResult = function(id, outcome, podium) {
     const g = game(id);
     const firstPlay = g.played === 0;
     const firstWin = outcome === 'win' && g.won === 0;
@@ -209,6 +209,10 @@
       ++g.lost;
       g.streak = 0;
       data.winStreak = 0;
+    }
+    if (podium === 2 || podium === 3) {
+      const b = podium === 2 ? 18 : 10;
+      xp += b; lines.push([podium === 2 ? 'Podium: 2nd place' : 'Podium: 3rd place', b]);
     }
     const feat = P.featured();
     if (feat && feat.id === id) {

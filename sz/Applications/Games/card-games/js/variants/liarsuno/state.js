@@ -38,6 +38,11 @@
     _host: null,
     aiTurnTimer: 0,
 
+    // Playing for places
+    finished: [],
+    finishOrder: null,
+    podiumPending: false,
+
     // Bluffing state
     lastPlayInfo: null,
     challengePhase: false,

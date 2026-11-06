@@ -13,6 +13,8 @@
   const unoColors = ['red', 'blue', 'green', 'yellow'];
   const swapChoiceRects = [];
   const AI_TURN_DELAY = 0.8;
+  const NUM_PLAYERS = 3;
+  const PLAYER_NAMES = ['You', 'AI 1', 'AI 2'];
 
   const colorMap = { red: '#e33', blue: '#33e', green: '#3a3', yellow: '#ea0', wild: '#000' };
 
@@ -28,6 +30,7 @@
     unoCurrentPlayer: 0,
     unoHands: [],
     unoDeck: [],
+    unoDiscard: [],
     score: 0,
     roundOver: false,
     gameOver: false,
@@ -35,6 +38,11 @@
     pendingWildCard: null,
     pendingWildPlayer: -1,
     drawStack: 0,
+
+    /* -- Playing for places -- */
+    finished: [],
+    finishOrder: null,
+    podiumPending: false,
 
     /* -- House rules -- */
     houseRules: {
@@ -62,6 +70,6 @@
     showingSettings: false
   };
 
-  SZ.CardGames.v['uno'] = { S, CANVAS_W, CANVAS_H, unoColors, swapChoiceRects, AI_TURN_DELAY, colorMap, COLOR_BTN_SIZE, COLOR_BTN_GAP, colorChoiceRects, settingsRects };
+  SZ.CardGames.v['uno'] = { S, CANVAS_W, CANVAS_H, unoColors, swapChoiceRects, AI_TURN_DELAY, NUM_PLAYERS, PLAYER_NAMES, colorMap, COLOR_BTN_SIZE, COLOR_BTN_GAP, colorChoiceRects, settingsRects };
 
 })();

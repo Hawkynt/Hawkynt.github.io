@@ -49,6 +49,16 @@
     pending = { at: time + (delay == null ? (full ? 1.1 : 0.2) : delay), reward, full };
   };
 
+  /* a placed finish (podium games): 1st wins, 2nd and 3rd earn a podium bonus */
+  O.reportPlacement = function(place, count) {
+    const v = S.currentVariant;
+    if (!v || (lock && lock.level === 'full')) return;
+    const outcome = place === 1 ? 'win' : place <= 3 && count > 3 ? 'draw' : 'loss';
+    const reward = P.recordResult(v.id, outcome, place <= 3 ? place : 0);
+    lock = { level: 'full', reward, at: time };
+    pending = null;
+  };
+
   /* a click on a finished table lets the next deal count again */
   O.onPlayerAction = function() {
     if (lock && !pending && time - lock.at > 2.5 && (!NS.scenes || !NS.scenes.active())) lock = null;

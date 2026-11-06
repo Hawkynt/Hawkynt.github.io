@@ -59,6 +59,9 @@
     targetCard: null,
     waitingForGapChoice: false,
     gapSourcePlayer: -1,
+    finished: [],
+    finishOrder: null,
+    podiumPending: false,
     _ctx: null,
     _host: null
   };

@@ -11,6 +11,7 @@
   const NUM_PLAYERS = 3;
   const AI_TURN_DELAY = 0.8;
   const INITIAL_HAND = 7;
+  const PLAYER_NAMES = ['You', 'AI 1', 'AI 2'];
 
   const LIGHT_COLORS = ['red', 'yellow', 'green', 'blue'];
   const DARK_COLORS = ['pink', 'teal', 'orange', 'purple'];
@@ -28,6 +29,9 @@
     currentColor: '',
     drawPending: 0,
     skipPending: false,
+    finished: [],
+    finishOrder: null,
+    podiumPending: false,
     roundOver: false,
     gameOver: false,
     score: 0,
@@ -39,6 +43,6 @@
     pendingWildIndex: -1
   };
 
-  SZ.CardGames.v['unoflip'] = { S, CANVAS_W, CANVAS_H, NUM_PLAYERS, AI_TURN_DELAY, INITIAL_HAND, LIGHT_COLORS, DARK_COLORS, LIGHT_HEX, DARK_HEX, WILD_HEX };
+  SZ.CardGames.v['unoflip'] = { S, CANVAS_W, CANVAS_H, NUM_PLAYERS, PLAYER_NAMES, AI_TURN_DELAY, INITIAL_HAND, LIGHT_COLORS, DARK_COLORS, LIGHT_HEX, DARK_HEX, WILD_HEX };
 
 })();

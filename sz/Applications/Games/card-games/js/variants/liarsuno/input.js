@@ -8,9 +8,14 @@
   const S = V.S;
   const { CANVAS_W } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function handleClick(mx, my) {
-    if (S.roundOver || S.gameOver) { if (S._host) S._host.onRoundOver(S.gameOver); return; }
+    if (S.roundOver || S.gameOver) {
+      if (PL.settlePending(S)) return;
+      if (S._host) S._host.onRoundOver(S.gameOver);
+      return;
+    }
 
     // Bluff claim overlay
     if (S.bluffClaimStep === 1) {
@@ -42,7 +47,7 @@
     }
 
     // Challenge button
-    if (S.challengePhase && S.lastPlayInfo && S.lastPlayInfo.player !== 0 && S.lastPlayInfo.faceDown) {
+    if (S.challengePhase && S.lastPlayInfo && S.lastPlayInfo.player !== 0 && S.lastPlayInfo.faceDown && !PL.isFinished(S, 0)) {
       if (CE.isInRect(mx, my, CANVAS_W / 2 - 40, 345, 80, 30)) {
         V.doChallenge(0);
         return;
