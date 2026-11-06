@@ -1,6 +1,7 @@
 /* The one shared game state object, SZ.SpaceMining.state (G in every module): screen and menu
-   cursor, the save and derived stats, the trip being flown, world entity lists, ship, camera,
-   effects and feel timers, the running cinematic, input and per-screen UI state.
+   cursor, the save and derived stats, the trip being flown, world entity lists, ship, the
+   outpost, units, invaders and the command view, camera, effects and feel timers, the running
+   cinematic, input and per-screen UI state.
    Systems mutate it; render and UI read it. */
 ;(function() {
   'use strict';
@@ -39,6 +40,21 @@
     ship: null,
     beams: [],
 
+    /* the outpost war: the outpost in this belt, units, invaders, shots, cargo pods, turret and
+       repair beams, gas and bio clouds, the distress mission */
+    base: null,
+    units: [],
+    enemies: [],
+    shots: [],
+    pods: [],
+    tbeams: [],
+    clouds: [],
+    distress: null,
+
+    /* the command view: camera, pause-and-plan, selection, groups, formation, placement */
+    cmd: { on: false, x: 0, y: 0, zoom: 0.42, plan: false, sel: [], selB: null, groups: {}, form: 'wedge', place: null, pending: null,
+      cat: 'core', box: null, marks: [], msg: null, hover: null, panel: 'build' },
+
     /* effects: additive and alpha-blended particles, shockwave rings, floating texts */
     fxAdd: [],
     fxNormal: [],
@@ -76,6 +92,8 @@
       marketSel: 'iron',
       mapSel: 0,
       treeSel: 'd_focus',
+      treePage: 0,
+      logSel: 0,
       treeFlash: 0,
       treeFlashId: '',
       helpPage: 0,

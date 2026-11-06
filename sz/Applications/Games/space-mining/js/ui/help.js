@@ -1,6 +1,7 @@
-/* How to Play: five illustrated pages (flight and drilling, ore and the hold, the station
-   economy, hazards, progression and controls) drawn with the game's own art, paged with the
-   arrows, the page dots or the buttons. */
+/* How to Play: eight illustrated pages (flight and drilling, resources and the hold, the
+   station economy, hazards, progression and controls, outposts, waves and the fleet, life in
+   the belts) drawn with the game's own art, paged with the arrows, the page dots or the
+   buttons. */
 ;(function() {
   'use strict';
 
@@ -23,6 +24,9 @@
     { title: 'The station economy', draw: economy },
     { title: 'Hazards of the belts', draw: hazards },
     { title: 'Progress and controls', draw: progress },
+    { title: 'Outposts', draw: outposts },
+    { title: 'Waves and the fleet', draw: fleet },
+    { title: 'Life in the belts', draw: life },
   ];
 
   function draw() {
@@ -98,20 +102,20 @@
 
   function ore() {
     para([
-      'Every ore has its own colour and glow. Rarer ore is worth far more but sits in harder rock in more dangerous belts.',
-      'The hold has limited space. A full hold is your cue to go home. Rare ore also yields research data.',
-    ], 90, 140, 470);
+      'Twenty-two resources: bulk ore and precious metals in the rocks, crystals and exotic matter in the outer belts, nebula gas you scoop by flying through a pocket, scrap from wrecks and kills, and bio-matter from the living rocks and Bloom clouds.',
+      'Rarer resources are worth far more, sit in harder rock in more dangerous belts and yield research data. The hold has limited space - a full hold is your cue to go home, or to unload at your outpost hub.',
+    ], 90, 140, 420);
     for (let i = 0; i < ORES.length; ++i) {
       const o = ORES[i];
-      const x = 620 + (i % 2) * 290, y = 160 + Math.floor(i / 2) * 76;
+      const x = 550 + (i % 3) * 215, y = 150 + Math.floor(i / 3) * 56;
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.5 + Math.sin(G.time * 2 + i) * 0.2;
-      K.blit(ctx, K.glow(o.color), x, y, 0.9);
+      ctx.globalAlpha = 0.45 + Math.sin(G.time * 2 + i) * 0.2;
+      K.blit(ctx, K.glow(o.color), x, y, 0.6);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      K.blitRot(ctx, RA.nugget(o.id, i % 3), x, y, G.time + i, 2);
-      kit.text(o.name, x + 28, y - 10, 16, o.glow, { weight: 'bold' });
-      kit.text('~' + o.value + ' cr  -  ' + ['common', 'common', 'uncommon', 'uncommon', 'valuable', 'valuable', 'rare', 'rare', 'very rare', 'legendary'][i], x + 28, y + 12, 12, UI.textDim);
+      K.blitRot(ctx, RA.nugget(o.id, i % 3), x, y, G.time + i, 1.4);
+      kit.text(o.name, x + 20, y - 8, 14, o.glow, { weight: 'bold' });
+      kit.text('~' + o.value + ' cr  -  ' + NS.ores.KIND_NAMES[o.kind], x + 20, y + 10, 11, UI.textDim);
     }
   }
 
@@ -163,13 +167,68 @@
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
     const rows = [['WASD / Arrows', 'Fly'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill with auto-aim'],
-      ['Shift', 'Boost'], ['Q', 'Scanner pulse'], ['C', 'Seismic charge'], ['F', 'Recall / launch drones'], ['Esc / P', 'Pause'], ['Tab', 'Station tabs'],
+      ['Shift', 'Boost'], ['Q', 'Scanner pulse'], ['C', 'Seismic charge'], ['F', 'Recall / launch drones'], ['Esc / P', 'Pause'], ['Tab', 'Command view / station tabs'],
       ['B', 'Research the selected node'], ['F2', 'Title screen']];
     kit.panel(680, 140, 500, 440, { alpha: 0.8, brackets: false });
     for (let i = 0; i < rows.length; ++i) {
       kit.text(rows[i][0], 710, 170 + i * 34, 15, UI.gold, { weight: 'bold' });
       kit.text(rows[i][1], 880, 170 + i * 34, 15, UI.text);
     }
+  }
+
+  function card(x, y, title, text, draw) {
+    draw(x + 50, y + 40);
+    kit.text(title, x + 110, y + 16, 17, '#ffffff', { weight: 'bold' });
+    kit.wrap(text, x + 110, y + 30, 420, 13, 18, UI.textDim);
+  }
+
+  function outposts() {
+    const A = NS.colonyArt;
+    para([
+      'Every belt has an outpost site. Press Tab in flight for the command view, pick the Command Hub and click inside the site to found an outpost. Fly slowly over the hub to unload your hold into its stock - buildings are paid in credits and stock.',
+      'Buildings must be in link range of the hub or a power relay; links carry power - and infection and nanoprobes. Extractors stand on deposits. Everything that draws power or needs crew runs slower without them.',
+    ], 90, 140, 1100);
+    const items = [
+      ['Extract', 'Mining rigs, gas siphons and crystal harvesters on deposits feed the stock.', 'rig'],
+      ['Refine', 'Smelter and refinery turn three ore into a bar; the fabricator turns bars into circuits, alloy, fuel cells, optics, serum, plasma coils and warp cores.', 'fabricator'],
+      ['Power', 'Solar arrays, and fusion reactors that burn hydrogen or helium-3. Relays carry the grid further.', 'fusion'],
+      ['Live', 'Habitats house crew and fleet supply; the trade depot ships the best stock home; the lab writes research data.', 'habitat'],
+    ];
+    for (let i = 0; i < items.length; ++i) {
+      const it = items[i];
+      card(100 + (i % 2) * 560, 290 + Math.floor(i / 2) * 140, it[0], it[1], (x, y) => K.blit(ctx, A.building(it[2], 2), x, y, 0.75));
+    }
+  }
+
+  function fleet() {
+    const FA = NS.fleetArt;
+    para([
+      'While you are in a belt with an outpost, attack waves come on a timer: pirate raids, alien swarms and the Lattice, bigger with every wave, the belt and what the outpost is worth. A Sensor Array shows the next wave early. Wave 8 brings a hive mothership.',
+      'Shipyard and drone factory build units. In the command view: left click or drag to select, double-click for a type, right click to move, attack, escort, mine or repair, Shift to queue waypoints, Ctrl+1-9 groups, Z X C V for line, wedge, box and circle. Space pauses to plan. In flight: G escort me, R return, E attack where I aim.',
+    ], 90, 140, 1100);
+    const units = ['fighter', 'gunboat', 'escort', 'transport', 'miner', 'mender', 'purger'];
+    for (let i = 0; i < units.length; ++i) {
+      const u = NS.fleetData.UNIT_BY_ID[units[i]];
+      const x = 130 + i * 150, y = 330;
+      K.blitRot(ctx, FA.unit(u.id), x, y, -Math.PI / 2 + Math.sin(G.time + i) * 0.1, 1.8);
+      kit.text(u.name, x, y + 52, 13, u.color, { align: 'center', weight: 'bold' });
+    }
+    const foes = ['swarmer', 'raider', 'bomber', 'frigate', 'carrier', 'siege', 'nanodrone', 'mothership'];
+    for (let i = 0; i < foes.length; ++i) {
+      const e = NS.fleetData.ENEMY_BY_ID[foes[i]];
+      const x = 120 + i * 140, y = 480;
+      K.blitRot(ctx, FA.enemy(e.id), x, y, Math.PI / 2, Math.min(1.2, 40 / e.r));
+      kit.text(e.name, x, y + 56, 12, e.color, { align: 'center', weight: 'bold' });
+    }
+  }
+
+  function life() {
+    para([
+      'The outer belts are alive. Spore-crusted rocks burst when drilled, crystal growths shed swarmers, Bloom clouds drift and hive nests sleep in hollow rocks until disturbed. Their bio-matter is valuable - and contaminates the hold.',
+      'Unload contaminated cargo at a hub without a Sensor Array or Medical Bay and the Bloom gets in: infection grows in staffed buildings, spreads along links and kills crew. Quarantine cuts links, the Medical Bay treats (twice as fast with serum), sterilising kills it - and some crew. When the last crew dies the outpost is abandoned; leave it and it becomes a hive.',
+      'The Lattice: nanoprobes rewrite what they touch. Corruption spreads along links; at 100% a building turns on you - turrets fire on your fleet, factories make Lattice drones, reactors drain the grid - and units desert. Purge with circuits, purge tenders or the hub\'s EMP; firewall research slows it.',
+      'Distress calls lead to silent stations: clear the guards, dock, and bring the survivors to your outpost as crew. Every week one belt runs an anomaly with special rules and better pay; seasons change the belts; a daily contract builds a streak.',
+    ], 90, 140, 1100);
   }
 
   Object.assign(NS.help, {

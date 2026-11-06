@@ -1,8 +1,10 @@
 /* Draws a trip's world under the camera transform, culled to the visible rectangle: radiation
-   haze, gravity wells, the dock, dust, rocks (body, ore veins, cracks, then one additive pass
-   for vein glow and laser heat), wrecks, nuggets with tractor beams, drones, charges, pirates
-   and bolts, the ship with engine glow, shield and banking, laser beams, effects, the scanner
-   pulse, and the storm over everything. Reads only. */
+   haze, gas and Bloom clouds, gravity wells, the dock, the outpost, dust, rocks (body, ore
+   veins, cracks, then one additive pass for vein glow, living-rock spores and laser heat;
+   cheaper when zoomed out), wrecks, nuggets with tractor beams, drones, charges, pirates,
+   units, invaders and shots, bolts, the ship with engine glow, shield and banking, laser beams,
+   shield domes, pods and placement, effects, the command overlay, the scanner pulse, and the
+   storm over everything. Reads only. */
 ;(function() {
   'use strict';
 
@@ -49,7 +51,9 @@
     NS.backdrop.draw(G.cam.x, G.cam.y, 0.3, true);
     begin();
     drawHazards();
+    NS.fleetRender.drawClouds();
     drawDock();
+    NS.baseRender.draw();
     NS.backdrop.drawDust(rect, s ? s.vx : 0, s ? s.vy : 0);
     drawRocks();
     drawWrecks();
@@ -57,10 +61,13 @@
     drawDrones();
     drawCharges();
     drawPirates();
+    NS.fleetRender.draw();
     drawBolts();
     if (s && s.alive && !s.hidden) drawShip(s);
     drawBeams();
+    NS.baseRender.drawTop();
     NS.fxRender.draw(rect);
+    if (G.cmd.on || G.cmd.sel.length) NS.fleetRender.drawOverlay();
     drawPulse();
     end();
     drawStorm();
@@ -122,6 +129,7 @@
 
   function drawRocks() {
     shown.length = 0;
+    const lod = G.cam.zoom < 0.5;
     const pal = G.run.zone.theme.rock;
     const rocks = G.rocks;
     for (let i = 0; i < rocks.length; ++i) {
@@ -151,7 +159,7 @@
           const v = RA.veins(r.tier, r.variant, r.volatile ? 'volatile' : r.ore);
           ctx.drawImage(v.canvas, -w / 2, -h / 2, w, h);
         }
-        const st = crackStage(r);
+        const st = lod ? 0 : crackStage(r);
         if (st) {
           const c = RA.cracks(r.tier, r.variant, st);
           ctx.drawImage(c.canvas, -w / 2, -h / 2, w, h);
@@ -167,6 +175,11 @@
     const t = G.time;
     for (let i = 0; i < shown.length; ++i) {
       const r = shown[i];
+      if (lod && r.tier < 3 && r.kind === 'rock') continue;
+      if (r.bio) {
+        ctx.globalAlpha = (0.35 + Math.sin(t * 1.4 + r.id) * 0.15) * r.fade;
+        K.blit(ctx, K.glow(r.bio === 'crystal' ? '#c070ff' : '#7ae04a'), r.x + Math.cos(r.id) * r.r * 0.3, r.y + Math.sin(r.id) * r.r * 0.3, r.r / 24);
+      }
       if (r.kind === 'crown') {
         ctx.globalAlpha = 0.55 + Math.sin(t * 1.7) * 0.2;
         K.blit(ctx, K.glow('#c88aff'), r.x, r.y, 7);
@@ -194,7 +207,7 @@
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    drawScanTags();
+    if (!lod) drawScanTags();
   }
 
   /* scanned rocks show their ore for a while; the Scanner Array shows it always nearby */

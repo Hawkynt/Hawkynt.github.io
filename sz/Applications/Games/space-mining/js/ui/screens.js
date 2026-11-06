@@ -39,10 +39,15 @@
     G.input.firing = false;
     if (name !== 'playing' && name !== 'cine') NS.save.writeSave();
     NS.statusBar.update();
+    if (name === 'station' && !G.cine) {
+      const ch = NS.events.pendingLog();
+      if (ch) NS.events.playLog(ch, () => setScreen('station'));
+    }
   }
 
   function pause() {
     if (G.screen !== 'playing' || (G.cine && G.cine.kind === 'docking')) return;
+    if (G.run && !G.run.ending) NS.resume.save();
     setScreen('paused');
     sfx('blip', { pitch: 0.7 });
   }
@@ -78,8 +83,20 @@
 
   /* Launch into a belt (career from the map, or a mode from the title) */
   function launch(mode, zoneIndex) {
+    if (mode === 'career' || mode === 'siege') G.save.resume = null;
     const z = mode === 'daily' ? null : NS.ores.ZONES[zoneIndex];
     NS.cinematics.play('launch', { zone: z || NS.ores.ZONES[NS.rng.hashString(NS.rng.dayKey()) % 3 + 1] }, () => NS.trip.startTrip(mode, zoneIndex));
+  }
+
+  /* the autosaved trip, right where it was */
+  function continueRun() {
+    const snap = G.save.resume;
+    if (!NS.resume.valid(snap)) {
+      G.save.resume = null;
+      return false;
+    }
+    NS.trip.startTrip(snap.mode, snap.zone, { resume: snap });
+    return true;
   }
 
   function toast(text, color) {
@@ -95,6 +112,6 @@
   }
 
   Object.assign(NS.screens, {
-    isMenu, inRun, setScreen, pause, resume, openTree, openHelp, career, launch, toast, achievements
+    isMenu, inRun, setScreen, pause, resume, openTree, openHelp, career, launch, continueRun, toast, achievements
   });
 })();

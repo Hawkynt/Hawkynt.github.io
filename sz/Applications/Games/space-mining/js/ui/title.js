@@ -122,14 +122,18 @@
     kit.text('»SynthelicZ«  Arcade  -  mine, refine, prosper', 640, 172, 16, UI.textDim, { align: 'center' });
     ctx.globalAlpha = 1;
 
-    const items = [
+    const items = [];
+    if (save.resume && NS.resume.valid(save.resume))
+      items.push({ id: 'continue', label: 'Continue', sub: MODES[save.resume.mode].name + ' - ' + ZONES[save.resume.zone].name, icon: 'launch', accent: UI.good, action: () => scr.continueRun() });
+    items.push(
       { id: 'career', label: MODES.career.name, sub: save.stats.trips ? 'Continue - ' + kit.group(save.credits) + ' credits' : MODES.career.desc, icon: 'station', accent: MODES.career.color, action: () => scr.career() },
       { id: 'rush', label: MODES.rush.name, sub: MODES.rush.desc, icon: 'clock', accent: MODES.rush.color, action: () => scr.launch('rush', bestZone()) },
       { id: 'daily', label: MODES.daily.name, sub: MODES.daily.desc, icon: 'calendar', accent: MODES.daily.color, action: () => scr.launch('daily', 0) },
+      { id: 'siege', label: MODES.siege.name, sub: MODES.siege.desc, icon: 'turret', accent: MODES.siege.color, action: () => scr.launch('siege', siegeZone()) },
       { id: 'tree', label: 'Tech Tree', sub: 'Research with data from the belts', icon: 'tree', accent: UI.data, action: () => scr.openTree('title') },
-      { id: 'help', label: 'How to Play', sub: 'Controls, ores, hazards', icon: 'help', action: () => scr.openHelp('title') },
-    ];
-    const bw = 340, bh = 52, gap = 9, x = 640 - bw / 2;
+      { id: 'help', label: 'How to Play', sub: 'Controls, outposts, life in the belts', icon: 'help', action: () => scr.openHelp('title') });
+    const bh = items.length > 6 ? 48 : 52, gap = items.length > 6 ? 7 : 9;
+    const bw = 340, x = 640 - bw / 2;
     let y = 208;
     let hotItem = items[0];
     for (let i = 0; i < items.length; ++i) {
@@ -150,6 +154,10 @@
     return Math.max(0, G.save.licenses.length - 1);
   }
 
+  function siegeZone() {
+    return Math.max(1, Math.min(4, bestZone()));
+  }
+
   function drawRecord(save, v) {
     const x = Math.max(v.x0 + 24, 40), y = 214, w = 300, h = 292;
     kit.panel(x, y, w, h, { alpha: 0.92 });
@@ -160,11 +168,11 @@
     const rows = [
       ['Belts licensed', save.licenses.length + ' / 5'], ['Trips flown', kit.group(st.trips)], ['Rocks fractured', kit.group(st.fractures)],
       ['Credits earned', kit.group(st.earned)], ['Achievements', NS.rules.achievementCount(save) + ' / ' + NS.goals.ACHIEVEMENTS.length],
-      ['Gold Rush best', kit.group(save.best.rush)],
+      ['Gold Rush best', kit.group(save.best.rush)], ['Waves repelled', kit.group(st.waves)],
     ];
     for (let i = 0; i < rows.length; ++i) {
-      kit.text(rows[i][0], x + 20, y + 130 + i * 25, 13, UI.textDim);
-      kit.text(rows[i][1], x + w - 20, y + 130 + i * 25, 13, UI.text, { align: 'right', weight: 'bold' });
+      kit.text(rows[i][0], x + 20, y + 130 + i * 22, 13, UI.textDim);
+      kit.text(rows[i][1], x + w - 20, y + 130 + i * 22, 13, UI.text, { align: 'right', weight: 'bold' });
     }
     if (save.crownDone) kit.text('The Crown is yours', x + w / 2, y + h - 14, 12, UI.data, { align: 'center', weight: 'bold' });
   }
@@ -179,7 +187,9 @@
       rush: 'Five minutes in your best licensed belt with your own ship. Every dock sells on the spot. A quarter of the take goes to your career.',
       daily: 'Today\'s belt: the same seed and the same standard rig for every pilot. Four minutes, one score.',
       tree: '32 upgrades in six branches, paid in research data. Open it any time - even from the pause menu mid-trip.',
-      help: 'Flight, drilling, the tractor beam, the hold, docking, the market, hazards and every ore.',
+      help: 'Flight, drilling, the tractor beam, the hold, docking, the market, hazards, every ore, outposts, the command view and life in the belts.',
+      siege: 'An outpost in ' + ZONES[siegeZone()].name + ' with a hub, power, a rig, a smelter and three lasers. Build it up, raise a fleet and hold through 15 waves - a mothership comes at 10 and 15. A fifth of the score goes to your career.',
+      continue: 'Pick up the trip you were flying exactly where you left it - the ship, the belt, the outpost and the battle.',
     }[item.id];
     kit.wrap(blurb, x + 20, y + 70, w - 40, 14, 20, UI.text);
     if (item.id === 'daily') {
@@ -190,6 +200,9 @@
     } else if (item.id === 'rush') {
       kit.text('Belt: ' + ZONES[bestZone()].name, x + 20, y + h - 46, 13, UI.textDim);
       kit.text('Best: ' + kit.group(save.best.rush), x + 20, y + h - 22, 15, UI.gold, { weight: 'bold' });
+    } else if (item.id === 'siege') {
+      kit.text('Belt: ' + ZONES[siegeZone()].name, x + 20, y + h - 46, 13, UI.textDim);
+      kit.text('Best: ' + kit.group(save.best.siege), x + 20, y + h - 22, 15, UI.gold, { weight: 'bold' });
     }
   }
 

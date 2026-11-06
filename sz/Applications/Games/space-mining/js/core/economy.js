@@ -1,7 +1,8 @@
 /* Pure economy rules: the home market (a mean-reverting random walk per ore, saturation from
    your own sales that recovers each cycle, booms and busts with a news line, price history),
-   selling ore and bars, refining 3 ore into 1 bar, delivery contracts, and the service bill
-   for fuel and repairs. A cycle passes every time the ship docks. No DOM, no state access. */
+   selling ore, bars and components, refining 3 ore into 1 bar, delivery contracts (ore, bars,
+   components, waves held) and the daily contract with its streak, and the service bill for
+   fuel and repairs. A cycle passes every time the ship docks. No DOM, no state access. */
 ;(function() {
   'use strict';
 
@@ -16,13 +17,14 @@
   const SAT_MAX = 0.55;
 
   function initMarket(save) {
-    if (save.market && typeof save.market === 'object') {
-      let ok = true;
+    if (save.market && typeof save.market === 'object' && !Array.isArray(save.market)) {
+      /* older saves know fewer ores: keep what is valid, start the rest fresh */
       for (let i = 0; i < ORES.length; ++i) {
         const m = save.market[ORES[i].id];
-        if (!m || typeof m.f !== 'number' || typeof m.sat !== 'number' || !Array.isArray(m.hist)) ok = false;
+        if (!m || typeof m.f !== 'number' || typeof m.sat !== 'number' || !Array.isArray(m.hist))
+          save.market[ORES[i].id] = { f: 1, sat: 0, hist: [ORES[i].value] };
       }
-      if (ok) return save.market;
+      return save.market;
     }
     const market = {};
     for (let i = 0; i < ORES.length; ++i) market[ORES[i].id] = { f: 1, sat: 0, hist: [] };
@@ -91,7 +93,30 @@
     return out;
   }
 
+  function hasBase(save) {
+    for (const z in save.bases) if (save.bases[z].buildings.some(b => b.type === 'hub') && !save.bases[z].abandoned) return true;
+    return false;
+  }
+
+  function hasFab(save) {
+    for (const z in save.bases) if (save.bases[z].buildings.some(b => b.type === 'fabricator' && b.prog >= 1)) return true;
+    return false;
+  }
+
   function makeContract(save, stats, rng) {
+    const roll = rng();
+    if (hasFab(save) && roll < 0.22) {
+      const comps = NS.colonyData.COMPONENTS;
+      const c = comps[Math.floor(rng() * 4)];
+      const qty = 2 + Math.floor(rng() * 4);
+      return { id: 'c' + save.cycle + '_' + Math.floor(rng() * 1e6), kind: 'comp', ore: c.id, qty: qty,
+        reward: Math.round(qty * c.value * (1.6 + rng() * 0.5) * stats.contractMul / 10) * 10, rd: 2, trips: 4 + Math.floor(rng() * 3) };
+    }
+    if (hasBase(save) && roll > 0.82) {
+      const qty = 2 + Math.floor(rng() * 3);
+      return { id: 'c' + save.cycle + '_' + Math.floor(rng() * 1e6), kind: 'waves', ore: 'waves', qty: qty, start: save.stats.waves || 0,
+        reward: Math.round(qty * 520 * (1 + save.licenses.length * 0.3) * stats.contractMul / 10) * 10, rd: 2, trips: 5 + Math.floor(rng() * 3) };
+    }
     const pool = reachableOres(save);
     const id = pool[Math.floor(rng() * pool.length)];
     const ore = ORE_BY_ID[id];
@@ -108,24 +133,84 @@
   }
 
   function refillContracts(save, stats, rng) {
-    while (save.contracts.length < stats.contracts) save.contracts.push(makeContract(save, stats, rng));
+    let normal = 0;
+    for (let i = 0; i < save.contracts.length; ++i) if (!save.contracts[i].daily && !save.contracts[i].weekly) ++normal;
+    while (normal < stats.contracts) {
+      save.contracts.push(makeContract(save, stats, rng));
+      ++normal;
+    }
+  }
+
+  /* this week's contract: added once a week, last week's expires */
+  function weeklyContract(save, week) {
+    for (let i = save.contracts.length - 1; i >= 0; --i)
+      if (save.contracts[i].weekly && save.contracts[i].weekly !== week) save.contracts.splice(i, 1);
+    if (save.daily.week === week) return save.contracts.find(c => c.weekly === week) || null;
+    save.daily.week = week;
+    const c = NS.calendar.weeklyContract(week, { hasBase: hasBase(save), hasFab: hasFab(save), ores: reachableOres(save), waves: save.stats.waves || 0 });
+    save.contracts.push(c);
+    return c;
+  }
+
+  /* today's daily contract: added once a day, yesterday's expires (the weekly one rides along) */
+  function dailyContract(save, day) {
+    weeklyContract(save, NS.calendar.weekKey());
+    for (let i = save.contracts.length - 1; i >= 0; --i)
+      if (save.contracts[i].daily && save.contracts[i].daily !== day) save.contracts.splice(i, 1);
+    if (save.daily.day === day) return save.contracts.find(c => c.daily === day) || null;
+    save.daily.day = day;
+    const c = NS.calendar.dailyContract(day, { hasBase: hasBase(save), hasFab: hasFab(save), ores: reachableOres(save),
+      streak: NS.calendar.liveStreak(save.daily, day), waves: save.stats.waves || 0 });
+    save.contracts.unshift(c);
+    return c;
+  }
+
+  function progress(save, c) {
+    if (c.kind === 'waves') return Math.max(0, (save.stats.waves || 0) - c.start);
+    return save.store[c.kind][c.ore] || 0;
   }
 
   function canFulfil(save, c) {
-    return (save.store[c.kind][c.ore] || 0) >= c.qty;
+    return progress(save, c) >= c.qty;
   }
 
   function fulfil(save, index) {
     const c = save.contracts[index];
     if (!c || !canFulfil(save, c)) return null;
-    save.store[c.kind][c.ore] -= c.qty;
-    if (!save.store[c.kind][c.ore]) delete save.store[c.kind][c.ore];
+    if (c.kind !== 'waves') {
+      save.store[c.kind][c.ore] -= c.qty;
+      if (!save.store[c.kind][c.ore]) delete save.store[c.kind][c.ore];
+    }
     save.credits += c.reward;
     save.rd += c.rd;
     rules.bump(save, 'earned', c.reward);
     rules.bump(save, 'contracts', 1);
+    if (c.daily) {
+      const st = NS.calendar.streakAfter(save.daily, c.daily);
+      save.daily.streak = st.streak;
+      save.daily.last = st.last;
+      rules.bump(save, 'dailies', 1);
+      rules.record(save, 'streakBest', st.streak);
+    }
     save.contracts.splice(index, 1);
     return c;
+  }
+
+  /* credits for one component at the home market */
+  function compPrice(stats, id) {
+    return Math.round(NS.colonyData.COMP_BY_ID[id].value * stats.priceMul);
+  }
+
+  function sellComp(save, stats, id, qty) {
+    const have = save.store.comp[id] || 0;
+    const n = Math.min(have, Math.max(0, Math.floor(qty)));
+    if (!n) return 0;
+    const total = n * compPrice(stats, id);
+    save.store.comp[id] = have - n;
+    if (!save.store.comp[id]) delete save.store.comp[id];
+    save.credits += total;
+    rules.bump(save, 'earned', total);
+    return total;
   }
 
   /* One market cycle: prices drift, saturation eases, an event may hit, contracts age */
@@ -154,7 +239,7 @@
       if (m.hist.length > HISTORY) m.hist.shift();
     }
     for (let i = save.contracts.length - 1; i >= 0; --i)
-      if (--save.contracts[i].trips <= 0) save.contracts.splice(i, 1);
+      if (!save.contracts[i].daily && !save.contracts[i].weekly && --save.contracts[i].trips <= 0) save.contracts.splice(i, 1);
     refillContracts(save, stats, rng);
   }
 
@@ -179,11 +264,13 @@
   function storeValue(save, stats) {
     let v = cargoValue(save, stats, save.store.ore);
     for (const id in save.store.bar) v += save.store.bar[id] * barPrice(save, stats, id);
+    for (const id in save.store.comp) v += save.store.comp[id] * compPrice(stats, id);
     return v;
   }
 
   Object.assign(NS.economy, {
-    BAR_MUL, DEPOT_MUL, HISTORY, initMarket, price, barPrice, sell, refine, reachableOres, makeContract,
-    refillContracts, canFulfil, fulfil, tickMarket, forecast, serviceCost, cargoValue, storeValue, ZONES
+    BAR_MUL, DEPOT_MUL, HISTORY, initMarket, price, barPrice, sell, refine, reachableOres, hasBase, hasFab, makeContract,
+    refillContracts, weeklyContract, dailyContract, progress, canFulfil, fulfil, compPrice, sellComp, tickMarket, forecast, serviceCost, cargoValue,
+    storeValue, ZONES
   });
 })();

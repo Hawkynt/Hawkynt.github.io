@@ -1,7 +1,8 @@
 /* One fixed simulation step: clocks and UI timers, the running cinematic, then in flight the
-   input intent, hit-stop and slow motion, ship, rocks, mining, drones, pirates, hazards, belt
-   respawn, the trip rules, effects and the camera, in that order. Menu screens only advance
-   clocks and effects. Owns G.time and the step measurement. */
+   input intent and the command camera (pause-and-plan stops here), hit-stop and slow motion,
+   ship, rocks, mining, drones, pirates, life and gas, the outpost, units, invaders, waves and
+   belt events, hazards, belt respawn, the trip rules, effects and the camera, in that order.
+   Menu screens only advance clocks and effects. Owns G.time and the step measurement. */
 ;(function() {
   'use strict';
 
@@ -36,6 +37,12 @@
     }
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     NS.input.sample();
+    NS.command.update(dt);
+    if (G.cmd.plan && !G.cine) {
+      /* pause-and-plan: only the command camera moves */
+      NS.camera.update(dt);
+      return;
+    }
     if (G.hitStop > 0) {
       G.hitStop -= dt;
       NS.camera.update(dt);
@@ -54,6 +61,14 @@
     NS.mining.update(s);
     NS.drones.update(s);
     NS.pirates.update(s);
+    NS.life.update(s);
+    NS.base.update(s);
+    NS.units.update(s);
+    NS.enemies.update(s);
+    if (G.base) {
+      NS.waves.update(s);
+      NS.events.update(s);
+    }
     NS.hazards.update(s);
     if (G.run.mode === 'career') NS.asteroids.respawn(s, G.stats);
     else NS.asteroids.respawn(s * 1.5, G.stats);

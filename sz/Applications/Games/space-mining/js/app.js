@@ -1,6 +1,6 @@
 /* Bootstrap: the fixed 60 Hz loop (as many simulation steps as are due, then one draw), the
-   window menu bar, background pre-painting of belt art while menus are idle, and start-up.
-   Owns the loop clock. */
+   window menu bar, background pre-painting of belt, outpost and fleet art while menus are
+   idle, autosave when the page hides, and start-up. Owns the loop clock. */
 ;(function() {
   'use strict';
 
@@ -47,6 +47,13 @@
       for (let v = 0; v < 4; ++v) jobs.push(() => NS.rockArt.veins(t, v, ORES[i].id));
   }
 
+  /* outpost and fleet art too, so the first command view does not stall */
+  const { BUILDINGS } = NS.colonyData;
+  for (let i = 0; i < BUILDINGS.length; ++i)
+    for (let l = 1; l <= 3; ++l) jobs.push(() => NS.colonyArt.building(BUILDINGS[i].id, l));
+  for (let i = 0; i < NS.fleetData.UNITS.length; ++i) jobs.push(() => NS.fleetArt.unit(NS.fleetData.UNITS[i].id));
+  for (let i = 0; i < NS.fleetData.ENEMIES.length; ++i) jobs.push(() => NS.fleetArt.enemy(NS.fleetData.ENEMIES[i].id));
+
   function prewarm() {
     if (warm >= jobs.length || G.screen === 'playing' || G.time < 0.6) return;
     const t0 = performance.now();
@@ -90,6 +97,9 @@
     User32.SetWindowText && User32.SetWindowText('Space Mining');
   }
   if (SZ.GameAudio) SZ.GameAudio.attachMuteButton();
+  /* autosave the trip when the page goes away, so Continue resumes right there */
+  window.addEventListener('pagehide', () => NS.resume.save());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) NS.resume.save(); });
   document.body.tabIndex = -1;
 
   NS.backdrop.setZone(0);

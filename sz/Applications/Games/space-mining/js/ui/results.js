@@ -1,7 +1,8 @@
 /* The trip report: how the trip ended, the hold unloaded line by line with counting values,
-   salvage, research, the service bill, the market news and new achievements (career); or the
-   score, best and career bonus (Gold Rush, Daily Belt). Continue goes to the station or the
-   title, Again relaunches a mode. */
+   salvage, research, the service bill, survivors' bounty, outpost upkeep and research, waves,
+   the market news and new achievements (career); or the score, best and career bonus (Gold
+   Rush, Daily Belt, Siege). Continue goes to the station or the title, Again relaunches a
+   mode. */
 ;(function() {
   'use strict';
 
@@ -23,6 +24,8 @@
     tow: ['TOWED HOME', 'The tow crew kept their share of the hold', UI.warn],
     destroyed: ['SHIP LOST', 'The salvage crew brought the wreck home - the hold is gone', UI.bad],
     time: ['TIME UP', 'The belt closes', UI.gold],
+    victory: ['THE OUTPOST HOLDS', 'Every wave repelled - the belt is yours', UI.gold],
+    fallen: ['OUTPOST FALLEN', 'The command hub is gone', UI.bad],
   };
 
   function leave() {
@@ -99,11 +102,19 @@
     if (r.salvage) line('Salvage', r.salvage, 'cr');
     if (r.rd) line('Research data', r.rd, 'rd');
     if (r.service) line('Refuel and repairs', r.service, 'neg', UI.bad);
+    if (r.bounty) line(r.survivors + ' survivors brought home', r.bounty, 'cr');
+    if (r.colony && r.colony.upkeep) line('Outpost upkeep', r.colony.upkeep, 'neg', UI.warn);
+    if (r.colony && r.colony.rd) line('Outpost research', r.colony.rd, 'rd');
     if (r.lost > 0) {
       kit.text(r.lost + ' units lost', x + 40, yy, 14, UI.bad);
       yy += 24;
     }
-    kit.text(r.fractures + ' rocks fractured' + (r.kills ? '  -  ' + r.kills + ' pirates destroyed' : ''), x + 40, yy, 13, UI.textMute);
+    kit.text(r.fractures + ' rocks fractured' + (r.kills ? '  -  ' + r.kills + ' pirates destroyed' : '') + (r.waves ? '  -  ' + r.waves + ' waves repelled' : '') +
+      (r.invaders ? '  -  ' + r.invaders + ' invaders' : ''), x + 40, yy, 13, UI.textMute);
+    if (r.colony && (r.colony.scavenged || r.colony.hives)) {
+      yy += 20;
+      kit.text(r.colony.hives ? 'An abandoned outpost has become a hive' : 'Scavengers stripped an abandoned outpost', x + 40, yy, 13, UI.bad, { weight: 'bold' });
+    }
     yy += 30;
     if (r.news) {
       kit.text('MARKET  ' + r.news, 640, yy, 13, UI.warn, { align: 'center', weight: 'bold' });
@@ -145,7 +156,8 @@
       ctx.globalAlpha = 1;
     }
     let yy = y + 320;
-    const rows = [['Rocks fractured', r.fractures], ['Pirates destroyed', r.kills], ['Units mined', r.units + r.lost]];
+    const rows = r.mode === 'siege' ? [['Waves repelled', r.waves], ['Invaders destroyed', r.invaders], ['Rocks fractured', r.fractures]]
+      : [['Rocks fractured', r.fractures], ['Pirates destroyed', r.kills], ['Units mined', r.units + r.lost]];
     for (let i = 0; i < rows.length; ++i) {
       kit.text(rows[i][0], 600, yy, 15, UI.textDim, { align: 'right' });
       kit.text(String(rows[i][1]), 640, yy, 15, '#ffffff', { weight: 'bold' });

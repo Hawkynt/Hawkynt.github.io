@@ -12,7 +12,8 @@ const { TREE, TREE_BY_ID, BRANCHES } = NS.treeData;
 const { UPGRADES, HULLS, MODULES } = NS.ships;
 const { ZONES, ORES } = NS.ores;
 
-check('six branches and 32 nodes', BRANCHES.length === 6 && TREE.length === 32);
+check('eleven branches on two pages and 52 nodes', BRANCHES.length === 11 && TREE.length === 52 && BRANCHES.filter(b => b.page === 1).length === 5);
+check('the colony page covers construction, defence, fleet, biosecurity and industry', ['construction', 'fortification', 'fleet', 'biosecurity', 'industry'].every(id => TREE.some(n => n.branch === id)));
 check('every prerequisite names a real node', TREE.every(n => n.req.every(r => TREE_BY_ID[r[0]] && r[1] <= TREE_BY_ID[r[0]].costs.length)));
 check('every node belongs to a branch', TREE.every(n => BRANCHES.some(b => b.id === n.branch)));
 

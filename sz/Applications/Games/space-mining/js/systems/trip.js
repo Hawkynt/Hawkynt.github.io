@@ -1,7 +1,10 @@
-/* A trip into a belt from launch to its end: builds the belt (hazards, rocks, geodes, wrecks,
-   the Crown Heart), the ship and drones; watches docking, fuel, hull and mode timers; handles
-   discoveries, wreck salvage and the Crown; settles the hold at the station (or sells it on the
-   spot in Gold Rush) and fills in the results. Owns G.run, G.specials, G.dock and G.banner. */
+/* A trip into a belt from launch to its end: builds the belt (outpost site, hazards, rocks,
+   life and gas, geodes, wrecks, the Crown Heart), the ship, drones, the outpost's fleet and
+   events, or restores an autosaved trip; watches docking, fuel, hull and mode timers; autosaves;
+   handles discoveries, wreck salvage and the Crown; Siege starts a starter outpost and rebuilds
+   the ship at the hub; settles the hold at the station (or sells it on the spot in Gold Rush
+   and Siege), runs the outposts' market cycle and fills in the results.
+   Owns G.run, G.specials, G.dock and G.banner. */
 ;(function() {
   'use strict';
 
@@ -44,11 +47,15 @@
     return ZONES[Math.max(0, Math.min(ZONES.length - 1, index))];
   }
 
-  function startTrip(mode, zoneIndex) {
+  function startTrip(mode, zoneIndex, opts) {
+    opts = opts || {};
+    const snap = opts.resume && NS.resume.valid(opts.resume) ? opts.resume : null;
     const zone = zoneFor(mode, zoneIndex);
     const stats = G.stats = flightStats(mode);
-    const seed = seedFor(mode, zone);
+    const seed = snap ? snap.seed : seedFor(mode, zone);
     const r = rng.makeRng(seed);
+    const strategic = mode === 'career' || mode === 'siege';
+    const mods = strategic ? NS.calendar.mods(new Date(), zone.index) : Object.assign({}, NS.calendar.NEUTRAL);
     G.world.w = C.WORLD_W;
     G.world.h = C.WORLD_H;
     G.dock = { x: G.world.w / 2, y: G.world.h / 2, angle: 0, lights: 0 };
@@ -59,17 +66,32 @@
       pulseCd: 0, pulse: null, pirateT: (mode === 'career' ? 55 : 35) + r() * 30, respawnT: 2,
       rockTarget: 0, pulled: 0, lasering: false, leftDock: false, ending: null, endT: 0, towT: 0,
       inRad: 0, inWell: 0, crownBroken: false, dronesOut: false, pickT: 0, pickText: null, turretAngle: 0,
+      contam: 0, survivors: 0, waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
+      siegeWon: false, reviveT: 0,
     };
     G.specials.length = 0;
     NS.fx.clear();
     NS.mining.clear();
     NS.pirates.clear();
+    NS.units.clear();
+    NS.enemies.clear();
+    NS.command.reset();
+    NS.base.prepare(zone, mode);
+    if (G.base) G.base.mods = mods;
+    if (snap && snap.base && mode === 'siege') NS.base.adopt(snap.base);
     NS.hazards.setup(zone, r);
     NS.asteroids.generate(zone, seed, stats);
     G.run.rockTarget = G.rocks.length;
     placeSpecials(zone, r, mode, stats);
+    NS.life.setup(zone, seed, mods);
     NS.ship.create(stats, G.dock.x, G.dock.y + 150);
     NS.drones.setup(stats);
+    if (mode === 'siege' && !snap) siegeStart();
+    if (G.base && NS.base.claimed()) {
+      NS.base.muster();
+      NS.waves.arm(true);
+    }
+    NS.events.setup(zone, seed, mods);
     NS.camera.snap(G.ship.x, G.ship.y);
     NS.backdrop.setZone(zone.index);
     G.banner = null;
@@ -81,7 +103,31 @@
       G.save.zone = zone.id;
     }
     NS.screens.setScreen('playing');
-    NS.cinematics.play('arrival', { zone: zone });
+    if (snap) {
+      NS.resume.restore(snap);
+      G.ship.control = true;
+      banner('RESUMED', zone.name + ' - right where you left off', zone.theme.accent);
+    } else NS.cinematics.play('arrival', { zone: zone });
+    if (mods.anomaly && strategic) NS.screens.toast('Anomaly belt this week: ' + mods.anomaly.name + ' - ' + mods.anomaly.text, mods.anomaly.color);
+    else if (mods.season && strategic) NS.screens.toast(mods.season.name + ': ' + mods.season.text, mods.season.color);
+  }
+
+  /* Siege: a starter outpost (hub, power, a rig, a smelter, two lasers) and some stock */
+  function siegeStart() {
+    const B = NS.base;
+    const site = G.base.site;
+    B.grant('hub', site.hubX, site.hubY);
+    const kit = ['solar', 'solar', 'rig', 'smelter', 'laser', 'laser', 'laser', 'habitat'];
+    for (let i = 0; i < kit.length; ++i) {
+      const spot = B.findSpot(kit[i]);
+      if (spot) B.grant(kit[i], spot.cx, spot.cy);
+    }
+    const d = G.base.data;
+    d.crew = 10;
+    d.stock.ore = { iron: 60, copper: 30, nickel: 20, ice: 20 };
+    d.stock.bar = { iron: 10, copper: 6, titanium: 4 };
+    d.stock.comp = { circuit: 2, alloy: 2 };
+    B.refresh();
   }
 
   function farSpot(r, min) {
@@ -139,6 +185,18 @@
       if (run.endT <= 0) endTrip(run.ending);
       return;
     }
+    if (run.mode === 'career' || run.mode === 'siege') {
+      run.saveT -= dt;
+      if (run.saveT <= 0 && !G.cine) {
+        run.saveT = 20;
+        NS.resume.save();
+      }
+    }
+    if (run.reviveT > 0) {
+      run.reviveT -= dt;
+      if (run.reviveT <= 0) revive();
+      return;
+    }
     if (run.timeLeft > 0) {
       run.timeLeft -= dt;
       if (run.timeLeft <= 0) {
@@ -153,7 +211,7 @@
     if (dd > DOCK_R * 3) run.leftDock = true;
     const sp = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
     if (run.leftDock && dd < DOCK_R && sp < DOCK_SPEED && !G.cine) {
-      if (run.mode === 'rush' || run.mode === 'daily') quickSell();
+      if (run.mode !== 'career') quickSell();
       else {
         NS.cinematics.play('docking', {});
         return;
@@ -166,7 +224,12 @@
     }
     if (run.towT > 0) {
       run.towT -= dt;
-      if (run.towT <= 0) finish('tow', 0.01);
+      if (run.towT <= 0) {
+        if (run.mode === 'siege' && NS.base.hub()) {
+          run.towT = 0;
+          revive();
+        } else finish('tow', 0.01);
+      }
     }
     discover(s);
   }
@@ -202,6 +265,7 @@
     for (const id in run.cargo) v += run.cargo[id] * ORE_BY_ID[id].value;
     if (v <= 0) return;
     run.sold += v;
+    if (run.mode === 'siege') run.credits += v;
     run.cargo = {};
     run.cargoUsed = 0;
     run.leftDock = false;
@@ -220,9 +284,37 @@
     run.endT = delay;
   }
 
+  /* Siege: the ship is rebuilt at the hub while the outpost stands */
+  function revive() {
+    const s = G.ship, h = NS.base.hub();
+    if (!h) { finish('destroyed', 0.5); return; }
+    s.alive = true;
+    s.hidden = false;
+    s.control = true;
+    s.x = h.x;
+    s.y = h.y + h.r + 60;
+    s.vx = s.vy = 0;
+    s.hull = s.maxHull;
+    s.fuel = s.maxFuel;
+    s.shield = s.maxShield;
+    NS.fx.ring(s.x, s.y, 10, 160, 0.6, '#4fd8ff', 4);
+    banner('SHIP REBUILT', 'The hub crews patched you up', '#4fd8ff');
+  }
+
   function shipDestroyed() {
     const s = G.ship;
     if (!s.alive) return;
+    if (G.run.mode === 'siege' && NS.base.hub()) {
+      s.alive = false;
+      NS.fx.explode(s.x, s.y, 60, NS.fx.FIRE, { debrisColor: G.stats.colors.hull });
+      NS.fx.shockwave(s.x, s.y, 320, '#ffb070');
+      NS.audio.sfx('explode', { volume: 1, pitch: 0.6 });
+      banner('SHIP DOWN', 'Rebuilding at the hub...', '#ff5c6c');
+      G.run.reviveT = 6;
+      G.run.cargo = {};
+      G.run.cargoUsed = 0;
+      return;
+    }
     s.alive = false;
     NS.fx.explode(s.x, s.y, 60, NS.fx.FIRE, { debrisColor: G.stats.colors.hull });
     NS.fx.shockwave(s.x, s.y, 320, '#ffb070');
@@ -287,7 +379,8 @@
 
   /* how much of the hold survives each kind of ending */
   function keepShare(reason, stats) {
-    if (reason === 'dock' || reason === 'time') return 1;
+    if (reason === 'dock' || reason === 'time' || reason === 'victory') return 1;
+    if (reason === 'fallen') return 0;
     if (stats.jump) return 0.85;
     return reason === 'tow' ? 0.5 : 0;
   }
@@ -297,6 +390,8 @@
     const run = G.run;
     if (!run) return;
     NS.drones.flush();
+    NS.base.sync();
+    NS.resume.clear();
     const save = G.save;
     const stats = G.stats;
     const keep = keepShare(reason, stats);
@@ -307,7 +402,8 @@
       if (n > 0) { hold[id] = n; units += n; }
     }
     const res = { mode: run.mode, reason: reason, zone: run.zone, hold: hold, units: units, lost: run.units - units, rd: run.rd,
-      salvage: run.salvage, fractures: run.fractures, kills: run.kills, t: 0, time: run.t, achievements: [], crown: run.crownBroken, jump: stats.jump };
+      salvage: run.salvage, fractures: run.fractures, kills: run.kills, t: 0, time: run.t, achievements: [], crown: run.crownBroken, jump: stats.jump,
+      waves: run.waves, invaders: run.invaders, survivors: run.survivors };
     if (run.mode === 'career') {
       for (const id in hold) save.store.ore[id] = (save.store.ore[id] || 0) + hold[id];
       res.value = eco.cargoValue(save, stats, hold);
@@ -322,8 +418,29 @@
       const fee = eco.serviceCost(stats, s.maxFuel - s.fuel, reason === 'destroyed' ? s.maxHull * 1.5 : s.maxHull - s.hull);
       res.service = Math.min(save.credits, fee);
       save.credits -= res.service;
+      if (run.survivors > 0 && reason !== 'destroyed') {
+        res.bounty = run.survivors * 150;
+        save.credits += res.bounty;
+        rules.bump(save, 'earned', res.bounty);
+        rules.bump(save, 'rescued', run.survivors);
+      }
       eco.tickMarket(save, stats, rng.makeRng((run.seed ^ save.cycle * 2654435761) >>> 0));
+      res.colony = NS.production.cycleBases(save, stats);
+      eco.dailyContract(save, rng.dayKey());
       res.news = save.news;
+    } else if (run.mode === 'siege') {
+      const value = G.base ? NS.colony.baseValue(G.base.data) : 0;
+      let v = run.waves * 1000 + run.invaders * 15 + Math.round(value / 10) + (run.siegeWon ? 5000 : 0) + run.sold;
+      res.score = v;
+      res.won = run.siegeWon;
+      res.best = v > save.best.siege;
+      if (res.best) save.best.siege = v;
+      res.bonus = Math.round(v * 0.2);
+      save.credits += res.bonus;
+      save.rd += run.rd;
+      rules.bump(save, 'earned', res.bonus);
+      if (run.siegeWon) rules.bump(save, 'siegeWins', 1);
+      rules.addHighScore(save, v, 'siege', run.zone.name + ' - wave ' + run.waves);
     } else {
       let v = run.sold + run.salvage;
       for (const id in hold) v += hold[id] * ORE_BY_ID[id].value;
@@ -345,6 +462,11 @@
     if (res.achievements.length) NS.screens.achievements(res.achievements);
     G.ui.results = res;
     G.run = null;
+    G.base = null;
+    NS.units.clear();
+    NS.enemies.clear();
+    NS.command.reset();
+    G.distress = null;
     G.ship = null;
     G.cam.focus = null;
     NS.save.refreshStats();
@@ -362,7 +484,7 @@
   }
 
   Object.assign(NS.trip, {
-    flightStats, refreshFlightStats, startTrip, update, banner, finish, shipDestroyed, cutWreck, onSpecialBroken,
+    flightStats, refreshFlightStats, startTrip, siegeStart, update, banner, finish, revive, shipDestroyed, cutWreck, onSpecialBroken,
     keepShare, endTrip, abort, quickSell
   });
 })();

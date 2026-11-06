@@ -1,8 +1,9 @@
 /* The station screen, the career hub: Kessler Station turning beside your docked rig, the
-   credits, research and news ticker, and five tabs - Market (stock, prices, history,
-   forecasts, selling), Refinery (smelting 3 ore into bars), Contracts (deliveries for credits
-   and data), Shipyard and Modules (drawn by NS.shipyard) - with buttons to the belt map, tech
-   tree, help and title. */
+   credits, research and news ticker, and seven tabs - Market (stock, prices, history,
+   forecasts, selling ore, bars and components), Refinery (smelting 3 ore into bars), Contracts
+   (deliveries and waves held for credits and data, the daily contract), Shipyard and Modules
+   (drawn by NS.shipyard), Colonies and Log (drawn by NS.colonies) - with buttons to the belt
+   map, tech tree, help and title. */
 ;(function() {
   'use strict';
 
@@ -25,6 +26,8 @@
     { id: 'contracts', name: 'Contracts', icon: 'contract' },
     { id: 'shipyard', name: 'Shipyard', icon: 'engine' },
     { id: 'modules', name: 'Modules', icon: 'station' },
+    { id: 'colonies', name: 'Colonies', icon: 'habitat' },
+    { id: 'log', name: 'Log', icon: 'log' },
   ];
   const PX = 600, PY = 96, PW = 640, PH = 520;
 
@@ -80,6 +83,8 @@
       case 'contracts': contracts(save); break;
       case 'shipyard': NS.shipyard.drawShipyard(PX, PY + 40, PW, PH - 40); break;
       case 'modules': NS.shipyard.drawModules(PX, PY + 40, PW, PH - 40); break;
+      case 'colonies': NS.colonies.drawColonies(PX, PY + 40, PW, PH - 40); break;
+      case 'log': NS.colonies.drawLog(PX, PY + 40, PW, PH - 40); break;
     }
     footer(v);
     drawCoins();
@@ -104,7 +109,7 @@
       const tb = TABS[i];
       const on = G.ui.stationTab === tb.id;
       W.button('tab_' + tb.id, tb.name, PX + i * w + 2, PY, w - 4, 38, {
-        action: () => { G.ui.stationTab = tb.id; }, icon: tb.icon, selected: on, px: 15,
+        action: () => { G.ui.stationTab = tb.id; }, icon: tb.icon, selected: on, px: 12,
       });
     }
   }
@@ -138,6 +143,7 @@
       total += eco.sell(save, G.stats, 'ore', ORES[i].id, Infinity);
       total += eco.sell(save, G.stats, 'bar', ORES[i].id, Infinity);
     }
+    for (const id in save.store.comp) total += eco.sellComp(save, G.stats, id, Infinity);
     return total;
   }
 
@@ -158,7 +164,7 @@
     kit.text('STOCK', x + 200, y0, 12, UI.textMute, { weight: 'bold' });
     kit.text('PRICE', x + 300, y0, 12, UI.textMute, { weight: 'bold' });
     kit.text('LAST CYCLES', x + 370, y0, 12, UI.textMute, { weight: 'bold' });
-    const rowH = Math.min(40, 360 / Math.max(1, rows.length));
+    const rowH = Math.min(40, (Object.keys(save.store.comp).length ? 330 : 360) / Math.max(1, rows.length));
     for (let i = 0; i < rows.length; ++i) {
       const o = rows[i];
       const y = y0 + 22 + i * rowH;
@@ -185,6 +191,19 @@
             after(tot, x + 550, y + 10);
           },
         });
+      }
+    }
+    const comps = Object.keys(save.store.comp);
+    if (comps.length) {
+      let cx = x;
+      const cy = PY + PH - 78;
+      kit.text('COMPONENTS', cx, cy, 11, UI.textMute, { weight: 'bold' });
+      cx += 90;
+      for (let i = 0; i < comps.length && cx < PX + PW - 120; ++i) {
+        const cd = NS.colonyData.COMP_BY_ID[comps[i]];
+        kit.icon(cd.icon, cx + 8, cy, 14, cd.color);
+        kit.text(save.store.comp[comps[i]] + ' x ' + eco.compPrice(st, comps[i]), cx + 18, cy, 12, UI.text);
+        cx += 96;
       }
     }
     const total = eco.storeValue(save, st);
@@ -255,16 +274,20 @@
     for (let i = 0; i < list.length; ++i) {
       const c = list[i];
       const o = ORE_BY_ID[c.ore];
+      const comp = c.kind === 'comp' ? NS.colonyData.COMP_BY_ID[c.ore] : null;
+      const color = o ? o.color : comp ? comp.color : UI.bad;
       const x = PX + 20 + (i % 2) * (cw + 20), y = PY + 88 + Math.floor(i / 2) * (ch + 12);
       if (y + ch > PY + PH - 4) break;
       const ok = eco.canFulfil(save, c);
-      kit.panel(x, y, cw, ch, { accent: ok ? UI.good : o.color, radius: 8, alpha: 0.9, glow: ok });
-      K.blit(ctx, NS.rockArt.nugget(o.id, 2), x + 26, y + 30, 1.6);
-      kit.fitText((c.kind === 'bar' ? c.qty + ' x ' + o.bar : c.qty + ' ' + o.name), x + 50, y + 22, cw - 70, 16, { weight: 'bold', color: '#ffffff' });
-      kit.text(c.trips + ' cycle' + (c.trips > 1 ? 's' : '') + ' left', x + 50, y + 44, 12, c.trips <= 1 ? UI.bad : UI.textDim);
-      const have = save.store[c.kind][c.ore] || 0;
-      kit.bar(x + 16, y + 62, cw - 32, 8, have / c.qty, ok ? UI.good : o.color);
-      kit.text(Math.min(have, c.qty) + ' / ' + c.qty + (c.kind === 'bar' ? ' bars' : ''), x + 16, y + 82, 12, UI.textDim);
+      kit.panel(x, y, cw, ch, { accent: ok ? UI.good : c.daily ? UI.cyan : c.weekly ? UI.data : color, radius: 8, alpha: 0.9, glow: ok });
+      if (o) K.blit(ctx, NS.rockArt.nugget(o.id, 2), x + 26, y + 30, 1.6);
+      else kit.icon(comp ? comp.icon : 'turret', x + 26, y + 30, 26, color);
+      kit.fitText(NS.colonies.contractText(c).replace('Deliver ', ''), x + 50, y + 22, cw - 140, 15, { weight: 'bold', color: '#ffffff' });
+      kit.text(c.daily ? 'DAILY - today only' : c.weekly ? 'WEEKLY - until ' + c.weekly.slice(5) + ' ends' : c.trips + ' cycle' + (c.trips > 1 ? 's' : '') + ' left', x + 50, y + 44, 12,
+        c.daily ? UI.cyan : c.weekly ? UI.data : c.trips <= 1 ? UI.bad : UI.textDim);
+      const have = eco.progress(save, c);
+      kit.bar(x + 16, y + 62, cw - 32, 8, have / c.qty, ok ? UI.good : color);
+      kit.text(Math.min(have, c.qty) + ' / ' + c.qty + (c.kind === 'bar' ? ' bars' : c.kind === 'waves' ? ' waves' : ''), x + 16, y + 82, 12, UI.textDim);
       kit.credits(c.reward, x + cw - 16, y + 22, 15, 'right');
       kit.amount(c.rd, x + cw - 16, y + 44, 13, 'right', 'rd');
       W.button('ctr_' + c.id, ok ? 'Deliver' : 'Need more', x + cw - 130, y + ch - 40, 116, 30, {

@@ -29,6 +29,10 @@
       cam.tx = cam.focus.x;
       cam.ty = cam.focus.y;
       cam.tzoom = cam.focus.zoom || 1.4;
+    } else if (G.cmd.on) {
+      cam.tx = G.cmd.x;
+      cam.ty = G.cmd.y;
+      cam.tzoom = G.cmd.zoom;
     } else if (s) {
       const inp = G.input;
       const ax = clamp((inp.aimWX - s.x) * LOOK_AIM, -150, 150);
@@ -38,10 +42,10 @@
       const sp = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
       cam.tzoom = 1 - Math.min(0.12, sp / 5000);
     }
-    const k = 1 - Math.exp(-CAM_LERP * dt);
+    const k = 1 - Math.exp(-(G.cmd.on && !cam.focus ? 14 : CAM_LERP) * dt);
     cam.x += (cam.tx - cam.x) * k;
     cam.y += (cam.ty - cam.y) * k;
-    cam.zoom += (cam.tzoom - cam.zoom) * (1 - Math.exp(-3 * dt));
+    cam.zoom += (cam.tzoom - cam.zoom) * (1 - Math.exp(-(G.cmd.on ? 8 : 3) * dt));
 
     shakeT += dt;
     const sh = cam.trauma * cam.trauma * MAX_SHAKE;

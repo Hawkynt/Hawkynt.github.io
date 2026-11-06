@@ -15,6 +15,7 @@
   const rules = NS.rules;
   const R = NS.rng.fx;
   const near = [];
+  const near2 = [];
   const hit = { t: 0, obj: null, kind: '' };
   const pool = createPool(() => ({ alive: false }));
   let laserSfx = 0, fullT = 0;
@@ -40,6 +41,7 @@
       run.rd += 1;
       NS.fx.text(G.ship.x, G.ship.y - 56, '+1 DATA', '#b48aff', 15, 1.2);
     }
+    NS.life.onCargo(oreId, units);
     if (run.mode === 'career') {
       rules.bump(G.save, 'nuggets', 1);
       if (oreId === 'voidCrystal') rules.bump(G.save, 'voidCrystals', units);
@@ -185,6 +187,9 @@
     for (let i = 0; i < rocks.length; ++i) if (rocks[i].alive) test(rocks[i], rocks[i].r * 0.88, 'rock');
     for (let i = 0; i < G.pirates.length; ++i) if (G.pirates[i].alive) test(G.pirates[i], G.pirates[i].r, 'pirate');
     for (let i = 0; i < G.specials.length; ++i) if (G.specials[i].alive && G.specials[i].kind === 'derelict') test(G.specials[i], G.specials[i].r * 0.8, 'wreck');
+    const foes = NS.enemies.queryHostile((x0 + x1) / 2, (y0 + y1) / 2, Math.sqrt(len2) / 2 + 100, near2);
+    for (let i = 0; i < foes.length; ++i) if (foes[i].alive) test(foes[i], foes[i].r, foes[i].side ? 'unit' : 'enemy');
+    if (G.base) for (let i = 0; i < G.base.data.buildings.length; ++i) if (G.base.data.buildings[i].rogue) test(G.base.data.buildings[i], G.base.data.buildings[i].r, 'building');
     return hit.obj;
   }
 
@@ -243,8 +248,13 @@
     const back = Math.atan2(y0 - y1, x0 - x1);
     if (R() < dt * 30) NS.fx.sparks(hx, hy, back, 2.2, 2, kind === 'rock' && obj.ore ? ORE_BY_ID[obj.ore].glow : '#ffd8a0', 240, 0.3);
     if (R() < dt * 6 && kind === 'rock') NS.fx.dust(hx, hy, 1, 10 + obj.tier * 3, G.run.zone.theme.rock[0], 40);
-    if (kind === 'rock') NS.asteroids.damage(obj, dmg, hx, hy, 'laser');
-    else if (kind === 'pirate') NS.pirates.damage(obj, dmg * 1.4, hx, hy);
+    if (kind === 'rock') {
+      if (obj.bio) NS.life.disturb(obj);
+      NS.asteroids.damage(obj, dmg, hx, hy, 'laser');
+    } else if (kind === 'pirate') NS.pirates.damage(obj, dmg * 1.4, hx, hy);
+    else if (kind === 'enemy') NS.enemies.damage(obj, dmg * 1.4, null);
+    else if (kind === 'unit') NS.units.damage(obj, dmg * 1.4, null);
+    else if (kind === 'building') NS.base.damage(obj, dmg);
     else NS.trip.cutWreck(obj, dmg, hx, hy);
     return obj;
   }
@@ -300,6 +310,8 @@
         else NS.asteroids.damage(o, (o.kind === 'rock' ? 300 : 120) * f, o.x, o.y, 'blast');
       }
       NS.pirates.blast(c.x, c.y, radius, 120);
+      const foes = NS.enemies.queryHostile(c.x, c.y, radius, near2);
+      for (let k = 0; k < foes.length; ++k) if (foes[k].alive && !foes[k].side) NS.enemies.damage(foes[k], 140, null);
     }
     compact(G.charges);
   }

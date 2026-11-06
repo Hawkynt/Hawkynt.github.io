@@ -1,7 +1,8 @@
 /* Cinematic drawing: the full-screen sequences (intro launch from Kessler Station, the per-trip
-   undock and jump, a new belt charted, the Crown ending with fireworks and a stats roll) and
-   the overlays of the in-world ones (warp arrival tunnel and title card, docking clamps,
-   discovery light rays and caption). Timed captions, fades and letterbox. Reads only. */
+   undock and jump, a new belt charted, the Crown ending with fireworks and a stats roll, the
+   captain's log typed out) and the overlays of the in-world ones (warp arrival tunnel and title
+   card, docking clamps, discovery light rays and caption, and the framed outpost moments with
+   rays, scan lines and captions). Timed captions, fades and letterbox. Reads only. */
 ;(function() {
   'use strict';
 
@@ -84,6 +85,7 @@
       case 'launch': launch(c, v); break;
       case 'milestone': milestone(c, v); break;
       case 'ending': ending(c, v); break;
+      case 'log': logEntry(c, v); break;
     }
     if (c.t > 0.35) kit.text('any key to skip', v.x1 - 20, v.y1 - 18, 11, 'rgba(255,255,255,0.45)', { align: 'right' });
   }
@@ -233,6 +235,52 @@
     NS.fx.ring(x, y, 6, 90, 0.5, col, 3);
   }
 
+  /* a captain's log chapter: the station at night and the entry typed out line by line */
+  function logEntry(c, v) {
+    const t = c.t;
+    const ch = c.data.chapter;
+    if (!ch) return;
+    NS.backdrop.setZone(Math.min(4, ch.index % 5));
+    stars(v);
+    ctx.globalAlpha = 0.5;
+    NS.stationArt.draw(ctx, 1040, 470, 0.5, G.save.modules, G.time);
+    ctx.globalAlpha = 1;
+    const g = ctx.createLinearGradient(0, 0, 900, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0.85)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(v.x0, v.y0, 900 - v.x0, v.h);
+    bars(v, 1);
+    if (t > 0.4) {
+      ctx.globalAlpha = Math.min(1, (t - 0.4) * 3, (c.dur - t) * 2);
+      kit.text('CAPTAIN\'S LOG  -  ' + NS.rng.dayKey(), 120, 160, 15, ch.color, { weight: 'bold' });
+      ctx.globalAlpha = 1;
+    }
+    if (t > 0.6) {
+      ctx.globalAlpha = Math.min(1, (t - 0.6) * 3, (c.dur - t) * 2);
+      kit.text(ch.title, 120, 200, 32, '#ffffff', { weight: 'bold' });
+      ctx.fillStyle = ch.color;
+      ctx.fillRect(120, 224, Math.min(1, (t - 0.6) * 2) * 520, 2);
+      ctx.globalAlpha = 1;
+    }
+    /* typewriter */
+    const cps = 38;
+    let budget = Math.max(0, (t - 1.4) * cps);
+    let y = 270;
+    for (let i = 0; i < ch.lines.length; ++i) {
+      const line = ch.lines[i];
+      const n = Math.min(line.length, Math.floor(budget));
+      budget -= line.length + 8;
+      if (n <= 0) break;
+      ctx.globalAlpha = Math.min(1, (c.dur - t) * 2);
+      const h = kit.wrap(line.slice(0, n) + (n < line.length && Math.sin(G.time * 20) > 0 ? '_' : ''), 120, y, 640, 19, 28, UI.text);
+      y += Math.max(28, h) + 14;
+      ctx.globalAlpha = 1;
+    }
+    fade(1 - t * 2.5, v);
+    fade((t - c.dur + 0.6) * 1.8, v);
+  }
+
   /* ── in-world overlays ── */
   function drawInWorld(v, c) {
     const t = c.t;
@@ -283,7 +331,50 @@
       kit.text(title, 640, 158, 38, '#ffffff', { align: 'center', weight: 'bold' });
       kit.text(sub, 640, 600, 17, UI.text, { align: 'center' });
       ctx.globalAlpha = 1;
+    } else if (FRAMED_TEXT[c.kind]) framed(v, c);
+  }
+
+  const FRAMED_TEXT = {
+    founded: ['OUTPOST FOUNDED', (d) => d.zone ? d.zone.name + ' - build an economy, then defences: waves will come' : '', '#ffb44a'],
+    waveClear: ['FIRST WAVE REPELLED', () => 'The outpost holds. They will be back - bigger.', '#5cff9a'],
+    bossArrival: ['HIVE MOTHERSHIP INBOUND', (d) => (d.zone ? d.zone.name + ' - ' : '') + 'Bloom grown over a Lattice frame. Kill it before it reaches the hub.', '#e080ff'],
+    bossDown: ['MOTHERSHIP DESTROYED', (d) => '+' + NS.kit.group(d.reward || 0) + ' credits  -  exotic matter and hive jelly in the wreck', '#ffd25a'],
+    outbreak: ['OUTBREAK', () => 'Bloom spores in the crew quarters. Quarantine, treat or sterilise - it spreads along the links.', '#9ae04a'],
+    lattice: ['THE LATTICE WAKES', () => 'Nanoprobes. They do not destroy - they rewrite. Guard your links, purge what they touch.', '#3affd0'],
+  };
+
+  function framed(v, c) {
+    const t = c.t, d = c.data;
+    const f = FRAMED_TEXT[c.kind];
+    const k = Math.min(1, t * 2, (c.dur - t) * 2);
+    const pt = NS.camera.toView(d.x, d.y, { x: 0, y: 0 });
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.14 * k;
+    ctx.fillStyle = f[2];
+    for (let i = 0; i < 12; ++i) {
+      const a = i * TAU / 12 + G.time * 0.1;
+      ctx.beginPath();
+      ctx.moveTo(pt.x, pt.y);
+      ctx.arc(pt.x, pt.y, 1000, a, a + 0.08);
+      ctx.closePath();
+      ctx.fill();
     }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    if (c.kind === 'lattice' || c.kind === 'bossArrival') {
+      ctx.fillStyle = K.rgba(f[2], 0.12 * k);
+      for (let i = 0; i < 14; ++i) {
+        const y = v.y0 + ((i * 97 + Math.floor(t * 20) * 37) % v.h);
+        ctx.fillRect(v.x0, y, v.w, 2 + (i % 3));
+      }
+    }
+    ctx.globalAlpha = Math.max(0, k);
+    const glitch = c.kind === 'lattice' && Math.sin(t * 31) > 0.7 ? 4 : 0;
+    kit.text(f[0], 640 + glitch, 150, 40, '#ffffff', { align: 'center', weight: 'bold' });
+    ctx.fillStyle = f[2];
+    ctx.fillRect(640 - 260 * k, 178, 520 * k, 2);
+    kit.text(f[1](d), 640, 600, 17, UI.text, { align: 'center' });
+    ctx.globalAlpha = 1;
   }
 
   Object.assign(NS.cineRender, {

@@ -1,6 +1,7 @@
-/* Static tech tree data: six branches (Drilling, Engines, Logistics, Automation, Defense,
-   Science), 32 nodes bought with research data, with level costs, prerequisites, grid placement
-   and the stat each level adds (see rules.computeStats). Pure data. */
+/* Static tech tree data on two pages: the ship (Drilling, Engines, Logistics, Automation,
+   Defense, Science) and the colony (Construction, Fortification, Fleet, Biosecurity, Industry),
+   52 nodes bought with research data, with level costs, prerequisites, grid placement and the
+   stat each level adds (see rules.computeStats). Pure data. */
 ;(function() {
   'use strict';
 
@@ -14,7 +15,14 @@
     { id: 'automation', name: 'Automation', color: '#5cff9a', icon: 'drone' },
     { id: 'defense', name: 'Defense', color: '#ff5c8a', icon: 'shield' },
     { id: 'science', name: 'Science', color: '#b48aff', icon: 'scan' },
+    { id: 'construction', name: 'Construction', color: '#ffb44a', icon: 'station', page: 1 },
+    { id: 'fortification', name: 'Fortify', color: '#ff5c6c', icon: 'turret', page: 1 },
+    { id: 'fleet', name: 'Fleet', color: '#4fd8ff', icon: 'fighter', page: 1 },
+    { id: 'biosecurity', name: 'Biosecurity', color: '#9ae04a', icon: 'serum', page: 1 },
+    { id: 'industry', name: 'Industry', color: '#ffd25a', icon: 'refinery', page: 1 },
   ];
+  for (let i = 0; i < BRANCHES.length; ++i) BRANCHES[i].page = BRANCHES[i].page || 0;
+  const PAGES = ['Ship', 'Colony'];
 
   /* per: amount one level adds to `stat`; fmt: {p} = per as percent, {v} = per as a value */
   const TREE = [
@@ -61,12 +69,42 @@
     { id: 's_rare', branch: 'science', name: 'Spectral Filter', icon: 'gem', row: 1, lane: 0, stat: 'rare', per: 0.2, fmt: '+{p}% rare ore in new rocks', costs: [4, 7, 11], req: [['s_scan', 1]] },
     { id: 's_geode', branch: 'science', name: 'Geode Sense', icon: 'geode', row: 1, lane: 1, stat: 'geode', per: 0.35, fmt: '+{p}% chance of geodes and derelicts', costs: [5, 9], req: [['s_data', 1]] },
     { id: 's_salvage', branch: 'science', name: 'Xeno Salvage', icon: 'derelict', row: 2, lane: 0.5, stat: 'salvage', per: 0.5, fmt: '+{p}% loot from derelicts and pirates', costs: [7, 12], req: [['s_rare', 1], ['s_geode', 1]] },
+
+    /* Construction */
+    { id: 'c_build', branch: 'construction', name: 'Rapid Assembly', icon: 'wrench', row: 0, lane: 0, stat: 'buildSpeed', per: 0.25, fmt: '+{p}% construction speed', costs: [2, 4, 7], req: [] },
+    { id: 'c_armor', branch: 'construction', name: 'Reinforced Frames', icon: 'hull', row: 0, lane: 1, stat: 'buildingHp', per: 0.2, fmt: '+{p}% building hit points', costs: [3, 5, 8], req: [] },
+    { id: 'c_cost', branch: 'construction', name: 'Modular Kits', icon: 'cargo', row: 1, lane: 0, stat: 'buildCost', per: 0.08, fmt: '-{p}% building costs', costs: [4, 7], req: [['c_build', 1]] },
+    { id: 'c_grid', branch: 'construction', name: 'Wide Grid', icon: 'relay', row: 1, lane: 1, stat: 'linkRange', per: 1, fmt: '+{v} cells of link range', costs: [5, 9], req: [['c_armor', 1]] },
+
+    /* Fortification */
+    { id: 't_dmg', branch: 'fortification', name: 'Hardpoints', icon: 'turret', row: 0, lane: 0, stat: 'turretDmg', per: 0.15, fmt: '+{p}% turret damage', costs: [3, 5, 8, 12], req: [] },
+    { id: 't_range', branch: 'fortification', name: 'Fire Control', icon: 'crosshair', row: 0, lane: 1, stat: 'turretRange', per: 0.1, fmt: '+{p}% turret range', costs: [3, 6, 9], req: [] },
+    { id: 't_shield', branch: 'fortification', name: 'Aegis Lattice', icon: 'shield', row: 1, lane: 0, stat: 'shieldMul', per: 0.3, fmt: '+{p}% shield dome strength', costs: [5, 9], req: [['t_dmg', 1]] },
+    { id: 't_repair', branch: 'fortification', name: 'Nanite Foam', icon: 'wrench', row: 1, lane: 1, stat: 'repairMul', per: 0.4, fmt: '+{p}% repair speed', costs: [4, 7], req: [['t_range', 1]] },
+
+    /* Fleet */
+    { id: 'u_hp', branch: 'fleet', name: 'Composite Hulls', icon: 'hull', row: 0, lane: 0, stat: 'unitHp', per: 0.15, fmt: '+{p}% unit hit points', costs: [3, 5, 8], req: [] },
+    { id: 'u_dmg', branch: 'fleet', name: 'Weapon Tuning', icon: 'laser', row: 0, lane: 1, stat: 'unitDmg', per: 0.15, fmt: '+{p}% unit damage', costs: [3, 5, 8], req: [] },
+    { id: 'u_speed', branch: 'fleet', name: 'Formation Drives', icon: 'fWedge', row: 1, lane: 0, stat: 'unitSpeed', per: 0.1, fmt: '+{p}% unit speed', costs: [3, 6], req: [['u_hp', 1]] },
+    { id: 'u_cap', branch: 'fleet', name: 'Crew Quarters', icon: 'habitat', row: 1, lane: 1, stat: 'supply', per: 4, fmt: '+{v} fleet supply', costs: [4, 8], req: [['u_dmg', 1]] },
+
+    /* Biosecurity */
+    { id: 'b_vaccine', branch: 'biosecurity', name: 'Vaccine Program', icon: 'serum', row: 0, lane: 0, stat: 'vaccine', per: 0.25, fmt: '-{p}% infection spread and growth', costs: [3, 6, 10], req: [] },
+    { id: 'b_firewall', branch: 'biosecurity', name: 'Firewall Kernels', icon: 'glitch', row: 0, lane: 1, stat: 'firewall', per: 0.25, fmt: '-{p}% nanoprobe corruption', costs: [4, 7, 11], req: [] },
+    { id: 'b_scan', branch: 'biosecurity', name: 'Cargo Scanners', icon: 'scan', row: 1, lane: 0, stat: 'cargoScan', per: 1, fmt: 'Docking cargo is always scanned for spores', costs: [6], req: [['b_vaccine', 1]] },
+    { id: 'b_emp', branch: 'biosecurity', name: 'Purge Pulse', icon: 'blast', row: 1, lane: 1, stat: 'emp', per: 1, fmt: 'The hub can fire an EMP that purges corruption nearby', costs: [7], req: [['b_firewall', 1]] },
+
+    /* Industry */
+    { id: 'i_extract', branch: 'industry', name: 'Deep Drills', icon: 'drill', row: 0, lane: 0, stat: 'extract', per: 0.2, fmt: '+{p}% rig, siphon and harvester output', costs: [2, 4, 7], req: [] },
+    { id: 'i_smelt', branch: 'industry', name: 'Arc Furnaces', icon: 'refinery', row: 0, lane: 1, stat: 'process', per: 0.2, fmt: '+{p}% smelting and fabrication speed', costs: [3, 5, 8], req: [] },
+    { id: 'i_storage', branch: 'industry', name: 'Compression Racks', icon: 'compress', row: 1, lane: 0, stat: 'storageMul', per: 0.25, fmt: '+{p}% outpost storage', costs: [3, 6], req: [['i_extract', 1]] },
+    { id: 'i_power', branch: 'industry', name: 'Power Routing', icon: 'bolt', row: 1, lane: 1, stat: 'powerMul', per: 0.1, fmt: '+{p}% power output', costs: [4, 7, 10], req: [['i_smelt', 1]] },
   ];
 
   const TREE_BY_ID = {};
   for (let i = 0; i < TREE.length; ++i) TREE_BY_ID[TREE[i].id] = TREE[i];
 
   Object.assign(NS.treeData, {
-    BRANCHES, TREE, TREE_BY_ID
+    BRANCHES, PAGES, TREE, TREE_BY_ID
   });
 })();

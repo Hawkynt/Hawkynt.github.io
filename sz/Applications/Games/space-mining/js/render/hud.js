@@ -32,6 +32,7 @@
     warnings(v, run, s);
     dockArrow(v, s);
     hints(v, run);
+    if (G.base) NS.commandHud.pilotWidget(v);
     drawBanner(v);
     if (NS.touch.active()) NS.touch.draw();
     else reticle();
@@ -162,6 +163,19 @@
       if (G.rocks[i].kind !== 'rock' && G.rocks[i].known) blip(cx, cy, k, s, G.rocks[i].x, G.rocks[i].y, 4, '#e8c8ff', 0, true);
     for (let i = 0; i < G.pirates.length; ++i) blip(cx, cy, k, s, G.pirates[i].x, G.pirates[i].y, 2.6, '#ff4a4a', 0);
     for (let i = 0; i < G.drones.length; ++i) if (G.drones[i].alive) blip(cx, cy, k, s, G.drones[i].x, G.drones[i].y, 1.8, '#5cff9a', 0);
+    for (let i = 0; i < G.units.length; ++i) {
+      const u = G.units[i];
+      if (u.alive) blip(cx, cy, k, s, u.x, u.y, 1.6, u.side === 'rogue' ? '#3affd0' : '#5cff9a', 0);
+    }
+    for (let i = 0; i < G.enemies.length; ++i) {
+      const e = G.enemies[i];
+      if (e.alive && (!e.dormant || G.stats.scanner >= 1)) blip(cx, cy, k, s, e.x, e.y, e.def.boss ? 4 : e.r > 30 ? 2.8 : 2, e.dormant ? '#8a4a7a' : e.def.faction === 'lattice' ? '#3affd0' : '#ff4a4a', 0, !!e.def.boss);
+    }
+    if (G.base) {
+      const h = NS.base.hub();
+      blip(cx, cy, k, s, h ? h.x : G.base.site.cx, h ? h.y : G.base.site.cy, 3.5, h ? '#7cf0ff' : G.base.zone.theme.accent, 0, true, true);
+    }
+    if (G.distress && G.distress.state !== 'rescued') blip(cx, cy, k, s, G.distress.x, G.distress.y, 3.5, Math.sin(G.time * 6) > 0 ? '#ffd25a' : '#8a6a20', 0, true, true);
     blip(cx, cy, k, s, G.dock.x, G.dock.y, 4, UI.gold, 0, true, true);
     ctx.save();
     ctx.translate(cx, cy);
@@ -364,8 +378,9 @@
       ctx.globalAlpha = Math.max(0, a);
       ctx.font = kit.font(15, 'bold');
       const w = ctx.measureText(t.text).width + 40;
-      kit.panel((v.x0 + v.x1) / 2 - w / 2, v.y1 - 120, w, 38, { accent: t.color, radius: 8, brackets: false });
-      kit.text(t.text, (v.x0 + v.x1) / 2, v.y1 - 101, 15, t.color, { align: 'center', weight: 'bold' });
+      const ty = G.cmd.on && G.screen === 'playing' ? v.y0 + 196 : v.y1 - 120;
+      kit.panel((v.x0 + v.x1) / 2 - w / 2, ty, w, 38, { accent: t.color, radius: 8, brackets: false });
+      kit.text(t.text, (v.x0 + v.x1) / 2, ty + 19, 15, t.color, { align: 'center', weight: 'bold' });
       ctx.globalAlpha = 1;
     }
     const pops = G.ui.popups;
@@ -373,7 +388,7 @@
       const p = pops[i];
       const a = Math.min(1, p.t * 4, (4 - p.t) * 2);
       const slide = (1 - Math.min(1, p.t * 4)) * 60;
-      const x = v.x1 - 330 + slide, y = v.y1 - 90 - i * 70 - (G.screen === 'playing' ? 0 : 0);
+      const x = v.x1 - 330 + slide, y = (G.cmd.on && G.screen === 'playing' ? v.y1 - 300 : v.y1 - 90) - i * 70;
       ctx.globalAlpha = Math.max(0, a);
       kit.panel(x, y, 310, 60, { accent: UI.gold, glow: true, radius: 8 });
       kit.icon('trophy', x + 30, y + 30, 28, UI.gold);
@@ -384,6 +399,6 @@
   }
 
   Object.assign(NS.hud, {
-    draw, drawFlash, drawToast, VIEW_W, VIEW_H
+    draw, drawFlash, drawToast, drawBannerOnly: drawBanner, VIEW_W, VIEW_H
   });
 })();
