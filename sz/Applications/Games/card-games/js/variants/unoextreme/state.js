@@ -10,6 +10,7 @@
   const CANVAS_H = 600;
   const NUM_PLAYERS = 4;
   const AI_TURN_DELAY = 0.8;
+  const PLAYER_NAMES = ['You', 'AI 1', 'AI 2', 'AI 3'];
 
   const unoColors = ['red', 'blue', 'green', 'yellow'];
   const colorMap = { red: '#e33', blue: '#33e', green: '#3a3', yellow: '#ea0', wild: '#000' };
@@ -27,6 +28,7 @@
   const S = {
     hands: [],
     deck: [],
+    discard: [],
     topCard: null,
     currentPlayer: 0,
     direction: 1,
@@ -38,11 +40,14 @@
     pendingWildCard: null,
     pendingWildPlayer: -1,
     launcherAnim: 0,
+    finished: [],
+    finishOrder: null,
+    podiumPending: false,
     _ctx: null,
     _host: null,
     aiTurnTimer: 0
   };
 
-  SZ.CardGames.v['unoextreme'] = { S, CANVAS_W, CANVAS_H, NUM_PLAYERS, AI_TURN_DELAY, unoColors, colorMap, colorChoiceRects, targetChoiceRects, playerPos };
+  SZ.CardGames.v['unoextreme'] = { S, CANVAS_W, CANVAS_H, NUM_PLAYERS, PLAYER_NAMES, AI_TURN_DELAY, unoColors, colorMap, colorChoiceRects, targetChoiceRects, playerPos };
 
 })();

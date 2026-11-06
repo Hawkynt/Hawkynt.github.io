@@ -29,6 +29,7 @@
       S.roundOver = false; S.gameOver = false; S.aiTurnTimer = 0;
       S.lastPlayInfo = null; S.challengePhase = false; S.challengeResult = null;
       S.bluffMode = false; S.bluffClaimStep = 0; S.bluffCard = null;
+      SZ.CardGames.shared.sheddingPlaces.resetPlaces(S);
       S._ctx = null; S._host = null;
     },
     isRoundOver() { return S.roundOver; },

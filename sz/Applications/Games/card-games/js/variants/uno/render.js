@@ -6,7 +6,8 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['uno'];
   const S = V.S;
-  const { colorMap, COLOR_BTN_SIZE, colorChoiceRects, unoColors, COLOR_BTN_GAP, CANVAS_H, CANVAS_W, swapChoiceRects, settingsRects } = V;
+  const { colorMap, COLOR_BTN_SIZE, colorChoiceRects, unoColors, COLOR_BTN_GAP, CANVAS_H, CANVAS_W, swapChoiceRects, settingsRects, NUM_PLAYERS } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   /* ================================================================
      DRAWING HELPERS
@@ -78,8 +79,8 @@
     const btnH = 40;
     const gap = 20;
     const targets = [];
-    for (let p = 0; p < 3; ++p)
-      if (p !== S.swapChoicePlayer)
+    for (let p = 0; p < NUM_PLAYERS; ++p)
+      if (p !== S.swapChoicePlayer && !PL.isFinished(S, p))
         targets.push(p);
     const totalW = targets.length * btnW + (targets.length - 1) * gap;
     const startX = (CANVAS_W - totalW) / 2;
@@ -211,12 +212,16 @@
       if (S._host && S._host.hintsEnabled && S.unoCurrentPlayer === 0 && !S.waitingForColorChoice && !S.waitingForSwapChoice && !S.roundOver && !S.gameOver && V.canPlayUno(S.unoHands[0][i], S.unoTopCard))
         CE.drawHintGlow(S._ctx, x, 440, CE.CARD_W, CE.CARD_H, S._host.hintTime);
     }
+    PL.drawPlaceBadge(S._ctx, S, 0, 80 + CE.CARD_W / 2, 440 + CE.CARD_H / 2, 'center', 26);
     S._ctx.fillStyle = '#aaa';
     S._ctx.font = '12px sans-serif';
     for (let p = 1; p < S.unoHands.length; ++p) {
       const y = 20 + (p - 1) * 120;
+      S._ctx.fillStyle = '#aaa';
+      S._ctx.font = '12px sans-serif';
       S._ctx.textAlign = 'left';
       S._ctx.fillText('AI ' + p + ' (' + S.unoHands[p].length + ' cards)', 60, y + CE.CARD_H + 15);
+      if (PL.drawPlaceBadge(S._ctx, S, p, 60, y + CE.CARD_H * 0.3, 'left', 22)) continue;
       for (let i = 0; i < Math.min(S.unoHands[p].length, 7); ++i)
         CE.drawCardBack(S._ctx, 60 + i * 20, y, CE.CARD_W * 0.6, CE.CARD_H * 0.6);
     }
@@ -233,6 +238,7 @@
       S._ctx.textAlign = 'center';
       S._ctx.fillText('Your turn \u2014 click a card to play, or click deck to draw', CANVAS_W / 2, CANVAS_H - 15);
     }
+    PL.drawFinishedStatus(S._ctx, S, CANVAS_W / 2, CANVAS_H - 15);
 
     if (S.waitingForColorChoice)
       drawColorChoiceOverlay();

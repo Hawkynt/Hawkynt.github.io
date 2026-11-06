@@ -21,6 +21,10 @@
   const recs = new WeakMap();
   let backs = [];
   let prevBacks = [];
+  /* faces drawn last frame by look and place: variants that build fresh card
+     objects every frame must not restart the "new card" pop each time */
+  let faces = new Set();
+  let prevFaces = new Set();
   let dealIndex = 0;
   let dealFrame = -1;
 
@@ -29,6 +33,10 @@
     ++M.frame;
     prevBacks = backs;
     backs = [];
+    const f = prevFaces;
+    prevFaces = faces;
+    faces = f;
+    faces.clear();
     if (M.dealArmed) {
       M.dealArmed = false;
       dealFrame = M.frame;
@@ -73,6 +81,13 @@
 
     let r = recs.get(card);
     const t = M.time;
+    const look = card.rank + '|' + card.suit + '|' + card.color + '|' + card.value + '|' + Math.round(x) + '|' + Math.round(y);
+    if (faces.size < 4000) faces.add(look);
+    if (!r && prevFaces.has(look)) {
+      r = { tx: x, ty: y, dx: x, dy: y, seen: M.frame, anim: null, flipT: -1, popT: -1 };
+      recs.set(card, r);
+      return OUT;
+    }
     if (!r) {
       r = { tx: x, ty: y, dx: x, dy: y, seen: M.frame, anim: null, flipT: -1, popT: -1 };
       recs.set(card, r);

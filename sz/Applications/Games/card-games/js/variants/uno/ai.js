@@ -5,7 +5,8 @@
   const SZ = window.SZ;
   const V = SZ.CardGames.v['uno'];
   const S = V.S;
-  const { AI_TURN_DELAY, CANVAS_W } = V;
+  const { AI_TURN_DELAY, CANVAS_W, NUM_PLAYERS } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function unoAiTurn() {
     if (S.roundOver || S.gameOver || S.waitingForColorChoice || S.waitingForSwapChoice) return;
@@ -23,7 +24,7 @@
       }
       // Can't stack: draw
       V.applyDrawStack(S.unoCurrentPlayer);
-      S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
+      S.unoCurrentPlayer = V.nextSeat(S.unoCurrentPlayer);
       return;
     }
 
@@ -34,9 +35,9 @@
         return;
       }
     }
-    if (S.unoDeck.length > 0)
-      hand.push(S.unoDeck.pop());
-    S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
+    const drawn = V.drawUnoCard();
+    if (drawn) hand.push(drawn);
+    S.unoCurrentPlayer = V.nextSeat(S.unoCurrentPlayer);
   }
 
   function tick(dt) {
@@ -44,8 +45,8 @@
 
     // Jump-in check for AI players (even when it's not their turn)
     if (S.houseRules.jumpIn && S.unoTopCard && S.unoCurrentPlayer !== 0) {
-      for (let p = 1; p < 3; ++p) {
-        if (p === S.unoCurrentPlayer) continue;
+      for (let p = 1; p < NUM_PLAYERS; ++p) {
+        if (p === S.unoCurrentPlayer || PL.isFinished(S, p)) continue;
         for (let i = 0; i < S.unoHands[p].length; ++i) {
           const c = S.unoHands[p][i];
           if (c.color === S.unoTopCard.color && c.value === S.unoTopCard.value && c.color !== 'wild' && Math.random() < 0.3) {
@@ -65,13 +66,13 @@
 
     if (S.unoCurrentPlayer !== 0) {
       S.aiTurnTimer += dt;
-      if (S.aiTurnTimer >= AI_TURN_DELAY) {
+      if (S.aiTurnTimer >= PL.aiDelay(S, AI_TURN_DELAY)) {
         S.aiTurnTimer = 0;
         unoAiTurn();
       }
     }
   }
 
-  Object.assign(V, { tick });
+  Object.assign(V, { tick, aiTurn: unoAiTurn });
 
 })();

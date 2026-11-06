@@ -111,7 +111,7 @@
           S.pointerStartX = px;
           S.pointerStartY = py;
           if (S._canvas)
-            S._canvas.setPointerCapture(getLastPointerId());
+            try { S._canvas.setPointerCapture(getLastPointerId()); } catch (_) {}
         }
         return;
       }
@@ -153,7 +153,7 @@
         S.pointerStartX = px;
         S.pointerStartY = py;
         if (S._canvas)
-          S._canvas.setPointerCapture(getLastPointerId());
+          try { S._canvas.setPointerCapture(getLastPointerId()); } catch (_) {}
         return;
       }
 
@@ -249,7 +249,7 @@
   };
 
   function getLastPointerId() {
-    return S._lastPointerId;
+    return S._canvas && S._canvas.szPointerId != null ? S._canvas.szPointerId : S._lastPointerId;
   }
 
   const origSetup = module.setup;

@@ -6,7 +6,37 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['uno'];
   const S = V.S;
-  const { unoColors, CANVAS_W, CANVAS_H } = V;
+  const { unoColors, CANVAS_W, CANVAS_H, NUM_PLAYERS, PLAYER_NAMES } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
+
+  /* next seat in play direction that has not finished yet */
+  function nextSeat(from) {
+    return PL.nextActive(S, from, S.unoDirection, NUM_PLAYERS);
+  }
+
+  /* played cards go back into the deck once it runs dry, so a long round
+     that is played out for the places cannot run out of cards */
+  function discardTop() {
+    if (!S.unoTopCard) return;
+    if (S.unoTopCard.type === 'wild') S.unoTopCard.color = 'wild';
+    S.unoDiscard.push(S.unoTopCard);
+  }
+
+  function drawUnoCard() {
+    if (S.unoDeck.length === 0 && S.unoDiscard.length > 0) {
+      S.unoDeck = CE.shuffle(S.unoDiscard);
+      S.unoDiscard = [];
+    }
+    return S.unoDeck.length > 0 ? S.unoDeck.pop() : null;
+  }
+
+  function drawInto(playerIndex, count) {
+    for (let i = 0; i < count; ++i) {
+      const c = drawUnoCard();
+      if (!c) break;
+      S.unoHands[playerIndex].push(c);
+    }
+  }
 
   /* -- Persistence -- */
   function loadHouseRules() {
@@ -81,8 +111,7 @@
 
   function applyDrawStack(nextPlayer) {
     if (S.drawStack > 0) {
-      for (let i = 0; i < S.drawStack && S.unoDeck.length > 0; ++i)
-        S.unoHands[nextPlayer].push(S.unoDeck.pop());
+      drawInto(nextPlayer, S.drawStack);
       if (S._host)
         S._host.floatingText.add(CANVAS_W / 2, 200, 'Draw ' + S.drawStack + '!', { color: '#f88', size: 18 });
       S.drawStack = 0;
@@ -92,42 +121,45 @@
   function finishWildPlay(card, playerIndex, chosenColor) {
     card.color = chosenColor;
     if (card.value === 'Wild Draw Four') {
-      const next = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
       if (S.houseRules.stackPlus4 || S.houseRules.noMercy)
         S.drawStack += 4;
-      else {
-        for (let i = 0; i < 4 && S.unoDeck.length > 0; ++i)
-          S.unoHands[next].push(S.unoDeck.pop());
-      }
+      else
+        drawInto(nextSeat(S.unoCurrentPlayer), 4);
     }
     checkWin(playerIndex);
   }
 
-  function checkWin(playerIndex) {
-    const hand = S.unoHands[playerIndex];
-    if (hand.length === 0) {
+  /* the round's winner is the first player out; scored once the podium is gone */
+  function settleRound(winner) {
+    if (S._host) {
+      S._host.floatingText.add(CANVAS_W / 2, 300,
+        winner === 0 ? 'YOU WIN!' : PLAYER_NAMES[winner] + ' WINS',
+        { color: winner === 0 ? '#4f4' : '#f44', size: 28 });
+    }
+    if (winner === 0) {
+      S.score += 50;
       if (S._host) {
-        S._host.floatingText.add(CANVAS_W / 2, 300,
-          playerIndex === 0 ? 'YOU WIN!' : 'AI ' + playerIndex + ' WINS',
-          { color: playerIndex === 0 ? '#4f4' : '#f44', size: 28 });
+        S._host.addGlow(60, 420, S.unoHands[0].length * 55 + CE.CARD_W, CE.CARD_H, 2);
+        S._host.triggerChipSparkle(CANVAS_W / 2, CANVAS_H - 60);
       }
-      if (playerIndex === 0) {
-        S.score += 50;
-        if (S._host) {
-          S._host.addGlow(60, 420, S.unoHands[0].length * 55 + CE.CARD_W, CE.CARD_H, 2);
-          S._host.triggerChipSparkle(CANVAS_W / 2, CANVAS_H - 60);
-        }
-      }
-      S.roundOver = true;
-      if (S._host) S._host.onScoreChanged(S.score);
+    }
+    if (S._host) S._host.onScoreChanged(S.score);
+  }
+
+  /* a player with an empty hand is out; returns true when that ends the round */
+  function checkWin(playerIndex) {
+    if (S.roundOver) return true;
+    if (PL.recordFinish(S, playerIndex, S.unoHands[playerIndex], NUM_PLAYERS, PLAYER_NAMES[playerIndex], CANVAS_W / 2, 300)) {
+      S.drawStack = 0;
+      PL.presentPodium(S, S.unoHands, NUM_PLAYERS, PLAYER_NAMES, null, settleRound);
       return true;
     }
-    S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
+    S.unoCurrentPlayer = nextSeat(S.unoCurrentPlayer);
 
     // If next player must draw from stack and can't counter
     if (S.drawStack > 0 && !S.houseRules.stackPlus4 && !S.houseRules.stackPlus2 && !S.houseRules.noMercy) {
       applyDrawStack(S.unoCurrentPlayer);
-      S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
+      S.unoCurrentPlayer = nextSeat(S.unoCurrentPlayer);
     }
     return false;
   }
@@ -139,6 +171,7 @@
     const card = hand[cardIndex];
     if (!canPlayUno(card, S.unoTopCard)) return false;
     hand.splice(cardIndex, 1);
+    discardTop();
     S.unoTopCard = card;
 
     if (card.type === 'wild') {
@@ -162,33 +195,29 @@
     }
 
     if (card.value === 'Skip')
-      S.unoCurrentPlayer = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
+      S.unoCurrentPlayer = nextSeat(S.unoCurrentPlayer);
     else if (card.value === 'Reverse')
       S.unoDirection = -S.unoDirection;
     else if (card.value === 'Draw Two') {
       if (S.houseRules.stackPlus2 || S.houseRules.noMercy)
         S.drawStack += 2;
-      else {
-        const next = (S.unoCurrentPlayer + S.unoDirection + 3) % 3;
-        for (let i = 0; i < 2 && S.unoDeck.length > 0; ++i)
-          S.unoHands[next].push(S.unoDeck.pop());
-      }
+      else
+        drawInto(nextSeat(S.unoCurrentPlayer), 2);
     } else if (card.value === 'Draw Six') {
       S.drawStack += 6;
     } else if (card.value === 'Draw Ten') {
       S.drawStack += 10;
-    } else if (card.value === '0' && S.houseRules.zeroRotate) {
-      // Rotate all hands in direction of play
-      if (S.unoDirection === 1) {
-        const last = S.unoHands.pop();
-        S.unoHands.unshift(last);
-      } else {
-        const first = S.unoHands.shift();
-        S.unoHands.push(first);
-      }
+    } else if (card.value === '0' && S.houseRules.zeroRotate && hand.length > 0) {
+      // Rotate the hands of everybody still playing in direction of play
+      const seats = [];
+      for (let p = 0; p < NUM_PLAYERS; ++p)
+        if (!PL.isFinished(S, p)) seats.push(p);
+      const moved = seats.map(p => S.unoHands[p]);
+      for (let i = 0; i < seats.length; ++i)
+        S.unoHands[seats[((i + S.unoDirection) % seats.length + seats.length) % seats.length]] = moved[i];
       if (S._host)
         S._host.floatingText.add(CANVAS_W / 2, 200, 'Hands rotated!', { color: '#ff0', size: 16 });
-    } else if (card.value === '7' && S.houseRules.sevenSwap) {
+    } else if (card.value === '7' && S.houseRules.sevenSwap && hand.length > 0) {
       if (playerIndex === 0) {
         S.waitingForSwapChoice = true;
         S.swapChoicePlayer = playerIndex;
@@ -197,8 +226,8 @@
       // AI: swap with opponent who has the most cards
       let target = -1;
       let maxCards = -1;
-      for (let p = 0; p < 3; ++p) {
-        if (p !== playerIndex && S.unoHands[p].length > maxCards) {
+      for (let p = 0; p < NUM_PLAYERS; ++p) {
+        if (p !== playerIndex && !PL.isFinished(S, p) && S.unoHands[p].length > maxCards) {
           maxCards = S.unoHands[p].length;
           target = p;
         }
@@ -223,7 +252,9 @@
   function setupUno() {
     loadHouseRules();
     S.unoDeck = CE.shuffle(createUnoDeck());
+    S.unoDiscard = [];
     S.unoHands = [[], [], []];
+    PL.resetPlaces(S);
     S.unoCurrentPlayer = 0;
     S.unoDirection = 1;
     S.roundOver = false;
@@ -249,6 +280,6 @@
     }
   }
 
-  Object.assign(V, { unoPlayCard, canPlayUno, applyDrawStack, finishWildPlay, checkWin, saveHouseRules, setupUno });
+  Object.assign(V, { nextSeat, drawUnoCard, unoPlayCard, canPlayUno, applyDrawStack, finishWildPlay, checkWin, saveHouseRules, setupUno });
 
 })();

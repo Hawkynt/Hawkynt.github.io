@@ -47,6 +47,8 @@
       S.pendingWildPlayer = -1;
       S.swapChoicePlayer = -1;
       S.drawStack = 0;
+      S.unoDiscard = [];
+      SZ.CardGames.shared.sheddingPlaces.resetPlaces(S);
       S.showingSettings = false;
       S.aiTurnTimer = 0;
       S._ctx = null;

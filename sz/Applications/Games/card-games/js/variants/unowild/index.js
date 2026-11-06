@@ -48,6 +48,7 @@
       S.targetSourcePlayer = -1;
       S.targetCard = null;
       S.gapSourcePlayer = -1;
+      SZ.CardGames.shared.sheddingPlaces.resetPlaces(S);
       S._ctx = null;
       S._host = null;
     },

@@ -50,6 +50,9 @@
     tradeChoiceActive: false,
     pendingWildIndex: -1,
     pendingTradeType: '',
+    finished: [],
+    finishOrder: null,
+    podiumPending: false,
     _ctx: null,
     _host: null,
     aiTurnTimer: 0

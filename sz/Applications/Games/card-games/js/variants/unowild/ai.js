@@ -6,6 +6,7 @@
   const V = SZ.CardGames.v['unowild'];
   const S = V.S;
   const { PLAYER_NAMES, CANVAS_W, AI_TURN_DELAY } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function aiChooseCard(playerIdx) {
     const hand = S.hands[playerIdx];
@@ -73,13 +74,13 @@
 
     if (S.currentPlayer !== 0) {
       S.aiTurnTimer += dt;
-      if (S.aiTurnTimer >= AI_TURN_DELAY) {
+      if (S.aiTurnTimer >= PL.aiDelay(S, AI_TURN_DELAY)) {
         S.aiTurnTimer = 0;
         aiTurn();
       }
     }
   }
 
-  Object.assign(V, { tick });
+  Object.assign(V, { tick, aiTurn });
 
 })();

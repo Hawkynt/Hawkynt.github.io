@@ -7,6 +7,7 @@
   const V = SZ.CardGames.v['unowild'];
   const S = V.S;
   const { CARD_DEFS, NUM_PLAYERS, CANVAS_W, PLAYER_NAMES, CANVAS_H, HAND_SIZE } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function createDeck() {
     const d = [];
@@ -33,7 +34,7 @@
     let bestP = -1;
     let fewest = Infinity;
     for (let p = 0; p < NUM_PLAYERS; ++p) {
-      if (p === excludePlayer) continue;
+      if (p === excludePlayer || PL.isFinished(S, p)) continue;
       if (S.hands[p].length < fewest) {
         fewest = S.hands[p].length;
         bestP = p;
@@ -42,8 +43,9 @@
     return bestP;
   }
 
+  /* finished players have left the turn order */
   function nextPlayer(from) {
-    return ((from + S.direction) % NUM_PLAYERS + NUM_PLAYERS) % NUM_PLAYERS;
+    return PL.nextActive(S, from, S.direction, NUM_PLAYERS);
   }
 
   function advancePlayer() {
@@ -105,6 +107,11 @@
 
       case 'Wild Forced Swap': {
         if (checkWin(playerIdx)) break;
+        // A player who just went out has no hand left to swap
+        if (PL.isFinished(S, playerIdx)) {
+          advancePlayer();
+          break;
+        }
         if (playerIdx === 0) {
           S.waitingForTargetChoice = true;
           S.targetAction = 'swap';
@@ -178,17 +185,23 @@
       S.currentPlayer = nextPlayer(S.currentPlayer);
   }
 
+  /* an empty hand takes the player out; true once that has ended the round */
   function checkWin(playerIdx) {
-    if (S.hands[playerIdx].length > 0) return false;
+    if (S.roundOver) return true;
+    if (!PL.recordFinish(S, playerIdx, S.hands[playerIdx], NUM_PLAYERS, PLAYER_NAMES[playerIdx], CANVAS_W / 2, 300)) return false;
+    PL.presentPodium(S, S.hands, NUM_PLAYERS, PLAYER_NAMES, null, settleRound);
+    return true;
+  }
 
-    S.roundOver = true;
+  /* the first player out scores 10 per card still held at round end */
+  function settleRound(winner) {
     if (S._host) {
-      const label = playerIdx === 0 ? 'YOU WIN!' : PLAYER_NAMES[playerIdx] + ' WINS!';
-      const color = playerIdx === 0 ? '#4f4' : '#f44';
+      const label = winner === 0 ? 'YOU WIN!' : PLAYER_NAMES[winner] + ' WINS!';
+      const color = winner === 0 ? '#4f4' : '#f44';
       S._host.floatingText.add(CANVAS_W / 2, 300, label, { color: color, size: 28 });
     }
 
-    if (playerIdx === 0) {
+    if (winner === 0) {
       let pts = 0;
       for (let p = 1; p < NUM_PLAYERS; ++p)
         pts += S.hands[p].length * 10;
@@ -200,7 +213,6 @@
     }
 
     if (S._host) S._host.onScoreChanged(S.score);
-    return true;
   }
 
   function setupGame() {
@@ -219,6 +231,7 @@
     S.targetSourcePlayer = -1;
     S.targetCard = null;
     S.gapSourcePlayer = -1;
+    PL.resetPlaces(S);
 
     for (let p = 0; p < NUM_PLAYERS; ++p)
       for (let i = 0; i < HAND_SIZE; ++i)

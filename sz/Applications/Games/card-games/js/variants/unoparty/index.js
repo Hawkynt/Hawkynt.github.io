@@ -7,6 +7,7 @@
   const S = V.S;
   const { AI_TURN_DELAY } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   const module = {
     setup(ctx, canvas, W, H, host) {
@@ -24,7 +25,7 @@
       if (S.roundOver || S.gameOver || S.colorChoiceActive || S.tradeChoiceActive) return;
       if (S.currentPlayer !== 0) {
         S.aiTurnTimer += dt;
-        if (S.aiTurnTimer >= AI_TURN_DELAY) { S.aiTurnTimer = 0; V.aiTurn(); }
+        if (S.aiTurnTimer >= PL.aiDelay(S, AI_TURN_DELAY)) { S.aiTurnTimer = 0; V.aiTurn(); }
       }
     },
     sortPlayerHand() { SH.sortColorHand(S.hands[0]); },
@@ -34,6 +35,7 @@
       S.roundOver = false; S.gameOver = false; S.aiTurnTimer = 0;
       S.colorChoiceActive = false; S.tradeChoiceActive = false;
       S.pendingWildIndex = -1;
+      PL.resetPlaces(S);
       S._ctx = null; S._host = null;
     },
     isRoundOver() { return S.roundOver; },

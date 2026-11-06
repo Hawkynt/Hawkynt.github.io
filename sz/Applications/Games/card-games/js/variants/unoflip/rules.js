@@ -6,8 +6,9 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['unoflip'];
   const S = V.S;
-  const { DARK_COLORS, LIGHT_COLORS, NUM_PLAYERS, CANVAS_W, CANVAS_H, INITIAL_HAND } = V;
+  const { DARK_COLORS, LIGHT_COLORS, NUM_PLAYERS, PLAYER_NAMES, CANVAS_W, CANVAS_H, INITIAL_HAND } = V;
   const SH = SZ.CardGames.shared.sheddingHand;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function getColor(card) { return S.activeSide === 'light' ? card.lightColor : card.darkColor; }
   function getValue(card) { return S.activeSide === 'light' ? card.lightValue : card.darkValue; }
@@ -62,8 +63,13 @@
     return false;
   }
 
+  /* finished players have left the turn order */
+  function nextSeat(from) {
+    return PL.nextActive(S, from, S.direction, NUM_PLAYERS);
+  }
+
   function nextPlayer() {
-    S.currentPlayer = (S.currentPlayer + S.direction + NUM_PLAYERS) % NUM_PLAYERS;
+    S.currentPlayer = nextSeat(S.currentPlayer);
   }
 
   function flipAll() {
@@ -76,10 +82,9 @@
       S._host.floatingText.add(CANVAS_W / 2, 200, 'FLIP! Now ' + S.activeSide.toUpperCase() + ' side', { color: '#ff0', size: 20 });
   }
 
-  function checkWin(playerIndex) {
-    if (S.hands[playerIndex].length > 0) return false;
-    S.roundOver = true;
-    if (playerIndex === 0) {
+  /* the first player out wins the points of every card still held at round end */
+  function settleRound(winner) {
+    if (winner === 0) {
       let pts = 0;
       for (let p = 1; p < NUM_PLAYERS; ++p)
         for (const c of S.hands[p])
@@ -92,10 +97,19 @@
       }
     } else {
       if (S._host) {
-        S._host.floatingText.add(CANVAS_W / 2, 300, 'AI ' + playerIndex + ' WINS', { color: '#f44', size: 28 });
+        S._host.floatingText.add(CANVAS_W / 2, 300, PLAYER_NAMES[winner] + ' WINS', { color: '#f44', size: 28 });
         S._host.onScoreChanged(S.score);
       }
     }
+  }
+
+  /* an empty hand takes the player out; true once that has ended the round */
+  function checkWin(playerIndex) {
+    if (S.roundOver) return true;
+    if (!PL.recordFinish(S, playerIndex, S.hands[playerIndex], NUM_PLAYERS, PLAYER_NAMES[playerIndex], CANVAS_W / 2, 300)) return false;
+    S.drawPending = 0;
+    S.skipPending = false;
+    PL.presentPodium(S, S.hands, NUM_PLAYERS, PLAYER_NAMES, cardPoints, settleRound);
     return true;
   }
 
@@ -133,7 +147,7 @@
       // We'll just not call nextPlayer below
       S.skipPending = true;
     } else if (v === 'Reverse') {
-      if (NUM_PLAYERS === 2)
+      if (PL.activeCount(S, NUM_PLAYERS) === 2)
         nextPlayer(); // acts as skip in 2-player
       else
         S.direction = -S.direction;
@@ -146,7 +160,7 @@
     } else if (v === 'Wild Draw Color') {
       // next player draws until they get a card of chosen color
       // We'll handle this as a special draw
-      const target = (S.currentPlayer + S.direction + NUM_PLAYERS) % NUM_PLAYERS;
+      const target = nextSeat(S.currentPlayer);
       let drawn = 0;
       for (let i = 0; i < 20; ++i) {
         SH.refillDeck(S);
@@ -173,6 +187,8 @@
       S._host.floatingText.add(CANVAS_W / 2, 350, 'UNO!', { color: '#0ff', size: 24 });
 
     if (checkWin(playerIndex)) return true;
+    // A player who just went out cannot go again after Skip Everyone
+    if (PL.isFinished(S, playerIndex)) S.skipPending = false;
 
     if (S.skipPending) {
       S.skipPending = false;
@@ -224,6 +240,7 @@
     S.direction = 1;
     S.drawPending = 0;
     S.skipPending = false;
+    PL.resetPlaces(S);
     S.roundOver = false;
     S.gameOver = false;
     S.colorChoiceActive = false;
@@ -253,6 +270,6 @@
     });
   }
 
-  Object.assign(V, { getValue, otherSideColor, getColor, nextPlayer, playCard, getType, canPlay, getColorChoices, sortHand, setupGame });
+  Object.assign(V, { getValue, otherSideColor, getColor, nextPlayer, nextSeat, cardPoints, playCard, getType, canPlay, getColorChoices, sortHand, setupGame });
 
 })();

@@ -6,6 +6,7 @@
   const CE = SZ.CardEngine;
   const V = SZ.CardGames.v['unowild'];
   const S = V.S;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
   const { CANVAS_W, CANVAS_H, rainbowColors, targetChoiceRects, PLAYER_NAMES, NUM_PLAYERS, gapChoiceRects, AI_HAND_POSITIONS, DRAW_PILE_Y, DRAW_PILE_X, DISCARD_Y, DISCARD_X } = V;
 
   function playerCardX(idx, total) {
@@ -67,7 +68,7 @@
 
     const targets = [];
     for (let p = 1; p < NUM_PLAYERS; ++p)
-      targets.push(p);
+      if (!PL.isFinished(S, p)) targets.push(p);
 
     const totalW = targets.length * btnW + (targets.length - 1) * gap;
     const startX = (CANVAS_W - totalW) / 2;
@@ -172,6 +173,7 @@
   function drawPlayerHand() {
     const hand = S.hands[0];
     const total = hand.length;
+    if (PL.drawPlaceBadge(S._ctx, S, 0, CANVAS_W / 2, playerCardY() + CE.CARD_H / 2, 'center', 26)) return;
     if (total === 0) return;
 
     for (let i = 0; i < total; ++i) {
@@ -205,6 +207,7 @@
       if (pos.dir === 'vertical') {
         const labelX = p === 1 ? pos.x : pos.x - 10;
         S._ctx.fillText(PLAYER_NAMES[p] + ' (' + count + ')', labelX, pos.y - 16);
+        if (PL.drawPlaceBadge(S._ctx, S, p, pos.x + CE.CARD_W * 0.275, pos.y + 30, 'center', 22)) continue;
         for (let i = 0; i < Math.min(count, 10); ++i) {
           const cy = pos.y + i * 16;
           CE.drawCardBack(S._ctx, pos.x, cy, CE.CARD_W * 0.55, CE.CARD_H * 0.55);
@@ -216,6 +219,7 @@
         }
       } else {
         S._ctx.fillText(PLAYER_NAMES[p] + ' (' + count + ')', pos.x, pos.y - 2);
+        if (PL.drawPlaceBadge(S._ctx, S, p, pos.x, pos.y + 14 + CE.CARD_H * 0.275, 'left', 22)) continue;
         for (let i = 0; i < Math.min(count, 14); ++i) {
           const cx = pos.x + i * 22;
           CE.drawCardBack(S._ctx, cx, pos.y + 14, CE.CARD_W * 0.55, CE.CARD_H * 0.55);
@@ -250,6 +254,8 @@
       S._ctx.textAlign = 'center';
       S._ctx.fillText('Your turn \u2014 click a card to play, or click deck to draw', CANVAS_W / 2, CANVAS_H - 8);
     }
+
+    PL.drawFinishedStatus(S._ctx, S, CANVAS_W / 2, CANVAS_H - 8);
 
     if (S.roundOver) {
       S._ctx.fillStyle = '#ff0';

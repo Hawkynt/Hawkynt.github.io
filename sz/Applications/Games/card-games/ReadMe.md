@@ -1,6 +1,6 @@
 # Card Games Suite
 
-A collection of 72 card game variants with AI opponents on one living card table: illustrated cards that glide, flip and fly in when dealt, a lobby with a featured game of the day, cinematics, and a player profile with levels, trophies and earnable tables and card backs. Everything runs inside the SynthelicZ Desktop WebOS and keeps the rules of every game untouched -- the motivation layer only celebrates, it never changes what a card does.
+A collection of 72 card game variants with AI opponents on one living card table: illustrated cards that glide, flip and fly in when dealt, a lobby with a featured game of the day, cinematics, and a player profile with levels, trophies and earnable tables and card backs. Everything runs inside the »SynthelicZ« Desktop WebOS and keeps the rules of every game untouched -- the motivation layer only celebrates, it never changes what a card does.
 
 ## How It Works
 
@@ -97,6 +97,7 @@ Each variant lives in its own folder, split by concern (state, rules, flow, AI, 
 - [x] As a player, I can play Liar's Uno playing face-down cards and bluffing, with "Liar!" challenges (caught lying = pick up pile, wrong challenge = draw 4)
 - [x] As a player, I can play Uno Extreme with random card launcher replacing manual drawing (0-3 cards per press) and Extreme Hit cards
 - [x] As a player, I can play Uno Party (6 players, 224-card double deck) with special Party Wilds: Everyone Draw, Trade Hands, Discard All, Pick Color
+- [x] As a player, I can play every Uno-style round out for the places: finished players leave the turn order, the others play on (faster once I am out) until the top three are decided, and a Siegertreppchen cinematic shows gold, silver and bronze with podium experience for 2nd and 3rd
 - [x] As a player, I can play Dos with dual discard piles, single or two-card combo number matching, and color match bonuses
 - [x] As a player, I can play ONO 99 with a running total, busting at 99, and special cards (Hold, Reverse, Double Play, Minus-10)
 - [x] As a player, I can play 8-Color Duo with 8 colors (Red, Blue, Green, Yellow, Purple, Orange, Pink, Teal), 114 cards, and 8-color wild choice overlay
@@ -214,7 +215,7 @@ Plain browser JavaScript, IIFE modules on `SZ.CardEngine`, `SZ.CardThemes` and `
 - `js/variants/<id>/` -- one folder per game, split by concern: `state.js` (constants and the one state object on `SZ.CardGames.v.<id>`), `rules.js`, `flow.js` / `game.js` (dealing, turns, round end), `ai.js`, `layout.js` / `anim.js` (solitaires), `render.js`, `input.js`, and `index.js` (the module object and `registerVariant`)
 - `js/variants/_shared/` -- family helpers: solitaire fallback drawing, casino chips, quick-game piles and hands, shedding hand sorting and drawing, trick-taking rules and paint, rummy cards and melds, European card and layout helpers
 - `js/app.js` -- loaded last: the frame loop, profile events and start-up
-- `tests/` -- `harness.js` replays the real script list in a sandboxed browser stub and streams every observable effect into a digest; `boot.test.js` pins a lobby-to-table session; `variants.test.js` pins a seeded session per variant (`variants-baseline.json`); `doppelkopf.test.js` checks the Doppelkopf rules
+- `tests/` -- `podium.test.js` drives all six Uno-style games seat by seat and checks the finishing order, skipped finishers and the single podium per round; `harness.js` replays the real script list in a sandboxed browser stub and streams every observable effect into a digest; `boot.test.js` pins a lobby-to-table session; `variants.test.js` pins a seeded session per variant (`variants-baseline.json`); `doppelkopf.test.js` checks the Doppelkopf rules
 - `styles.css`, `icon.svg` -- layout and desktop icon
 
 ### Planned Features

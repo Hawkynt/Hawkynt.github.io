@@ -72,10 +72,11 @@
     cx.fillStyle = rule;
     if (typeof emblem === 'function') emblem(cx, mx, my, s);
     else {
-      cx.font = 'bold ' + (12 * s).toFixed(1) + 'px Georgia, serif';
+      const text = emblem || '\u00BBSZ\u00AB';
+      cx.font = 'bold ' + ((text.length > 2 ? 9.5 : 12) * s).toFixed(1) + 'px Georgia, serif';
       cx.textAlign = 'center';
       cx.textBaseline = 'middle';
-      cx.fillText(emblem || 'SZ', mx, my + 0.5 * s);
+      cx.fillText(text, mx, my + 0.5 * s);
     }
   }
 

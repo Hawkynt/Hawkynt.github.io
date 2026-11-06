@@ -7,6 +7,7 @@
   const V = SZ.CardGames.v['liarsuno'];
   const S = V.S;
   const { COLOR_MAP, CANVAS_W, UNO_COLORS, CANVAS_H, CHALLENGE_WINDOW, playerPos, NUM_PLAYERS } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function cardLabel(card) {
     if (card.value === 'Skip') return '\u00D8';
@@ -94,6 +95,8 @@
         CE.drawHintGlow(S._ctx, x, 440, CE.CARD_W, CE.CARD_H, S._host.hintTime);
     }
 
+    PL.drawPlaceBadge(S._ctx, S, 0, 140 + CE.CARD_W / 2, 440 + CE.CARD_H / 2, 'center', 26);
+
     // AI hands
     for (let p = 1; p < NUM_PLAYERS; ++p) {
       const pp = playerPos[p];
@@ -101,6 +104,7 @@
       S._ctx.font = '12px sans-serif';
       S._ctx.textAlign = 'center';
       S._ctx.fillText(pp.label + ' (' + S.hands[p].length + ')', pp.x, pp.y - 10);
+      if (PL.drawPlaceBadge(S._ctx, S, p, pp.x, pp.y + 4 + CE.CARD_H * 0.25, 'center', 22)) continue;
       for (let i = 0; i < Math.min(S.hands[p].length, 7); ++i)
         CE.drawCardBack(S._ctx, pp.x - 30 + i * 14, pp.y + 4, CE.CARD_W * 0.5, CE.CARD_H * 0.5);
     }
@@ -118,7 +122,7 @@
     }
 
     // Challenge button during challenge phase (for human)
-    if (S.challengePhase && S.lastPlayInfo && S.lastPlayInfo.player !== 0 && S.lastPlayInfo.faceDown) {
+    if (S.challengePhase && S.lastPlayInfo && S.lastPlayInfo.player !== 0 && S.lastPlayInfo.faceDown && !PL.isFinished(S, 0)) {
       CE.drawButton(S._ctx, CANVAS_W / 2 - 40, 345, 80, 30, 'Liar!', { bg: '#a22', border: '#ff0', fontSize: 14 });
       S._ctx.fillStyle = '#aaa';
       S._ctx.font = '10px sans-serif';
@@ -145,6 +149,8 @@
       else
         S._ctx.fillText('Click a card to play honestly, or click Bluff to enable bluffing', CANVAS_W / 2, CANVAS_H - 12);
     }
+
+    PL.drawFinishedStatus(S._ctx, S, CANVAS_W / 2, CANVAS_H - 12);
 
     // Bluff claim overlay
     if (S.bluffClaimStep > 0)

@@ -7,6 +7,7 @@
   const V = SZ.CardGames.v['unoextreme'];
   const S = V.S;
   const { colorMap, colorChoiceRects, unoColors, CANVAS_H, CANVAS_W, targetChoiceRects, NUM_PLAYERS, playerPos } = V;
+  const PL = SZ.CardGames.shared.sheddingPlaces;
 
   function drawExtremeCard(x, y, w, h, card) {
     const isWild = (card.type === 'wild' || card.type === 'extreme') && card.color === 'wild';
@@ -57,7 +58,7 @@
     targetChoiceRects.length = 0;
     const targets = [];
     for (let p = 0; p < NUM_PLAYERS; ++p)
-      if (p !== S.pendingWildPlayer) targets.push(p);
+      if (p !== S.pendingWildPlayer && !PL.isFinished(S, p)) targets.push(p);
     const btnW = 110, gap = 15;
     const totalW = targets.length * btnW + (targets.length - 1) * gap;
     const startX = (CANVAS_W - totalW) / 2;
@@ -118,6 +119,8 @@
         CE.drawHintGlow(S._ctx, 80 + i * 55, 440, CE.CARD_W, CE.CARD_H, S._host.hintTime);
     }
 
+    PL.drawPlaceBadge(S._ctx, S, 0, 80 + CE.CARD_W / 2, 440 + CE.CARD_H / 2, 'center', 26);
+
     // AI hands
     for (let p = 1; p < NUM_PLAYERS; ++p) {
       const pp = playerPos[p];
@@ -125,6 +128,7 @@
       S._ctx.font = '12px sans-serif';
       S._ctx.textAlign = 'center';
       S._ctx.fillText(pp.label + ' (' + S.hands[p].length + ')', pp.x, pp.y - 8);
+      if (PL.drawPlaceBadge(S._ctx, S, p, pp.x, pp.y + 4 + CE.CARD_H * 0.275, 'center', 22)) continue;
       for (let i = 0; i < Math.min(S.hands[p].length, 7); ++i)
         CE.drawCardBack(S._ctx, pp.x - 30 + i * 18, pp.y + 4, CE.CARD_W * 0.55, CE.CARD_H * 0.55);
     }
@@ -141,6 +145,8 @@
       S._ctx.textAlign = 'center';
       S._ctx.fillText('Your turn \u2014 play a card or click Launcher', CANVAS_W / 2, CANVAS_H - 15);
     }
+
+    PL.drawFinishedStatus(S._ctx, S, CANVAS_W / 2, CANVAS_H - 15);
 
     if (S.waitingForColorChoice) drawColorChoiceOverlay();
     if (S.waitingForTargetChoice) drawTargetChoiceOverlay();
