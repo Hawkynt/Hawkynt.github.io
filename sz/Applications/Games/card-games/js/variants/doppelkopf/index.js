@@ -1,3 +1,4 @@
+/* Doppelkopf - deal, follow-suit play, AI turns, drawing and the module interface. */
 ;(function() {
   'use strict';
 
