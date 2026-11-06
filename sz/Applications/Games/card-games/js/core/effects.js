@@ -14,7 +14,7 @@
 
   E.particles = new SZ.GameEffects.ParticleSystem();
   E.screenShake = new SZ.GameEffects.ScreenShake();
-  E.floatingText = new SZ.GameEffects.FloatingText();
+  E.floatingText = new NS.Floaters();
 
   /* ══════════════════════════════════════════════════════════════════
      SOUND (generic: derived from what the variants show)
@@ -57,12 +57,14 @@
   const addFloatingText = E.floatingText.add.bind(E.floatingText);
   E.floatingText.add = function(x, y, text, opts) {
     soundForText(text, opts);
+    if (NS.outcomes && (opts?.size || 0) >= 18) NS.outcomes.scanBanner(text);
     return addFloatingText(x, y, text, opts);
   };
 
   const triggerShake = E.screenShake.trigger.bind(E.screenShake);
   E.screenShake.trigger = function(...args) {
     E.sound('thud', { volume: 0.6 });
+    if (S.reducedMotion) return undefined;
     return triggerShake(...args);
   };
 

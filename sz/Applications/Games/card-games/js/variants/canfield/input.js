@@ -1,0 +1,126 @@
+;(function() {
+  'use strict';
+
+  /* Canfield: pointer interaction - dropping dragged cards and moving them
+     by click. */
+
+  const SZ = window.SZ;
+  const V = SZ.CardGames.v.canfield;
+  const S = V.S;
+  const {
+    CARD_W, CARD_H, FOUNDATION_COUNT, TABLEAU_COUNT, foundationPos, tableauPos, tableauCardPos,
+    canPlaceOnFoundation, canPlaceOnTableau, autoFillFromReserve, hitTest, checkWin
+  } = V;
+
+  /* ================================================================
+   *  DROP LOGIC
+   * ================================================================ */
+
+  function tryDrop(px, py) {
+    if (!S.dragging)
+      return;
+
+    const hit = hitTest(px, py);
+    let dropped = false;
+
+    if (hit) {
+      if (hit.area === 'foundation' && S.dragging.cards.length === 1) {
+        if (canPlaceOnFoundation(S.dragging.cards[0], hit.index)) {
+          removeFromSource();
+          S.dragging.cards[0].faceUp = true;
+          S.foundations[hit.index].push(S.dragging.cards[0]);
+          ++S.moveCount;
+          S.score += 5;
+          dropped = true;
+        }
+      } else if (hit.area === 'tableau' || hit.area === 'tableau-empty') {
+        const col = hit.col;
+        if (canPlaceOnTableau(S.dragging.cards[0], col)) {
+          removeFromSource();
+          for (const card of S.dragging.cards) {
+            card.faceUp = true;
+            S.tableau[col].push(card);
+          }
+          ++S.moveCount;
+          dropped = true;
+        }
+      }
+    }
+
+    // Snap-to for foundations
+    if (!dropped && S.dragging.cards.length === 1) {
+      for (let i = 0; i < FOUNDATION_COUNT; ++i) {
+        const fp = foundationPos(i);
+        const dx = px - fp.x - CARD_W / 2;
+        const dy = py - fp.y - CARD_H / 2;
+        if (Math.abs(dx) < CARD_W && Math.abs(dy) < CARD_H && canPlaceOnFoundation(S.dragging.cards[0], i)) {
+          removeFromSource();
+          S.dragging.cards[0].faceUp = true;
+          S.foundations[i].push(S.dragging.cards[0]);
+          ++S.moveCount;
+          S.score += 5;
+          dropped = true;
+          break;
+        }
+      }
+    }
+
+    // Snap-to for tableau
+    if (!dropped) {
+      for (let col = 0; col < TABLEAU_COUNT; ++col) {
+        if (S.dragging.source === 'tableau' && S.dragging.sourceCol === col)
+          continue;
+        const pile = S.tableau[col];
+        let targetY;
+        if (pile.length === 0) {
+          const tp = tableauPos(col);
+          targetY = tp.y;
+        } else {
+          const tp = tableauCardPos(col, pile.length - 1);
+          targetY = tp.y;
+        }
+        const tx = tableauPos(col).x;
+        const dx = px - tx - CARD_W / 2;
+        const dy = py - targetY - CARD_H / 2;
+        if (Math.abs(dx) < CARD_W && Math.abs(dy) < CARD_H * 0.8 && canPlaceOnTableau(S.dragging.cards[0], col)) {
+          removeFromSource();
+          for (const card of S.dragging.cards) {
+            card.faceUp = true;
+            S.tableau[col].push(card);
+          }
+          ++S.moveCount;
+          dropped = true;
+          break;
+        }
+      }
+    }
+
+    if (!dropped) {
+      if (S.undoHistory.length > 0)
+        S.undoHistory.pop();
+    }
+
+    S.dragging = null;
+
+    if (dropped)
+      checkWin();
+  }
+
+  function removeFromSource() {
+    if (!S.dragging)
+      return;
+    if (S.dragging.source === 'waste') {
+      S.waste.splice(S.dragging.sourceIndex, 1);
+    } else if (S.dragging.source === 'tableau') {
+      S.tableau[S.dragging.sourceCol].splice(S.dragging.sourceIndex);
+      autoFillFromReserve(S.dragging.sourceCol);
+    } else if (S.dragging.source === 'reserve') {
+      S.reserve.pop();
+      if (S.reserve.length > 0 && !S.reserve[S.reserve.length - 1].faceUp)
+        S.reserve[S.reserve.length - 1].faceUp = true;
+    }
+  }
+
+  Object.assign(V, { tryDrop });
+
+})();

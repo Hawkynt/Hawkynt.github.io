@@ -24,26 +24,33 @@
     hintTime: 0,
     getScore() { return S.score; },
     onScoreChanged(newScore) {
-      if (newScore > S.score && S.state === K.STATE_PLAYING)
+      if (newScore > S.score && S.state === K.STATE_PLAYING) {
         E.sound('pickup', { volume: 0.4 });
+        NS.fx.burst(K.CANVAS_W - 120, 586, { count: 10, speed: 90, color: '#ffd54f', gravity: -40, life: 0.7, size: 2 });
+      }
       S.score = newScore;
       ST.updateStatus();
       ST.saveHighScores();
     },
     onRoundOver(isGameOver) {
-      if (isGameOver || S.score < S.roundStartScore) E.outcomeSound('lose');
-      else if (S.score > S.roundStartScore) E.outcomeSound('win');
-      else E.outcomeSound('drop');
+      const delta = S.score - S.roundStartScore;
+      const outcome = isGameOver ? (delta > 0 ? 'win' : 'loss') : delta > 0 ? 'win' : delta < 0 ? 'loss' : 'draw';
       if (isGameOver) {
         S.state = K.STATE_GAME_OVER;
         E.floatingText.add(K.CANVAS_W / 2, K.CANVAS_H / 2, 'GAME OVER', { color: '#f44', size: 36 });
       } else {
         S.state = K.STATE_ROUND_OVER;
       }
+      if (NS.outcomes) NS.outcomes.report(outcome, isGameOver);
+      if (delta > 0) {
+        NS.fx.coins(K.CANVAS_W / 2, K.CANVAS_H / 2, 18);
+        E.floatingText.add(K.CANVAS_W / 2, K.CANVAS_H / 2 - 40, '+' + delta, { color: '#ffd54f', size: 20 });
+      }
       ST.updateStatus();
       ST.saveHighScores();
     },
     dealCardAnim(card, fromX, fromY, toX, toY, delay) {
+      if (CE.motion) CE.motion.cancelDeal();
       card._dealing = true;
       S.dealAnimations.push({
         card, fromX, fromY, toX, toY,
@@ -63,6 +70,7 @@
     },
     triggerChipSparkle(x, y) {
       E.particles.sparkle(x, y, 20, { color: '#fa0', speed: 80, life: 0.8 });
+      NS.fx.coins(x, y, 12);
       E.sound('coin');
       S.chipSparkleTimer = 1.0;
     }

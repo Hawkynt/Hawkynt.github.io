@@ -56,8 +56,6 @@
         // Pulse -- expanding gold glow ring
         const alpha = 0.6 * (1 - progress);
         const radius = Math.max(s.w, s.h) * 0.3 * (1 + progress);
-        cx.shadowColor = '#fc0';
-        cx.shadowBlur = 15 + 10 * Math.sin(progress * Math.PI);
         cx.strokeStyle = 'rgba(255, 200, 0, ' + alpha + ')';
         cx.lineWidth = 3 * (1 - progress);
         cx.beginPath();

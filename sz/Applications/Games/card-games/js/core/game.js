@@ -16,8 +16,18 @@
      VARIANT SELECTION & SETUP
      ══════════════════════════════════════════════════════════════════ */
 
-  G.selectGame = function(variantId) {
+  G.selectGame = function(variantId, opts) {
+    const fresh = !opts || !opts.nextRound;
+    const prev = S.currentVariant;
     S.currentVariant = K.VARIANTS.find(v => v.id === variantId) || K.VARIANTS[0];
+    if (NS.outcomes) NS.outcomes.reset();
+    if (NS.fx) NS.fx.clear();
+    if (NS.profile && (fresh || !prev)) NS.profile.onGameStarted(S.currentVariant.id);
+    const CE = SZ.CardEngine;
+    if (NS.scenes && fresh && !S.skipTitles && (!prev || prev.id !== S.currentVariant.id)) {
+      NS.scenes.clear();
+      NS.scenes.gameTitle(S.currentVariant, NS.lobby ? NS.lobby.categoryOf(S.currentVariant.id) : null, () => CE.motion.armDeal());
+    } else if (CE.motion) CE.motion.armDeal();
     S.state = K.STATE_PLAYING;
     S.roundNumber = 1;
     S.roundStartScore = S.score;
@@ -50,6 +60,9 @@
     }
     S.state = K.STATE_MENU;
     S.currentVariant = null;
+    if (NS.outcomes) NS.outcomes.reset();
+    if (NS.scenes) NS.scenes.clear();
+    if (NS.lobby) NS.lobby.tabTime = 0;
     OS.updateWindowTitle();
     ST.updateStatus();
   };

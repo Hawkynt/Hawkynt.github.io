@@ -1,0 +1,290 @@
+{
+ "solitaire": {
+  "digest": "654a60797df98e5cf8df80380caf095f223b598db09b1913b67e551f80d91b3d",
+  "entries": 48607
+ },
+ "freecell": {
+  "digest": "1cfe98ea1407413d6c07a31ca0b90f7276fe010a2a2fe1d2b12505201f2c59dc",
+  "entries": 38579
+ },
+ "spider": {
+  "digest": "02eeed280be67fab4953cefb030236a039ee9754d76c2425211f908a6e0be6f2",
+  "entries": 44578
+ },
+ "yukon": {
+  "digest": "bf5d44a3c72183f4b9377900bcaae11f9fe3da8f4b0cdff9972a8d85d45250c1",
+  "entries": 53678
+ },
+ "pyramid": {
+  "digest": "257f7ac9c393479618172c571687e4cfcf3952d974ec17a9211aa19272ca7d77",
+  "entries": 75010
+ },
+ "golf": {
+  "digest": "a37e9b1e5b04e762e28188ee84cddd90e5cbf5803e1edec1121dfa1434b7a470",
+  "entries": 60067
+ },
+ "tripeaks": {
+  "digest": "5d32175f8cfaa63f85bd252b42f585fe5a93cb7e807fdd4cb2de584edc5573d6",
+  "entries": 56869
+ },
+ "fortythieves": {
+  "digest": "5e865502f5b14133847acd0b3d58be3d1ec00dccbf09ae86e40b069b12dd78ee",
+  "entries": 43518
+ },
+ "canfield": {
+  "digest": "f0abd8cb620451725da5e51e881d78738c3fd6105b755d2a08aba741cc41ec66",
+  "entries": 68354
+ },
+ "clock": {
+  "digest": "300de08b7e71604404174b412457a4f65d0e13cb2fdf3bcda3306052e2032eeb",
+  "entries": 66942
+ },
+ "bakersdozen": {
+  "digest": "e969bdf55e74cb8074e6ec369151c8dd3bbb2e371e9866fea47aec3f19e3633a",
+  "entries": 38579
+ },
+ "accordion": {
+  "digest": "d41ad740ddc02978c5e0c5c04e3dda511ef72ac43638aa7d72e482bcda26d91d",
+  "entries": 58072
+ },
+ "poker": {
+  "digest": "d0faa481529a61e685e927fa2a518108e31eb9895dd812920d22dfcf2e4a7953",
+  "entries": 95845
+ },
+ "blackjack": {
+  "digest": "beca5cd0c0805cd98f3e78f5e01cb71b480574342b29e3e78df310c178471f0b",
+  "entries": 72060
+ },
+ "baccarat": {
+  "digest": "53cd0763063946c5894fce11ff75e8312c3a9928e3386776bdd31b1f309b5dfb",
+  "entries": 150944
+ },
+ "holdem": {
+  "digest": "eb20938051fd3204b8e5d08b873313d0973daf498eadad255dd00a36a9b81cdb",
+  "entries": 142166
+ },
+ "faro": {
+  "digest": "084036e1b01d79f1a5c06f622a050c5f05b1b533b554d62128ccb0f8bd8e6afd",
+  "entries": 458721
+ },
+ "reddog": {
+  "digest": "44be565f2f58834f3299bbb983e7d7dae9fd3bf474893b07e3cc43513feafcf4",
+  "entries": 191150
+ },
+ "threecard": {
+  "digest": "f2deb2dfa39d51aa8be1f8ae0d2eeddd3fd3b2968c09bcf236931dd95a42321d",
+  "entries": 225707
+ },
+ "uno": {
+  "digest": "c89111490eb82e20a7ffaa28090e36fc3a93756cee447d04f3692d034ab8981c",
+  "entries": 74497
+ },
+ "unoflip": {
+  "digest": "f9ea6d22e3f68d623bd6e8a727f0d0ae3e0810655c67972313f492505ce96a4e",
+  "entries": 92808
+ },
+ "unowild": {
+  "digest": "abdf385292a54680e45ff95788e8a875c87d058097de3488aa2d353b01c60c63",
+  "entries": 90986
+ },
+ "liarsuno": {
+  "digest": "cbd20a8d0958132b2112b3b001f655774916c9e8b0bf4338ccd11db853994d50",
+  "entries": 81435
+ },
+ "unoextreme": {
+  "digest": "85d7f4481727de38ea018ea6f135ae7a39dcb83a25c1afed86221e99b49c51ce",
+  "entries": 89384
+ },
+ "unoparty": {
+  "digest": "3261c67a4535a16c83e99b6d6b6e16cf7c9932fc0f0d665c38bb0cd8e7e80ebe",
+  "entries": 87923
+ },
+ "dos": {
+  "digest": "11fd161de014a05ffa4e8c88c86ca87e66ed8d9be975152816d7907c40c9dbe8",
+  "entries": 82402
+ },
+ "ono99": {
+  "digest": "67fdc724311a1dadc23af419bd59791251899713e602d2d03cd40c21936f1a4b",
+  "entries": 81126
+ },
+ "duo": {
+  "digest": "686438e254e763a72d1e500aefb0756466c82e9eb07a01f9b8e91fd46d21d788",
+  "entries": 85815
+ },
+ "skipbo": {
+  "digest": "5f5d5d85f2102d9f11393c4c25994f95fb32591f442c1a24911576daeb0f4506",
+  "entries": 106074
+ },
+ "crazy-eights": {
+  "digest": "4cca54b6554ebcd5097d4ceba3c079ca25e13df1328f31a99273b37a04d9e0c9",
+  "entries": 101360
+ },
+ "maumau": {
+  "digest": "3e059f3c468ab26638a40bfd3a5d2a6096d4f792975231444e7657d303a72b47",
+  "entries": 87258
+ },
+ "president": {
+  "digest": "d1abe9fa698a43b3756af95fb6d453b5f33e592a03ddb7c0a0ffd49cd2a61cfb",
+  "entries": 144674
+ },
+ "skat": {
+  "digest": "c3a65580ff767a275a216618839b90fabc4acc2b19e59ab171321272694e5455",
+  "entries": 74955
+ },
+ "doppelkopf": {
+  "digest": "81d77c820d86b54ef60a876fcfc62d3de7f01a9e671ce20166a95906cc7a50b5",
+  "entries": 167459
+ },
+ "hearts": {
+  "digest": "12a7e8018cac41b996b935ffb60eee915e59695770c5769ba060322a5e5e0f43",
+  "entries": 132907
+ },
+ "spades": {
+  "digest": "1cd6d48fdff9a32ede65bc3f18ef88f6e04620e02702bd77c039045a3710faab",
+  "entries": 191653
+ },
+ "euchre": {
+  "digest": "9928e74137b44d100b04cb2bab29445233ccd452999fddd60822fcd7062a403c",
+  "entries": 123461
+ },
+ "pinochle": {
+  "digest": "0c3a7ccfce432b9fb6766880156c93c5cf21224a260eaddcb281750b8f02bd17",
+  "entries": 139248
+ },
+ "bridge": {
+  "digest": "6c55a02e27239924ba3d0d07f62159ff86c85b99faf17f8fceab430a5cae3150",
+  "entries": 185179
+ },
+ "ohhell": {
+  "digest": "96713ba322ddb8bbfcf07430ef56250b4f78b091d590ab63b96c646ce57fc306",
+  "entries": 224681
+ },
+ "whist": {
+  "digest": "f1eec38dba5d6a7c6f29a9a5e26e448dd01d1c88c1da831700546d755c19bf08",
+  "entries": 141148
+ },
+ "pitch": {
+  "digest": "6fc4fe738ed2b88af408019e26317811da8c7433c0bfea420727c4f6abe300c7",
+  "entries": 169258
+ },
+ "sixtysix": {
+  "digest": "73daf49cba3b73616b46d5027eca8d8a251628485faf3d043bd8f99f32fedc61",
+  "entries": 146641
+ },
+ "canasta": {
+  "digest": "81cfa63d324d4c09ebcb95eda7f2984ad35c426fe3941577c8df262d1f50f16d",
+  "entries": 68794
+ },
+ "ginrummy": {
+  "digest": "59852875dd900724fa1aba92ee71a0b2d60873f2a365d04b27f58422426c4b02",
+  "entries": 98804
+ },
+ "rummy500": {
+  "digest": "6aaa1f352a52a3fbb64d808df26c9a3dd5b4ffcda98056c0a4cfa2fe00954622",
+  "entries": 139699
+ },
+ "phase10": {
+  "digest": "d2a573c79b2f39b8ed430f9675a49ee333aff019a57d6f6191f2925957b3193a",
+  "entries": 108971
+ },
+ "tonk": {
+  "digest": "ac761ab325a3b528cf59cb3c7e2cb43f5b8094d5ebe069edb154d6d91ae3860b",
+  "entries": 136702
+ },
+ "rummy": {
+  "digest": "063ddd3e93ed119e2cff55ccf006792f11f06e9939394da32c6ef11a10e97418",
+  "entries": 158860
+ },
+ "kalooki": {
+  "digest": "8e0b3eb0f8cfa6e0b4269b873eb350035606aabc7b6c398769900f859f02c93a",
+  "entries": 131346
+ },
+ "yaniv": {
+  "digest": "56946c55274787028f9f4af343e2df34210e1928b871187e215f5fcb6c01179b",
+  "entries": 132796
+ },
+ "war": {
+  "digest": "eec3690f741075406f7b465e9d7d65668567a92915ad766fed4638fb65891fe4",
+  "entries": 94399
+ },
+ "memory": {
+  "digest": "e38e095646538376c5e376a0d4f7dfd719af976996a3332e88aa5e4bb2f3be1e",
+  "entries": 48759
+ },
+ "gofish": {
+  "digest": "b480d67d420c661747a32a08d5f6b85828c546ea1e75dd99ca291245897bf980",
+  "entries": 86019
+ },
+ "oldmaid": {
+  "digest": "0ededa80c01020161afb1103571af98aa668748a0fb1098a0716d29449651356",
+  "entries": 250937
+ },
+ "snap": {
+  "digest": "3bd3dbd1e906771b6206832242912c1b4e8f1ef60c0ef1e83789b94d0dbb87b9",
+  "entries": 139829
+ },
+ "speed": {
+  "digest": "84522ab0b4a7cf2f25fb3d700e91e00559841c89a775d037dd1fbde3e506c555",
+  "entries": 92527
+ },
+ "cheat": {
+  "digest": "b7f285d62bcaaa7bb5d30c6cf01c719149d466d3fae72c0b4df2609995bf80c5",
+  "entries": 117042
+ },
+ "ratscrew": {
+  "digest": "e9cd244d7c2e2b832157ac2306764eca1cc9fa2dab8cebf649106797514df7d3",
+  "entries": 100039
+ },
+ "sevens": {
+  "digest": "7947793b6dd8016ce483ef7253753bbfadcbcb56d2d6ea6bd2999801d72882a5",
+  "entries": 150793
+ },
+ "spitemalice": {
+  "digest": "472495cec1eeed22cd9a53f5670519103840754aa1da4d9c46398a8a60a0c267",
+  "entries": 101230
+ },
+ "beggar": {
+  "digest": "c85ae6e112f8781c93a30cc6075a9e9758025d9d2c0548823d735e6e06e7e1b5",
+  "entries": 68695
+ },
+ "schwimmen": {
+  "digest": "e556c8cd46d12fd68c286bcb0036404b3c4532a0291589f6e06465ace4adadb1",
+  "entries": 168120
+ },
+ "durak": {
+  "digest": "e9bbcccd536a41262af47ea7011596c92f88d39cc7ddbbbc81c2fc64f46811cc",
+  "entries": 108017
+ },
+ "briscola": {
+  "digest": "c42b1abb0415f8bbf81ebc4672a9d6dcdafb25e49559fa2c32c39b365bf4f569",
+  "entries": 124414
+ },
+ "scopa": {
+  "digest": "eeaa6de5dfe76e1edd691285e7524001bd7ada952247883a0d28e926de37001b",
+  "entries": 121588
+ },
+ "cribbage": {
+  "digest": "b4902a73ca2dc5e647afed262c074b06300f2134b814b513fc8689b5327bfad9",
+  "entries": 137646
+ },
+ "piquet": {
+  "digest": "d095bcdbf06fd490f6bb56ecebb885b6db8fe25a176d59bf917de16ad9b5af15",
+  "entries": 103771
+ },
+ "bezique": {
+  "digest": "76d15b391e0d71e8159939fd5c00dc03eadcbdba756d6132eaeca6b200ae0e25",
+  "entries": 168894
+ },
+ "cassino": {
+  "digest": "c750d6c09420c0aac4b33c60e03d2e930b2158a1c4627113adf50380e0b8fe2d",
+  "entries": 123944
+ },
+ "pishti": {
+  "digest": "e9731111e55271a8711072b6b72b7a6bbf4f8dd72447f124cdc78021e40bbde6",
+  "entries": 136093
+ },
+ "belote": {
+  "digest": "74e8b68d80414c5fea8432a8875eb063b8831ff1ffe04dabb5784c01fb858ab5",
+  "entries": 125813
+ }
+}
