@@ -9,25 +9,10 @@
   const { CANVAS_H, CANVAS_W, playerPos, NUM_PLAYERS } = V;
 
   function drawOno99Card(x, y, w, h, card) {
-    S._ctx.save();
-    S._ctx.fillStyle = card.color || '#2a6';
-    S._ctx.strokeStyle = '#fff';
-    S._ctx.lineWidth = 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-    S._ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    S._ctx.beginPath();
-    S._ctx.ellipse(x + w / 2, y + h / 2, w / 3, h / 2.5, -0.3, 0, Math.PI * 2);
-    S._ctx.fill();
-    S._ctx.fillStyle = '#fff';
-    S._ctx.font = 'bold 14px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
     const label = card.value === 'Hold' ? 'H' : card.value === 'Reverse' ? '\u21C4' : card.value === 'Double Play' ? '\u00D72' : card.value === 'Minus 10' ? '-10' : card.value;
-    S._ctx.fillText(label, x + w / 2, y + h / 2);
-    S._ctx.restore();
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: card.color || '#2a6', label }, card);
   }
+
 
   function drawGame() {
     // Running total

@@ -13,57 +13,16 @@
      ================================================================ */
 
   function drawDuoCard(x, y, w, h, card) {
-    S._ctx.save();
     const isWild = card.type === 'wild' && card.color === 'wild';
-    S._ctx.fillStyle = isWild ? '#000' : (colorMap[card.color] || '#000');
-    S._ctx.strokeStyle = '#fff';
-    S._ctx.lineWidth = 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-
-    if (isWild) {
-      const cx = x + w / 2;
-      const cy = y + h / 2;
-      const radius = Math.min(w, h) * 0.38;
-      S._ctx.save();
-      S._ctx.beginPath();
-      CE.drawRoundedRect(S._ctx, x + 2, y + 2, w - 4, h - 4, CE.CARD_RADIUS - 1);
-      S._ctx.clip();
-      for (let i = 0; i < 8; ++i) {
-        const startAngle = (i * Math.PI / 4) - Math.PI / 8;
-        const endAngle = startAngle + Math.PI / 4;
-        S._ctx.beginPath();
-        S._ctx.moveTo(cx, cy);
-        S._ctx.arc(cx, cy, radius, startAngle, endAngle);
-        S._ctx.closePath();
-        S._ctx.fillStyle = colorMap[duoColors[i]];
-        S._ctx.fill();
-      }
-      S._ctx.restore();
-      S._ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      CE.drawRoundedRect(S._ctx, x + 2, y + 2, w - 4, h - 4, CE.CARD_RADIUS - 1);
-      S._ctx.fill();
-    } else {
-      S._ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      S._ctx.beginPath();
-      S._ctx.ellipse(x + w / 2, y + h / 2, w / 3, h / 2.5, -0.3, 0, Math.PI * 2);
-      S._ctx.fill();
-    }
-
-    S._ctx.fillStyle = '#fff';
-    S._ctx.font = 'bold 14px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
     const label = card.value === 'Wild Draw Four' ? '+4'
       : card.value === 'Wild' ? 'W'
       : card.value === 'Draw Two' ? '+2'
       : card.value === 'Skip' ? '\u2298'
       : card.value === 'Reverse' ? '\u21C4'
       : card.value;
-    S._ctx.fillText(label, x + w / 2, y + h / 2);
-    S._ctx.restore();
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: isWild ? 'wild' : card.color, label, wild: card.type === 'wild' }, card);
   }
+
 
   /* ================================================================
      LAYOUT HELPERS

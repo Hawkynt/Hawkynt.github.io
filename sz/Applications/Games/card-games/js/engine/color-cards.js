@@ -41,12 +41,29 @@
     cx.fill();
     const m = Math.max(2, 4 * s);
     CE.drawRoundedRect(cx, m, m, w - m * 2, h - m * 2, Math.max(1, r - 1.5));
-    const g = cx.createLinearGradient(0, 0, w * 0.4, h);
-    g.addColorStop(0, shade(base, 0.22));
-    g.addColorStop(0.55, base);
-    g.addColorStop(1, shade(base, -0.28));
-    cx.fillStyle = g;
-    cx.fill();
+    if (spec.rainbow) {
+      const rg = cx.createLinearGradient(0, 0, w, h);
+      const rc = ['#e53935', '#f57c00', '#f4b400', '#2e9b3a', '#1e63d6', '#8e3fc0'];
+      for (let i = 0; i < rc.length; ++i) rg.addColorStop(i / (rc.length - 1), rc[i]);
+      cx.fillStyle = rg;
+      cx.fill();
+      cx.fillStyle = 'rgba(0,0,0,0.35)';
+      cx.fill();
+    } else {
+      const g = cx.createLinearGradient(0, 0, w * 0.4, h);
+      g.addColorStop(0, shade(base, 0.22));
+      g.addColorStop(0.55, base);
+      g.addColorStop(1, shade(base, -0.28));
+      cx.fillStyle = g;
+      cx.fill();
+    }
+    if (spec.stripe) {
+      cx.fillStyle = CE.colorOf(spec.stripe);
+      cx.fillRect(m + 3 * s, h - m - 9 * s, w - m * 2 - 6 * s, 5 * s);
+      cx.strokeStyle = 'rgba(255,255,255,0.8)';
+      cx.lineWidth = 0.8;
+      cx.strokeRect(m + 3 * s, h - m - 9 * s, w - m * 2 - 6 * s, 5 * s);
+    }
 
     /* centre oval */
     cx.save();
@@ -91,14 +108,18 @@
     cx.lineJoin = 'round';
     cx.lineWidth = Math.max(2, size * 0.16);
     cx.strokeStyle = spec.wild ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.35)';
-    cx.strokeText(label, w / 2 + 1, h / 2 + 1.5);
+    const ly = spec.sub ? h / 2 - 4 * s : h / 2 + 0.5;
+    cx.strokeText(label, w / 2 + 1, ly + 1);
     cx.fillStyle = ink;
-    cx.fillText(label, w / 2, h / 2 + 0.5);
-    if (spec.wild) {
-      cx.lineWidth = 0.8;
-      cx.strokeStyle = 'rgba(0,0,0,0.35)';
-      cx.strokeText(label, w / 2, h / 2 + 0.5);
+    cx.fillText(label, w / 2, ly);
+    if (spec.sub) {
+      const ss = fitFont(cx, spec.sub, w * 0.6, Math.max(6, Math.round(8 * s)));
+      cx.lineWidth = Math.max(1.5, ss * 0.25);
+      cx.strokeText(spec.sub, w / 2, h / 2 + 13 * s);
+      cx.fillText(spec.sub, w / 2, h / 2 + 13 * s);
+      cx.font = 'bold ' + size + 'px "Segoe UI", "Trebuchet MS", Arial, sans-serif';
     }
+
 
     /* corners */
     const corner = String(spec.corner == null ? label : spec.corner);
@@ -131,7 +152,16 @@
   CE.drawColorCard = function(cx, x, y, w, h, spec, card) {
     w = w || CE.CARD_W;
     h = h || CE.CARD_H;
-    const key = 'c|' + spec.color + '|' + spec.label + '|' + (spec.corner == null ? '' : spec.corner) + '|' + (spec.wild ? 1 : 0) + '|' + (spec.ink || '');
+    if (spec.highlight) {
+      cx.save();
+      CE.drawRoundedRect(cx, x - 3, y - 3, w + 6, h + 6, CE.CARD_RADIUS + 3);
+      cx.strokeStyle = 'rgba(255,230,90,0.9)';
+      cx.lineWidth = 3;
+      cx.stroke();
+      cx.restore();
+    }
+    const key = 'c|' + spec.color + '|' + spec.label + '|' + (spec.corner == null ? '' : spec.corner) + '|' + (spec.wild ? 1 : 0) + '|' + (spec.ink || '') +
+      '|' + (spec.sub || '') + '|' + (spec.stripe || '') + '|' + (spec.rainbow ? 1 : 0);
     CE.drawSpriteCard(cx, x, y, w, h, key, (g) => paint(g, w, h, spec), card);
   };
 })();

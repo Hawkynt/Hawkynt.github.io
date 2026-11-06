@@ -9,62 +9,11 @@
   const { colorMap, colorChoiceRects, unoColors, CANVAS_H, CANVAS_W, targetChoiceRects, NUM_PLAYERS, playerPos } = V;
 
   function drawExtremeCard(x, y, w, h, card) {
-    S._ctx.save();
     const isWild = (card.type === 'wild' || card.type === 'extreme') && card.color === 'wild';
-    S._ctx.fillStyle = isWild ? '#000' : (colorMap[card.color] || '#000');
-    S._ctx.strokeStyle = '#fff';
-    S._ctx.lineWidth = 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-
-    if (card.type === 'extreme') {
-      // Rainbow gradient for extreme cards
-      const grad = S._ctx.createLinearGradient(x, y, x + w, y + h);
-      grad.addColorStop(0, '#e33');
-      grad.addColorStop(0.25, '#ea0');
-      grad.addColorStop(0.5, '#3a3');
-      grad.addColorStop(0.75, '#33e');
-      grad.addColorStop(1, '#e33');
-      S._ctx.save();
-      S._ctx.beginPath();
-      CE.drawRoundedRect(S._ctx, x + 2, y + 2, w - 4, h - 4, CE.CARD_RADIUS - 1);
-      S._ctx.clip();
-      S._ctx.fillStyle = grad;
-      S._ctx.fillRect(x, y, w, h);
-      S._ctx.restore();
-      S._ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      CE.drawRoundedRect(S._ctx, x + 2, y + 2, w - 4, h - 4, CE.CARD_RADIUS - 1);
-      S._ctx.fill();
-    } else if (isWild) {
-      const hw = w / 2, hh = h / 2;
-      S._ctx.save();
-      S._ctx.beginPath();
-      CE.drawRoundedRect(S._ctx, x + 2, y + 2, w - 4, h - 4, CE.CARD_RADIUS - 1);
-      S._ctx.clip();
-      S._ctx.fillStyle = '#e33'; S._ctx.fillRect(x, y, hw, hh);
-      S._ctx.fillStyle = '#33e'; S._ctx.fillRect(x + hw, y, hw, hh);
-      S._ctx.fillStyle = '#ea0'; S._ctx.fillRect(x, y + hh, hw, hh);
-      S._ctx.fillStyle = '#3a3'; S._ctx.fillRect(x + hw, y + hh, hw, hh);
-      S._ctx.restore();
-      S._ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      CE.drawRoundedRect(S._ctx, x + 2, y + 2, w - 4, h - 4, CE.CARD_RADIUS - 1);
-      S._ctx.fill();
-    } else {
-      S._ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      S._ctx.beginPath();
-      S._ctx.ellipse(x + w / 2, y + h / 2, w / 3, h / 2.5, -0.3, 0, Math.PI * 2);
-      S._ctx.fill();
-    }
-
-    S._ctx.fillStyle = '#fff';
-    S._ctx.font = 'bold 13px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
-    const label = card.value === 'Wild Draw Four' ? '+4' : card.value === 'Wild' ? 'W' : card.value === 'Draw Two' ? '+2' : card.value === 'Extreme Hit' ? 'EX!' : card.value;
-    S._ctx.fillText(label, x + w / 2, y + h / 2);
-    S._ctx.restore();
+    const label = card.value === 'Wild Draw Four' ? '+4' : card.value === 'Wild' ? 'W' : card.value === 'Draw Two' ? '+2' : card.value === 'Extreme Hit' ? 'EX!' : card.value === 'Skip' ? '\u2298' : card.value === 'Reverse' ? '\u21C4' : card.value;
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: isWild ? 'wild' : card.color, label, wild: card.type === 'wild', rainbow: card.type === 'extreme', ink: card.type === 'extreme' ? '#ffffff' : undefined }, card);
   }
+
 
   function drawColorChoiceOverlay() {
     S._ctx.save();

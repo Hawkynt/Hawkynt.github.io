@@ -20,36 +20,10 @@
   }
 
   function drawPartyCard(x, y, w, h, card, highlight) {
-    S._ctx.save();
     const col = card.color;
-    if (col === 'wild') {
-      // Rainbow gradient for party wilds
-      const grad = S._ctx.createLinearGradient(x, y, x + w, y + h);
-      grad.addColorStop(0, '#e33');
-      grad.addColorStop(0.33, '#3a3');
-      grad.addColorStop(0.66, '#33e');
-      grad.addColorStop(1, '#ea0');
-      S._ctx.fillStyle = grad;
-    } else
-      S._ctx.fillStyle = COLOR_HEX[col] || '#555';
-    S._ctx.strokeStyle = highlight ? '#ff0' : '#fff';
-    S._ctx.lineWidth = highlight ? 3 : 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-    // White ellipse
-    S._ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    S._ctx.beginPath();
-    S._ctx.ellipse(x + w / 2, y + h / 2, w / 3.5, h / 4, 0, 0, Math.PI * 2);
-    S._ctx.fill();
-    // Label
-    S._ctx.fillStyle = col === 'wild' ? '#fff' : (COLOR_DARK[col] || '#333');
-    S._ctx.font = 'bold 13px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
-    S._ctx.fillText(cardLabel(card), x + w / 2, y + h / 2);
-    S._ctx.restore();
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: col === 'wild' ? 'wild' : (COLOR_HEX[col] || '#555555'), label: cardLabel(card), wild: col === 'wild', highlight }, card);
   }
+
 
   function drawColorOverlay() {
     S._ctx.fillStyle = 'rgba(0,0,0,0.6)';

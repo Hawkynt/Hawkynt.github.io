@@ -18,39 +18,20 @@
   }
 
   function drawLiarsCard(x, y, w, h, card, highlight, faceDown) {
-    S._ctx.save();
     if (faceDown) {
-      // Face-down card with "?" mark
-      S._ctx.fillStyle = '#444';
-      S._ctx.strokeStyle = '#888';
-      S._ctx.lineWidth = 1;
-      CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-      S._ctx.fill();
-      S._ctx.stroke();
-      S._ctx.fillStyle = '#aaa';
-      S._ctx.font = 'bold 24px sans-serif';
+      CE.drawCardBack(S._ctx, x, y, w, h);
+      S._ctx.save();
+      S._ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      S._ctx.font = 'bold 24px Georgia, serif';
       S._ctx.textAlign = 'center';
       S._ctx.textBaseline = 'middle';
-      S._ctx.fillText('?', x + w / 2, y + h / 2);
-    } else {
-      S._ctx.fillStyle = COLOR_MAP[card.color] || '#555';
-      S._ctx.strokeStyle = highlight ? '#ff0' : '#fff';
-      S._ctx.lineWidth = highlight ? 3 : 1;
-      CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-      S._ctx.fill();
-      S._ctx.stroke();
-      S._ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      S._ctx.beginPath();
-      S._ctx.ellipse(x + w / 2, y + h / 2, w / 3.5, h / 4, 0, 0, Math.PI * 2);
-      S._ctx.fill();
-      S._ctx.fillStyle = card.color === 'wild' ? '#fff' : (COLOR_MAP[card.color] || '#555');
-      S._ctx.font = 'bold 16px sans-serif';
-      S._ctx.textAlign = 'center';
-      S._ctx.textBaseline = 'middle';
-      S._ctx.fillText(cardLabel(card), x + w / 2, y + h / 2);
+      S._ctx.fillText('?', x + w / 2, y + h / 2 + 1);
+      S._ctx.restore();
+      return;
     }
-    S._ctx.restore();
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: card.color === 'wild' ? 'wild' : (COLOR_MAP[card.color] ? card.color : '#555'), label: cardLabel(card), wild: card.color === 'wild', highlight }, card);
   }
+
 
   function drawBluffClaimOverlay() {
     S._ctx.fillStyle = 'rgba(0,0,0,0.6)';

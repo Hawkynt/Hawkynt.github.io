@@ -9,26 +9,9 @@
   const { colorMap, CANVAS_W, CANVAS_H, NUM_PLAYERS } = V;
 
   function drawDosCard(x, y, w, h, card, highlight) {
-    S._ctx.save();
-    S._ctx.fillStyle = colorMap[card.color] || '#555';
-    S._ctx.strokeStyle = highlight ? '#ff0' : '#fff';
-    S._ctx.lineWidth = highlight ? 3 : 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-    // White ellipse
-    S._ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    S._ctx.beginPath();
-    S._ctx.ellipse(x + w / 2, y + h / 2, w / 3.5, h / 4, 0, 0, Math.PI * 2);
-    S._ctx.fill();
-    // Number
-    S._ctx.fillStyle = colorMap[card.color] || '#555';
-    S._ctx.font = 'bold 18px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
-    S._ctx.fillText(card.type === 'wild' ? 'W2' : String(card.value), x + w / 2, y + h / 2);
-    S._ctx.restore();
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: card.type === 'wild' ? 'wild' : (colorMap[card.color] ? card.color : '#555'), label: card.type === 'wild' ? '#' : String(card.value), wild: card.type === 'wild', corner: card.type === 'wild' ? 'W2' : String(card.value), highlight }, card);
   }
+
 
   function drawGame() {
     // Two center piles

@@ -21,83 +21,18 @@
   }
 
   function drawWildCard(x, y, w, h, card, faceDown) {
-    S._ctx.save();
     if (faceDown) {
       CE.drawCardBack(S._ctx, x, y, w, h);
-      S._ctx.restore();
       return;
     }
-
-    S._ctx.save();
-    S._ctx.beginPath();
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.clip();
-
-    const grad = S._ctx.createLinearGradient(x, y, x + w, y + h);
-    for (let i = 0; i < rainbowColors.length; ++i)
-      grad.addColorStop(i / (rainbowColors.length - 1), rainbowColors[i]);
-    S._ctx.fillStyle = grad;
-    S._ctx.fillRect(x, y, w, h);
-
-    S._ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    S._ctx.fillRect(x, y, w, h);
-    S._ctx.restore();
-
-    S._ctx.strokeStyle = '#fff';
-    S._ctx.lineWidth = 1.5;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.stroke();
-
-    S._ctx.fillStyle = '#fff';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
-
-    const cx = x + w / 2;
-    const cy = y + h / 2;
     const val = card.value;
-
-    if (val === 'Wild') {
-      S._ctx.font = 'bold 20px sans-serif';
-      S._ctx.fillText('W', cx, cy);
-    } else if (val === 'Wild Draw Two') {
-      S._ctx.font = 'bold 18px sans-serif';
-      S._ctx.fillText('+2', cx, cy - 6);
-      S._ctx.font = '9px sans-serif';
-      S._ctx.fillText('DRAW TWO', cx, cy + 14);
-    } else if (val === 'Wild Reverse') {
-      S._ctx.font = 'bold 22px sans-serif';
-      S._ctx.fillText('\u21C4', cx, cy - 4);
-      S._ctx.font = '8px sans-serif';
-      S._ctx.fillText('REVERSE', cx, cy + 14);
-    } else if (val === 'Wild Skip') {
-      S._ctx.font = 'bold 22px sans-serif';
-      S._ctx.fillText('\u2718', cx, cy - 4);
-      S._ctx.font = '8px sans-serif';
-      S._ctx.fillText('SKIP', cx, cy + 14);
-    } else if (val === 'Wild Forced Swap') {
-      S._ctx.font = 'bold 18px sans-serif';
-      S._ctx.fillText('\u21CB', cx, cy - 4);
-      S._ctx.font = '8px sans-serif';
-      S._ctx.fillText('SWAP', cx, cy + 14);
-    } else if (val === 'Wild Targeted Draw Two') {
-      S._ctx.font = 'bold 16px sans-serif';
-      S._ctx.fillText('\u2691+2', cx, cy - 4);
-      S._ctx.font = '8px sans-serif';
-      S._ctx.fillText('TARGET', cx, cy + 14);
-    } else if (val === 'Wild Gap') {
-      S._ctx.font = 'bold 18px sans-serif';
-      S._ctx.fillText('\u23ED', cx, cy - 4);
-      S._ctx.font = '8px sans-serif';
-      S._ctx.fillText('GAP', cx, cy + 14);
-    }
-
-    S._ctx.font = 'bold 8px sans-serif';
-    S._ctx.textAlign = 'left';
-    S._ctx.textBaseline = 'top';
-    S._ctx.fillText(getShortLabel(val), x + 4, y + 4);
-
-    S._ctx.restore();
+    const art = {
+      'Wild': ['W', ''], 'Wild Draw Two': ['+2', 'DRAW TWO'], 'Wild Reverse': ['\u21C4', 'REVERSE'], 'Wild Skip': ['\u2718', 'SKIP'],
+      'Wild Forced Swap': ['\u21CB', 'SWAP'], 'Wild Targeted Draw Two': ['\u2691+2', 'TARGET'], 'Wild Gap': ['\u23ED', 'GAP']
+    }[val] || [String(val), ''];
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: '#303030', label: art[0], sub: art[1], rainbow: true, ink: '#ffffff', corner: getShortLabel(val) }, card);
   }
+
 
   function getShortLabel(val) {
     switch (val) {

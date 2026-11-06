@@ -13,20 +13,12 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawSkipBoCard(x, y, w, h, card) {
-    S._ctx.save();
-    S._ctx.fillStyle = card.type === 'skipbo' ? '#f84' : '#fff';
-    S._ctx.strokeStyle = '#666';
-    S._ctx.lineWidth = 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-    S._ctx.fillStyle = card.type === 'skipbo' ? '#fff' : '#333';
-    S._ctx.font = 'bold 24px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
-    S._ctx.fillText(card.type === 'skipbo' ? 'SB' : String(card.value), x + w / 2, y + h / 2);
-    S._ctx.restore();
+    const sb = card.type === 'skipbo';
+    const v = +card.value;
+    const color = sb ? '#f57c00' : v <= 4 ? '#1e63d6' : v <= 8 ? '#2e9b3a' : '#d32f2f';
+    CE.drawColorCard(S._ctx, x, y, w, h, { color, label: sb ? 'SB' : String(card.value), corner: sb ? 'SB' : String(card.value), wild: sb }, card);
   }
+
 
   /* ══════════════════════════════════════════════════════════════════
      DRAW

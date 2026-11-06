@@ -29,31 +29,12 @@
   }
 
   function drawFlipCard(x, y, w, h, card, highlight) {
-    S._ctx.save();
     const col = V.getColor(card);
-    S._ctx.fillStyle = col === 'wild' ? WILD_HEX : getHex(col);
-    S._ctx.strokeStyle = highlight ? '#ff0' : '#fff';
-    S._ctx.lineWidth = highlight ? 3 : 1;
-    CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-    S._ctx.fill();
-    S._ctx.stroke();
-    // White ellipse
-    S._ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    S._ctx.beginPath();
-    S._ctx.ellipse(x + w / 2, y + h / 2, w / 3.5, h / 4, 0, 0, Math.PI * 2);
-    S._ctx.fill();
-    // Label
-    S._ctx.fillStyle = col === 'wild' ? '#fff' : (getHex(col) || '#555');
-    S._ctx.font = 'bold 14px sans-serif';
-    S._ctx.textAlign = 'center';
-    S._ctx.textBaseline = 'middle';
-    S._ctx.fillText(cardLabel(card), x + w / 2, y + h / 2);
-    // Thin stripe at bottom showing other side color
     const oc = V.otherSideColor(card);
-    S._ctx.fillStyle = oc === 'wild' ? WILD_HEX : getHex(oc);
-    S._ctx.fillRect(x + 4, y + h - 8, w - 8, 5);
-    S._ctx.restore();
+    CE.drawColorCard(S._ctx, x, y, w, h, { color: col === 'wild' ? WILD_HEX : getHex(col), label: cardLabel(card), wild: col === 'wild',
+      stripe: oc === 'wild' ? WILD_HEX : getHex(oc), highlight }, card);
   }
+
 
   function drawColorOverlay() {
     S._ctx.fillStyle = 'rgba(0,0,0,0.6)';
