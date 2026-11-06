@@ -19,6 +19,11 @@ async function main() {
   const game = createGame(path.join(__dirname, '..'), { seed: 42 });
   const errors = game.load();
   check('scripts load without errors', errors.length === 0, errors.join(' | '));
+  /* the window frame is board-sized, so client = board / (9, 15) on the 100x40 fake canvas */
+  const frame = game.SZ.CardGames.dom.canvas.parentElement;
+  frame.clientWidth = 900;
+  frame.clientHeight = 600;
+  game.SZ.CardGames.dom.setupCanvas();
 
   /* the fake canvas is 100x40 for a 900x600 logical board: the controller maps
      client coords to canvas coords with scaleX=9, scaleY=15 */
@@ -33,15 +38,21 @@ async function main() {
     game.dispatch('pointerup', pev('pointerup', mx, my));
   }
 
-  /* menu screen */
+  /* the daily intro plays first: let it run a little, then click it away */
+  game.frames(90);
+  click(450, 300); game.frames(5);
+
+  /* lobby */
   game.frames(5);
+  const TAB = (i) => [105, 84 + i * 42 + 19];
+  const TILE = (i) => [212 + (i % 4) * 170.5 + 80, 172 + Math.floor(i / 4) * 102 + 46];
+  const open = (tab, tile) => { click(...TAB(tab)); game.frames(5); click(...TILE(tile)); game.frames(130); };
 
   /* menu bar: high scores on an empty table */
   game.SZ.MenuBar.onAction('high-scores');
 
   /* ---- Solitaire (solitaire family) ---- */
-  click(386, 80);            /* menu button "Solitaire" */
-  game.frames(40);           /* deal animation */
+  open(0, 8);                /* lobby: Solitaire tab, Solitaire tile; title card and deal */
   click(69, 89); game.frames(10);   /* stock */
   click(69, 89); game.frames(10);
   click(69, 89); game.frames(10);
@@ -53,11 +64,11 @@ async function main() {
 
   /* card style settings panel: table, back, custom color, face, close */
   click(608, 22); game.frames(3);   /* Style button */
-  click(398, 162); game.frames(3);  /* table: Midnight Blue */
-  click(602, 230); game.frames(3);  /* card back: Custom Color */
-  click(466, 298); game.frames(3);  /* card face: German */
-  click(348, 364); game.frames(3);  /* custom color swatch 1 */
-  click(450, 479); game.frames(3);  /* Close */
+  click(210, 129); game.frames(3);  /* table: Midnight Blue */
+  click(356, 304); game.frames(3);  /* card back: Custom Color */
+  click(369, 507); game.frames(3);  /* card face: German */
+  click(594, 484); game.frames(3);  /* custom color swatch 1 */
+  click(795, 51); game.frames(3);   /* Close */
 
   /* pause / resume */
   game.key('Escape'); game.frames(5);
@@ -68,7 +79,7 @@ async function main() {
   click(854, 22); game.frames(5);
 
   /* ---- Blackjack (casino family) ---- */
-  click(258, 124); game.frames(30);
+  open(1, 1);                /* Casino tab, Blackjack */
   click(385, 553); game.frames(10); /* Hit */
   click(385, 553); game.frames(10);
   click(515, 553); game.frames(60); /* Stand -> dealer plays, round over */
@@ -79,7 +90,7 @@ async function main() {
   game.SZ.MenuBar.onAction('back-to-menu'); game.frames(5);
 
   /* ---- Hearts (trick-taking family) ---- */
-  click(514, 299); game.frames(60);
+  open(3, 3);                /* Trick-Taking tab, Hearts */
   for (const hx of [300, 400, 500, 600]) {
     click(hx, 520);
     game.frames(20);
@@ -89,7 +100,7 @@ async function main() {
   game.SZ.MenuBar.onAction('back-to-menu'); game.frames(5);
 
   /* ---- Memory (matching / children family) ---- */
-  click(514, 445); game.frames(30);
+  open(5, 3);                /* Quick & Fun tab, Memory */
   for (let r = 0; r < 4; ++r)
     for (let c = 0; c < 6; ++c) {
       click(220 + c * 92, 137 + r * 122);
@@ -105,7 +116,7 @@ async function main() {
   game.SZ.MenuBar.onAction('back-to-menu'); game.frames(5);
 
   /* ---- Uno (shedding family) ---- */
-  click(386, 226); game.frames(40);
+  open(2, 8);                /* Shedding tab, Uno */
   click(390, 295); game.frames(15); /* draw pile */
   for (const hx of [120, 175, 230, 285]) {
     click(hx, 495);
@@ -116,7 +127,7 @@ async function main() {
   game.SZ.MenuBar.onAction('back-to-menu'); game.frames(5);
 
   /* ---- War (simple family): flip until the game finishes ---- */
-  click(642, 474); game.frames(30);
+  open(5, 10);               /* Quick & Fun tab, War */
   for (let i = 0; i < 1500; ++i) {
     click(450, 300); /* FLIP button */
     game.frames(100); /* let the flip/show/collect animation cycle finish */
@@ -147,8 +158,8 @@ async function main() {
     'store sz-card-games-table=blue', 'store sz-card-games-cardback=custom',
     'store sz-card-games-cardface=german', 'store sz-card-games-backcolor=',
     'sfx select', 'sfx click',
-    'ctx.fillText Card Games Suite', 'ctx.fillText PAUSED', 'ctx.fillText GAME OVER',
-    'ftext ', 'postMessage {"type":"sz:close"}'
+    'ctx.fillText Card Games Suite', 'ctx.fillText Paused', 'ctx.fillText GAME OVER',
+    'ctx.fillText VICTORY', 'store sz-card-games-profile=', 'postMessage {"type":"sz:close"}'
   ])
     check('session covers ' + marker, game.log.some((l) => l.startsWith(marker)), 'no line starts with ' + marker);
 

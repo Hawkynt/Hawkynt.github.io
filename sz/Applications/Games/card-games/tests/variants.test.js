@@ -18,7 +18,14 @@ function playVariant(id) {
   let s = 12345;
   const rnd = () => { s = (s * 1103515245 + 12345) >>> 0; return s / 4294967296; };
   const at = (type, mx, my) => game.pointer(type, mx / 9, my / 15);
+  const frame = game.SZ.CardGames.dom.canvas.parentElement;
+  frame.clientWidth = 900;
+  frame.clientHeight = 600;
+  game.SZ.CardGames.dom.setupCanvas();
   game.frames(3);
+  /* no intro or title card: the session starts on the dealt table */
+  game.SZ.CardGames.scenes.clear();
+  game.SZ.CardGames.state.skipTitles = true;
   game.SZ.CardGames.game.selectGame(id);
   game.frames(60);
   const keys = ['1', '2', '3', '4', '5', ' ', 'h', 's', 'Enter', 'd'];
