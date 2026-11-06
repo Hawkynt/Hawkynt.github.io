@@ -16,89 +16,14 @@
      ================================================================ */
 
   function drawP10Card(x, y, w, h, card) {
-    S._ctx.save();
-    if (card.type === 'wild') {
-      // Multi-colored wild
-      S._ctx.beginPath();
-      CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-      S._ctx.clip();
-      const qw = w / 2, qh = h / 2;
-      S._ctx.fillStyle = COLOR_HEX.red;    S._ctx.fillRect(x, y, qw, qh);
-      S._ctx.fillStyle = COLOR_HEX.blue;   S._ctx.fillRect(x + qw, y, qw, qh);
-      S._ctx.fillStyle = COLOR_HEX.green;  S._ctx.fillRect(x, y + qh, qw, qh);
-      S._ctx.fillStyle = COLOR_HEX.yellow; S._ctx.fillRect(x + qw, y + qh, qw, qh);
-      S._ctx.restore();
-      S._ctx.save();
-      S._ctx.strokeStyle = '#fff';
-      S._ctx.lineWidth = 1;
-      CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-      S._ctx.stroke();
-      S._ctx.fillStyle = '#fff';
-      S._ctx.font = 'bold 22px sans-serif';
-      S._ctx.textAlign = 'center';
-      S._ctx.textBaseline = 'middle';
-      S._ctx.shadowColor = '#000';
-      S._ctx.shadowBlur = 4;
-      S._ctx.fillText('W', x + w / 2, y + h / 2);
-    } else if (card.type === 'skip') {
-      CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-      S._ctx.fillStyle = '#c22';
-      S._ctx.fill();
-      S._ctx.strokeStyle = '#fff';
-      S._ctx.lineWidth = 1;
-      S._ctx.stroke();
-      // circle-slash
-      const cx = x + w / 2, cy = y + h / 2, r = Math.min(w, h) * 0.25;
-      S._ctx.strokeStyle = '#fff';
-      S._ctx.lineWidth = 3;
-      S._ctx.beginPath();
-      S._ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      S._ctx.stroke();
-      S._ctx.beginPath();
-      S._ctx.moveTo(cx - r * 0.7, cy + r * 0.7);
-      S._ctx.lineTo(cx + r * 0.7, cy - r * 0.7);
-      S._ctx.stroke();
-      S._ctx.fillStyle = '#fff';
-      S._ctx.font = 'bold 13px sans-serif';
-      S._ctx.textAlign = 'center';
-      S._ctx.textBaseline = 'top';
-      S._ctx.fillText('S', x + w / 2, y + 4);
-    } else {
-      const bg = COLOR_HEX[card.color] || '#888';
-      CE.drawRoundedRect(S._ctx, x, y, w, h, CE.CARD_RADIUS);
-      S._ctx.fillStyle = bg;
-      S._ctx.fill();
-      S._ctx.strokeStyle = '#fff';
-      S._ctx.lineWidth = 1;
-      S._ctx.stroke();
-      // white ellipse center
-      S._ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      S._ctx.beginPath();
-      S._ctx.ellipse(x + w / 2, y + h / 2, w / 3, h / 2.5, -0.3, 0, Math.PI * 2);
-      S._ctx.fill();
-      S._ctx.fillStyle = '#fff';
-      S._ctx.font = 'bold 22px sans-serif';
-      S._ctx.textAlign = 'center';
-      S._ctx.textBaseline = 'middle';
-      S._ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      S._ctx.shadowBlur = 2;
-      S._ctx.fillText(String(card.number), x + w / 2, y + h / 2);
-      // corner numbers
-      S._ctx.font = 'bold 11px sans-serif';
-      S._ctx.textAlign = 'left';
-      S._ctx.textBaseline = 'top';
-      S._ctx.shadowBlur = 0;
-      S._ctx.fillText(String(card.number), x + 4, y + 3);
-      S._ctx.save();
-      S._ctx.translate(x + w - 4, y + h - 3);
-      S._ctx.rotate(Math.PI);
-      S._ctx.textAlign = 'left';
-      S._ctx.textBaseline = 'top';
-      S._ctx.fillText(String(card.number), 0, 0);
-      S._ctx.restore();
-    }
-    S._ctx.restore();
+    if (card.type === 'wild')
+      CE.drawColorCard(S._ctx, x, y, w, h, { color: 'wild', label: 'W', wild: true }, card);
+    else if (card.type === 'skip')
+      CE.drawColorCard(S._ctx, x, y, w, h, { color: '#1a1a1a', label: '\u2298', sub: 'SKIP', corner: 'S', ink: '#ffffff' }, card);
+    else
+      CE.drawColorCard(S._ctx, x, y, w, h, { color: COLOR_HEX[card.color] || '#888888', label: String(card.number) }, card);
   }
+
 
   /* ================================================================
      DRAWING
