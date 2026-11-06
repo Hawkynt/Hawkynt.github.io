@@ -93,7 +93,7 @@
     for (let i = 0; i < 5; ++i) K.blitRot(ctx, RA.nugget('copper', i % 3), 760 + i * 26, 470 + Math.sin(t * 3 + i) * 8, t * 2 + i, 1.4);
     kit.text('the tractor beam reels nuggets in', 820, 510, 13, UI.textDim, { align: 'center' });
     para([
-      'Fly with WASD or the arrow keys - or hold the right mouse button to thrust toward the cursor. Space has inertia: let go to drift, the engines brake gently.',
+      'Fly like a ship: W (or Up) thrusts along the nose, S brakes and backs off, A/D (or Left/Right) turn - or hold the right mouse button to thrust toward the cursor. Space has inertia: let go to drift, the engines brake gently.',
       'Aim with the mouse and hold the left button to drill. Space drills with auto-aim. The laser heats a rock until it cracks into smaller rocks and ore nuggets; the smallest crumble completely.',
       'The tractor beam pulls nearby nuggets into the hold. Shift boosts once you have researched the Afterburner.',
       'Fly back into the DOCK ring slowly to end the trip - the hold is unloaded at the station.',
@@ -166,13 +166,13 @@
       'Licences open the next belt once your total earnings are high enough. Each belt has its own look, ore and hazards. Geodes and derelicts hide in them; somewhere in the Void Crown waits the Crown Heart.',
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
-    const rows = [['WASD / Arrows', 'Fly'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill with auto-aim'],
+    const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill with auto-aim'],
       ['Shift', 'Boost'], ['Q', 'Scanner pulse'], ['C', 'Seismic charge'], ['F', 'Recall / launch drones'], ['Esc / P', 'Pause'], ['Tab', 'Command view / station tabs'],
       ['B', 'Research the selected node'], ['F2', 'Title screen']];
     kit.panel(680, 140, 500, 440, { alpha: 0.8, brackets: false });
     for (let i = 0; i < rows.length; ++i) {
-      kit.text(rows[i][0], 710, 170 + i * 34, 15, UI.gold, { weight: 'bold' });
-      kit.text(rows[i][1], 880, 170 + i * 34, 15, UI.text);
+      kit.text(rows[i][0], 710, 166 + i * 30, 15, UI.gold, { weight: 'bold' });
+      kit.text(rows[i][1], 880, 166 + i * 30, 15, UI.text);
     }
   }
 

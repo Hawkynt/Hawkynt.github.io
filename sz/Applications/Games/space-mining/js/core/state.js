@@ -80,7 +80,7 @@
       keys: {},
       mouseX: 640, mouseY: 360, mouseDown: false, rightDown: false, mouseMoved: 0,
       aimMode: 'mouse', touch: false,
-      moveX: 0, moveY: 0, aimWX: 0, aimWY: 0, firing: false, boost: false, tractor: false,
+      moveX: 0, moveY: 0, turn: 0, thrustAxis: 0, aimWX: 0, aimWY: 0, firing: false, boost: false, tractor: false,
     },
     hitAreas: [],
     menuCursor: 0,

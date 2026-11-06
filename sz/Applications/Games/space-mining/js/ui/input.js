@@ -1,5 +1,5 @@
 /* Keyboard, mouse and touch input: held keys and the pointer in G.input; flight intents
-   sampled each step (thrust from WASD or toward the cursor on the right button, boost, the
+   sampled each step (W/S thrust along the nose and A/D turn, or thrust toward the cursor on the right button, boost, the
    laser on the left button or Space with keyboard auto-aim, abilities); the command view and
    fleet keys handed to NS.commandInput; cinematic skipping; menu navigation and clicks through
    the hit areas; per-screen keys; pause on a hidden tab. Owns G.input. */
@@ -221,8 +221,10 @@
   }
 
   function sample() {
-    inp.moveX = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
-    inp.moveY = (k('KeyS') || k('ArrowDown') ? 1 : 0) - (k('KeyW') || k('ArrowUp') ? 1 : 0);
+    /* keys fly the ship like a ship: W/S thrust along the nose, A/D turn it */
+    inp.moveX = inp.moveY = 0;
+    inp.turn = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
+    inp.thrustAxis = (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0);
     inp.boost = k('ShiftLeft') || k('ShiftRight');
     inp.firing = false;
     const s = G.ship;
@@ -230,6 +232,7 @@
     if (G.cmd.on) {
       /* the command view steers the fleet, not the ship: it coasts and brakes */
       inp.moveX = inp.moveY = 0;
+      inp.turn = inp.thrustAxis = 0;
       inp.boost = false;
       return;
     }
