@@ -31,6 +31,7 @@
     S.state = K.STATE_PLAYING;
     S.roundNumber = 1;
     S.roundStartScore = S.score;
+    for (const a of S.dealAnimations) if (a.card) a.card._dealing = false;
     S.dealAnimations = [];
     S.flipAnimations = [];
     S.glowCards = [];
