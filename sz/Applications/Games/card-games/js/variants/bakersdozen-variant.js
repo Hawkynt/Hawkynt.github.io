@@ -111,22 +111,10 @@
     for (let i = 0; i < deck.length; ++i)
       cols[i % TABLEAU_COUNT].push(deck[i]);
 
-    // Baker's Dozen rule: move kings to the bottom of each column
+    // Baker's Dozen rule: kings go to the bottom of their column, keeping order
     for (let c = 0; c < TABLEAU_COUNT; ++c) {
       const col = cols[c];
-      // Repeatedly scan and move kings down until all kings are at the bottom
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (let i = 0; i < col.length - 1; ++i) {
-          if (col[i].value === 12) { // King
-            const king = col.splice(i, 1)[0];
-            col.unshift(king);
-            changed = true;
-            break;
-          }
-        }
-      }
+      cols[c] = col.filter(card => card.value === 12).concat(col.filter(card => card.value !== 12));
     }
 
     return cols;
