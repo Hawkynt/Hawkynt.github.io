@@ -62,8 +62,7 @@
       this.#container.innerHTML = `
         <div class="sz-boot-content">
           <div class="sz-boot-logo">
-            <span class="sz-boot-logo-s">Z</span>
-            <span class="sz-boot-logo-z">Z</span>
+            <span class="sz-boot-logo-q">&raquo;</span><span class="sz-boot-logo-s">Z</span><span class="sz-boot-logo-z">Z</span><span class="sz-boot-logo-q">&laquo;</span>
           </div>
           <div class="sz-boot-subtitle">&raquo;SynthelicZ&laquo; Desktop</div>
           <div class="sz-boot-spinner">

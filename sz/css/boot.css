@@ -51,6 +51,15 @@
   user-select: none;
 }
 
+/* the guillemets of »SZ« framing the two letters */
+.sz-boot-logo-q {
+  display: inline-block;
+  color: #5d7fa8;
+  font-size: 0.72em;
+  vertical-align: 0.12em;
+  margin: 0 0.06em;
+}
+
 /* "S" letter - a mirrored Z (scaleX(-1)) that pulses with a soft blue glow */
 .sz-boot-logo-s {
   display: inline-block;
