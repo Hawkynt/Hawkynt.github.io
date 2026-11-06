@@ -105,16 +105,16 @@
       { id: 'spitemalice',   name: 'Spite & Malice',   desc: 'Competitive patience for two',         module: 'js/variants/spitemalice/index.js' },
       { id: 'beggar',        name: 'Beggar Neighbor',   desc: 'Pay court cards or lose the pile',     module: 'js/variants/beggar/index.js' },
       /* European (10) */
-      { id: 'schwimmen',     name: 'Schwimmen',        desc: 'German 31 \u2014 best hand in one suit', module: 'js/variants/schwimmen-variant.js' },
-      { id: 'durak',         name: 'Durak',            desc: 'Russian attack and defense game',       module: 'js/variants/durak-variant.js' },
-      { id: 'briscola',      name: 'Briscola',         desc: 'Italian trump trick-taking game',      module: 'js/variants/briscola-variant.js' },
-      { id: 'scopa',         name: 'Scopa',            desc: 'Italian fishing \u2014 capture by sum', module: 'js/variants/scopa-variant.js' },
-      { id: 'cribbage',      name: 'Cribbage',         desc: 'Pegging board scoring card game',      module: 'js/variants/cribbage-variant.js' },
-      { id: 'piquet',        name: 'Piquet',           desc: 'Classic French declaration game',      module: 'js/variants/piquet-variant.js' },
-      { id: 'bezique',       name: 'Bezique',          desc: 'French meld and trick game',           module: 'js/variants/bezique-variant.js' },
-      { id: 'cassino',       name: 'Cassino',          desc: 'Capture table cards by value',         module: 'js/variants/cassino-variant.js' },
-      { id: 'pishti',        name: 'Pishti',           desc: 'Turkish capture with Jack tricks',     module: 'js/variants/pishti-variant.js' },
-      { id: 'belote',        name: 'Belote',           desc: 'French trick-taking with declarations', module: 'js/variants/belote-variant.js' }
+      { id: 'schwimmen',     name: 'Schwimmen',        desc: 'German 31 \u2014 best hand in one suit', module: 'js/variants/schwimmen/index.js' },
+      { id: 'durak',         name: 'Durak',            desc: 'Russian attack and defense game',       module: 'js/variants/durak/index.js' },
+      { id: 'briscola',      name: 'Briscola',         desc: 'Italian trump trick-taking game',      module: 'js/variants/briscola/index.js' },
+      { id: 'scopa',         name: 'Scopa',            desc: 'Italian fishing \u2014 capture by sum', module: 'js/variants/scopa/index.js' },
+      { id: 'cribbage',      name: 'Cribbage',         desc: 'Pegging board scoring card game',      module: 'js/variants/cribbage/index.js' },
+      { id: 'piquet',        name: 'Piquet',           desc: 'Classic French declaration game',      module: 'js/variants/piquet/index.js' },
+      { id: 'bezique',       name: 'Bezique',          desc: 'French meld and trick game',           module: 'js/variants/bezique/index.js' },
+      { id: 'cassino',       name: 'Cassino',          desc: 'Capture table cards by value',         module: 'js/variants/cassino/index.js' },
+      { id: 'pishti',        name: 'Pishti',           desc: 'Turkish capture with Jack tricks',     module: 'js/variants/pishti/index.js' },
+      { id: 'belote',        name: 'Belote',           desc: 'French trick-taking with declarations', module: 'js/variants/belote/index.js' }
     ];
 
     /* ── Category groupings for menu ── */
