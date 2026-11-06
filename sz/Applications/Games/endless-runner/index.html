@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online endless runner game -- dodge obstacles, collect coins and power-ups in your browser">
+<meta name="description" content="Free online endless runner: a story campaign across five worlds with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Endless Runner -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online endless runner game -- dodge obstacles, collect coins and power-ups in your browser">
+<meta property="og:description" content="Free online endless runner: a story campaign across five worlds with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/endless-runner/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Endless Runner",
   "url": "https://hawkynt.github.io/sz/Applications/Games/endless-runner/index.html",
-  "description": "Free online endless runner game -- dodge obstacles, collect coins and power-ups in your browser",
+  "description": "Free online endless runner: a story campaign across five worlds with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -29,14 +29,17 @@
 <link rel="stylesheet" href="styles.css?v=1cdfca32">
 </head>
 <body>
-<noscript><p>Free online endless runner game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online endless runner: run, jump, slide and dash through five worlds, outrun and defeat five guardians, and chase high scores in Arcade, Zen and the Daily Run. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="new">Title Screen<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="tree">Tech Tree...<span class="shortcut">T</span></div>
+      <div class="menu-entry" data-action="wardrobe">Collection...</div>
+      <div class="menu-entry" data-action="journal">Journal...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
@@ -54,15 +57,15 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-section" id="statusDistance">Distance: 0 m</div>
-  <div class="status-section" id="statusCoins">Coins: 0</div>
-  <div class="status-section" id="statusSpeed">Speed: 8.0 m/s</div>
-  <div class="status-section" id="statusState">Ready</div>
+  <div class="status-section" id="statusRun">Level 1</div>
+  <div class="status-section" id="statusWallet">Coins: 0</div>
+  <div class="status-section" id="statusSeason"></div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- High Scores Dialog -->
@@ -72,7 +75,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Distance</th><th>Coins</th></tr>
+          <tr><th>#</th><th>Score</th><th>Distance</th><th>Mode</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -86,17 +89,20 @@
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Arrow Left / A</td><td>Switch lane left</td></tr>
-        <tr><td>Arrow Right / D</td><td>Switch lane right</td></tr>
-        <tr><td>Arrow Up / W / Space</td><td>Jump</td></tr>
-        <tr><td>Arrow Down / S</td><td>Slide</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Space / W / Up</td><td>Jump (again in the air: double jump; release early for a short hop)</td></tr>
+        <tr><td>S / Down</td><td>Slide on the ground, fast fall in the air</td></tr>
+        <tr><td>Shift / D / Right</td><td>Dash (smashes small obstacles)</td></tr>
+        <tr><td>Mouse</td><td>Left click: jump, right click: slide, middle click or wheel: dash</td></tr>
+        <tr><td>Touch</td><td>Tap or swipe up: jump, swipe down: slide, swipe right: dash</td></tr>
+        <tr><td>Esc / P</td><td>Pause (tech tree and collection from the pause menu)</td></tr>
+        <tr><td>T</td><td>Tech tree</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
+        <tr><td>Enter / Space</td><td>Choose in menus, skip a line in cinematics</td></tr>
+        <tr><td>F2</td><td>Title screen (your run is saved)</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -107,12 +113,12 @@
 
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
-  <div class="dialog">
+  <div class="dialog" style="width: 400px;">
     <div class="dialog-title">About Endless Runner</div>
     <div class="dialog-body">
       <strong>Endless Runner</strong><br><br>
-      Dodge obstacles by switching lanes, jumping and sliding while collecting coins and power-ups in an ever-accelerating run. How far can you go?<br><br>
-      Features 3-lane movement, procedural obstacles, coin magnet / shield / score multiplier power-ups, speed lines, and visual theme shifts.<br><br>
+      The classic auto-runner grown into an adventure. Run with Nova the courier and Pip her lantern drone through five worlds - twenty stages and five guardians, two that chase you and three that fight back - to bring the Spark Cores home and relight the Beacon. Or play endless Arcade, the weekly Featured run, calm Zen, the Daily Run or Boss Rush.<br><br>
+      Thirteen power-ups, jumps, double jumps, slides and dashes, near-miss combos, a 25-node tech tree, six runners with perks, outfits and trails, achievements, daily quests, streaks and seasonal festivals. Every run saves itself so you can continue later.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -122,47 +128,84 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Endless Runner - Free Online Auto-Runner Arcade Game</h1>
-<p>Play Endless Runner free in your browser -- sprint through procedurally generated obstacle courses across three lanes, dodge barriers by switching lanes, jumping, and sliding. Collect coins and power-ups as speed ramps up through day, sunset, night, and neon visual themes.</p>
+<h1>Endless Runner - Free Online Runner Game with Story Campaign, Boss Chases, Tech Tree and Seasonal Festivals</h1>
+<p>Run, jump, double jump, slide and dash through procedurally built courses in five worlds: Sunpetal Meadows, Ember Canyon, Frostpeak Pass, Neon Metro and the Hollow Rift. Outrun a stampeding boar and an avalanche, defeat the Dune Wyrm, Warden Mk-II and the Hollow King, and relight the Beacon in this free HTML5 browser game.</p>
 <h2>Features</h2>
 <ul>
-<li>3-lane auto-runner with procedurally generated obstacle courses</li>
-<li>Lane switching, jumping, and sliding to dodge obstacles</li>
-<li>3 obstacle types: low barriers (jumpable), high barriers (slideable), full blocks (lane change)</li>
-<li>Coins worth 10 points each with sparkle effects and floating text</li>
-<li>3 power-ups: Magnet (attracts coins), Shield (absorbs one hit), Score Multiplier (2x points)</li>
-<li>Speed acceleration from 8 m/s to 24 m/s with progressive difficulty</li>
-<li>4 visual theme tiers: Day, Sunset, Night, Neon -- shifting as speed increases</li>
-<li>Speed-line effects at high velocities</li>
-<li>Parallax-scrolling road with lane markings and skyline</li>
-<li>Screen shake on death, obstacle warning glow, and dust puff effects</li>
-<li>Touch and mouse input support alongside keyboard controls</li>
-<li>High score persistence and tutorial overlay</li>
+<li>Story campaign: 5 worlds, 25 stages, 75 stars, 2 guardian chases, 3 boss fights, cinematics and a world map</li>
+<li>6 modes: Story, Arcade, weekly Featured run, Zen, Daily Run and Boss Rush</li>
+<li>13 power-ups: Magnet, Shield, Double Score, Jetpack, Giant, Slow-Mo, Ghost, Rocket, Coin Rain, Phoenix Feather, Spring Shoes, Gem Rush and Shockwave</li>
+<li>Fences, crates, overhangs, walls, spikes, saws, flyers, falling rocks, rollers, pits, ledges, springs and boost pads - every course checked for fairness</li>
+<li>Near-miss scoring, combo multiplier up to x5, best-run ghost and a best-distance flag</li>
+<li>25-node tech tree in five branches, bought with coins earned in every mode</li>
+<li>6 runners with perks, 14 outfits and 14 trails</li>
+<li>6 seasonal festivals with reward tracks, 3 daily quests, play streaks, 34 achievements and lifetime statistics</li>
+<li>Automatic save: every run continues exactly where you left it</li>
+<li>Keyboard, mouse and touch swipe controls; scales to any window size</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=9ccb8518"></script>
-<script src="js/core/constants.js?v=e3171c6e"></script>
-<script src="js/core/state.js?v=cd20a8ec"></script>
-<script src="js/core/view.js?v=6d8f4276"></script>
-<script src="js/core/rules.js?v=1c9754f1"></script>
-<script src="js/systems/spawn.js?v=0dea2682"></script>
-<script src="js/systems/collision.js?v=ffeb9da8"></script>
-<script src="js/systems/flow.js?v=9fd291ae"></script>
-<script src="js/render/background.js?v=2b4f08c4"></script>
-<script src="js/render/entities.js?v=72185fbc"></script>
-<script src="js/render/hud.js?v=08ca7524"></script>
-<script src="js/render/scene.js?v=d6558e9d"></script>
-<script src="js/ui/status.js?v=30490ec1"></script>
-<script src="js/ui/highscores.js?v=37a599fe"></script>
-<script src="js/ui/input.js?v=50ce806c"></script>
-<script src="js/ui/menu.js?v=c10c4f1c"></script>
-<script src="js/app.js?v=6854b82c"></script>
+<script src="js/core/namespace.js?v=365d516c"></script>
+<script src="js/core/constants.js?v=16249a8b"></script>
+<script src="js/core/rng.js?v=9b506379"></script>
+<script src="js/core/data-worlds.js?v=66be5e27"></script>
+<script src="js/core/data-story.js?v=b23f3546"></script>
+<script src="js/core/data-items.js?v=92b84491"></script>
+<script src="js/core/data-tree.js?v=c3ea18dd"></script>
+<script src="js/core/data-cosmetics.js?v=651f3445"></script>
+<script src="js/core/data-goals.js?v=b0242dc1"></script>
+<script src="js/core/seasons.js?v=02ef7b5c"></script>
+<script src="js/core/physics.js?v=933b5b2a"></script>
+<script src="js/core/course.js?v=f850834d"></script>
+<script src="js/core/solver.js?v=abbcef44"></script>
+<script src="js/core/rules.js?v=0881a230"></script>
+<script src="js/core/state.js?v=8d68da82"></script>
+<script src="js/core/audio.js?v=0ea8c5f7"></script>
+<script src="js/core/save.js?v=39b82f90"></script>
+<script src="js/systems/fx.js?v=1a78a944"></script>
+<script src="js/systems/stream.js?v=c58de9ee"></script>
+<script src="js/systems/powers.js?v=074aa1dd"></script>
+<script src="js/systems/hazards.js?v=22a31f00"></script>
+<script src="js/systems/pickups.js?v=eabb6624"></script>
+<script src="js/systems/player.js?v=49803a2d"></script>
+<script src="js/systems/bosses.js?v=45b13c4a"></script>
+<script src="js/systems/progress.js?v=bd392855"></script>
+<script src="js/systems/run.js?v=ba53b4e6"></script>
+<script src="js/systems/autopilot.js?v=7de5e69d"></script>
+<script src="js/systems/cine.js?v=b70498bd"></script>
+<script src="js/systems/sim.js?v=4db07dba"></script>
+<script src="js/render/view.js?v=4c3f22d2"></script>
+<script src="js/render/art-kit.js?v=54d07e86"></script>
+<script src="js/render/backdrop-art.js?v=6f4fbf10"></script>
+<script src="js/render/backdrop.js?v=c384155b"></script>
+<script src="js/render/runner-art.js?v=64e13445"></script>
+<script src="js/render/prop-art.js?v=2bd65852"></script>
+<script src="js/render/boss-art.js?v=fa1ba029"></script>
+<script src="js/render/world.js?v=5d0ee213"></script>
+<script src="js/render/actors.js?v=f1d87d4d"></script>
+<script src="js/render/fx-render.js?v=ffaf9a02"></script>
+<script src="js/render/hud.js?v=63b6389e"></script>
+<script src="js/render/cine-render.js?v=3d6af8c1"></script>
+<script src="js/render/frame.js?v=249b0379"></script>
+<script src="js/ui/kit.js?v=20c4faae"></script>
+<script src="js/ui/widgets.js?v=1e43c514"></script>
+<script src="js/ui/screens.js?v=8a39ab1c"></script>
+<script src="js/ui/title.js?v=6176dc30"></script>
+<script src="js/ui/map.js?v=47246e59"></script>
+<script src="js/ui/tree.js?v=81434573"></script>
+<script src="js/ui/wardrobe.js?v=6a984bda"></script>
+<script src="js/ui/journal.js?v=e1fbde0b"></script>
+<script src="js/ui/results.js?v=ea3260a4"></script>
+<script src="js/ui/help.js?v=a26bf8a3"></script>
+<script src="js/ui/pause.js?v=180ffb16"></script>
+<script src="js/ui/touch.js?v=66bcd5f0"></script>
+<script src="js/ui/status-bar.js?v=ebe78b5c"></script>
+<script src="js/ui/input.js?v=7d24941b"></script>
+<script src="js/app.js?v=d8111e8d"></script>
 </body>
 </html>

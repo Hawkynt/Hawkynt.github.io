@@ -1,82 +1,104 @@
-/* C, the frozen game constants: canvas size, storage keys, lanes, player, speed and
-   speed tiers, obstacles, coins, power-ups, scrolling, state names and tutorial pages. */
+/* Fixed numbers: the 1280 x 720 view plane, the ground line, the runner's physics (gravity,
+   jumps, slide, dash), speeds in metres per second and the pixels per metre, scoring and combo
+   tiers, pool sizes, autosave cadence, storage keys (new and the old game's) and the UI palette.
+   Owns nothing that changes. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.EndlessRunner || (SZ.EndlessRunner = {});
 
-  const C = NS.constants || (NS.constants = {});
+  Object.assign(NS.constants, {
+    VIEW_W: 1280,
+    VIEW_H: 720,
+    TAU: Math.PI * 2,
 
-  /* ── Constants ── */
-  C.CANVAS_W = 400;
-  C.CANVAS_H = 600;
-  C.MAX_DT = 0.05;
+    /* the world: y grows downwards, the ground surface sits at GROUND_Y */
+    GROUND_Y: 580,
+    FALL_Y: 900,
+    PX_PER_M: 48,
+    PLAYER_SCREEN_X: 300,
 
-  /* Storage */
-  C.STORAGE_PREFIX = 'sz-endless-runner';
-  C.STORAGE_HIGHSCORES = C.STORAGE_PREFIX + '-highscores';
-  C.STORAGE_COINS = C.STORAGE_PREFIX + '-coins';
-  C.STORAGE_TUTORIAL = C.STORAGE_PREFIX + '-tutorial-seen';
-  C.MAX_HIGH_SCORES = 5;
+    /* fixed 60 Hz simulation, at most 5 catch-up steps after a stall */
+    STEP: 1 / 60,
+    STEP_MS: 1000 / 60,
+    MAX_STEPS: 5,
 
-  /* Lanes */
-  C.NUM_LANES = 3;
-  C.LANE_WIDTH = 80;
-  C.LANE_Y_BOTTOM = C.CANVAS_H - 80;
-  C.LANE_SWITCH_DURATION = 0.15;
+    /* the runner's body and moves */
+    PW: 34,
+    PH: 72,
+    PH_SLIDE: 34,
+    GRAVITY: 2800,
+    JUMP_V: 980,
+    JUMP2_V: 860,
+    MAX_FALL: 1500,
+    DROP_V: 1500,
+    CUT_V: 420,
+    COYOTE: 0.09,
+    BUFFER: 0.12,
+    SLIDE_T: 0.6,
+    DASH_T: 0.22,
+    DASH_MUL: 1.8,
+    DASH_CD: 1.6,
+    SPRING_V: 1450,
+    BOOST_T: 1.4,
+    BOOST_MUL: 1.45,
+    HIT_SHRINK: 5,
 
-  /* Player */
-  C.PLAYER_W = 30;
-  C.PLAYER_H = 50;
-  C.JUMP_DURATION = 0.7;
-  C.SLIDE_DURATION = 0.5;
-  C.JUMP_HEIGHT = 130;
+    /* speeds in m/s */
+    ZEN_SPEED: 10,
+    ARCADE_BASE: 10.5,
+    ARCADE_MAX: 23,
 
-  /* Speed */
-  C.BASE_SPEED = 8;
-  C.SPEED_ACCELERATION = 0.08;
-  C.MAX_SPEED = 24;
+    /* scoring */
+    COIN_SCORE: 10,
+    GEM_SCORE: 50,
+    NEAR_SCORE: 25,
+    SMASH_SCORE: 15,
+    NEAR_GAP: 22,
+    COMBO_WINDOW: 2.6,
+    COMBO_TIERS: [0, 25, 60, 120, 200, 320],
+    COMBO_MULS: [1, 1.5, 2, 3, 4, 5],
 
-  /* Speed tiers — visual themes change at these thresholds */
-  C.SPEED_TIERS = [
-    { name: 'day',    minSpeed: 0,  skyTop: '#87ceeb', skyBot: '#e0f0ff', ground: '#8fbc8f', road: '#666' },
-    { name: 'sunset', minSpeed: 12, skyTop: '#ff6b35', skyBot: '#ffd700', ground: '#9b7653', road: '#555' },
-    { name: 'night',  minSpeed: 16, skyTop: '#191970', skyBot: '#2f2f4f', ground: '#2d4a2d', road: '#333' },
-    { name: 'neon',   minSpeed: 20, skyTop: '#0a0a2e', skyBot: '#1a0a3e', ground: '#0d1a0d', road: '#111' }
-  ];
+    /* the live course: how far ahead it is generated and behind it is kept */
+    GEN_AHEAD: 3200,
+    KEEP_BEHIND: 700,
 
-  /* Obstacles */
-  C.OBSTACLE_TYPES = ['barrier-low', 'barrier-high', 'full-block'];
-  C.OBSTACLE_MIN_GAP = 18;
-  C.OBSTACLE_SPAWN_RANGE = 12;
+    /* effects */
+    MAX_PARTICLES: 1600,
+    MAX_TEXTS: 40,
+    MAX_RINGS: 32,
+    MAX_SHAKE: 22,
 
-  /* Coins */
-  C.COIN_VALUE = 10;
-  C.COIN_RADIUS = 8;
-  C.COIN_SPAWN_CHANCE = 0.4;
+    /* autosave cadence while playing, seconds */
+    AUTOSAVE_EVERY: 3,
+    GHOST_STEP: 32,
 
-  /* Power-ups */
-  C.POWERUP_TYPES = ['magnet', 'shield', 'multiplier'];
-  C.POWERUP_SPAWN_CHANCE = 0.08;
-  C.MAGNET_DURATION = 8;
-  C.SHIELD_DURATION = 15;
-  C.MULTIPLIER_DURATION = 10;
-  C.MAGNET_RANGE = 120;
+    SAVE_KEY: 'sz-endless-runner-save-v2',
+    RUN_KEY: 'sz-endless-runner-run-v2',
+    OLD_SCORES_KEY: 'sz-endless-runner-highscores',
+    OLD_COINS_KEY: 'sz-endless-runner-coins',
+    OLD_TUTORIAL_KEY: 'sz-endless-runner-tutorial-seen',
+    MAX_HIGH_SCORES: 10,
 
-  /* Scrolling */
-  C.SPAWN_Y = -60;
-  C.SCROLL_FACTOR = 10;
+    FONT: '"Segoe UI", "Trebuchet MS", Tahoma, Arial, sans-serif',
+    TITLE_FONT: '"Trebuchet MS", "Segoe UI", Verdana, sans-serif',
 
-  /* States */
-  C.STATE_READY = 'READY';
-  C.STATE_RUNNING = 'RUNNING';
-  C.STATE_PAUSED = 'PAUSED';
-  C.STATE_DEAD = 'DEAD';
-
-  /* ── Tutorial ── */
-  C.TUTORIAL_PAGES = [
-    { title: 'How to Play', lines: ['Run as far as you can!', 'Dodge obstacles by switching lanes,', 'jumping, and sliding.', '', 'Left/Right or A/D = Switch lanes', 'Up / W / Space = Jump  |  Down / S = Slide'] },
-    { title: 'Tips', lines: ['Collect coins for your total score.', 'Grab power-ups: magnet, shield, multiplier.', 'Speed increases over time -- stay alert!', '', 'The visual theme shifts as you progress.', 'Press H anytime to see this help again.'] }
-  ];
+    UI: {
+      panelTop: 'rgba(24,26,52,0.94)',
+      panelBottom: 'rgba(10,10,26,0.96)',
+      accent: '#5ee0ff',
+      accentDeep: '#1f6f9a',
+      gold: '#ffd24a',
+      goldDeep: '#b8860b',
+      text: '#f2f4ff',
+      textDim: '#a8b0d8',
+      textMute: '#6a7096',
+      good: '#7cff9a',
+      bad: '#ff5a6a',
+      warn: '#ffb347',
+      hot: '#ff6ad5',
+      violet: '#b48cff',
+    },
+  });
 })();
