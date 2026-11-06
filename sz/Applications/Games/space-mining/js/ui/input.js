@@ -1,8 +1,8 @@
 /* Keyboard, mouse and touch input: held keys and the pointer in G.input; flight intents
    sampled each step (thrust from WASD or toward the cursor on the right button, boost, the
-   laser on the left button or Space with keyboard auto-aim, abilities); cinematic skipping;
-   menu navigation and clicks through the hit areas; per-screen keys; pause on a hidden tab.
-   Owns G.input. */
+   laser on the left button or Space with keyboard auto-aim, abilities); the command view and
+   fleet keys handed to NS.commandInput; cinematic skipping; menu navigation and clicks through
+   the hit areas; per-screen keys; pause on a hidden tab. Owns G.input. */
 ;(function() {
   'use strict';
 
@@ -38,6 +38,13 @@
       return;
     }
     if (G.screen === 'playing') {
+      if (G.cmd.on) {
+        if (NS.commandInput.key(e)) { e.preventDefault(); return; }
+        if (FLIGHT_KEYS[e.code] || e.code === 'KeyA') e.preventDefault();
+        if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyP')) scr.pause();
+        return;
+      }
+      if (!e.repeat && NS.commandInput.pilotKey(e)) { e.preventDefault(); return; }
       onFlightKey(e);
       return;
     }
@@ -123,6 +130,10 @@
     }
     if (G.screen === 'playing') {
       e.preventDefault();
+      if (G.cmd.on) {
+        NS.commandInput.down(e, p);
+        return;
+      }
       if (inp.touch) {
         NS.touch.down(e.pointerId, p.x, p.y);
         return;
@@ -143,6 +154,11 @@
     const p = toPlane(e.clientX, e.clientY);
     inp.mouseX = p.x;
     inp.mouseY = p.y;
+    if (G.screen === 'playing' && G.cmd.on) {
+      ++inp.mouseMoved;
+      NS.commandInput.move(p);
+      return;
+    }
     if (e.pointerType === 'touch') {
       NS.touch.move(e.pointerId, p.x, p.y);
       return;
@@ -152,6 +168,10 @@
   });
 
   function release(e) {
+    if (G.screen === 'playing' && G.cmd.on) {
+      const p = toPlane(e.clientX, e.clientY);
+      NS.commandInput.up(e, p);
+    }
     if (e.pointerType === 'touch') NS.touch.up(e.pointerId);
     if (e.button === 2) inp.rightDown = false;
     else inp.mouseDown = false;
@@ -160,6 +180,11 @@
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('wheel', (e) => {
+    if (G.screen !== 'playing' || !G.cmd.on) return;
+    e.preventDefault();
+    NS.commandInput.wheel(e, toPlane(e.clientX, e.clientY));
+  }, { passive: false });
 
   /* ── per-step intent ── */
   function k(code) {
@@ -202,6 +227,12 @@
     inp.firing = false;
     const s = G.ship;
     if (!s) return;
+    if (G.cmd.on) {
+      /* the command view steers the fleet, not the ship: it coasts and brakes */
+      inp.moveX = inp.moveY = 0;
+      inp.boost = false;
+      return;
+    }
     if (inp.touch) {
       NS.touch.sample(inp);
       return;

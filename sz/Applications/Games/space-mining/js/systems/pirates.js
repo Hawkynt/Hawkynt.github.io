@@ -186,6 +186,7 @@
       const q = (p.x - s.x) * (p.x - s.x) + (p.y - s.y) * (p.y - s.y);
       if (p.alive && q < bd) { bd = q; best = p; }
     }
+    if (!best) best = NS.enemies.nearest(s.x, s.y, 460, 'small');
     if (!best) return;
     turretCd = 0.7 - st.turret * 0.12;
     const a = Math.atan2(best.y - s.y, best.x - s.x);
@@ -203,6 +204,16 @@
       b.y += b.vy * dt;
       if (b.life <= 0) { b.alive = false; continue; }
       if (b.friendly) {
+        const foes = NS.enemies.queryHostile(b.x, b.y, 30);
+        for (let k = 0; k < foes.length; ++k) {
+          const e = foes[k];
+          if (e.alive && !e.dormant && (e.x - b.x) * (e.x - b.x) + (e.y - b.y) * (e.y - b.y) < e.r * e.r) {
+            NS.enemies.hitTarget(e, b.dmg, 'player');
+            b.alive = false;
+            break;
+          }
+        }
+        if (!b.alive) continue;
         for (let k = 0; k < G.pirates.length; ++k) {
           const p = G.pirates[k];
           if (p.alive && (p.x - b.x) * (p.x - b.x) + (p.y - b.y) * (p.y - b.y) < p.r * p.r) {

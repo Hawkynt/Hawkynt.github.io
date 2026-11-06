@@ -1,6 +1,7 @@
-/* Pure game rules: the save v2 shape and its migration from the first version, tech tree and
-   hangar maths (levels, costs, states, buying), hulls, station modules, belt licences, the
-   derived ship stats, cargo space per ore and achievement checks. No DOM, no state access. */
+/* Pure game rules: the save v2 shape and its migration from the first version (and from the
+   pre-colony v2 saves: outposts start empty), tech tree and hangar maths (levels, costs, states,
+   buying), hulls, station modules, belt licences, the derived ship and colony stats, cargo
+   space per ore and achievement checks. No DOM, no state access. */
 ;(function() {
   'use strict';
 
@@ -10,6 +11,8 @@
   const { HULLS, HULL_BY_ID, UPGRADES, UPGRADE_BY_ID, MODULES, MODULE_BY_ID } = NS.ships;
   const { ORES, ZONES, ZONE_BY_ID } = NS.ores;
   const { ACHIEVEMENTS, STAT_KEYS } = NS.goals;
+  const { COMPONENTS } = NS.colonyData;
+  const { CHAPTER_BY_ID } = NS.eventData;
 
   const START_CREDITS = 400;
   const START_RD = 3;
@@ -25,9 +28,10 @@
       v: 2, migrated: false, credits: START_CREDITS, rd: START_RD,
       hull: 'prospector', hulls: ['prospector'], upgrades: upgrades, tree: {}, modules: modules,
       licenses: ['kessler'], visited: [], zone: 'kessler',
-      store: { ore: {}, bar: {} }, market: null, contracts: [], cycle: 0, news: '',
-      achievements: {}, stats: stats, best: { rush: 0, daily: { day: '', score: 0 } }, highScores: [],
+      store: { ore: {}, bar: {}, comp: {} }, market: null, contracts: [], cycle: 0, news: '',
+      achievements: {}, stats: stats, best: { rush: 0, daily: { day: '', score: 0 }, siege: 0 }, highScores: [],
       seenIntro: false, seenHelp: false, crownDone: false,
+      bases: {}, log: [], logSeen: [], daily: { day: '', streak: 0, last: '', week: '' }, cine: {}, resume: null,
     };
   }
 
@@ -73,10 +77,13 @@
       s.zone = s.licenses.indexOf(src.zone) >= 0 ? src.zone : 'kessler';
       const oreKeys = {};
       for (let i = 0; i < ORES.length; ++i) oreKeys[ORES[i].id] = 1;
-      if (src.store) s.store = { ore: count(src.store.ore, oreKeys), bar: count(src.store.bar, oreKeys) };
+      const compKeys = {};
+      for (let i = 0; i < COMPONENTS.length; ++i) compKeys[COMPONENTS[i].id] = 1;
+      if (src.store) s.store = { ore: count(src.store.ore, oreKeys), bar: count(src.store.bar, oreKeys), comp: count(src.store.comp, compKeys) };
       if (src.market && typeof src.market === 'object') s.market = src.market;
       if (Array.isArray(src.contracts))
-        s.contracts = src.contracts.filter(c => c && oreKeys[c.ore] && (c.kind === 'ore' || c.kind === 'bar') && c.qty > 0 && c.reward > 0).slice(0, 8);
+        s.contracts = src.contracts.filter(c => c && c.qty > 0 && c.reward > 0 && (((c.kind === 'ore' || c.kind === 'bar') && oreKeys[c.ore]) ||
+          (c.kind === 'comp' && compKeys[c.ore]) || (c.kind === 'waves' && typeof c.start === 'number'))).slice(0, 10);
       s.cycle = Math.floor(num(src.cycle, 0, 1e9, 0));
       s.news = typeof src.news === 'string' ? src.news.slice(0, 160) : '';
       if (src.achievements && typeof src.achievements === 'object')
@@ -88,7 +95,18 @@
         s.best.rush = Math.floor(num(src.best.rush, 0, 1e12, 0));
         if (src.best.daily && typeof src.best.daily.day === 'string')
           s.best.daily = { day: src.best.daily.day, score: Math.floor(num(src.best.daily.score, 0, 1e12, 0)) };
+        s.best.siege = Math.floor(num(src.best.siege, 0, 1e12, 0));
       }
+      s.bases = NS.colony.repairBases(src.bases);
+      const known = (list) => Array.isArray(list) ? list.filter((id, i, a) => CHAPTER_BY_ID[id] && a.indexOf(id) === i) : [];
+      s.log = known(src.log);
+      s.logSeen = known(src.logSeen).filter(id => s.log.indexOf(id) >= 0);
+      if (src.daily && typeof src.daily === 'object')
+        s.daily = { day: typeof src.daily.day === 'string' ? src.daily.day.slice(0, 10) : '', streak: Math.floor(num(src.daily.streak, 0, 1e6, 0)),
+          last: typeof src.daily.last === 'string' ? src.daily.last.slice(0, 10) : '', week: typeof src.daily.week === 'string' ? src.daily.week.slice(0, 8) : '' };
+      if (src.cine && typeof src.cine === 'object')
+        for (const k in src.cine) if (src.cine[k] === true && /^[a-zA-Z]{1,20}$/.test(k)) s.cine[k] = true;
+      s.resume = src.resume && typeof src.resume === 'object' && src.resume.v === 1 ? src.resume : null;
       if (Array.isArray(src.highScores))
         s.highScores = src.highScores.filter(h => h && typeof h.score === 'number' && isFinite(h.score)).slice(0, 10)
           .map(h => ({ score: Math.floor(h.score), mode: typeof h.mode === 'string' ? h.mode : 'career', detail: typeof h.detail === 'string' ? h.detail : '' }));
@@ -256,6 +274,11 @@
       blastResist: Math.min(0.8, t('blastResist')),
       scan: t('scan'), dataMul: 1 + t('dataMul'), rare: t('rare'), geode: t('geode'), salvage: 1 + t('salvage'),
       scanner: save.modules.scanner || 0, refinery: save.modules.refinery || 0, depot: save.modules.depot || 0,
+      buildSpeed: 1 + t('buildSpeed'), buildingHp: 1 + t('buildingHp'), buildCost: Math.max(0.5, 1 - t('buildCost')),
+      linkRange: t('linkRange'), turretDmg: 1 + t('turretDmg'), turretRange: 1 + t('turretRange'), shieldMul: 1 + t('shieldMul'),
+      repairMul: 1 + t('repairMul'), unitHp: 1 + t('unitHp'), unitDmg: 1 + t('unitDmg'), unitSpeed: 1 + t('unitSpeed'),
+      supply: t('supply'), vaccine: Math.min(0.85, t('vaccine')), firewall: Math.min(0.85, t('firewall')), cargoScan: t('cargoScan') > 0,
+      emp: t('emp') > 0, extract: 1 + t('extract'), process: 1 + t('process'), storageMul: 1 + t('storageMul'), powerMul: 1 + t('powerMul'),
     };
   }
 

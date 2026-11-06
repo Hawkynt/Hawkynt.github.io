@@ -1,6 +1,7 @@
 /* Persistence: loads the v2 save into G.save (migrating the first version's high-score list and
-   tutorial flag), writes it back, and refreshes the derived ship stats G.stats. Owns G.save and
-   G.stats; the only module that touches localStorage. */
+   tutorial flag, and pre-colony saves to empty outposts), adds today's daily contract, writes it
+   back (outpost rosters synced, runtime fields left out), and refreshes the derived ship stats
+   G.stats. Owns G.save and G.stats; the only module that touches localStorage. */
 ;(function() {
   'use strict';
 
@@ -47,6 +48,7 @@
     if (!stored && read(OLD_TUTORIAL_KEY) === '1') save.seenHelp = true;
     eco.initMarket(save);
     if (!save.contracts.length) eco.refillContracts(save, computeStats(save), NS.rng.makeRng(save.cycle * 7919 + 13));
+    eco.dailyContract(save, NS.rng.dayKey());
     return save;
   }
 
@@ -54,7 +56,9 @@
     const ls = storage();
     if (!ls) return;
     try {
-      ls.setItem(SAVE_KEY, JSON.stringify(G.save));
+      if (G.base && NS.base.sync) NS.base.sync();
+      /* runtime fields (prefixed _) stay out of storage */
+      ls.setItem(SAVE_KEY, JSON.stringify(G.save, (k, v) => k.charAt(0) === '_' ? undefined : v));
     } catch (_) {}
   }
 

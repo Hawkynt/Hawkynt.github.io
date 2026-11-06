@@ -1,4 +1,5 @@
-/* The tech tree screen: six branch columns of nodes with prerequisite links, level pips,
+/* The tech tree screen on two pages (Ship and Colony): branch columns of nodes with
+   prerequisite links, level pips,
    state colours (maxed, available, too expensive, locked) and research costs; a detail panel
    with the current and next level and buying. Purchases take effect at once - also mid-trip
    when opened from the pause menu (the Daily Belt keeps its fixed rig). */
@@ -9,7 +10,7 @@
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
   const G = NS.state;
   const { UI, TAU } = NS.constants;
-  const { BRANCHES, TREE, TREE_BY_ID } = NS.treeData;
+  const { BRANCHES, PAGES, TREE, TREE_BY_ID } = NS.treeData;
   const K = NS.artKit;
   const kit = NS.kit;
   const W = NS.widgets;
@@ -20,11 +21,32 @@
 
   const COL_W = 200, X0 = 40, Y0 = 176, ROW_H = 104, R = 27;
 
+  function pageOf(n) {
+    for (let i = 0; i < BRANCHES.length; ++i) if (BRANCHES[i].id === n.branch) return BRANCHES[i].page;
+    return 0;
+  }
+
+  function pageBranches(p) {
+    return BRANCHES.filter(b => b.page === p);
+  }
+
+  /* branch column x on its page (pages with fewer branches are centred) */
+  function columnX(br) {
+    const list = pageBranches(br.page);
+    return X0 + (6 - list.length) * COL_W / 2 + list.indexOf(br) * COL_W;
+  }
+
   function nodePos(n) {
-    const bi = BRANCHES.findIndex(b => b.id === n.branch);
-    const cx = X0 + bi * COL_W;
-    const x = cx + 50 + n.lane * 92;
+    const br = BRANCHES.find(b => b.id === n.branch);
+    const x = columnX(br) + 50 + n.lane * 92;
     return { x: x, y: Y0 + n.row * ROW_H };
+  }
+
+  function setPage(p) {
+    G.ui.treePage = p;
+    const sel = TREE_BY_ID[G.ui.treeSel];
+    if (!sel || pageOf(sel) !== p) G.ui.treeSel = TREE.find(n => pageOf(n) === p).id;
+    sfx('click', { volume: 0.4 });
   }
 
   function branchColor(id) {
@@ -70,7 +92,9 @@
 
   function draw() {
     const save = G.save;
-    const sel = TREE_BY_ID[G.ui.treeSel] || TREE[0];
+    const page = G.ui.treePage || 0;
+    let sel = TREE_BY_ID[G.ui.treeSel] || TREE[0];
+    if (pageOf(sel) !== page) sel = TREE.find(n => pageOf(n) === page);
     const v = NS.view.visible();
     ctx.fillStyle = G.treeReturn === 'paused' ? 'rgba(2,4,12,0.8)' : 'rgba(2,4,12,0.6)';
     ctx.fillRect(v.x0, v.y0, v.w, v.h);
@@ -78,11 +102,15 @@
     kit.text(G.treeReturn === 'paused' ? (G.run && G.run.mode === 'daily' ? 'The Daily Belt flies a fixed rig - research applies from your next trip' : 'Trip paused - research applies the moment you buy it')
       : 'Research data comes from rare ore, discoveries, contracts and achievements', 60, 74, 14, UI.textDim);
     kit.amount(save.rd, 1220, 46, 26, 'right', 'rd');
+    for (let p = 0; p < PAGES.length; ++p)
+      W.button('page' + p, PAGES[p], 640 + p * 150, 28, 140, 36, { selected: page === p, icon: p ? 'habitat' : 'engine', px: 15, accent: p ? '#ffb44a' : UI.data,
+        action: () => setPage(p) });
 
     /* branch columns */
     for (let b = 0; b < BRANCHES.length; ++b) {
       const br = BRANCHES[b];
-      const x = X0 + b * COL_W;
+      if (br.page !== page) continue;
+      const x = columnX(br);
       ctx.fillStyle = K.rgba(br.color, 0.06);
       kit.roundRect(x, 100, COL_W - 10, 396, 12);
       ctx.fill();
@@ -100,6 +128,7 @@
     /* prerequisite links */
     for (let i = 0; i < TREE.length; ++i) {
       const n = TREE[i];
+      if (pageOf(n) !== page) continue;
       const p = nodePos(n);
       for (let k = 0; k < n.req.length; ++k) {
         const q = nodePos(TREE_BY_ID[n.req[k][0]]);
@@ -114,7 +143,7 @@
     }
 
     /* nodes */
-    for (let i = 0; i < TREE.length; ++i) drawNode(TREE[i], sel, save);
+    for (let i = 0; i < TREE.length; ++i) if (pageOf(TREE[i]) === page) drawNode(TREE[i], sel, save);
 
     drawDetail(sel, save);
     if (!G.run) NS.fxRender.draw({ x0: -200, y0: -200, x1: 1500, y1: 900 });
@@ -215,7 +244,7 @@
       });
     } else
       kit.text('Fully researched', bx + 120, by + 22, 16, UI.gold, { align: 'center', weight: 'bold' });
-    kit.text('B researches the selected node', x + 84, y + 100, 12, UI.textMute);
+    kit.text('B researches the selected node  -  Tab switches Ship / Colony', x + 84, y + 100, 12, UI.textMute);
   }
 
   /* B buys the selected node from the keyboard */
@@ -224,10 +253,14 @@
       buy(G.ui.treeSel);
       return true;
     }
+    if (e.code === 'Tab' || e.code === 'PageDown' || e.code === 'PageUp') {
+      setPage(((G.ui.treePage || 0) + 1) % PAGES.length);
+      return true;
+    }
     return false;
   }
 
   Object.assign(NS.tree, {
-    draw, buy, onKey, nodePos, applyNow
+    draw, buy, onKey, nodePos, applyNow, setPage, pageOf
   });
 })();

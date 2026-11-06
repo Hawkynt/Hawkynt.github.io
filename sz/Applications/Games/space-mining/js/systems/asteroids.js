@@ -36,6 +36,7 @@
     for (let i = 0; i < ids.length; ++i) {
       const ore = ORE_BY_ID[ids[i]];
       let v = zone.ores[ids[i]] * (ore.rarity >= 3 ? 1 + rareBoost : 1);
+      if (ore.kind === 'precious' && G.run && G.run.mods) v *= G.run.mods.precious;
       if (bias && ids[i] === bias) v *= 4;
       w.push(v);
       total += v;
@@ -87,7 +88,7 @@
       ++tries;
       const x = 120 + rng() * (w - 240), y = 120 + rng() * (h - 240);
       const dd = (x - dock.x) * (x - dock.x) + (y - dock.y) * (y - dock.y);
-      if (dd < 420 * 420) continue;
+      if (dd < 420 * 420 || NS.base.blocks(x, y, 120)) continue;
       if (rng() > density(noise, x, y, w, h)) continue;
       const roll = rng();
       const tier = roll < 0.26 ? 1 : roll < 0.6 ? 2 : roll < 0.88 ? 3 : 4;
@@ -95,6 +96,9 @@
       const ore = pickOre(zone, rng, stats.rare, bias);
       const rock = makeRock(x, y, tier, ore, 0.45 + rng() * 0.55, rng);
       if (overlaps(rock)) continue;
+      const drift = G.run.mods ? G.run.mods.drift : 1;
+      rock.vx *= drift;
+      rock.vy *= drift;
       G.rocks.push(rock);
     }
     rebuildGrid();
@@ -174,6 +178,7 @@
         const c = makeRock(rock.x + Math.cos(a) * rock.r * 0.45, rock.y + Math.sin(a) * rock.r * 0.45, rock.tier - 1, rock.ore, rock.rich * 0.92, rng);
         c.volatile = false;
         c.ore = rock.ore;
+        if (rock.bio) c.bio = rock.bio;
         c.rich = rock.rich * 0.92;
         const sp = 40 + rng() * 60;
         c.vx = rock.vx + Math.cos(a) * sp;
@@ -186,7 +191,7 @@
     }
     /* nuggets */
     if (ore) {
-      let units = Math.round((rock.tier === 1 ? 2.2 : rock.tier * 1.4) * (0.5 + rock.rich) * G.stats.yieldMul);
+      let units = Math.round((rock.tier === 1 ? 2.2 : rock.tier * 1.4) * (0.5 + rock.rich) * G.stats.yieldMul * (G.run.mods ? G.run.mods.yield : 1));
       if (rock.kind === 'geode') units = 26 + Math.round(rng() * 10);
       units = Math.max(1, units);
       while (units > 0) {
@@ -265,6 +270,7 @@
       if (r.x > w - r.r) { r.x = w - r.r; r.vx = -Math.abs(r.vx); }
       if (r.y < r.r) { r.y = r.r; r.vy = Math.abs(r.vy); }
       if (r.y > h - r.r) { r.y = h - r.r; r.vy = -Math.abs(r.vy); }
+      if (G.base && NS.base.blocks(r.x, r.y, r.r + 20)) keepOut(r, dt);
       if (r.heat > 0) r.heat = Math.max(0, r.heat - dt * 0.8);
       if (r.flash > 0) r.flash -= dt;
       if (r.fade < 1) r.fade = Math.min(1, r.fade + dt * 0.8);
@@ -275,6 +281,18 @@
     }
     compact(rocks);
     rebuildGrid();
+  }
+
+  /* rocks drifting toward the outpost site are nudged back out along the nearest edge */
+  function keepOut(r, dt) {
+    const s = G.base.site;
+    const dl = r.x - s.x0, dr = s.x0 + s.w - r.x, du = r.y - s.y0, dd = s.y0 + s.h - r.y;
+    const m = Math.min(dl, dr, du, dd);
+    const push = 160 * dt;
+    if (m === dl) r.vx -= push;
+    else if (m === dr) r.vx += push;
+    else if (m === du) r.vy -= push;
+    else r.vy += push;
   }
 
   /* keep the belt alive: new rocks drift in out of sight when it thins out */
@@ -292,7 +310,7 @@
     const y = Math.max(200, Math.min(G.world.h - 200, s.y + Math.sin(a) * d));
     const tier = R() < 0.6 ? 3 : 2 + (R() < 0.3 ? 2 : 0);
     const rock = makeRock(x, y, Math.min(4, tier), pickOre(run.zone, R, stats.rare, null), 0.5 + R() * 0.5, R);
-    if (overlaps(rock)) return;
+    if (overlaps(rock) || NS.base.blocks(x, y, 120)) return;
     rock.fade = 0;
     G.rocks.push(rock);
     grid.insert(rock);
@@ -319,8 +337,19 @@
     return rock;
   }
 
+  /* a rock rebuilt from an autosave snapshot (not added to the belt) */
+  function restoreRock(kind, x, y, tier, oreId, rich) {
+    const rock = makeRock(x, y, Math.max(1, Math.min(4, tier || 1)), oreId, rich, R);
+    rock.kind = kind === 'geode' || kind === 'crown' ? kind : 'rock';
+    rock.ore = oreId;
+    rock.rich = oreId ? rich : 0;
+    rock.volatile = false;
+    if (rock.kind !== 'rock') rock.vr = rock.kind === 'crown' ? 0.06 : 0.15;
+    return rock;
+  }
+
   Object.assign(NS.asteroids, {
     rockHp, pickOre, makeRock, density, generate, rebuildGrid, queryRocks, querySegment, damage, fracture, explode,
-    update, respawn, special, grid, ORES
+    update, respawn, special, restoreRock, grid, ORES
   });
 })();

@@ -1,7 +1,8 @@
-/* One rendered frame: a full-screen cinematic, or the trip's world and HUD while a trip is open
-   (also behind the pause menu and screens opened from it), or the drifting belt scenery behind
-   menus; then the active screen, flash, toasts and pop-ups. Clears the hit areas that the
-   screens re-register. Owns the draw-time measurement and the canvas cursor. */
+/* One rendered frame: a full-screen cinematic, or the trip's world and the flight HUD or the
+   command view HUD while a trip is open (also behind the pause menu and screens opened from
+   it), or the drifting belt scenery behind menus; then the active screen, flash, toasts and
+   pop-ups. Clears the hit areas that the screens re-register. Owns the draw-time measurement
+   and the canvas cursor. */
 ;(function() {
   'use strict';
 
@@ -14,7 +15,8 @@
   let cursor = '';
 
   function setCursor() {
-    const want = G.screen === 'playing' && G.input.aimMode === 'mouse' && !G.input.touch ? 'none' : 'default';
+    const want = G.screen === 'playing' && G.cmd.on && !G.cine ? NS.commandInput.cursor()
+      : G.screen === 'playing' && G.input.aimMode === 'mouse' && !G.input.touch ? 'none' : 'default';
     if (want !== cursor) {
       cursor = want;
       NS.view.canvas.style.cursor = want;
@@ -28,7 +30,10 @@
     if (G.cine && G.cine.full) NS.cineRender.drawFull();
     else if (NS.screens.inRun() && G.run) {
       NS.world.draw();
-      if (G.screen === 'playing') NS.hud.draw();
+      if (G.screen === 'playing') {
+        if (G.cmd.on && !G.cine) NS.commandHud.draw();
+        else NS.hud.draw();
+      }
     } else {
       const t = G.time;
       NS.backdrop.draw(G.world.w / 2 + Math.sin(t * 0.04) * 700, G.world.h / 2 + Math.cos(t * 0.031) * 500, 0, false);

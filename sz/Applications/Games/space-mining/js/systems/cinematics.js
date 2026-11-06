@@ -1,8 +1,9 @@
 /* The cinematic sequencer: full-screen sequences (the intro launch from the station, the
-   per-trip undock, a new belt charted, the career ending) on their own screen, and in-world
-   sequences over a running trip (warp arrival, docking with autopilot, discoveries with a
-   close-up and slow motion). Any key, click or tap skips once the first moment has shown.
-   Owns G.cine. */
+   per-trip undock, a new belt charted, the career ending, captain's log chapters) on their own
+   screen, and in-world sequences over a running trip (warp arrival, docking with autopilot,
+   discoveries, the first outpost founded, the first wave repelled, a mothership arriving and
+   falling, the first outbreak, the Lattice waking) framed with a close-up and slow motion.
+   Any key, click or tap skips once the first moment has shown. Owns G.cine. */
 ;(function() {
   'use strict';
 
@@ -19,12 +20,23 @@
     arrival: { dur: 3.2 },
     docking: { dur: 3.4 },
     discovery: { dur: 4.4 },
+    founded: { dur: 4.2 },
+    waveClear: { dur: 3.6 },
+    bossArrival: { dur: 4.8 },
+    bossDown: { dur: 5.2 },
+    outbreak: { dur: 4.2 },
+    lattice: { dur: 4.4 },
+    log: { dur: 15, full: true },
   };
+
+  /* in-world sequences that frame a point: zoom, slow motion */
+  const FRAMED = { founded: 1.05, waveClear: 0.75, bossArrival: 0.55, bossDown: 0.6, outbreak: 1.2, lattice: 0.9 };
 
   let returnScreen = 'title';
 
   function play(kind, data, onEnd) {
     const k = KINDS[kind];
+    if (FRAMED[kind] && G.cine) return;
     G.cine = { kind: kind, t: 0, dur: k.dur, full: !!k.full, data: data || {}, onEnd: onEnd || null, fired: {} };
     if (k.full) {
       returnScreen = G.screen;
@@ -44,6 +56,13 @@
       NS.fx.slowMo(KINDS.discovery.dur, 0.35);
       NS.audio.sfx('powerup', { volume: 0.7, pitch: 0.6 });
     }
+    if (FRAMED[kind]) {
+      if (G.ship) G.ship.control = false;
+      G.cam.focus = { x: data.x, y: data.y, zoom: FRAMED[kind] };
+      if (kind !== 'bossArrival') NS.fx.slowMo(k.dur * 0.8, kind === 'bossDown' ? 0.25 : 0.5);
+      NS.audio.sfx(kind === 'bossArrival' || kind === 'lattice' || kind === 'outbreak' ? 'zap' : 'win', { volume: 0.7, pitch: kind === 'bossArrival' ? 0.3 : 0.7 });
+    }
+    if (kind === 'log') NS.audio.sfx('blip', { volume: 0.5, pitch: 0.6 });
   }
 
   function arrivalStart() {
@@ -113,6 +132,39 @@
       case 'milestone':
         if (at(c, 1.2, 'light')) NS.audio.sfx('levelup', { volume: 0.7 });
         break;
+      case 'founded':
+        if (at(c, 0.4, 'drop')) {
+          NS.fx.shockwave(c.data.x, c.data.y, 420, '#ffb44a');
+          NS.fx.sparks(c.data.x, c.data.y, 0, Math.PI * 2, 40, '#bfe8ff', 420, 0.6);
+          NS.audio.sfx('thud', { volume: 0.8 });
+        }
+        if (at(c, 1.6, 'lights')) NS.audio.sfx('levelup', { volume: 0.6 });
+        break;
+      case 'bossArrival':
+        if (at(c, 0.8, 'warp')) {
+          NS.fx.flash('#e080ff', 0.6);
+          NS.fx.shockwave(c.data.x, c.data.y, 700, '#d050ff');
+          NS.fx.shake(0.8);
+          NS.audio.sfx('explode', { volume: 0.9, pitch: 0.3 });
+        }
+        break;
+      case 'bossDown':
+        if (c.t > 0.3 && c.t < 3 && R() < dt * 10) NS.fx.explode(c.data.x + (R() - 0.5) * 200, c.data.y + (R() - 0.5) * 140, 30 + R() * 30, NS.fx.VIOLET, { noDebris: true });
+        if (at(c, 2.6, 'final')) {
+          NS.fx.shockwave(c.data.x, c.data.y, 900, '#f0c8ff');
+          NS.fx.flash('#ffffff', 0.7);
+          NS.audio.sfx('explode', { volume: 1, pitch: 0.4 });
+        }
+        break;
+      case 'outbreak':
+        if (c.t < 3 && R() < dt * 14) NS.fx.glow(c.data.x + (R() - 0.5) * 160, c.data.y + (R() - 0.5) * 160, 14 + R() * 16, '#9ae04a', 1.4, 0, -20, 20);
+        break;
+      case 'lattice':
+        if (c.t < 3.4 && R() < dt * 12) NS.fx.sparks(c.data.x + (R() - 0.5) * 220, c.data.y + (R() - 0.5) * 220, R() * Math.PI * 2, 0.4, 3, '#3affd0', 300, 0.4);
+        break;
+      case 'log':
+        if (c.data.chapter && R() < dt * 9 && c.t < c.dur - 2) NS.audio.sfx('click', { volume: 0.12, pitch: 1.6 + R() * 0.4 });
+        break;
       case 'ending':
         if (at(c, 0.5, 'boom')) NS.audio.sfx('explode', { volume: 0.8, pitch: 0.5 });
         if (at(c, 6, 'cheer')) NS.audio.sfx('win', { volume: 0.8 });
@@ -147,6 +199,12 @@
         G.run.rd += 1;
         NS.fx.text(s.x, s.y - 60, '+1 DATA  discovery logged', '#b48aff', 15, 1.6);
         break;
+      default:
+        if (FRAMED[c.kind]) {
+          if (s && s.alive) s.control = true;
+          G.cam.focus = null;
+          G.slowMo = Math.min(G.slowMo, 0.3);
+        }
     }
     if (c.full && !c.onEnd) NS.screens.setScreen(returnScreen === 'cine' ? 'title' : returnScreen);
     if (c.onEnd) c.onEnd();
@@ -166,6 +224,6 @@
   }
 
   Object.assign(NS.cinematics, {
-    KINDS, play, update, finish, skip, active
+    KINDS, FRAMED, play, update, finish, skip, active
   });
 })();

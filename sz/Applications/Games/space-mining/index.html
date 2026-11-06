@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online space mining and economy game -- fly a mining ship through five asteroid belts, laser rocks into ore, sell into a living market, refine bars, deploy drones, research a 32-node tech tree, plus Gold Rush and Daily Belt modes">
+<meta name="description" content="Free online space mining, base-building and strategy game -- mine 22 resources in five asteroid belts, build outposts from 23 buildings, defend them against attack waves with a fleet in formation, fight infection and rogue nanoprobes, research a 52-node tech tree, plus Gold Rush, Daily Belt and Siege">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Space Mining -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online space mining and economy game -- fly a mining ship through five asteroid belts, laser rocks into ore, sell into a living market, refine bars, deploy drones, research a 32-node tech tree, plus Gold Rush and Daily Belt modes">
+<meta property="og:description" content="Free online space mining, base-building and strategy game -- mine 22 resources in five asteroid belts, build outposts from 23 buildings, defend them against attack waves with a fleet in formation, fight infection and rogue nanoprobes, research a 52-node tech tree, plus Gold Rush, Daily Belt and Siege">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/space-mining/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Space Mining",
   "url": "https://hawkynt.github.io/sz/Applications/Games/space-mining/index.html",
-  "description": "Free online space mining and economy game -- fly a mining ship through five asteroid belts, laser rocks into ore, sell into a living market, refine bars, deploy drones, research a 32-node tech tree, plus Gold Rush and Daily Belt modes",
+  "description": "Free online space mining, base-building and strategy game -- mine 22 resources in five asteroid belts, build outposts from 23 buildings, defend them against attack waves with a fleet in formation, fight infection and rogue nanoprobes, research a 52-node tech tree, plus Gold Rush, Daily Belt and Siege",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -29,7 +29,7 @@
 <link rel="stylesheet" href="styles.css?v=e4ce556b">
 </head>
 <body>
-<noscript><p>Free online space mining and economy game: fly a mining ship through five asteroid belts, laser rocks into ore, trade, refine, research and build. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
+<noscript><p>Free online space mining and strategy game: fly a mining ship through five asteroid belts, laser rocks into ore, trade and refine, build outposts, command a fleet against attack waves and research a tech tree. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
@@ -95,13 +95,22 @@
         <tr><td>WASD / Arrow keys</td><td>Fly (inertia)</td></tr>
         <tr><td>Right mouse</td><td>Fly toward the cursor</td></tr>
         <tr><td>Left mouse</td><td>Drill with the mining laser at the cursor</td></tr>
-        <tr><td>Space</td><td>Drill with auto-aim</td></tr>
+        <tr><td>Space</td><td>Drill with auto-aim (in flight)</td></tr>
         <tr><td>Shift</td><td>Boost (Afterburner research)</td></tr>
         <tr><td>Q</td><td>Scanner pulse</td></tr>
         <tr><td>C</td><td>Drop a seismic charge</td></tr>
         <tr><td>F</td><td>Recall or launch the mining drones</td></tr>
         <tr><td>Esc / P</td><td>Pause (tech tree from the pause menu)</td></tr>
-        <tr><td>Tab</td><td>Next station tab</td></tr>
+        <tr><td>Tab</td><td>Command view (in flight) / next station tab</td></tr>
+        <tr><td>G / R / E</td><td>Fleet: escort me, return, attack where I aim</td></tr>
+        <tr><td>Left click / drag</td><td>Select units or a building (command view)</td></tr>
+        <tr><td>Right click</td><td>Move, attack, escort, mine, rally (Shift queues)</td></tr>
+        <tr><td>Z / X / C / V</td><td>Line, wedge, box, circle formation</td></tr>
+        <tr><td>F / Q / E / R / G</td><td>Attack-move, patrol, escort, return, hold</td></tr>
+        <tr><td>1-9 / Ctrl+1-9</td><td>Recall / set a control group</td></tr>
+        <tr><td>Space</td><td>Pause and plan (command view)</td></tr>
+        <tr><td>B / U / Delete</td><td>Build category / upgrade / demolish</td></tr>
+        <tr><td>Wheel / + / -</td><td>Zoom the command view</td></tr>
         <tr><td>T / H</td><td>Tech tree / How to Play (in menus)</td></tr>
         <tr><td>B</td><td>Research the selected tech node</td></tr>
         <tr><td>Any key / click</td><td>Skip a cinematic</td></tr>
@@ -122,7 +131,8 @@
     <div class="dialog-body">
       <strong>Space Mining</strong><br><br>
       Fly a mining ship out of Kessler Station into five asteroid belts. Laser rocks until they crack into smaller rocks and ore, reel the nuggets in with the tractor beam and haul them home past volatile rocks, radiation, solar storms, gravity wells and pirates.<br><br>
-      Sell ten ores into a market that moves, smelt bars, fill contracts, buy four hulls and upgrades that level up, build five station modules, deploy mining drones and research a 32-node tech tree - all the way to the Crown Heart. Plus Gold Rush and the seeded Daily Belt.<br><br>
+      Sell 22 resources into a market that moves, smelt bars, fill contracts, buy hulls, upgrades and station modules, and research a 52-node tech tree - all the way to the Crown Heart.<br><br>
+      Found outposts from 23 buildings, turn ore into bars and components, and hold them against pirate raids, alien swarms and the nanoprobe Lattice with turrets and a fleet you command in formation. Keep your crews alive through outbreaks, purge hijacked machines, answer distress calls and read the captain's log. Plus Gold Rush, the seeded Daily Belt and Siege.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -132,21 +142,26 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Space Mining - Free Online Asteroid Mining and Economy Game with Tech Tree, Drones and Five Belts</h1>
-<p>Fly a mining ship through large scrolling asteroid belts, laser asteroids apart into ore, tractor the nuggets aboard and sell them in a living market at your home station in this free HTML5 browser game.</p>
+<h1>Space Mining - Free Online Asteroid Mining, Base Building and Space Strategy Game</h1>
+<p>Fly a mining ship through large scrolling asteroid belts, laser asteroids apart into ore, build outposts, command a fleet in formation against attack waves and sell everything in a living market in this free HTML5 browser game.</p>
 <h2>Features</h2>
 <ul>
-<li>3 game modes: Career, Gold Rush (five minutes) and a seeded Daily Belt</li>
+<li>4 game modes: Career, Gold Rush (five minutes), a seeded Daily Belt and Siege (15 waves)</li>
 <li>5 asteroid belts with their own scenery, ore and hazards: Kessler Drift, Amber Reach, Verdant Shoals, Crimson Maw and Void Crown</li>
-<li>10 ores from iron and ice to platinum, iridium and void crystal</li>
+<li>22 resources: bulk ore, precious metals, nebula gases, crystals, exotic matter, scrap and bio-matter, refined into bars and seven components</li>
+<li>Outposts in every belt with 23 buildings: rigs, siphons, harvesters, smelters, refineries, fabricators, power, storage, habitats, turrets, shields, factories, labs and medical bays</li>
+<li>Attack waves of pirates, alien swarms and nanoprobes with a hive mothership per belt</li>
+<li>A fleet of seven unit types in line, wedge, box and circle formations, control groups, waypoints and veterancy, from a zoomed-out command view with pause-and-plan</li>
+<li>Living belts: crew infections, abandoned outposts, hijacked buildings, distress calls, seasons, weekly anomaly belts, daily streaks and a captain's log</li>
 <li>Asteroids that crack into smaller rocks and ore nuggets, with chunks, dust and shockwaves</li>
 <li>Inertia flight, boost, tractor beam, scanner pulse, seismic charges and mining drones</li>
 <li>Hazards: volatile chain-reacting rocks, radiation fields, solar storms, gravity wells and three kinds of pirates</li>
 <li>Market prices that drift with booms, busts and your own sales, refining into bars and delivery contracts</li>
 <li>4 hulls, 6 upgrades that level up to 10, 5 station modules that change the station</li>
-<li>32-node tech tree in Drilling, Engines, Logistics, Automation, Defense and Science</li>
-<li>Geodes, derelicts and the Crown Heart; 17 achievements</li>
-<li>Cinematics: launch intro, belt arrival, docking, discoveries, new belts and the ending</li>
+<li>52-node tech tree for the ship and the colony</li>
+<li>Geodes, derelicts and the Crown Heart; 29 achievements</li>
+<li>14 cinematics: launch intro, belt arrival, docking, discoveries, new belts, outpost founded, first wave, mothership arrival and fall, outbreak, the Lattice, captain's log and the ending</li>
+<li>Autosave and Continue right where you left</li>
 <li>Touch controls with virtual sticks</li>
 </ul>
 </div>
@@ -156,30 +171,47 @@
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=94b5c198"></script>
+<script src="js/core/namespace.js?v=0be18452"></script>
 <script src="js/core/constants.js?v=e85e2634"></script>
 <script src="js/core/rng.js?v=110b2bf5"></script>
-<script src="js/core/data-ores.js?v=2a009168"></script>
+<script src="js/core/data-ores.js?v=d52cccee"></script>
 <script src="js/core/data-ships.js?v=aaeebdb0"></script>
-<script src="js/core/data-tree.js?v=71354a50"></script>
-<script src="js/core/data-goals.js?v=ab49ec96"></script>
-<script src="js/core/rules.js?v=56b3ac9e"></script>
-<script src="js/core/economy.js?v=05662cd9"></script>
-<script src="js/core/state.js?v=7f7e54e4"></script>
-<script src="js/core/save.js?v=12c85499"></script>
+<script src="js/core/data-tree.js?v=88dd2799"></script>
+<script src="js/core/data-goals.js?v=2d903623"></script>
+<script src="js/core/data-colony.js?v=66d07c2b"></script>
+<script src="js/core/data-fleet.js?v=03eb60c5"></script>
+<script src="js/core/data-events.js?v=d1cfc5f1"></script>
+<script src="js/core/rules.js?v=5a96e1cf"></script>
+<script src="js/core/economy.js?v=30210407"></script>
+<script src="js/core/colony.js?v=e99c07dc"></script>
+<script src="js/core/production.js?v=6996aeb3"></script>
+<script src="js/core/outbreak.js?v=dbe449eb"></script>
+<script src="js/core/calendar.js?v=1a9162e2"></script>
+<script src="js/core/state.js?v=60176e97"></script>
+<script src="js/core/save.js?v=50872097"></script>
 <script src="js/core/audio.js?v=c3e9dccf"></script>
 <script src="js/systems/grid.js?v=eca9be1a"></script>
 <script src="js/systems/fx.js?v=5bbe6026"></script>
-<script src="js/systems/camera.js?v=3bd29dcb"></script>
-<script src="js/systems/asteroids.js?v=82ff9bc6"></script>
+<script src="js/systems/camera.js?v=e28bcb91"></script>
+<script src="js/systems/asteroids.js?v=5a672f0f"></script>
 <script src="js/systems/ship.js?v=214c75c9"></script>
-<script src="js/systems/mining.js?v=1ec9267a"></script>
+<script src="js/systems/mining.js?v=23a154fb"></script>
 <script src="js/systems/hazards.js?v=785f7951"></script>
-<script src="js/systems/pirates.js?v=266a65af"></script>
+<script src="js/systems/pirates.js?v=19be2cb5"></script>
 <script src="js/systems/drones.js?v=94d72a02"></script>
-<script src="js/systems/trip.js?v=f1f62dd8"></script>
-<script src="js/systems/cinematics.js?v=c7f43cab"></script>
-<script src="js/systems/sim.js?v=c88784ea"></script>
+<script src="js/systems/formations.js?v=ecfd3ed3"></script>
+<script src="js/systems/orders.js?v=53ba4f39"></script>
+<script src="js/systems/base.js?v=a1d93c81"></script>
+<script src="js/systems/units.js?v=a598062a"></script>
+<script src="js/systems/enemies.js?v=5d4653cb"></script>
+<script src="js/systems/waves.js?v=4a65af55"></script>
+<script src="js/systems/life.js?v=aee470f9"></script>
+<script src="js/systems/events.js?v=a9ce726b"></script>
+<script src="js/systems/command.js?v=2818d454"></script>
+<script src="js/systems/resume.js?v=30187bb8"></script>
+<script src="js/systems/trip.js?v=262fa129"></script>
+<script src="js/systems/cinematics.js?v=76fb03c1"></script>
+<script src="js/systems/sim.js?v=675ed9ba"></script>
 <script src="js/render/art-kit.js?v=f79533cf"></script>
 <script src="js/render/view.js?v=ea910c5e"></script>
 <script src="js/render/ship-art.js?v=f160c627"></script>
@@ -187,26 +219,35 @@
 <script src="js/render/prop-art.js?v=50e6b1bc"></script>
 <script src="js/render/station-art.js?v=1b9980a1"></script>
 <script src="js/render/backdrop-art.js?v=62810c6c"></script>
+<script src="js/render/colony-art.js?v=88f9896d"></script>
+<script src="js/render/fleet-art.js?v=a728d117"></script>
 <script src="js/render/backdrop.js?v=38e30a5f"></script>
 <script src="js/render/fx-render.js?v=a5879503"></script>
-<script src="js/render/world.js?v=944be06f"></script>
-<script src="js/render/cine-render.js?v=b7cf13e2"></script>
+<script src="js/render/world.js?v=f47b3dbf"></script>
+<script src="js/render/base-render.js?v=745a8581"></script>
+<script src="js/render/fleet-render.js?v=27b6cea5"></script>
+<script src="js/render/cine-render.js?v=d30aab1c"></script>
 <script src="js/ui/kit.js?v=6cd446dd"></script>
 <script src="js/ui/widgets.js?v=c0715a8f"></script>
-<script src="js/ui/screens.js?v=0871a984"></script>
+<script src="js/ui/screens.js?v=b437b222"></script>
 <script src="js/ui/status-bar.js?v=0a1535e6"></script>
 <script src="js/ui/touch.js?v=d12227be"></script>
-<script src="js/render/hud.js?v=ebb9b240"></script>
-<script src="js/ui/title.js?v=162ce7ac"></script>
-<script src="js/ui/station.js?v=b89d13ba"></script>
+<script src="js/render/hud.js?v=6eac1308"></script>
+<script src="js/ui/title.js?v=7fd851c5"></script>
+<script src="js/ui/station.js?v=b349c0e5"></script>
 <script src="js/ui/shipyard.js?v=88f8fe1b"></script>
+<script src="js/ui/colonies.js?v=b66a904d"></script>
 <script src="js/ui/map.js?v=ec27b5f4"></script>
-<script src="js/ui/tree.js?v=7b03a12f"></script>
-<script src="js/ui/help.js?v=f881a99a"></script>
+<script src="js/ui/tree.js?v=a0eb9fcc"></script>
+<script src="js/ui/help.js?v=1e5fac72"></script>
 <script src="js/ui/pause.js?v=ac09091b"></script>
-<script src="js/ui/results.js?v=523bd424"></script>
-<script src="js/render/frame.js?v=0e8d8c41"></script>
-<script src="js/ui/input.js?v=223a6b55"></script>
-<script src="js/app.js?v=86d05dba"></script>
+<script src="js/ui/results.js?v=9b7694cd"></script>
+<script src="js/ui/command-hud.js?v=92f1c0a5"></script>
+<script src="js/ui/build-menu.js?v=eadee59e"></script>
+<script src="js/ui/sel-panel.js?v=a4579fac"></script>
+<script src="js/render/frame.js?v=28405e01"></script>
+<script src="js/ui/command-input.js?v=678e8e27"></script>
+<script src="js/ui/input.js?v=37831040"></script>
+<script src="js/app.js?v=944adff7"></script>
 </body>
 </html>
