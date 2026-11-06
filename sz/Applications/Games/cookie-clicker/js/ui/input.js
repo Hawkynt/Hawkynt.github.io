@@ -1,122 +1,181 @@
-/* Pointer input on the canvas: cookie clicks, building and upgrade purchases by
-   row/slot hit-test, panel scrolling with the wheel, mouse tracking for tooltips
-   and the F2/Escape keys; registers all canvas, document and window listeners. */
+/* Input: pointer events on the canvas mapped into the view plane (mouse, pen and touch) -
+   the treat and golden treats react on press for fast clicking, widgets on release, lists
+   scroll by drag or wheel, right-click sells; keyboard shortcuts per screen with arrow-key
+   menu navigation; cinematics advance on click and skip on any key. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.CookieClicker || (SZ.CookieClicker = {});
-  const S = NS.state;
-  const { CANVAS_W, CANVAS_H, BLDG_PANEL_X, BLDG_PANEL_W, BLDG_HEADER_H, BLDG_VISIBLE_H, BLDG_ROW_TOTAL, BLDG_ROW_H, COOKIE_CX, COOKIE_CY, COOKIE_R } = NS.constants;
-  const BUILDING_DEFS = NS.buildingDefs;
-  const UPGRADE_DEFS = NS.upgradeDefs;
-  const canvas = NS.dom.canvas;
-  /* ── Coordinate helpers ── */
-  function canvasCoords(e) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_W / rect.width;
-    const scaleY = CANVAS_H / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
-  }
-  /* ── Click / Pointer Input ── */
-  function handleCanvasClick(e) {
-    const { x, y } = canvasCoords(e);
+  const G = NS.state;
+  const { LAYOUT } = NS.constants;
+  const W = NS.widgets;
+  const scr = NS.screens;
+  const { canvas, toPlane } = NS.view;
 
-    // Check cookie click
-    const dx = x - COOKIE_CX;
-    const dy = y - COOKIE_CY;
-    if (dx * dx + dy * dy <= COOKIE_R * COOKIE_R) {
-      NS.purchasing.handleCookieClick(x, y);
+  let press = null;
+
+  function inTreat(x, y) {
+    const dx = x - LAYOUT.treatX, dy = y - LAYOUT.treatY;
+    return dx * dx + dy * dy <= LAYOUT.treatR * LAYOUT.treatR;
+  }
+
+  function onDown(e) {
+    const p = toPlane(e.clientX, e.clientY);
+    const inp = G.input;
+    inp.touch = e.pointerType === 'touch';
+    inp.mx = p.x;
+    inp.my = p.y;
+    inp.moved = inp.touch ? 0 : 1;
+    if (canvas.focus) canvas.focus();
+    press = null;
+    if (G.cine) {
+      NS.cinematics.next();
       return;
     }
-
-    // Check building click (within scrollable content area)
-    const panelX = BLDG_PANEL_X;
-    const panelW = BLDG_PANEL_W;
-    const contentTop = 10 + BLDG_HEADER_H;
-
-    if (x >= panelX && x <= panelX + panelW && y >= contentTop && y <= contentTop + BLDG_VISIBLE_H) {
-      for (let i = 0; i < BUILDING_DEFS.length; ++i) {
-        const by = contentTop + i * BLDG_ROW_TOTAL - S.buildingScrollOffset;
-        if (by + BLDG_ROW_H < contentTop || by > contentTop + BLDG_VISIBLE_H)
-          continue;
-        if (y >= by && y <= by + BLDG_ROW_H) {
-          NS.purchasing.buyBuilding(i);
+    if (!scr.overlayOpen() && e.button !== 2) {
+      if (G.screen === 'game') {
+        if (NS.golden.tryClick(p.x, p.y)) return;
+        if (inTreat(p.x, p.y)) {
+          NS.clicking.click(false, p.x, p.y);
+          return;
+        }
+      } else if (G.screen === 'zen') {
+        const hit = W.hitAt(p.x, p.y);
+        if (hit < 0) {
+          NS.modes.zenClick(p.x, p.y);
           return;
         }
       }
     }
+    const hit = W.hitAt(p.x, p.y);
+    const area = hit >= 0 ? G.hitAreas[hit] : null;
+    let scroll = area && area.scroll ? area.scroll : null;
+    if (!scroll)
+      for (let i = G.hitAreas.length - 1; i >= 0; --i) {
+        const a = G.hitAreas[i];
+        if (a.scroll && p.x >= a.x && p.x <= a.x + a.w && p.y >= a.y && p.y <= a.y + a.h) { scroll = a.scroll; break; }
+      }
+    press = { x: p.x, y: p.y, button: e.button, scroll: scroll, last: p.y, dragging: false };
+  }
 
-    // Check upgrade click
-    if (x >= 10 && x <= 410 && y >= 420) {
-      const ownedCounts = NS.economy.getOwnedCounts();
-      let drawn = 0;
-      for (let i = 0; i < UPGRADE_DEFS.length && drawn < 6; ++i) {
-        const def = UPGRADE_DEFS[i];
-        if (S.upgradePurchased[def.id])
-          continue;
-        if (!def.condition(ownedCounts))
-          continue;
-        const ux = 10 + 10 + (drawn % 3) * 130;
-        const uy = 420 + 30 + Math.floor(drawn / 3) * 55;
-        if (x >= ux && x <= ux + 120 && y >= uy && y <= uy + 48) {
-          NS.purchasing.buyUpgrade(i);
-          return;
-        }
-        ++drawn;
+  function onMove(e) {
+    const p = toPlane(e.clientX, e.clientY);
+    const inp = G.input;
+    inp.mx = p.x;
+    inp.my = p.y;
+    if (e.pointerType !== 'touch') {
+      inp.touch = false;
+      inp.moved = 1;
+    }
+    if (press && press.scroll) {
+      if (!press.dragging && Math.abs(p.y - press.y) > 8) press.dragging = true;
+      if (press.dragging) {
+        scrollBy(press.scroll, press.last - p.y);
+        press.last = p.y;
       }
     }
   }
-  canvas.addEventListener('pointerdown', handleCanvasClick);
 
-  /* ── Mouse move for tooltip ── */
-  canvas.addEventListener('pointermove', function(e) {
-    const { x, y } = canvasCoords(e);
-    S.mouseX = x;
-    S.mouseY = y;
-  });
+  function onUp(e) {
+    if (!press) return;
+    const p = toPlane(e.clientX, e.clientY);
+    const pr = press;
+    press = null;
+    if (pr.dragging) return;
+    const hit = W.hitAt(p.x, p.y);
+    if (hit < 0) return;
+    G.menuCursor = hit;
+    W.activate(G.hitAreas[hit], pr.button === 2);
+  }
 
-  canvas.addEventListener('pointerleave', function() {
-    S.mouseX = -1000;
-    S.mouseY = -1000;
-    S.tooltip = null;
-  });
-
-  /* ── Scroll on buildings panel ── */
-  canvas.addEventListener('wheel', function(e) {
-    const { x, y } = canvasCoords(e);
-    const panelX = BLDG_PANEL_X;
-    const panelW = BLDG_PANEL_W;
-    const contentTop = 10 + BLDG_HEADER_H;
-
-    if (x >= panelX && x <= panelX + panelW && y >= contentTop && y <= contentTop + BLDG_VISIBLE_H) {
-      e.preventDefault();
-      S.buildingScrollOffset += e.deltaY > 0 ? 55 : -55;
-      const maxScroll = NS.draw.getMaxBuildingScroll();
-      if (S.buildingScrollOffset < 0)
-        S.buildingScrollOffset = 0;
-      if (S.buildingScrollOffset > maxScroll)
-        S.buildingScrollOffset = maxScroll;
+  function scrollBy(which, dy) {
+    if (which === 'store') NS.store.scroll(dy);
+    else if (which === 'scene') {
+      G.ui.sceneScroll += dy;
+      NS.sceneRender.clampScroll();
     }
-  }, { passive: false });
+  }
 
-  /* ── Keyboard ── */
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'F2') {
-      e.preventDefault();
-      NS.saveload.newGame();
+  function onWheel(e) {
+    e.preventDefault();
+    if (G.screen !== 'game' || G.cine) return;
+    const p = toPlane(e.clientX, e.clientY);
+    const dy = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;
+    if (p.x >= LAYOUT.storeX) scrollBy('store', dy * 0.6);
+    else if (p.x >= LAYOUT.sceneX - 10) scrollBy('scene', dy * 0.6);
+  }
+
+  function activateCursor() {
+    const it = G.hitAreas[G.menuCursor];
+    if (it) W.activate(it);
+  }
+
+  function onKey(e) {
+    const k = e.key;
+    if (k === 'Tab' || k === ' ' || k.indexOf('Arrow') === 0) e.preventDefault();
+    if (G.cine) {
+      if (!e.repeat) NS.cinematics.skip();
       return;
     }
-    if (e.key === 'Escape') {
+    if (k === 'F2') {
       e.preventDefault();
+      NS.save.write(G);
+      scr.setScreen('title');
+      return;
     }
-  });
+    if (scr.overlayOpen()) {
+      if (k === 'Escape') {
+        if (G.ui.confirm) G.ui.confirm = null;
+        else G.ui.offline = null;
+      } else if (k === 'Enter' || k === ' ') {
+        if (G.ui.offline) G.ui.offline = null;
+        else activateCursor();
+      } else if (k.indexOf('Arrow') === 0) arrows(k);
+      return;
+    }
+    const s = G.screen;
+    if (s === 'game') {
+      if ((k === ' ' || k === 'Enter') && !e.repeat) NS.clicking.click(false);
+      else if (k === 'Escape' || k === 'p' || k === 'P') scr.pause();
+      else if (k === 't' || k === 'T') scr.openTree('game');
+      else if (k === 'c' || k === 'C') scr.openCollection('game');
+      else if (k === 'j' || k === 'J') scr.openJournal('game');
+      else if (k === 'Tab') NS.store.setTab(G.ui.storeTab === 'buildings' ? 'upgrades' : 'buildings');
+      else if (k === 'b' || k === 'B') NS.purchasing.cycleAmount();
+      return;
+    }
+    if (s === 'zen') {
+      if (k === 'Escape') NS.modes.leaveZen();
+      else if (k === ' ' && !e.repeat) NS.modes.zenClick(640, 380);
+      return;
+    }
+    if (s === 'tree' && NS.tree.key(k)) return;
+    if (k.indexOf('Arrow') === 0) arrows(k);
+    else if (k === 'Enter' || k === ' ') activateCursor();
+    else if (k === 'Escape') {
+      if (s === 'paused') scr.resume();
+      else if (s === 'bakeResult') scr.setScreen('title');
+      else if (s !== 'title') scr.back();
+    } else if (s === 'paused' && (k === 'p' || k === 'P')) scr.resume();
+    else if (s === 'title' && (k === 't' || k === 'T')) scr.openTree('title');
+  }
 
-  /* ── Resize ── */
-  window.addEventListener('resize', NS.dom.setupCanvas);
+  function arrows(k) {
+    if (k === 'ArrowUp') W.moveCursorDir(0, -1);
+    else if (k === 'ArrowDown') W.moveCursorDir(0, 1);
+    else if (k === 'ArrowLeft') W.moveCursorDir(-1, 0);
+    else W.moveCursorDir(1, 0);
+  }
 
-  Object.assign(NS.input, { canvasCoords, handleCanvasClick });
+  function attach() {
+    canvas.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('keydown', onKey);
+  }
+
+  Object.assign(NS.input, { inTreat, onDown, onMove, onUp, onWheel, onKey, attach });
 })();

@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Cookie Clicker idle game -- click cookies, buy buildings, prestige for bonuses in your browser">
+<meta name="description" content="Free online Cookie Clicker idle game: click a treat that evolves from a plain cookie to a cupcake, wedding cake and bakery planet, buy 18 producers and 130+ upgrades, research a tech tree, ascend for sugar crystals and play Bake-Offs and seasonal events in your browser">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Cookie Clicker -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online Cookie Clicker idle game -- click cookies, buy buildings, prestige for bonuses in your browser">
+<meta property="og:description" content="Free online Cookie Clicker idle game: click a treat that evolves from a plain cookie to a cupcake, wedding cake and bakery planet, buy 18 producers and 130+ upgrades, research a tech tree, ascend for sugar crystals and play Bake-Offs and seasonal events in your browser">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/cookie-clicker/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Cookie Clicker",
   "url": "https://hawkynt.github.io/sz/Applications/Games/cookie-clicker/index.html",
-  "description": "Free online Cookie Clicker idle game -- click cookies, buy buildings, prestige for bonuses in your browser",
+  "description": "Free online Cookie Clicker idle game: click a treat that evolves from a plain cookie to a cupcake, wedding cake and bakery planet, buy 18 producers and 130+ upgrades, research a tech tree, ascend for sugar crystals and play Bake-Offs and seasonal events in your browser",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,26 +26,31 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=a7b77bd7">
+<link rel="stylesheet" href="styles.css?v=3ca28916">
 </head>
 <body>
-<noscript><p>Free online Cookie Clicker idle game. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online Cookie Clicker idle game: click a treat that evolves through eight eras, buy producers and upgrades, research a tech tree and ascend for sugar crystals. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-entry" data-action="save">Save</div>
+      <div class="menu-entry" data-action="title">Title Screen<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="prestige">Prestige...</div>
+      <div class="menu-entry" data-action="tree">Tech Tree...<span class="shortcut">T</span></div>
+      <div class="menu-entry" data-action="collection">Collection...<span class="shortcut">C</span></div>
+      <div class="menu-entry" data-action="journal">Journal...<span class="shortcut">J</span></div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="save">Save Now</div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
     <div class="menu-dropdown">
+      <div class="menu-entry" data-action="tutorial">How to Play...</div>
       <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="about">About Cookie Clicker</div>
     </div>
   </div>
@@ -53,27 +58,35 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <div class="status-section" id="statusCookies">Cookies: 0</div>
-  <div class="status-section" id="statusCps">CPS: 0</div>
-  <div class="status-section" id="statusState">Playing</div>
+  <div class="status-section" id="statusCookies">Treats: 0</div>
+  <div class="status-section" id="statusCps">Per second: 0</div>
+  <div class="status-section" id="statusNotes">Notes: 0</div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 420px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Left-click cookie</td><td>Earn cookies</td></tr>
-        <tr><td>Left-click building</td><td>Purchase building</td></tr>
-        <tr><td>Left-click upgrade</td><td>Purchase upgrade</td></tr>
-        <tr><td>Escape</td><td>Open menu</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Click / tap the treat</td><td>Bake (fast clicks build a combo)</td></tr>
+        <tr><td>Space / Enter</td><td>Click the treat from the keyboard</td></tr>
+        <tr><td>Click golden treats</td><td>Lucky piles, Frenzy, Cookie Storm and more</td></tr>
+        <tr><td>Click a store row</td><td>Buy producers (right-click sells one)</td></tr>
+        <tr><td>B</td><td>Switch the buy amount (x1, x10, x100, Max)</td></tr>
+        <tr><td>Tab</td><td>Producers / Upgrades tab (tree: switch page)</td></tr>
+        <tr><td>Wheel / drag</td><td>Scroll the store and the bakery view</td></tr>
+        <tr><td>T / C / J</td><td>Tech tree / Collection / Journal</td></tr>
+        <tr><td>Esc / P</td><td>Pause menu (back in panels)</td></tr>
+        <tr><td>Arrows + Enter</td><td>Navigate menus</td></tr>
+        <tr><td>Click / any key</td><td>Next cinematic shot / skip it</td></tr>
+        <tr><td>F2</td><td>Title screen</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -88,8 +101,8 @@
     <div class="dialog-title">About Cookie Clicker</div>
     <div class="dialog-body">
       <strong>Cookie Clicker</strong><br><br>
-      Click the big cookie to earn cookies, buy buildings for auto-generation, purchase upgrades for multipliers, and prestige for permanent bonuses.<br><br>
-      Features particle effects, floating numbers, smooth counter animations, and 30+ achievements.<br><br>
+      Click a treat that grows through eight eras - plain cookie, chocolate chip, frosted, cupcake, layer cake, wedding cake, cosmic cake and a whole bakery planet - while eighteen producers bake for you.<br><br>
+      Research a two-page tech tree, ascend for sugar crystals, catch golden treats, play timed and daily Bake-Offs or relax in the Zen Kitchen. Your bakery saves itself and keeps baking while you are away.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -98,61 +111,74 @@
   </div>
 </div>
 
-<!-- Prestige Dialog -->
-<div class="dialog-overlay" id="prestigeBackdrop">
-  <div class="dialog">
-    <div class="dialog-title">Prestige</div>
-    <div class="dialog-body">
-      <p id="prestigeInfo">Reset your progress for heavenly chips?</p>
-    </div>
-    <div class="dialog-buttons">
-      <button data-result="cancel" type="button">Cancel</button>
-      <button data-result="ok" data-default type="button">Prestige</button>
-    </div>
-  </div>
-</div>
-
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
 <h1>Cookie Clicker - Free Online Idle Incremental Game</h1>
-<p>Play Cookie Clicker free in your browser -- click the giant cookie to earn cookies, buy 14 building types for auto-generation, purchase 55+ upgrades for multipliers, and prestige for permanent bonuses in this addictive idle game.</p>
+<p>Play Cookie Clicker free in your browser: click a treat that evolves from a plain cookie into a cupcake, a wedding cake and finally a bakery planet, buy 18 producers with their own animated bakery scenes, collect 130+ upgrades and research a tech tree in this idle game on the &raquo;SynthelicZ&laquo; Desktop.</p>
 <h2>Features</h2>
 <ul>
-<li>Large clickable cookie with spring squish animation</li>
-<li>14 building types from Cursor to Prism for auto-cookie generation</li>
-<li>55+ upgrades with click, building, and global multipliers</li>
-<li>Prestige system with heavenly chips for permanent CPS bonuses</li>
-<li>60+ achievements across baking, clicking, building, and CPS milestones</li>
-<li>Hover tooltips with CPS delta preview and cost efficiency info</li>
-<li>Offline progress calculation capped at 8 hours</li>
-<li>Particle burst effects on clicks and purchases</li>
-<li>Floating score text, milestone confetti celebrations, and smooth counter animation</li>
-<li>Auto-save every 30 seconds</li>
+<li>Eight treat eras with transformation cinematics, era milestones and a small cast of bakers</li>
+<li>Decorations you can see on the treat: icing, sprinkles, cherry, candles, gold leaf, starlight glaze</li>
+<li>18 producers from Cursor to Cake Singularity, each with procedural art and an animated scene</li>
+<li>130+ upgrades, golden treats with seven outcomes, click combos and stacking buffs</li>
+<li>Two-page tech tree: Test Kitchen (recipe notes) and Sugar Sanctum (sugar crystals)</li>
+<li>Ascension for permanent sugar crystal bonuses</li>
+<li>Timed Bake-Off, Daily Bake-Off with a date-seeded modifier, and a relaxing Zen Kitchen</li>
+<li>Seasonal events with themed golden treats, tokens and rewards; daily quests and streaks</li>
+<li>Collection of treat skins, click styles and kitchen themes; 110+ achievements</li>
+<li>Autosave, continue and capped offline baking; older saves carry over</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=aecb218d"></script>
-<script src="js/core/constants.js?v=d63169aa"></script>
-<script src="js/data/buildings.js?v=dcd7d7b5"></script>
-<script src="js/data/upgrades.js?v=763375c6"></script>
-<script src="js/data/achievements.js?v=7f78fee7"></script>
-<script src="js/core/state.js?v=9b02e280"></script>
-<script src="js/core/dom.js?v=4b4cb09f"></script>
-<script src="js/core/format.js?v=a73b47fd"></script>
-<script src="js/systems/economy.js?v=d72631aa"></script>
-<script src="js/systems/purchasing.js?v=dd997644"></script>
-<script src="js/systems/achievements.js?v=ea4eb6b8"></script>
-<script src="js/systems/prestige.js?v=f0eab212"></script>
-<script src="js/systems/saveload.js?v=edb26ab8"></script>
-<script src="js/render/draw.js?v=03a3f166"></script>
-<script src="js/render/tooltips.js?v=7c1b0db3"></script>
-<script src="js/ui/status.js?v=2d0f8633"></script>
-<script src="js/ui/input.js?v=a72da038"></script>
-<script src="js/ui/menu.js?v=a0fb52bf"></script>
-<script src="js/app.js?v=37a38444"></script>
+<script src="js/core/namespace.js?v=b3be7c2b"></script>
+<script src="js/core/constants.js?v=e64f0ad9"></script>
+<script src="js/core/rng.js?v=38b339ba"></script>
+<script src="js/core/format.js?v=0573e70d"></script>
+<script src="js/core/data-buildings.js?v=b64c04a0"></script>
+<script src="js/core/data-treats.js?v=8946da14"></script>
+<script src="js/core/data-upgrades.js?v=355961f8"></script>
+<script src="js/core/data-tree.js?v=ed6856ac"></script>
+<script src="js/core/data-achievements.js?v=b8ab554b"></script>
+<script src="js/core/data-events.js?v=5ee4a683"></script>
+<script src="js/core/calendar.js?v=feeb3f50"></script>
+<script src="js/core/economy.js?v=67463811"></script>
+<script src="js/core/state.js?v=ac7d44ba"></script>
+<script src="js/core/save.js?v=75c14562"></script>
+<script src="js/core/audio.js?v=8ca9377c"></script>
+<script src="js/systems/fx.js?v=a4d181fe"></script>
+<script src="js/systems/production.js?v=e2bb6dff"></script>
+<script src="js/systems/clicking.js?v=6fd5505e"></script>
+<script src="js/systems/golden.js?v=9c456aa4"></script>
+<script src="js/systems/purchasing.js?v=c9f3d48f"></script>
+<script src="js/systems/progression.js?v=6ec2fe93"></script>
+<script src="js/systems/prestige.js?v=d7b42600"></script>
+<script src="js/systems/modes.js?v=60f220dc"></script>
+<script src="js/systems/cinematics.js?v=ae09938f"></script>
+<script src="js/render/view.js?v=c40fce64"></script>
+<script src="js/render/art-kit.js?v=485479b6"></script>
+<script src="js/render/planet-art.js?v=12719ecb"></script>
+<script src="js/render/treat-art.js?v=8d9e279f"></script>
+<script src="js/render/building-art.js?v=074ae879"></script>
+<script src="js/render/backdrop.js?v=149df6de"></script>
+<script src="js/render/scene-render.js?v=f279d015"></script>
+<script src="js/render/fx-render.js?v=17e9dd9e"></script>
+<script src="js/render/hud.js?v=1e04c2c3"></script>
+<script src="js/render/cine-render.js?v=96901ad2"></script>
+<script src="js/ui/kit.js?v=dbd8bf5e"></script>
+<script src="js/ui/widgets.js?v=cbf1cd8e"></script>
+<script src="js/ui/screens.js?v=7e3ec234"></script>
+<script src="js/ui/store.js?v=ed42701e"></script>
+<script src="js/ui/title.js?v=28df7ffe"></script>
+<script src="js/ui/tree.js?v=1fc055c8"></script>
+<script src="js/ui/collection.js?v=698d07dc"></script>
+<script src="js/ui/journal.js?v=a43e24b2"></script>
+<script src="js/ui/pause.js?v=bbdfa607"></script>
+<script src="js/ui/status-bar.js?v=a327c1ea"></script>
+<script src="js/ui/input.js?v=763c887f"></script>
+<script src="js/render/frame.js?v=97e0e295"></script>
+<script src="js/app.js?v=d24a8aae"></script>
 </body>
 </html>

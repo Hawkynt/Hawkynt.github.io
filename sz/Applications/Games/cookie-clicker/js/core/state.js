@@ -1,81 +1,37 @@
-/* S, the one shared mutable state object: the game state string, the cookie and
-   lifetime counters, the multiplier and prestige fields, the effect timers, the
-   scroll/ripple/tooltip/mouse bookkeeping, the per-building count and multiplier
-   maps, the purchased/unlocked maps and the background crumb particles (seeded
-   once, at load). */
+/* G, the one shared mutable state object: the current screen and its return targets, the
+   profile (permanent progress), the classic run, an optional Bake-Off run, the derived stats
+   cache with its dirty flag, the season and day context, UI bookkeeping (store tab and
+   scroll, buy amount, tree and collection selection, toasts, hover), the pointer and
+   keyboard input, the per-frame hit areas, the running cinematic and screen-shake. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.CookieClicker || (SZ.CookieClicker = {});
-  const C = NS.constants;
+  const E = NS.economy;
 
-  NS.state = NS.state || {
-    state: C.STATE_PLAYING,
-    cookies: 0,
-    displayCookies: 0,
-    cookiesBaked: 0,
-    cookiesBakedAllTime: 0,
-    totalClicks: 0,
-    clickValue: 1,
-    clickMultiplier: 1,
-    globalMultiplier: 1,
-    heavenlyChips: 0,
-    prestigeCount: 0,
-    cps: 0,
-    animFrameId: null,
-    lastTimestamp: 0,
-    dpr: 1,
-    cookieScale: 1,
-    cookieScaleV: 0,
-    achievementCheckTimer: 0,
-    autoSaveTimer: 0,
-    purchaseGlowTimer: 0,
-    purchaseGlowIndex: -1,
-    confettiTimer: 0,
-    lastMilestone: 0,
-    buildingScrollOffset: 0,
-    clickRipple: null,
-    tooltip: null,
-    mouseX: 0,
-    mouseY: 0,
-    buildings: {},
-    buildingMultipliers: {},
-    upgradePurchased: {},
-    achievementUnlocked: {},
-    bgCrumbs: []
+  const G = NS.state = NS.state || {};
+  Object.assign(G, {
+    screen: 'title', time: 0, frame: 0,
+    profile: E.newProfile(),
+    run: null, bake: null,
+    st: null, dirty: true,
+    season: 'winter', today: '', modifier: null,
+    ui: {
+      storeTab: 'buildings', buyIndex: 0, storeScroll: 0, sceneScroll: 0, upgScroll: 0,
+      treePage: 0, treeSel: 'o_heat', treeFlash: 0, treeFlashId: '', treeReturn: 'game',
+      collTab: 0, journalTab: 0, journalScroll: 0, panelReturn: 'game',
+      toasts: [], offline: null, confirm: null, hover: null, displayCookies: 0, cpsShown: 0,
+      lastBuy: '', lastBuyT: 0, pulse: 0, zenStage: 0, zenSkin: 'classic', zenT: 0, bakeResult: null,
+    },
+    input: { mx: -1, my: -1, moved: 0, down: false, touch: false, dragging: false, dragY: 0, dragStart: 0, dragArea: '' },
+    hitAreas: [], menuCursor: -1,
+    cine: null, shake: 0, flash: 0, flashColor: '#fff', treatSquash: 0, treatSquashV: 0,
+    goldens: [], storm: null, autoSaveT: 0, checkT: 0, pendingCine: null,
+  });
+
+  /* the run the player is in: a Bake-Off while one is going, else the classic bakery */
+  NS.state.active = function() {
+    return G.bake || G.run;
   };
-
-  const S = NS.state;
-  const BUILDING_DEFS = NS.buildingDefs;
-  const UPGRADE_DEFS = NS.upgradeDefs;
-  const ACHIEVEMENT_DEFS = NS.achievementDefs;
-  const COOKIE_CX = C.COOKIE_CX;
-  const CANVAS_H = C.CANVAS_H;
-
-  const buildings = S.buildings;
-  const buildingMultipliers = S.buildingMultipliers;
-  for (const def of BUILDING_DEFS) {
-    buildings[def.id] = 0;
-    buildingMultipliers[def.id] = 1;
-  }
-
-  const upgradePurchased = S.upgradePurchased;
-  for (const def of UPGRADE_DEFS)
-    upgradePurchased[def.id] = false;
-
-  const achievementUnlocked = S.achievementUnlocked;
-  for (const def of ACHIEVEMENT_DEFS)
-    achievementUnlocked[def.id] = false;
-
-  /* ── Background crumb particles ── */
-  const bgCrumbs = S.bgCrumbs;
-  for (let i = 0; i < 15; ++i)
-    bgCrumbs.push({
-      x: COOKIE_CX + (Math.random() - 0.5) * 250,
-      y: Math.random() * CANVAS_H,
-      r: 1 + Math.random() * 2,
-      speed: 8 + Math.random() * 12,
-      alpha: 0.15 + Math.random() * 0.25
-    });
 })();

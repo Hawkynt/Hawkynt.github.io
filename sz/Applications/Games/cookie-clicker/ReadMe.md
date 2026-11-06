@@ -1,140 +1,152 @@
 # Cookie Clicker
 
-An idle/incremental game where you click a giant cookie to earn cookies, buy buildings for auto-generation, purchase upgrades for multipliers, and prestige for permanent bonuses.
+An idle game for the »SynthelicZ« Desktop. Grandma Rosa hands young Pip her little kitchen and one plain cookie. Click it, buy cursors and grandmas, and watch the treat grow through eight eras: plain cookie, chocolate-chip cookie, frosted sprinkle cookie, cupcake, layer cake, three-tier wedding cake, cosmic galaxy cake and finally a whole bakery planet - each with a transformation cinematic, its own production bonus and milestones. Eighteen producers bake in an animated bakery view, 138 upgrades multiply everything (decorations such as icing, sprinkles, a cherry, candles, gold leaf and starlight glaze show up on the treat), golden treats bring Frenzies and Cookie Storms, a two-page tech tree holds permanent research, and ascension trades the bakery for sugar crystals. Timed and daily Bake-Offs, a quiet Zen Kitchen, seasonal events, daily quests, streaks, a collection of skins and themes and 119 achievements keep you coming back. All art is procedural canvas drawing.
 
-## Features
+## How It Works
 
-- Large clickable cookie with spring squish animation
-- 14 building types (Cursor, Grandma, Farm, Mine, Factory, Bank, Temple, Wizard Tower, Shipment, Alchemy Lab, Portal, Time Machine, Antimatter Condenser, Prism)
-- 55+ upgrades with click, building, and global multipliers
-- Prestige system with heavenly chips (+1% CPS each)
-- 60+ achievements across baking, clicking, building, CPS, prestige, and upgrade milestones
-- Hover tooltips showing detailed info before purchase:
-  - Building tooltips: description, per-unit CPS, total CPS from type, CPS delta preview, cost efficiency (cost per CPS)
-  - Upgrade tooltips: description, effect, CPS/click delta preview, cost efficiency
-  - Cookie tooltip: per-click value, total clicks
-- Scrollable buildings panel with mouse wheel support
-- Per-building CPS contribution shown inline on each building row
-- Per-click value displayed below CPS in the stats area
-- Offline progress calculation (capped at 8 hours, 50% efficiency)
-- Auto-save every 30 seconds and on blur
-- Large number formatting (K, M, B, T, Qa, Qi, Sx, Sp, Oc, No, Dc)
-- Particle burst effects on click and purchase
-- Floating "+N" text on cookie clicks
-- Milestone confetti celebrations (1M, 1B, 1T, 1Qa, 1Qi, 1Sx)
-- Smooth counter animation (lerp)
-- Purchase glow effect on buildings
-- SZ Desktop OS integration (menu bar, dialogs, window title, theme)
+The view is a 1280 x 720 plane fitted into the window; the kitchen wall, the counter and the seasonal particles fill any extra space of a wider or taller window. Pointer positions are mapped back into the plane on every event, so clicks stay exact after resizing or maximizing. The loop runs once per display refresh with a clamped time step; the bakery keeps baking on every screen.
 
-## User Stories
+Production is the sum over producers of base rate x count x tier upgrades (x2 each), multiplied by flavour upgrades and decorations, sugar crystals (+1% each), achievements (+1% each, more with milk), the era bonus, tech tree research, the daily streak (+2% per day, up to +20%) and running buffs. A click is worth the click power (mice, decorations, research) plus a share of production, times click buffs and the combo (fast clicks build a combo of up to 50 steps, +2% each). Producers cost 15% more per copy; bulk prices use the geometric sum, and Max buys as many as the bank allows. Golden treats appear every one to three minutes and roll one of seven outcomes: Lucky (15% of the bank, at most 15 minutes of production), Frenzy (x7 production), Click Frenzy (x777 clicks), Building Rush, Sugar Rush (recipe notes), Cookie Storm (falling treats to catch) and Combo Blast. During a season some of them take its shape - snowflake, egg, sun, leaf, pumpkin or present - and drop season tokens.
 
-### Core Gameplay
-- [x] As a player, I can click a large cookie with a spring squish animation to earn cookies so that I have an engaging primary interaction
-- [x] As a player, I can purchase 14 building types (Cursor through Prism) that auto-generate cookies per second so that production grows passively
-- [x] As a player, I can buy 55+ upgrades with click, building, and global multipliers so that I can boost production strategically
-- [x] As a player, I can prestige to earn heavenly chips (+1% CPS each) so that restarting provides permanent bonuses
-- [x] As a player, I can see building costs scale exponentially (baseCost x 1.15^owned) so that each purchase is a meaningful decision
+Each era has a run total to reach (1 thousand up to 1 quintillion) and three milestones. The first time an era is reached the cinematic plays: the old treat trembles in light, bursts, the new one lands on rotating rays, then the cast (Grandma Rosa, Pip, the rival Baron Crumbleton and the Sugar Oracle) comments. Recipe notes come from every half order of magnitude baked in a run, milestones, achievements, quests, golden treats and Bake-Offs; they buy the Test Kitchen page of the tech tree (Ovens, Hands, Fortune, Logistics, Science). After a trillion baked in total, ascension gives sugar crystals (the cube root of lifetime trillions); unspent crystals buy the Sugar Sanctum page (Heritage, Destiny, Ascension). The tree, achievements, collection and statistics survive ascension.
 
-### Visual Feedback
-- [x] As a player, I can see particle burst effects on clicks and purchases so that actions feel impactful
-- [x] As a player, I can see floating "+N" text on cookie clicks so that I know how much I earned
-- [x] As a player, I can see milestone confetti celebrations at 1M, 1B, 1T, 1Qa, 1Qi, and 1Sx cookies so that big milestones are celebrated
-- [x] As a player, I can see a smooth counter animation (lerp) for the cookie total so that numbers change fluidly
-- [x] As a player, I can see a purchase glow effect on buildings so that buying feels satisfying
+The Bake-Off is a fresh kitchen at twelve-fold speed for three minutes, scored by what it bakes, with a top-ten table; the Daily Bake-Off adds a modifier seeded by the local date (Grandma Gala, Golden Hour, Butterfingers, Wholesale Day, Drumline, Cursor Carnival, Rush Hour). The Zen Kitchen shows any era's treat without numbers or clocks: clicks burst sprinkles and play pentatonic chimes. Seasons follow the local date (winter, spring, summer, autumn, Halloween week, year-end) and change the kitchen's light, decorations, drifting particles and the golden treat; tokens fill a five-step track that unlocks a skin and a click style per season. Three daily quests and the consecutive-day streak reward regular visits.
 
-### Information and Tooltips
-- [x] As a player, I can hover over buildings to see description, per-unit CPS, total CPS from type, CPS delta preview, and cost efficiency so that I can make informed purchases
-- [x] As a player, I can hover over upgrades to see description, effect, CPS/click delta preview, and cost efficiency so that I understand upgrade value
-- [x] As a player, I can hover over the cookie to see per-click value and total clicks so that I know my click stats
-- [x] As a player, I can see tooltips offset from buttons so that they do not block the items I am interacting with
+All art is painted once into cached canvases: every era's treat per skin and decoration set (420 x 460 px), producer icons, units and scene strips, golden carriers, portraits, particles and the seasonal decor; per frame the game only blits, draws a few shapes and text, and uses no blur filters. Particles, floating texts and rings live in fixed pools. A busy bakery (all eighteen producers, buffs, a Cookie Storm, hundreds of particles, rapid clicking) takes about 2.3 ms of script per frame on average and 5 ms at the 95th percentile.
 
-### Progression and Achievements
-- [x] As a player, I can earn 60+ achievements across baking, clicking, building, CPS, prestige, and upgrade milestones so that I have many goals to pursue
-- [x] As a player, I can see per-building CPS contribution inline on each building row so that I know which buildings are most productive
-- [x] As a player, I can see per-click value displayed below CPS in the stats area so that I know my click power
-- [x] As a player, I can see large numbers formatted with suffixes (K, M, B, T, Qa, Qi, Sx, Sp, Oc, No, Dc) so that big numbers are readable
-
-### Persistence and Offline
-- [x] As a player, I can have my game auto-saved every 30 seconds and on window blur so that I never lose progress
-- [x] As a player, I can earn offline progress (capped at 8 hours, 50% efficiency) when returning to the game so that time away is not wasted
-- [x] As a player, I can scroll through the buildings panel with mouse wheel so that all 14 buildings are accessible
-
-### UI and Integration
-- [x] As a player, I can access the game through the SZ Desktop OS with menu bar, dialogs, and window title integration so that it fits the desktop environment
-- [x] As a player, I can start a new game with F2 or open the menu with Escape so that game management is accessible
-
-### Planned Features
-- [ ] As a player, I can hear sound effects for clicks, purchases, and achievements so that the game has audio feedback
-- [ ] As a player, I can see a golden cookie that appears randomly for bonus cookies so that there are surprise events
-- [ ] As a player, I can unlock seasonal content or special events so that the game has periodic variety
-- [ ] As a player, I can see detailed statistics tracking (total clicks, time played, buildings bought) so that I can review my history
-- [ ] As a player, I can export and import my save data so that I can back up my progress
-
-## Controls
-
-| Input | Action |
-|-------|--------|
-| Left-click on big cookie | Earn cookies equal to click value |
-| Left-click on building | Purchase one unit (if affordable) |
-| Left-click on upgrade | Purchase the upgrade (if affordable) |
-| Hover over building/upgrade | Show detailed tooltip with effects |
-| Mouse wheel on buildings panel | Scroll through building list |
-| Escape | Open menu |
-| F2 | New Game |
-
-## Game Mechanics
-
-### Cookie Production
-Total CPS = sum of (buildingCount x baseCPS x buildingMultiplier) x globalMultiplier x (1 + heavenlyChips x 0.01) x achievementBonus.
-
-### Building Cost Scaling
-Each building costs: baseCost x 1.15^owned. Exponential scaling ensures buildings remain meaningful purchases.
-
-### Prestige
-Heavenly chips earned = floor(cbrt(lifetimeCookies / 1e12)) - previousChips. Each chip provides +1% CPS.
-
-### Offline Production
-On return: min(elapsedSeconds, 28800) x lastCPS x 0.5 cookies awarded at 50% efficiency.
-
-### Tooltip System
-Hovering over any building or upgrade shows a detailed tooltip with:
-- Item name and description
-- Current stats (owned count, per-unit CPS)
-- Projected stats after purchase (new CPS, CPS delta)
-- Cost efficiency (cost per CPS gained)
-
-## Buildings
-
-| Building | Base Cost | Base CPS | Description |
-|----------|-----------|----------|-------------|
-| Cursor | 15 | 0.1 | Autoclicks once every 10 seconds |
-| Grandma | 100 | 1 | A nice grandma to bake cookies |
-| Farm | 1,100 | 8 | Grows cookie plants |
-| Mine | 12,000 | 47 | Mines out cookie dough |
-| Factory | 130,000 | 260 | Produces large quantities of cookies |
-| Bank | 1,400,000 | 1,400 | Generates cookies from interest |
-| Temple | 20,000,000 | 7,800 | Converts prayer into cookies |
-| Wizard Tower | 330,000,000 | 44,000 | Conjures cookies with magic |
-| Shipment | 5,100,000,000 | 260,000 | Imports cookies from the cookie planet |
-| Alchemy Lab | 75,000,000,000 | 1,600,000 | Turns gold into cookies |
-| Portal | 1,000,000,000,000 | 10,000,000 | Opens a door to the cookieverse |
-| Time Machine | 14,000,000,000,000 | 65,000,000 | Brings cookies from the past |
-| Antimatter Condenser | 170,000,000,000,000 | 430,000,000 | Condenses antimatter into cookies |
-| Prism | 2,100,000,000,000,000 | 2,900,000,000 | Converts light into cookies |
+Progress lives in one versioned save (`sz-cookie-clicker-save`): the profile, the classic run and any Bake-Off in progress, written every five seconds, on pause and when the page hides. Loading fills in defaults for missing fields. Time away is baked at 50% efficiency for up to 8 hours (research raises both) and shown in a welcome-back report. The original game's save (`sz-cookie-clicker`) is converted once: cookies, run and lifetime totals, clicks, buildings, upgrades (mapped to their new tiers, mice and flavours), achievements, heavenly chips (as sugar crystals) and the prestige count carry over, plus welcome recipe notes; the old key is left untouched.
 
 ## Architecture
 
-- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
-- `js/` -- the game under `SZ.CookieClicker`, one module per domain, loaded in dependency order:
-  - `js/core/namespace.js` -- pre-creates the module objects; `js/core/constants.js` -- storage key, canvas size, cost scaling, offline window, panel layout, milestone thresholds, cookie geometry; `js/core/state.js` -- the one shared state object, the count/multiplier/purchased/unlocked maps and the seeded background crumbs; `js/core/dom.js` -- canvas/context, status refs, particle and floating-text singletons, DPR canvas setup; `js/core/format.js` -- suffix number formatting and the CPS variant
-  - `js/data/buildings.js` -- the 14 building definitions; `js/data/upgrades.js` -- the upgrade table with reveal conditions; `js/data/achievements.js` -- the achievement table with unlock conditions
-  - `js/systems/economy.js` -- global bonus stacking, CPS recalculation and what-if previews, click value, exponential building costs; `js/systems/purchasing.js` -- building and upgrade purchases and the cookie click; `js/systems/achievements.js` -- achievement unlock sweeps and milestone confetti; `js/systems/prestige.js` -- heavenly chips and the prestige reset; `js/systems/saveload.js` -- localStorage save, load with offline progress, New Game reset
-  - `js/render/draw.js` -- cookie, buildings panel, upgrade grid, stats header, tooltip box; `js/render/tooltips.js` -- tooltip content and hover hit-testing
-  - `js/ui/status.js` -- the desktop status bar; `js/ui/input.js` -- canvas pointer input, wheel scrolling, keyboard and the listener registration; `js/ui/menu.js` -- menu bar actions, dialog wiring, OS window procedure, save on blur
-  - `js/app.js` -- loaded last: the requestAnimationFrame game loop (production ticks, timers, sweeps, redraw) and start-up
-- `styles.css` -- Layout and theming
-- `icon.svg` -- Desktop icon
+The code lives in `js/` as plain scripts on the `SZ.CookieClicker` namespace, loaded in order by `index.html` (no build step, no modules). All shared game state sits in one object, `SZ.CookieClicker.state` (`G` in every module).
+
+- **`index.html`** -- Menu bar (Game: Title Screen, Pause, Tech Tree, Collection, Journal, Save Now, Exit; Help: How to Play, Controls, About), canvas, status bar, dialogs; loads the modules below in order
+- **`styles.css`** -- Window chrome: game frame, canvas, status bar, controls table
+
+Core (`js/core/`):
+
+- **`namespace.js`** -- The `SZ.CookieClicker` namespace with one object per module, so modules can call modules that load after them
+- **`constants.js`** -- View plane and layout regions, loop clamps, save and offline windows, cost scaling, combo, golden and Bake-Off timing, UI palette
+- **`rng.js`** -- Seeded mulberry32 generators and string hashing
+- **`format.js`** -- Short (K, M ... Vg, then scientific) and long ("3.007 billion") number formats, rates, durations, clocks
+- **`data-buildings.js`** -- The 18 producers (ids of the original 14 kept), palettes, flavour text, five tier names each
+- **`data-treats.js`** -- The eight eras with thresholds, bonuses, milestones and cast lines; the cast; the six decorations; 15 skins, 9 click styles and 5 kitchen themes with their unlock rules
+- **`data-upgrades.js`** -- The generated upgrade table (90 tiers, 8 mice, 22 flavours and era recipes, 6 decorations, 4 golden charms, 5 milks, 3 combo tools) and the map from the original upgrade ids
+- **`data-tree.js`** -- The tech tree on two pages: eight branches, 32 nodes with 98 levels, costs, prerequisites and stats
+- **`data-achievements.js`** -- 119 achievements (the original 59 with their ids, plus eras, golden treats, combos, modes, quests, streaks, seasons, tree, crystals and collection)
+- **`data-events.js`** -- Golden outcomes, seasonal carriers, the season track, quest templates and Daily Bake-Off modifiers
+- **`calendar.js`** -- Pure date rules: day keys and gaps, seasons, the streak, daily quests and the daily modifier
+- **`economy.js`** -- Pure rules: fresh profiles and runs, tree levels, costs and stats, upgrade aggregates, production and click formulas, bulk costs, buffs, eras, recipe-note marks, crystals, offline gains, upgrade reveal conditions
+- **`state.js`** -- The shared state object: screen, profile, runs, derived stats, season and day, UI bookkeeping, input, hit areas, cinematic, shake
+- **`save.js`** -- The versioned save, loading with defaults, the migration of the original save (the only module touching `localStorage`)
+- **`audio.js`** -- Sound through the shared `SZ.GameAudio`, rate-limited per name, with a volume scale and calm chimes
+
+Systems (`js/systems/`):
+
+- **`fx.js`** -- Pooled particles, floating texts and rings; screen shake, flash and hit-stop
+- **`production.js`** -- The per-run tick: baking with buffs, buff timers, combo decay, Ghost Hands, recipe notes, evolving eras, the Bake-Off clock
+- **`clicking.js`** -- Treat clicks: value, combo, squash, particles in the chosen style, merged floating numbers, sounds, quest credit
+- **`golden.js`** -- Golden treat spawning, seasonal carriers, catching, the seven outcomes and the Cookie Storm drops
+- **`purchasing.js`** -- Buy amounts, buying and selling producers, revealed upgrades, buying upgrades
+- **`progression.js`** -- Achievements, era evolution, milestones, daily quests and streak, season tokens and track, cosmetic unlocks
+- **`prestige.js`** -- Pending crystals, the next crystal, ascension
+- **`modes.js`** -- Bake-Off and Daily Bake-Off (start, score, reward, give up) and the Zen Kitchen
+- **`cinematics.js`** -- Shot lists for the intro, the seven transformations, ascension and the Bake-Off countdown; advancing and skipping
+
+Render (`js/render/`):
+
+- **`view.js`** -- Canvas fitting, letterboxing, backing resolution cap, pointer mapping
+- **`art-kit.js`** -- The sprite cache with statistics, colour maths, glow sprites, blits and shape helpers
+- **`planet-art.js`** -- The bakery planet: chocolate sea, frosted continents, towns and city lights, weather, the cake-tower capital, cookie and sugar-dust rings
+- **`treat-art.js`** -- The other seven treat painters and the decorations fitted to each shape; candle and twinkle anchors
+- **`building-art.js`** -- The 18 unit painters, store icons and scene strips
+- **`backdrop.js`** -- Kitchen themes, the counter, the season's light, decor and drifting particles, the vignette
+- **`scene-render.js`** -- The animated bakery view, one strip per owned producer
+- **`fx-render.js`** -- Particle sprites, rings, floating texts, the flash
+- **`hud.js`** -- The treat with its live animation, counter, currency and era strip, Bake-Off clock, combo meter, buffs, golden treats
+- **`cine-render.js`** -- Portraits, title cards, dialogue panels, the transformation, ascension and countdown
+- **`frame.js`** -- One frame: backdrop, screen, panels, cinematic and overlays, with only the top layer clickable
+
+UI (`js/ui/`):
+
+- **`kit.js`** -- Text, panels, bars, locks and the cached vector icons
+- **`widgets.js`** -- Hit areas registered while drawing, buttons, keyboard cursor, activation
+- **`screens.js`** -- The screen machine, toasts, the offline report and confirmations
+- **`store.js`** -- Producers and Upgrades tabs, buy amounts, rows, grid, scrolling and tooltips
+- **`title.js`** -- The animated title screen and its menu
+- **`tree.js`** -- The tech tree screen
+- **`collection.js`** -- Skins, click styles, themes and the era gallery
+- **`journal.js`** -- Achievements, quests and milestones, season track, statistics, Bake-Off scores
+- **`pause.js`** -- Pause menu, ascension screen, Bake-Off results, how to play, Zen Kitchen controls
+- **`status-bar.js`** -- The window status bar
+- **`input.js`** -- Pointer, wheel, drag and keyboard handling per screen
+- **`js/app.js`** -- Boot (load or migrate, offline baking, day and season), the loop, autosave, menu bar, full reset
+
+Tests (`tests/`, run with `node tests/<name>.test.js`): `harness.js` (fake canvas, DOM, storage and clock; loads the scripts in page order), `economy.test.js`, `save.test.js` (migration of the original save, round trip, defaults, offline cap, reset), `calendar.test.js`, `progression.test.js` (eras, golden outcomes, seasons, quests, tree, ascension, Bake-Off), `art.test.js` (paint and cache budgets, busy-frame draw budget, no blur), `boot.test.js` (every screen).
+
+## User Stories
+
+### Baking
+- [x] As a player, I can click the treat (or press Space) to bake, with squash, crumbs in my chosen style and a growing floating number
+- [x] As a player, I can click quickly to build a combo that makes clicks stronger, with a meter and a fanfare every 25 steps
+- [x] As a player, I can buy 18 producers from Cursor to Cake Singularity, each with its own art and animated bakery scene
+- [x] As a player, I can buy 1, 10, 100 or as many as I can afford, and sell one back with a right-click
+- [x] As a player, I can see what each producer bakes, its share and how long it takes to pay back
+
+### The Treat
+- [x] As a player, I can watch the treat evolve through eight eras, each with a transformation cinematic and a production bonus
+- [x] As a player, I can buy decorations - icing, sprinkles, a cherry, candles, gold leaf, starlight glaze - and see them on the treat
+- [x] As a player, I can complete three milestones per era for recipe notes
+
+### Upgrades and Events
+- [x] As a player, I can buy 138 upgrades: producer tiers, mice, flavours, era recipes, decorations, golden charms, milks and combo tools
+- [x] As a player, I can catch golden treats for Lucky piles, Frenzy, Click Frenzy, Building Rush, Sugar Rush, Cookie Storms and Combo Blasts
+- [x] As a player, I can see running buffs with their timers
+
+### Tech Tree and Ascension
+- [x] As a player, I can research 32 nodes on two pages from the title, the bakery or the pause menu, taking effect at once
+- [x] As a player, I can ascend for sugar crystals that boost production forever and buy the Sugar Sanctum
+
+### Modes
+- [x] As a player, I can play a three-minute Bake-Off for a top-ten score and recipe notes
+- [x] As a player, I can play the Daily Bake-Off with a modifier that changes every day
+- [x] As a player, I can relax in the Zen Kitchen with any era's treat, sprinkles and chimes
+
+### Coming Back
+- [x] As a player, I can close the page and continue exactly where I was; the bakery saves every few seconds
+- [x] As a player, I can come back to offline baking (capped, shown in a welcome-back report)
+- [x] As a player, I can keep my old Cookie Clicker progress, converted into the new game
+- [x] As a player, I can do three daily quests and grow a daily streak
+- [x] As a player, I can enjoy seasonal events with themed golden treats, tokens and rewards
+- [x] As a player, I can collect 15 treat skins, 9 click styles and 5 kitchen themes and replay era transformations
+- [x] As a player, I can earn 119 achievements and read my lifetime statistics
+
+### Screens and Controls
+- [x] As a player, I can play with mouse, touch (tap, drag to scroll) or keyboard (arrows and Enter in menus)
+- [x] As a player, I can resize or maximize the window and clicks stay exact
+- [x] As a player, I can skip any cinematic with a key, or step through it by clicking
+
+### Planned Features
+- [ ] As a player, I can tend a sugar garden with plants that mutate
+- [ ] As a player, I can export and import my save as text
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| Click / tap the treat, Space, Enter | Bake |
+| Click a golden treat | Catch it |
+| Click a store row / right-click | Buy / sell one |
+| B | Cycle the buy amount |
+| Tab | Producers / Upgrades (tree: switch page) |
+| Wheel / drag | Scroll the store and the bakery view |
+| T / C / J | Tech tree / Collection / Journal |
+| B (tree) | Research the selected node |
+| Esc / P | Pause, back from panels |
+| Arrows + Enter | Navigate menus |
+| Click / any key | Next cinematic shot / skip |
+| F2 | Title screen |
 
 ## SEO Keywords
 
-cookie clicker, idle game, incremental game, clicker game, browser idle game, cookie game, clicking game, prestige game, HTML5 clicker, casual idle game, building game, auto-generate cookies
+cookie clicker, idle game, incremental game, clicker game, free online idle game, browser clicker, bakery game, cake clicker, tech tree, prestige, ascension, golden cookie, seasonal events, »SynthelicZ« game
