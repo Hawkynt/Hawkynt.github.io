@@ -44,7 +44,7 @@
     }
     const folder = 'js/variants/' + variant.id + '/';
     const haveShared = Object.keys(SZ.CardGames.shared || {}).length > 0;
-    const needShared = haveShared ? [] : SHARED.map(n => 'js/variants/_shared/' + n + '.js');
+    const needShared = haveShared ? [] : SHARED.map(n => 'js/variants/common/' + n + '.js');
     loadChain(needShared.concat(PARTS.map(p => folder + p + '.js')), function() {
       const mod = S.variantModules[variant.id];
       if (mod)
