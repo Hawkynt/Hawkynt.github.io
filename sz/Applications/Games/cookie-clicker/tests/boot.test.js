@@ -29,7 +29,8 @@ const g = G.goldens[0];
 check('a golden treat spawns', !!g);
 NS.golden.tryClick(g.x, g.y);
 check('catching it counts', G.profile.stats.golden === 1);
-const screens = ['game', 'paused', 'tree', 'collection', 'journal', 'ascend', 'help', 'zen', 'title'];
+G.profile.stageMax = Math.max(G.profile.stageMax, 3);
+const screens = ['game', 'paused', 'tree', 'collection', 'journal', 'ascend', 'help', 'zen', 'garden', 'trials', 'title'];
 let errors = 0;
 for (const s of screens) {
   try {

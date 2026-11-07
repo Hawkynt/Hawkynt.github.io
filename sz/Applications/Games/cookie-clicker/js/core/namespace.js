@@ -7,10 +7,10 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.CookieClicker || (SZ.CookieClicker = {});
 
-  const MODULES = ['constants', 'rng', 'format', 'calendar', 'economy', 'save', 'audio',
-    'production', 'clicking', 'golden', 'purchasing', 'progression', 'prestige', 'modes', 'cinematics', 'fx',
-    'view', 'artKit', 'planetArt', 'treatArt', 'buildingArt', 'sceneRender', 'backdrop', 'fxRender', 'hud', 'cineRender', 'frame',
-    'kit', 'widgets', 'store', 'screens', 'title', 'tree', 'collection', 'journal', 'pause', 'input', 'statusBar', 'app'];
+  const MODULES = ['constants', 'rng', 'format', 'calendar', 'economy', 'save', 'audio', 'music',
+    'production', 'clicking', 'golden', 'purchasing', 'progression', 'prestige', 'garden', 'trials', 'modes', 'cinematics', 'fx',
+    'view', 'artKit', 'planetArt', 'treatArt', 'buildingArt', 'gardenArt', 'sceneRender', 'backdrop', 'fxRender', 'hud', 'cineRender', 'frame',
+    'kit', 'widgets', 'store', 'screens', 'title', 'tree', 'collection', 'journal', 'gardenUi', 'pause', 'input', 'statusBar', 'app'];
   for (let i = 0; i < MODULES.length; ++i)
     NS[MODULES[i]] = NS[MODULES[i]] || {};
 })();

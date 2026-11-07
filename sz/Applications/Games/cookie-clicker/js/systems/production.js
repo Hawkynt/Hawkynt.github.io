@@ -12,7 +12,7 @@
 
   function env() {
     const s = G.profile.streak;
-    return { streak: s.last === G.today ? s.count : 0 };
+    return { streak: s.last === G.today ? s.count : 0, garden: NS.garden.effects(G.profile) };
   }
 
   function refresh(force) {

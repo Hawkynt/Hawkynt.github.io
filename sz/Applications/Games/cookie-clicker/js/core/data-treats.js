@@ -54,7 +54,8 @@
   ];
 
   /* unlock kinds: default, stage (reach stage n ever), ach (achievement count), season (season id
-     track reward), crystal (ascensions), bake (Bake-Off best score), golden (lifetime golden) */
+     track reward), crystal (ascensions), bake (Bake-Off best score), golden (lifetime golden), garden
+     (seeds discovered), trials (Sanctum Trials completed) */
   const SKINS = [
     { id: 'classic', name: 'Classic Butter', dough: '#d89a52', dark: '#8a5428', icing: '#f8c0d8', accent: '#5a3018', unlock: { k: 'default' } },
     { id: 'strawberry', name: 'Strawberry Swirl', dough: '#f0a0a8', dark: '#b85a6a', icing: '#fff0f4', accent: '#e83a5a', unlock: { k: 'stage', n: 2 } },
@@ -71,6 +72,9 @@
     { id: 'maple', name: 'Maple Crunch', dough: '#c8783a', dark: '#7a3e14', icing: '#f0c890', accent: '#a03018', unlock: { k: 'season', id: 'autumn' } },
     { id: 'pumpkin', name: 'Spooky Pumpkin', dough: '#f08a2a', dark: '#9a4a0a', icing: '#3a2a3a', accent: '#7aff5a', unlock: { k: 'season', id: 'halloween' } },
     { id: 'firework', name: 'Midnight Firework', dough: '#2a2a5a', dark: '#14143a', icing: '#ffd25a', accent: '#ff5ab4', unlock: { k: 'season', id: 'yearend' } },
+    { id: 'herbal', name: 'Garden Herb', dough: '#b8d890', dark: '#5a8a3a', icing: '#fff8d0', accent: '#e86a8a', unlock: { k: 'garden', n: 8 } },
+    { id: 'sanctum', name: 'Sanctum Glass', dough: '#d8c8ff', dark: '#8a6ad0', icing: '#ffffff', accent: '#9affea', unlock: { k: 'trials', n: 3 } },
+    { id: 'ascendant', name: 'Ascendant Crown', dough: '#fff0c0', dark: '#c09030', icing: '#e59cff', accent: '#ffd25a', unlock: { k: 'trials', n: 6 } },
   ];
 
   const PARTICLES = [
@@ -91,6 +95,8 @@
     { id: 'candy', name: 'Candy Land', top: '#ff9ac8', bottom: '#7a3a8a', glow: '#fff0a0', unlock: { k: 'bake', n: 1e6 } },
     { id: 'garden', name: 'Tea Garden', top: '#3a6a4a', bottom: '#14281a', glow: '#d0ffb0', unlock: { k: 'ach', n: 60 } },
     { id: 'cosmos', name: 'Starfield', top: '#140a30', bottom: '#020108', glow: '#c08aff', unlock: { k: 'stage', n: 6 } },
+    { id: 'greenhouse', name: 'Greenhouse', top: '#2a5a3a', bottom: '#0a1a10', glow: '#ffe8a0', unlock: { k: 'garden', n: 17 } },
+    { id: 'sanctum', name: 'Sugar Sanctum', top: '#2a1a4a', bottom: '#08040e', glow: '#e59cff', unlock: { k: 'trials', n: 6 } },
   ];
 
   const SEASON_IDS = ['winter', 'spring', 'summer', 'autumn', 'halloween', 'yearend'];

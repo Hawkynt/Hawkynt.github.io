@@ -41,8 +41,13 @@
       <div class="menu-entry" data-action="tree">Tech Tree...<span class="shortcut">T</span></div>
       <div class="menu-entry" data-action="collection">Collection...<span class="shortcut">C</span></div>
       <div class="menu-entry" data-action="journal">Journal...<span class="shortcut">J</span></div>
+      <div class="menu-entry" data-action="garden">Sugar Garden...<span class="shortcut">G</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="music">Music On/Off</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="save">Save Now</div>
+      <div class="menu-entry" data-action="export">Export Save...</div>
+      <div class="menu-entry" data-action="import">Import Save...</div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
@@ -82,7 +87,8 @@
         <tr><td>B</td><td>Switch the buy amount (x1, x10, x100, Max)</td></tr>
         <tr><td>Tab</td><td>Producers / Upgrades tab (tree: switch page)</td></tr>
         <tr><td>Wheel / drag</td><td>Scroll the store and the bakery view</td></tr>
-        <tr><td>T / C / J</td><td>Tech tree / Collection / Journal</td></tr>
+        <tr><td>T / C / J / G</td><td>Tech tree / Collection / Journal / Sugar Garden</td></tr>
+        <tr><td>Garden: click / right-click / S</td><td>Plant or harvest / pull a plant / shovel</td></tr>
         <tr><td>Esc / P</td><td>Pause menu (back in panels)</td></tr>
         <tr><td>Arrows + Enter</td><td>Navigate menus</td></tr>
         <tr><td>Click / any key</td><td>Next cinematic shot / skip it</td></tr>
@@ -102,7 +108,7 @@
     <div class="dialog-body">
       <strong>Cookie Clicker</strong><br><br>
       Click a treat that grows through eight eras - plain cookie, chocolate chip, frosted, cupcake, layer cake, wedding cake, cosmic cake and a whole bakery planet - while eighteen producers bake for you.<br><br>
-      Research a two-page tech tree, ascend for sugar crystals, catch golden treats, play timed and daily Bake-Offs or relax in the Zen Kitchen. Your bakery saves itself and keeps baking while you are away.<br><br>
+      Research a two-page tech tree, grow and breed plants in the Sugar Garden, ascend for sugar crystals and take on the Sanctum Trials, catch golden treats, play timed and daily Bake-Offs or relax in the Zen Kitchen. Your bakery saves itself and keeps baking while you are away.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -124,7 +130,10 @@
 <li>Ascension for permanent sugar crystal bonuses</li>
 <li>Timed Bake-Off, Daily Bake-Off with a date-seeded modifier, and a relaxing Zen Kitchen</li>
 <li>Seasonal events with themed golden treats, tokens and rewards; daily quests and streaks</li>
-<li>Collection of treat skins, click styles and kitchen themes; 110+ achievements</li>
+<li>Sugar Garden: plants that ripen in real time, give bonuses and breed 17 kinds up to a Crystal Rose</li>
+<li>Six Sanctum Trials after ascending, each a permanent production bonus</li>
+<li>Collection of treat skins, click styles and kitchen themes; 130+ achievements</li>
+<li>Procedural soundtrack for every era, mode and season; save export and import</li>
 <li>Autosave, continue and capped offline baking; older saves carry over</li>
 </ul>
 </div>
@@ -133,6 +142,7 @@
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
+<script src="../../shared/game-music.js"></script>
 <script src="js/core/namespace.js?v=b3be7c2b"></script>
 <script src="js/core/constants.js?v=e64f0ad9"></script>
 <script src="js/core/rng.js?v=38b339ba"></script>
@@ -141,6 +151,8 @@
 <script src="js/core/data-treats.js?v=8946da14"></script>
 <script src="js/core/data-upgrades.js?v=355961f8"></script>
 <script src="js/core/data-tree.js?v=ed6856ac"></script>
+<script src="js/core/data-garden.js"></script>
+<script src="js/core/data-trials.js"></script>
 <script src="js/core/data-achievements.js?v=b8ab554b"></script>
 <script src="js/core/data-events.js?v=5ee4a683"></script>
 <script src="js/core/calendar.js?v=feeb3f50"></script>
@@ -148,6 +160,7 @@
 <script src="js/core/state.js?v=ac7d44ba"></script>
 <script src="js/core/save.js?v=75c14562"></script>
 <script src="js/core/audio.js?v=8ca9377c"></script>
+<script src="js/core/music.js"></script>
 <script src="js/systems/fx.js?v=a4d181fe"></script>
 <script src="js/systems/production.js?v=e2bb6dff"></script>
 <script src="js/systems/clicking.js?v=6fd5505e"></script>
@@ -155,6 +168,8 @@
 <script src="js/systems/purchasing.js?v=c9f3d48f"></script>
 <script src="js/systems/progression.js?v=6ec2fe93"></script>
 <script src="js/systems/prestige.js?v=d7b42600"></script>
+<script src="js/systems/garden.js"></script>
+<script src="js/systems/trials.js"></script>
 <script src="js/systems/modes.js?v=60f220dc"></script>
 <script src="js/systems/cinematics.js?v=ae09938f"></script>
 <script src="js/render/view.js?v=c40fce64"></script>
@@ -162,6 +177,7 @@
 <script src="js/render/planet-art.js?v=12719ecb"></script>
 <script src="js/render/treat-art.js?v=8d9e279f"></script>
 <script src="js/render/building-art.js?v=074ae879"></script>
+<script src="js/render/garden-art.js"></script>
 <script src="js/render/backdrop.js?v=149df6de"></script>
 <script src="js/render/scene-render.js?v=f279d015"></script>
 <script src="js/render/fx-render.js?v=17e9dd9e"></script>
@@ -175,6 +191,7 @@
 <script src="js/ui/tree.js?v=1fc055c8"></script>
 <script src="js/ui/collection.js?v=698d07dc"></script>
 <script src="js/ui/journal.js?v=a43e24b2"></script>
+<script src="js/ui/garden.js"></script>
 <script src="js/ui/pause.js?v=bbdfa607"></script>
 <script src="js/ui/status-bar.js?v=a327c1ea"></script>
 <script src="js/ui/input.js?v=763c887f"></script>

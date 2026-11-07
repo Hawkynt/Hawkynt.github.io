@@ -113,7 +113,11 @@
     W.button('t-coll', 'Collection', x, y, half, h, { icon: 'palette', sub: 'skins and themes', action: () => NS.screens.openCollection('title') });
     W.button('t-journal', 'Journal', x + half + 10, y, half, h, { icon: 'trophy', sub: NS.economy.achievementCount(p) + ' achievements', action: () => NS.screens.openJournal('title') });
     y += h + gap;
-    W.button('t-help', 'How to Play', x, y, w, 40, { icon: 'note', px: 16, action: () => NS.screens.openHelp('title') });
+    const gOpen = NS.garden.unlocked();
+    W.button('t-garden', 'Sugar Garden', x, y, half, h, { icon: 'leaf', accent: UI.good, disabled: !gOpen,
+      sub: gOpen ? NS.garden.knownCount() + ' / ' + NS.gardenData.PLANTS.length + ' seeds' + (NS.frame.ripeCount() ? ' - ' + NS.frame.ripeCount() + ' ripe' : '') : 'opens with the Cupcake era',
+      action: () => NS.gardenUi.open('title') });
+    W.button('t-help', 'How to Play', x + half + 10, y, half, h, { icon: 'note', sub: 'and the controls', action: () => NS.screens.openHelp('title') });
     if (G.menuCursor < 0) G.menuCursor = G.bake ? 0 : 0;
   }
 

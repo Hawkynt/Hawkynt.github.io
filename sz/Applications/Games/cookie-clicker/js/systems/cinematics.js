@@ -35,6 +35,26 @@
       return [{ kind: 'ascend', gained: data.gained, dur: 4, sound: 'win' },
         { kind: 'talk', who: 'oracle', text: 'You return as a humble cookie, yet ' + data.gained + ' sugar crystal' + (data.gained > 1 ? 's' : '') + ' glow in your pocket.', dur: 4 },
         { kind: 'talk', who: 'rosa', text: 'Back to one plain cookie? Pfff. You know the way now, Pip.', dur: 3.4 }];
+    if (id === 'garden')
+      return [
+        { kind: 'card', title: 'The Sugar Garden', sub: 'Behind the kitchen, under the old apple tree', dur: 2.8, sound: 'whoosh' },
+        { kind: 'talk', who: 'rosa', text: 'Cupcakes need more than flour, Pip. Come, I will show you my old garden.', dur: 4 },
+        { kind: 'talk', who: 'pip', text: 'Butterwheat! And... why is that weed sparkling?', dur: 3.4 },
+        { kind: 'talk', who: 'rosa', text: 'Plant two kinds side by side and let them ripen. Sometimes something new sprouts in between.', dur: 4.4 },
+        { kind: 'talk', who: 'oracle', text: 'Some say a rose of pure crystal grows there, for the patient gardener.', dur: 3.8 },
+      ];
+    if (id === 'trialStart')
+      return [
+        { kind: 'card', title: 'Sanctum Trial', sub: data.trial.name + ' - ' + data.trial.desc, dur: 3.2, sound: 'levelup' },
+        { kind: 'talk', who: 'oracle', text: 'Bake under this rule until the ' + STAGES[data.trial.goal].name + ' rises. Then the Sanctum will remember you.', dur: 4.2 },
+        { kind: 'talk', who: 'baron', text: data.trial.id === 'strike' ? 'A grandma strike? Finally, someone understands my pain.' : 'A handicap? Ha! I will enjoy watching this.', dur: 3.4 },
+      ];
+    if (id === 'trialDone')
+      return [
+        { kind: 'ascend', gained: 0, label: 'TRIAL COMPLETE', dur: 3.6, sound: 'win' },
+        { kind: 'card', title: data.trial.name, sub: (data.first ? '+' + Math.round(NS.trialData.BONUS * 100) + '% production forever' : 'Completed again') + ' - ' + NS.format.duration(data.time), dur: 3 },
+        { kind: 'talk', who: 'oracle', text: 'The rule is lifted. Your bakery carries on, and the Sanctum glows a little brighter.', dur: 4 },
+      ];
     if (id === 'bakeStart') {
       const shots = [];
       if (!G.profile.stats.bakeoffs)
@@ -50,6 +70,17 @@
     if (!shots.length) return;
     G.cine = { id: id, data: data || {}, shots: shots, i: 0, t: 0, started: false, onEnd: onEnd || null };
     G.goldens.length = 0;
+  }
+
+  /* play after the running cinematic, or now */
+  function queue(id, data) {
+    const c = G.cine;
+    if (!c) return play(id, data);
+    const prev = c.onEnd;
+    c.onEnd = () => {
+      if (prev) prev();
+      play(id, data);
+    };
   }
 
   function startShot(s) {
@@ -141,5 +172,5 @@
     return from;
   }
 
-  Object.assign(NS.cinematics, { ROMAN, build, play, update, next, skip, quickTransform });
+  Object.assign(NS.cinematics, { ROMAN, build, play, queue, update, next, skip, quickTransform });
 })();

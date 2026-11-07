@@ -35,7 +35,7 @@
 
   function update(dt) {
     const run = G.active();
-    if (G.screen === 'game' && !G.cine) {
+    if (G.screen === 'game' && !G.cine && !G.st.noGolden) {
       run.goldenTimer -= dt;
       if (run.goldenTimer <= 0) {
         run.goldenTimer = nextDelay(G.st);

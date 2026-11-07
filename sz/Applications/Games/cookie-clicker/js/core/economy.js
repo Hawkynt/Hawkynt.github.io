@@ -25,7 +25,22 @@
       bakeScores: [], dailyBest: {}, daily: null, streak: { last: '', count: 0, best: 0 },
       season: { tokens: tokens, claimed: {} },
       seenIntro: false, seenHelp: false,
+      garden: newGarden(), trials: {}, trialBest: {},
     };
+  }
+
+  /* the Sugar Garden lives in the profile: it survives ascension */
+  function newGarden() {
+    const plots = [];
+    for (let i = 0; i < 36; ++i) plots.push(null);
+    return { plots: plots, known: { butterwheat: true }, seed: 'butterwheat', soil: 'dirt', lastTick: 0,
+      harvested: 0, mutations: 0, planted: 0, sprouted: {}, crystals: 0 };
+  }
+
+  function trialsDone(profile) {
+    let n = 0;
+    for (const k in profile.trials) if (profile.trials[k]) ++n;
+    return n;
   }
 
   function newRun(mode, profile, mods) {
@@ -36,7 +51,7 @@
       mode: mode || 'classic', cookies: start, baked: 0, clicks: 0, buildings: buildings, upgrades: {},
       buffs: [], combo: 0, comboTimer: 0, bestCombo: 0, stage: 0, noteMark: 0, time: 0,
       timeLeft: mode === 'classic' ? 0 : C.BAKEOFF_SECONDS, golden: 0, goals: {}, mods: mods || null,
-      goldenTimer: 25, built: 0, upgradesBought: 0,
+      goldenTimer: 25, built: 0, upgradesBought: 0, trial: null,
     };
   }
 
@@ -129,7 +144,8 @@
     return n;
   }
 
-  /* everything derived from a run and the profile; env: { streak } */
+  /* everything derived from a run and the profile; env: { streak, garden: { prod, click, goldenFreq,
+     goldenDur, comboCap } } */
   function compute(run, profile, env) {
     const a = aggregate(run);
     const mods = run.mods || {};
@@ -141,26 +157,31 @@
     const eraF = 1 + STAGES[run.stage].bonus * (1 + T('eraGain'));
     const treeF = 1 + T('prod') + T('variety') * types;
     const streakF = 1 + NS.calendar.streakBonus(env && env.streak ? env.streak : 0);
+    const gd = (env && env.garden) || {};
+    const gardenF = Math.max(0.1, 1 + (gd.prod || 0));
+    const trialF = 1 + trialsDone(profile) * NS.trialData.BONUS;
     const speed = run.mode === 'classic' ? 1 : C.BAKEOFF_SPEED;
-    const global = a.global * crystalF * achF * eraF * treeF * streakF * speed;
+    const global = a.global * crystalF * achF * eraF * treeF * streakF * gardenF * trialF * speed * (mods.prod != null ? mods.prod : 1);
     const per = {};
     let base = 0;
     for (let i = 0; i < BUILDINGS.length; ++i) {
       const d = BUILDINGS[i];
-      const m = mods.building && mods.building[d.id] ? mods.building[d.id] : 1;
+      const m = mods.building && mods.building[d.id] != null ? mods.building[d.id] : 1;
       per[d.id] = d.cps * a.bmul[d.id] * m * global;
       base += per[d.id] * run.buildings[d.id];
     }
-    const share = a.cpsShare + T('cpsShare');
-    const click = a.click * (1 + T('click')) * (mods.click || 1) * crystalF * speed + base * share;
+    const share = mods.noShare ? 0 : a.cpsShare + T('cpsShare');
+    const click = (a.click * (1 + T('click') + (gd.click || 0)) * (mods.click != null ? mods.click : 1) * crystalF * speed + base * share)
+      * (mods.click === 0 ? 0 : 1);
     return {
       per: per, cps: base, click: click, global: global, share: share, agg: a,
-      crystalF: crystalF, achF: achF, eraF: eraF, treeF: treeF, streakF: streakF,
-      comboCap: Math.round((C.COMBO_BASE_CAP + a.comboCap + T('comboCap')) * (mods.comboCap || 1)),
+      crystalF: crystalF, achF: achF, eraF: eraF, treeF: treeF, streakF: streakF, gardenF: gardenF, trialF: trialF,
+      comboCap: Math.round((C.COMBO_BASE_CAP + a.comboCap + T('comboCap') + (gd.comboCap || 0)) * (mods.comboCap || 1)),
       comboWindow: C.COMBO_WINDOW + a.comboWindow + T('comboWindow') + (mods.comboWindow || 0),
       comboPower: 0.02 * (1 + a.comboPower),
-      goldenFreq: (1 + a.goldenFreq + T('goldenFreq')) * (1 + (mods.goldenFreq || 0)),
-      goldenDur: (1 + a.goldenDur + T('goldenDur')) * (1 + (mods.goldenDur || 0)),
+      goldenFreq: (1 + a.goldenFreq + T('goldenFreq') + (gd.goldenFreq || 0)) * (1 + (mods.goldenFreq || 0)),
+      goldenDur: (1 + a.goldenDur + T('goldenDur') + (gd.goldenDur || 0)) * (1 + (mods.goldenDur || 0)),
+      noGolden: !!mods.noGolden, maxEach: mods.maxEach || 0,
       goldenLife: C.GOLDEN_LIFE + T('goldenLife'),
       luckyMul: a.luckyMul,
       autoClick: T('autoClick'),
@@ -249,7 +270,7 @@
   }
 
   Object.assign(NS.economy, {
-    newProfile, newRun, nodeLevel, treeStat, nodeCurrency, wallet, nodeCost, nodeState, buyNode, treeLevels, nodeText,
+    newProfile, newGarden, trialsDone, newRun, nodeLevel, treeStat, nodeCurrency, wallet, nodeCost, nodeState, buyNode, treeLevels, nodeText,
     startCookies, aggregate, achievementCount, compute, buffMult, comboMult, bulkCost, buildingCost, maxAffordable,
     sellValue, upgradeCost, stageFor, noteMark, crystalsFor, offlineGain, upgradeRevealed,
   });

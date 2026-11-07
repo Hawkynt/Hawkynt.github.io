@@ -36,13 +36,18 @@
     const st = G.st;
     let n = buyAmount();
     if (n < 0) n = Math.max(1, E.maxAffordable(run, st, id));
+    /* Lean Kitchen trial: a cap per producer */
+    if (st.maxEach) {
+      n = Math.min(n, st.maxEach - run.buildings[id]);
+      if (n <= 0) return { n: 0, cost: Infinity, capped: true };
+    }
     return { n: n, cost: E.buildingCost(run, st, id, n) };
   }
 
   function buyBuilding(id, x, y) {
     const run = G.active();
     const q = quote(id);
-    if (run.cookies < q.cost) {
+    if (q.capped || run.cookies < q.cost) {
       sfx('error', { volume: 0.5 });
       return false;
     }

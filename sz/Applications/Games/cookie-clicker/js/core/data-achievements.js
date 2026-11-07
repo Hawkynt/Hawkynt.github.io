@@ -88,6 +88,21 @@
   add('k01', 'Fully Decorated', 'Put all six decorations on the treat', 'deco', s => s.decos >= 6);
   add('k02', 'Fashion Baker', 'Unlock 5 treat skins', 'palette', s => s.skins >= 5);
   add('k03', 'Haute Patisserie', 'Unlock 10 treat skins', 'palette', s => s.skins >= 10);
+  add('k04', 'Couturier', 'Unlock 16 treat skins', 'palette', s => s.skins >= 16);
+  /* the Sugar Garden */
+  add('g01', 'Green Thumb', 'Plant your first seed in the Sugar Garden', 'leaf', s => s.planted >= 1);
+  add('g02', 'Something New', 'Grow a mutation in the garden', 'leaf', s => s.mutations >= 1);
+  add('g03', 'Seed Collector', 'Know 5 garden seeds', 'leaf', s => s.seeds >= 5);
+  add('g04', 'Botanist', 'Know 10 garden seeds', 'leaf', s => s.seeds >= 10);
+  add('g05', 'Master Gardener', 'Know all 17 garden seeds', 'leaf', s => s.seeds >= 17);
+  add('g06', 'Harvest Festival', 'Harvest 100 ripe plants', 'leaf', s => s.harvested >= 100);
+  add('g07', 'Thousand Harvests', 'Harvest 1,000 ripe plants', 'leaf', s => s.harvested >= 1000);
+  add('g08', 'Crystal Bloom', 'Harvest a sugar crystal from a Crystal Rose', 'crystal', s => s.gardenCrystals >= 1);
+  add('g09', 'Wide Fields', 'Grow the garden to its full 6 x 6 plot', 'leaf', s => s.gardenFull >= 1);
+  add('g10', 'Mad Scientist', 'Grow 50 mutations', 'flask', s => s.mutations >= 50);
+  /* Sanctum Trials */
+  for (const t of NS.trialData.TRIALS) add('tr-' + t.id, t.name, 'Complete the ' + t.name + ' trial', 'star', s => !!s.trialIds[t.id]);
+  add('tr-all', 'Sanctified', 'Complete all six Sanctum Trials', 'crystal', s => s.trials >= 6);
 
   const BY_ID = {};
   for (let i = 0; i < A.length; ++i) BY_ID[A[i].id] = A[i];

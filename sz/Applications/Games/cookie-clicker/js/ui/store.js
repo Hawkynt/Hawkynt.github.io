@@ -109,7 +109,7 @@
     ctx.globalAlpha = 1;
     kit.fitText(hidden ? '???' : d.name, x + 62, y + 20, 180, 16, { weight: 'bold', color: can ? '#ffffff' : UI.textDim });
     kit.icon('cookie', x + 70, y + 41, 14, '#d89a52');
-    kit.text(fmt.short(q.cost) + (q.n > 1 ? '  (x' + q.n + ')' : ''), x + 80, y + 41, 14, can ? UI.good : UI.bad, { weight: 'bold' });
+    kit.text(q.capped ? 'Trial cap reached' : fmt.short(q.cost) + (q.n > 1 ? '  (x' + q.n + ')' : ''), x + 80, y + 41, 14, can ? UI.good : UI.bad, { weight: 'bold' });
     if (owned) kit.text(fmt.group(owned), x + w - 12, y + 30, 26, K.rgba('#ffffff', 0.85), { align: 'right', weight: 'bold' });
     if (hot) tooltipBuilding(d, q, run, st, y);
   }

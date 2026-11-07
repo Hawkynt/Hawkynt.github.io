@@ -54,6 +54,12 @@
     NS.progression.newDay();
     NS.production.refresh(true);
     if (loaded && loaded.savedAt) offline((Date.now() - loaded.savedAt) / 1000);
+    /* the garden grew while the page was closed */
+    NS.garden.update(Date.now());
+    if (NS.garden.unlocked() && !G.profile.seenGarden) {
+      G.profile.seenGarden = true;
+      scr.toast('New: the Sugar Garden behind the kitchen - press G or use the Garden button', C.UI.good, 'leaf');
+    }
     if (loaded && loaded.migrated)
       scr.toast('Your old bakery moved in: ' + NS.format.short(G.run.cookies) + ' cookies, ' + G.profile.crystals + ' crystals and +' + G.profile.migrated.notes + ' recipe notes', C.UI.gold, 'trophy');
     G.ui.displayCookies = G.active().cookies;
@@ -61,6 +67,53 @@
     NS.progression.checkUnlocks();
     scr.setScreen('title');
     NS.save.write(G);
+  }
+
+  /* the save as a text code to keep or move to another browser */
+  function exportCode() {
+    NS.save.write(G);
+    const json = NS.save.serialize(G);
+    return 'SZCC1:' + btoa(unescape(encodeURIComponent(json)));
+  }
+
+  /* -> true when the code was a valid save; it replaces the current one */
+  function importCode(code) {
+    code = String(code || '').trim();
+    if (code.indexOf('SZCC1:') !== 0) return false;
+    let d;
+    try {
+      d = JSON.parse(decodeURIComponent(escape(atob(code.slice(6)))));
+    } catch (_) {
+      return false;
+    }
+    if (!d || !d.profile || typeof d.profile !== 'object') return false;
+    try {
+      localStorage.setItem(C.STORAGE_KEY, JSON.stringify(d));
+    } catch (_) {
+      return false;
+    }
+    G.cine = null;
+    G.pendingCine = null;
+    G.ui.offline = null;
+    NS.golden.clearAll();
+    NS.fx.clear();
+    boot();
+    return true;
+  }
+
+  function exportSave() {
+    const code = exportCode();
+    try { if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {}); } catch (_) {}
+    if (SZ.Dialog && SZ.Dialog.prompt) SZ.Dialog.prompt('Your save code (also copied to the clipboard). Keep it somewhere safe:', code, 'Export Save');
+  }
+
+  function importSave() {
+    if (!SZ.Dialog || !SZ.Dialog.prompt) return;
+    SZ.Dialog.prompt('Paste a save code. It replaces the current bakery.', '', 'Import Save').then(v => {
+      if (v == null || !String(v).trim()) return;
+      if (importCode(v)) scr.toast('Save imported', C.UI.good, 'scroll');
+      else scr.toast('That is not a valid save code', C.UI.bad, 'scroll');
+    });
   }
 
   function hardReset() {
@@ -111,8 +164,10 @@
     if (G.checkT >= 1) {
       G.checkT = 0;
       syncDate();
+      NS.garden.update(Date.now());
       NS.progression.sweep(1);
     }
+    NS.music.update(dt);
     G.autoSaveT += dt;
     if (G.autoSaveT >= C.AUTOSAVE_SECONDS) {
       G.autoSaveT = 0;
@@ -144,6 +199,10 @@
           case 'tree': scr.openTree(G.screen === 'title' ? 'title' : G.screen === 'paused' ? 'paused' : 'game'); break;
           case 'collection': scr.openCollection(G.screen === 'title' ? 'title' : 'game'); break;
           case 'journal': scr.openJournal(G.screen === 'title' ? 'title' : 'game'); break;
+          case 'garden': if (NS.garden.unlocked() && !G.bake) NS.gardenUi.open(G.screen === 'title' ? 'title' : 'game'); else scr.toast('The Sugar Garden opens with the Cupcake era', C.UI.textDim, 'leaf'); break;
+          case 'music': if (SZ.GameMusic) { SZ.GameMusic.toggle(); scr.toast(SZ.GameMusic.enabled ? 'Music on' : 'Music off', C.UI.text, 'note'); } break;
+          case 'export': exportSave(); break;
+          case 'import': importSave(); break;
           case 'save': NS.save.write(G); scr.toast('Saved', C.UI.good, 'scroll'); break;
           case 'tutorial': scr.openHelp(G.screen === 'title' ? 'title' : 'game'); break;
           case 'exit': NS.save.write(G); if (User32) User32.DestroyWindow(); break;
@@ -178,6 +237,6 @@
   NS.input.attach();
   boot();
 
-  Object.assign(NS.app, { syncDate, offline, boot, hardReset, update, loop, drawMs: 0 });
+  Object.assign(NS.app, { syncDate, offline, boot, hardReset, exportCode, importCode, update, loop, drawMs: 0 });
   requestAnimationFrame(loop);
 })();
