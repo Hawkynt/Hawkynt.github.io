@@ -214,9 +214,11 @@
         const x = (i * 97 + 40) % VIEW_W, y = ((t * (120 + i * 7) + i * 53) % (VIEW_H + 60)) - 30;
         K.blit(ctx, crystal(), x, y, 0.6 + (i % 3) * 0.2);
       }
-      NS.hud.drawTreat({ stage: 0, mask: 0, x: VIEW_W / 2, y: VIEW_H / 2 + 60 - t * 12, scale: 0.8, white: Math.max(0, 0.8 - t * 0.4), noHover: true });
-      kit.text('ASCENSION', VIEW_W / 2, 140, 60, '#ffffff', { align: 'center', weight: 'bold', shadow: 'rgba(80,0,120,0.9)' });
-      kit.text('+' + s.gained + ' sugar crystal' + (s.gained > 1 ? 's' : '') + '  -  ' + G.profile.crystals + ' in total (+' + G.profile.crystals + '% production)', VIEW_W / 2, 200, 22, '#ffe8ff', { align: 'center', shadow: true });
+      const st = s.label ? G.run.stage : 0;
+      NS.hud.drawTreat({ stage: st, mask: s.label && G.stMain ? G.stMain.decoMask : 0, x: VIEW_W / 2, y: VIEW_H / 2 + 60 - t * 12, scale: 0.8, white: Math.max(0, 0.8 - t * 0.4), noHover: true });
+      kit.text(s.label || 'ASCENSION', VIEW_W / 2, 140, 60, '#ffffff', { align: 'center', weight: 'bold', shadow: 'rgba(80,0,120,0.9)' });
+      if (s.label) kit.text(NS.trials.TRIALS.filter(x => G.profile.trials[x.id]).length + ' of ' + NS.trials.TRIALS.length + ' Sanctum Trials completed  -  +' + Math.round((G.stMain ? G.stMain.trialF - 1 : 0) * 100) + '% production', VIEW_W / 2, 200, 22, '#ffe8ff', { align: 'center', shadow: true });
+      else kit.text('+' + s.gained + ' sugar crystal' + (s.gained > 1 ? 's' : '') + '  -  ' + G.profile.crystals + ' in total (+' + G.profile.crystals + '% production)', VIEW_W / 2, 200, 22, '#ffe8ff', { align: 'center', shadow: true });
       hint();
     } else if (s.kind === 'countdown') {
       dim(0.5);

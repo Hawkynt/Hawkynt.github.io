@@ -32,6 +32,8 @@
       bakeoffs: s.bakeoffs, bakeBest: s.bakeBest, dailies: s.dailies, zenSeconds: s.zenSeconds, quests: s.quests,
       streak: p.streak.best, offlineReturns: s.offlineReturns, tokens: p.season.tokens, treeLevels: E.treeLevels(p),
       crystals: p.crystals, decos: decos, skins: skins,
+      seeds: NS.garden.knownCount(), harvested: p.garden.harvested, mutations: p.garden.mutations, gardenCrystals: p.garden.crystals,
+      planted: p.garden.planted, trials: E.trialsDone(p), trialIds: p.trials, gardenFull: NS.garden.size() >= 6 ? 1 : 0,
     };
   }
 
@@ -68,6 +70,14 @@
       if (G.screen === 'game' && !G.ui.offline) NS.cinematics.play('stage', { from: from, to: s });
       else G.pendingCine = { from: G.pendingCine ? G.pendingCine.from : from, to: s };
     } else if (G.screen === 'game') NS.cinematics.quickTransform(from, s);
+    if (run.mode === 'classic' && s >= NS.gardenData.UNLOCK_STAGE && !p.seenGarden) {
+      p.seenGarden = true;
+      if (G.screen === 'game' && !G.ui.offline) NS.cinematics.queue('garden');
+      else NS.screens.toast('The Sugar Garden is open (G, or the Garden button)', '#7be08a', 'leaf');
+    }
+    if (run.trial) {
+      NS.trials.onEvolve(run, s);
+    }
   }
 
   /* ---- era milestones ---- */
@@ -194,6 +204,8 @@
     if (u.k === 'crystal') return p.ascensions >= u.n;
     if (u.k === 'bake') return p.stats.bakeBest >= u.n;
     if (u.k === 'season') return !!p.unlocked['season-' + (kind || 'skin') + '-' + u.id];
+    if (u.k === 'garden') return NS.garden.knownCount() >= u.n;
+    if (u.k === 'trials') return E.trialsDone(p) >= u.n;
     return false;
   }
 
@@ -205,6 +217,8 @@
     if (u.k === 'crystal') return 'Ascend ' + u.n + ' time' + (u.n > 1 ? 's' : '');
     if (u.k === 'bake') return 'Score ' + fmt.short(u.n) + ' in a Bake-Off';
     if (u.k === 'season') return NS.calendar.SEASON_NAMES[u.id] + ' season reward';
+    if (u.k === 'garden') return u.n >= NS.gardenData.PLANTS.length ? 'Know every garden seed' : 'Know ' + u.n + ' garden seeds';
+    if (u.k === 'trials') return 'Complete ' + u.n + ' Sanctum Trials';
     return '';
   }
 

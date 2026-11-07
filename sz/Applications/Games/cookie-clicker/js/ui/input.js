@@ -141,6 +141,7 @@
       else if (k === 't' || k === 'T') scr.openTree('game');
       else if (k === 'c' || k === 'C') scr.openCollection('game');
       else if (k === 'j' || k === 'J') scr.openJournal('game');
+      else if ((k === 'g' || k === 'G') && NS.garden.unlocked() && !G.bake) NS.gardenUi.open('game');
       else if (k === 'Tab') NS.store.setTab(G.ui.storeTab === 'buildings' ? 'upgrades' : 'buildings');
       else if (k === 'b' || k === 'B') NS.purchasing.cycleAmount();
       return;
@@ -159,6 +160,8 @@
       else if (s !== 'title') scr.back();
     } else if (s === 'paused' && (k === 'p' || k === 'P')) scr.resume();
     else if (s === 'title' && (k === 't' || k === 'T')) scr.openTree('title');
+    else if (s === 'garden' && (k === 's' || k === 'S')) NS.gardenUi.shovel = !NS.gardenUi.shovel;
+    else if ((s === 'garden' && (k === 'g' || k === 'G')) || (s === 'trials' && k === 'Escape')) scr.back();
   }
 
   function arrows(k) {

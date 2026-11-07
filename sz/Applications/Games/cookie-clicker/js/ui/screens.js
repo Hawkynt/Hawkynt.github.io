@@ -15,7 +15,7 @@
   const { ctx } = NS.view;
   const { sfx } = NS.audio;
 
-  const MENUS = { title: 1, paused: 1, tree: 1, collection: 1, journal: 1, ascend: 1, help: 1, bakeResult: 1 };
+  const MENUS = { title: 1, paused: 1, tree: 1, collection: 1, journal: 1, ascend: 1, help: 1, bakeResult: 1, garden: 1, trials: 1 };
 
   function setScreen(s) {
     G.screen = s;

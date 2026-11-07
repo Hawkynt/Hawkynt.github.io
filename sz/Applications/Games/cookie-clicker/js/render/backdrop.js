@@ -52,6 +52,24 @@
         g.strokeStyle = 'rgba(220,255,200,0.07)';
         g.lineWidth = 3;
         g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
+      } else if (t.id === 'greenhouse') {
+        /* glass panes in white frames with a leaf behind one */
+        g.fillStyle = 'rgba(200,255,220,0.05)';
+        g.fillRect(2, 2, 28, 28);
+        g.fillRect(34, 34, 28, 28);
+        g.strokeStyle = 'rgba(240,255,240,0.16)';
+        g.lineWidth = 2;
+        g.strokeRect(1, 1, 62, 62);
+        g.beginPath(); g.moveTo(32, 0); g.lineTo(32, 64); g.moveTo(0, 32); g.lineTo(64, 32); g.stroke();
+        g.fillStyle = 'rgba(120,200,110,0.12)';
+        g.beginPath(); g.ellipse(48, 14, 10, 4, -0.6, 0, TAU); g.fill();
+      } else if (t.id === 'sanctum') {
+        /* a crystal lattice */
+        g.strokeStyle = 'rgba(230,180,255,0.12)';
+        g.lineWidth = 1.5;
+        g.beginPath(); g.moveTo(32, 0); g.lineTo(64, 32); g.lineTo(32, 64); g.lineTo(0, 32); g.closePath(); g.stroke();
+        g.fillStyle = 'rgba(154,255,234,0.07)';
+        g.beginPath(); g.moveTo(32, 18); g.lineTo(46, 32); g.lineTo(32, 46); g.lineTo(18, 32); g.closePath(); g.fill();
       } else {
         const r = NS.rng.create('tile-stars');
         for (let i = 0; i < 8; ++i) K.circle(g, r.range(0, 64), r.range(0, 64), r.range(0.4, 1.2), 'rgba(255,255,255,' + r.range(0.2, 0.7) + ')');
