@@ -2,8 +2,9 @@
 
 /* Course fairness and completability. Every pattern is driven by the look-ahead solver over the
    real physics step at the slowest and fastest speeds; every story stage, the Daily Run and long
-   Arcade stretches are run start to finish; and the generator's invariants hold: lists sorted,
-   pits never wider than a jump carries, spans never overlapping, no obstacle over a pit. */
+   Arcade stretches are run start to finish - with their in-level turns, scripted or seeded -
+   and the generator's invariants hold: lists sorted, pits never wider than a jump carries, spans
+   never overlapping, no obstacle over a pit. */
 const H = require('./harness');
 H.installEnv();
 const NS = H.load('core/solver.js');
@@ -66,14 +67,15 @@ const stages = WD.allStages().filter(s => !s.boss);
 check('twenty run stages and five guardians', stages.length === 20 && WD.allStages().length === 25);
 for (const st of fast ? stages.filter((s, i) => i % 5 === 3) : stages) {
   const c = drive({ mode: 'story', world: st.w, seed: NS.rng.hashString('runner-stage-' + st.id), v0: st.v0, v1: st.v1, vMax: st.v1 + 1,
-    ramp: 2400, diff: st.diff, lenM: st.lenM, shards: 3, x0: 0, powerEvery: 3400 }, 0, 'stage ' + st.id);
-  check('stage ' + st.id + ' places its three shards and a finish', c.shardsPlaced === 3 && c.items.some(i => i.k === 'finish'));
+    ramp: 2400, diff: st.diff, lenM: st.lenM, shards: 3, x0: 0, powerEvery: 3400, turns: NS.story.TURNS[st.id] || null }, 0, 'stage ' + st.id);
+  check('stage ' + st.id + ' places its three shards, its ' + c.turnI + ' turns and a finish', c.shardsPlaced === 3 && c.items.some(i => i.k === 'finish') &&
+    c.turnI === (NS.story.TURNS[st.id] || []).length);
 }
 const rec = NS.seasons.dailyRecipe(new Date(2026, 10, 6));
-drive({ mode: 'daily', world: rec.world, seed: rec.seed, v0: 11, v1: 15.5, diff: 0.32, lenM: rec.lenM, x0: 0 }, 0, 'daily run ' + rec.key);
-for (const seed of fast ? [7] : [7, 99]) drive({ mode: 'arcade', world: 0, cycle: 1200, seed: seed, v0: C.ARCADE_BASE, vMax: C.ARCADE_MAX, ramp: 1800, diff: 0.1, x0: 0 }, fast ? 2500 : 6000, 'arcade seed ' + seed);
-drive({ mode: 'arcade', world: 0, cycle: 1200, seed: 5, v0: C.ARCADE_BASE, vMax: C.ARCADE_MAX, ramp: 1800, diff: 0.1, x0: 0, pits: true }, 2000, 'pitfall mutator');
-drive({ mode: 'zen', world: 2, cycle: 1500, seed: 3, diff: 0.15, x0: 0 }, 1500, 'zen');
+drive({ mode: 'daily', world: rec.world, seed: rec.seed, v0: 11, v1: 15.5, diff: 0.32, lenM: rec.lenM, x0: 0, turnEvery: 450 }, 0, 'daily run ' + rec.key);
+for (const seed of fast ? [7] : [7, 99]) drive({ mode: 'arcade', world: 0, cycle: 1200, seed: seed, v0: C.ARCADE_BASE, vMax: C.ARCADE_MAX, ramp: 1800, diff: 0.1, x0: 0, turnEvery: 900 }, fast ? 2500 : 6000, 'arcade seed ' + seed);
+drive({ mode: 'arcade', world: 0, cycle: 1200, seed: 5, v0: C.ARCADE_BASE, vMax: C.ARCADE_MAX, ramp: 1800, diff: 0.1, x0: 0, pits: true, turnEvery: 900 }, 2000, 'pitfall mutator');
+drive({ mode: 'zen', world: 2, cycle: 1500, seed: 3, diff: 0.15, x0: 0, turnEvery: 1000 }, 1500, 'zen');
 
 /* the same seed builds the same course */
 const a = CO.create({ mode: 'story', world: 1, seed: 42, v0: 12, v1: 14, lenM: 800, diff: 0.4, x0: 0 });

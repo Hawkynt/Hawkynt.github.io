@@ -1,5 +1,7 @@
 /* Keyboard, mouse and touch: the run's moves (jump with a release cut, slide with hold,
-   dash), the revive choice, pause and the shortcuts; menu navigation and clicks through the hit
+   dash; Space, W, S, D and Shift always mean the same, the arrow keys follow the screen so the
+   one pointing away from the floor jumps in every direction), the revive choice, pause and the
+   shortcuts; menu navigation and clicks through the hit
    areas (pointer positions mapped into the view plane at any window size); skipping
    cinematics; pausing and autosaving when the tab is hidden or the page is left. Owns the
    input listeners. */
@@ -14,9 +16,28 @@
   const scr = NS.screens;
   const inp = G.input;
 
-  const JUMP = { Space: 1, KeyW: 1, ArrowUp: 1 };
-  const SLIDE = { KeyS: 1, ArrowDown: 1 };
-  const DASH = { ShiftLeft: 1, ShiftRight: 1, KeyD: 1, ArrowRight: 1, KeyX: 1 };
+  const JUMP = { Space: 1, KeyW: 1 };
+  const SLIDE = { KeyS: 1 };
+  const DASH = { ShiftLeft: 1, ShiftRight: 1, KeyD: 1, KeyX: 1 };
+  const ARROW = { ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1 };
+  /* what each arrow meant when it went down, so its release ends the same move */
+  const arrowHeld = {};
+
+  /* a key's move in the view on screen now: 'jump', 'slide', 'dash' or null */
+  function moveOf(code) {
+    if (JUMP[code]) return 'jump';
+    if (SLIDE[code]) return 'slide';
+    if (DASH[code]) return 'dash';
+    if (!ARROW[code]) return null;
+    const o = G.cam.o;
+    return NS.orient.arrowMove(code, o ? o.q : 0, o ? o.mi : 1);
+  }
+
+  function slideHeld() {
+    if (inp.keys.KeyS) return true;
+    for (const k in arrowHeld) if (arrowHeld[k] === 'slide' && inp.keys[k]) return true;
+    return false;
+  }
 
   if (SZ.GameAutoPause)
     SZ.GameAutoPause.attach({
@@ -58,8 +79,10 @@
 
   document.addEventListener('keyup', (e) => {
     inp.keys[e.code] = false;
-    if (JUMP[e.code] && playing()) inp.queue.push('cut');
-    if (SLIDE[e.code]) inp.downHeld = !!(inp.keys.KeyS || inp.keys.ArrowDown);
+    const m = ARROW[e.code] ? arrowHeld[e.code] : moveOf(e.code);
+    delete arrowHeld[e.code];
+    if (m === 'jump' && playing()) inp.queue.push('cut');
+    if (m === 'slide') inp.downHeld = slideHeld();
   });
 
   window.addEventListener('blur', () => {
@@ -69,25 +92,31 @@
 
   function onPlayKey(e) {
     const run = G.run;
+    const move = moveOf(e.code);
     if (run.phase === 'revive') {
       e.preventDefault();
       if (e.repeat) return;
       if (e.code === 'Escape') NS.run.over(run);
-      else if (JUMP[e.code] || e.code === 'Enter') NS.player.revive(run);
+      else if (move === 'jump' || e.code === 'Enter') NS.player.revive(run);
       return;
     }
-    if (JUMP[e.code]) {
+    if (ARROW[e.code]) {
+      e.preventDefault();
+      if (e.repeat) return;
+      arrowHeld[e.code] = move;
+    }
+    if (move === 'jump') {
       e.preventDefault();
       if (!e.repeat) inp.queue.push('jump');
       return;
     }
-    if (SLIDE[e.code]) {
+    if (move === 'slide') {
       e.preventDefault();
       inp.downHeld = true;
       if (!e.repeat) inp.queue.push('slide');
       return;
     }
-    if (DASH[e.code]) {
+    if (move === 'dash') {
       e.preventDefault();
       if (!e.repeat) inp.queue.push('dash');
       return;
@@ -197,6 +226,6 @@
   }, { passive: false });
 
   Object.assign(NS.input, {
-    persist, escape
+    persist, escape, moveOf
   });
 })();

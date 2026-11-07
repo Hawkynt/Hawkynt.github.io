@@ -20,8 +20,10 @@
     v.cssW = Math.max(1, parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
     v.cssH = Math.max(1, parent.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     const fit = Math.min(v.cssW / VIEW_W, v.cssH / VIEW_H);
-    /* never more than ~1.6 backing pixels per plane pixel: big windows stay fast */
-    v.dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, 1.6 / Math.max(fit, 0.01)));
+    /* never more than ~1.6 backing pixels per plane pixel and ~2.4 million in all: big windows
+       and high-density screens stay fast (CSS scales the rest) */
+    const budget = Math.sqrt(2.4e6 / Math.max(1, v.cssW * v.cssH));
+    v.dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, 1.6 / Math.max(fit, 0.01), budget));
     canvas.width = Math.round(v.cssW * v.dpr);
     canvas.height = Math.round(v.cssH * v.dpr);
     canvas.style.width = v.cssW + 'px';

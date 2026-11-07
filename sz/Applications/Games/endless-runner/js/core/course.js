@@ -3,8 +3,10 @@
    out ahead of the runner. Every gap and spacing is scaled by the running speed at that spot so a
    pattern stays fair at any speed: reaction room before each obstacle, pits never wider than a
    jump carries, landing room after them. Also places coins along jump arcs, power-up orbs,
-   story shards, festival tokens and the finish gate. The course is plain data (saved with the
-   run); the generator's random state travels with it. Pure; owns nothing. */
+   story shards, festival tokens and the finish gate, and the in-level turns: a story stage's
+   scripted ones or the seeded ones of the endless modes, each on a flat, obstacle-free stretch
+   that covers the run-in, the turn of the view and the run-out. The course is plain data (saved
+   with the run); the generator's random state travels with it. Pure; owns nothing. */
 ;(function() {
   'use strict';
 
@@ -14,6 +16,7 @@
   const { makeRng, clamp, lerp } = NS.rng;
   const { HAZARDS, POWERS, BAR_DECK } = NS.items;
   const { WORLDS } = NS.worlds;
+  const OR = NS.orient;
 
   const GY = C.GROUND_Y;
   const T1 = 2 * C.JUMP_V / C.GRAVITY;
@@ -52,7 +55,36 @@
       ground: [{ x: x0 - 1600, w: 2500 }], plats: [], hz: [], items: [], pads: [], decor: [],
       nextPower: x0 + (cfg.firstPower || 2600), nextToken: x0 + 1800, nextShard: 0, shardsPlaced: 0,
       endX: cfg.lenM ? x0 + cfg.lenM * C.PX_PER_M : 0, finished: 0, last: '', coinsTotal: 0,
+      dirs: [OR.first(cfg.dir0, x0)], turnI: 0, nextTurn: cfg.turnEvery ? x0 + cfg.turnEvery * C.PX_PER_M * 0.7 : 0,
     };
+  }
+
+  /* ── turns ── */
+  /* the turn due at x, if any: a scripted one from cfg.turns, or a seeded one every so often */
+  function turnDue(c, x, r) {
+    const cfg = c.cfg;
+    if (cfg.turns) {
+      const t = cfg.turns[c.turnI];
+      if (!t || x < cfg.x0 + t.m * C.PX_PER_M) return null;
+      ++c.turnI;
+      return t;
+    }
+    if (!c.nextTurn || x < c.nextTurn || cfg.boss) return null;
+    const cur = c.dirs[c.dirs.length - 1].dir;
+    const dir = cur === 'right' ? r.pick(['up', 'down', 'left']) : 'right';
+    const lines = NS.story.TURN_LINES[dir];
+    const say = lines[r.int(0, lines.length - 1)];
+    c.nextTurn = x + (dir === 'right' ? cfg.turnEvery * r.range(0.8, 1.3) : r.range(220, 420)) * C.PX_PER_M;
+    return { dir: dir, who: say.who, text: say.text };
+  }
+
+  /* flat ground and a line of coins over the run-in, the turn and the run-out */
+  function turnPattern(c, E, x, v, t) {
+    const xs = x + v * OR.PRE;
+    const len = v * OR.TURN;
+    c.dirs.push(OR.entry(c.dirs, xs, len, t.dir, t));
+    E.line(x + 60, xs + len + v * OR.POST - 60, GY - BODY, 64);
+    return xs + len + v * OR.POST;
   }
 
   /* ── the emitter a pattern writes through ── */
@@ -374,6 +406,17 @@
       const d = diffAt(cfg, x);
       const w = worldAt(cfg, x);
       const E = emitter(c);
+      const turn = c.n >= 2 ? turnDue(c, x, r) : null;
+      if (turn) {
+        const end = turnPattern(c, E, x, v, turn);
+        flush(c, E, r);
+        const last = c.ground[c.ground.length - 1];
+        last.w = Math.max(last.w, end - last.x);
+        c.genX = end + v * lerp(0.42, 0.18, d);
+        c.last = 'turn';
+        ++c.n;
+        continue;
+      }
       let name;
       const wantPower = !cfg.noPowers && x >= c.nextPower;
       const wantToken = cfg.token && x >= c.nextToken;
@@ -425,9 +468,12 @@
     trim(c.pads, q => q.x + q.w);
     trim(c.hz, h => h.x + Math.max(h.w, 60) + (h.kind === 'roller' ? 0 : 0));
     trim(c.items, it => it.x + 40);
+    const ds = c.dirs;
+    while (ds.length > 2 && ds[1].x + ds[1].len < x && ds[2].x + ds[2].len < x) ds.shift();
   }
 
   Object.assign(NS.course, {
-    PATTERNS: P, PATTERN_NAMES: NAMES, MIN_D, T1, H1, BODY, speedAt, diffAt, worldAt, create, emitter, ensure, cull, pickPower
+    PATTERNS: P, PATTERN_NAMES: NAMES, MIN_D, T1, H1, BODY, speedAt, diffAt, worldAt, create, emitter, ensure, cull, pickPower,
+    turnPattern
   });
 })();

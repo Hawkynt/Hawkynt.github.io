@@ -2,7 +2,9 @@
    distance and the combo multiplier with its draining bar; coins, gems, Spark Shards, festival
    tokens and spare revives; the stage progress bar with the ghost's position, a guardian's
    health or the chaser's distance; active power-ups with draining rings and the dash charge;
-   mode and mutator badges; the ready count, the revive offer and the stage-clear banner. Also
+   mode and mutator badges; the ready count, the revive offer and the stage-clear banner; the
+   cast's line that announces a turn (typed out in the cinematics' style, timed by distance so
+   a restored run shows it exactly as before) and the one-time hint for the first climb. Also
    the screen flash and toasts drawn over every screen. Draws only. */
 ;(function() {
   'use strict';
@@ -20,6 +22,8 @@
   const rules = NS.rules;
   const { POWER_BY_ID } = NS.items;
   const { ctx } = NS.view;
+  const OR = NS.orient;
+  const { CAST } = NS.story;
 
   const MODE_NAMES = { story: 'Story', arcade: 'Arcade', weekly: 'Featured', zen: 'Zen', daily: 'Daily Run', rush: 'Boss Rush' };
 
@@ -150,6 +154,80 @@
     }
   }
 
+  /* the line of the turn being approached or taken: [entry, seconds shown, seconds left] */
+  const SAY = [null, 0, 0];
+  function sayAt(run) {
+    const ds = run.course.dirs;
+    const p = run.p;
+    const v = NS.course.speedAt(run.course.cfg, p.x);
+    const i = OR.indexAt(ds, p.x);
+    SAY[0] = null;
+    for (let j = i + 1; j >= i; --j) {
+      const e = ds[j];
+      if (!e || !e.text) continue;
+      const a = e.x - v * 1.6, b = e.x + e.len + v * 1.4;
+      if (p.x < a || p.x > b) continue;
+      SAY[0] = e; SAY[1] = (p.x - a) / v; SAY[2] = (b - p.x) / v;
+      break;
+    }
+    return SAY;
+  }
+
+  function portrait(who, x, y) {
+    ctx.fillStyle = 'rgba(10,8,26,0.9)';
+    ctx.beginPath(); ctx.arc(x, y, 30, 0, TAU); ctx.fill();
+    ctx.strokeStyle = (CAST[who] || CAST.narrator).color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    if (who === 'pip') { K.blit(ctx, NS.cineRender.pip(), x, y + 2, 0.62); return; }
+    if (NS.bosses.DEF[who]) { const s = NS.bossArt.sprite(who, 0); K.blit(ctx, s, x, y, Math.min(54 / s.w, 54 / s.h)); return; }
+    const eq = G.save.equip;
+    const spr = NS.runnerArt.frame(eq.char, eq.outfit, 'idle', 0);
+    const RA = NS.runnerArt;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, 27, 0, TAU); ctx.clip();
+    ctx.drawImage(spr.canvas, x - RA.OX * 0.9, y + 52 - RA.OY * 0.9, RA.W * 0.9, RA.H * 0.9);
+    ctx.restore();
+  }
+
+  function caption(run, v) {
+    const s = sayAt(run);
+    const e = s[0];
+    if (!e) return;
+    const who = CAST[e.who] || CAST.narrator;
+    const a = Math.max(0, Math.min(1, s[1] * 5, s[2] * 3));
+    /* a drop keeps the runner near the top: its lines go to the bottom */
+    const prev = run.course.dirs[run.course.dirs.indexOf(e) - 1];
+    const low = e.dir === 'down' || (prev && prev.dir === 'down');
+    const w = Math.min(760, v.w - 40), x = (v.x0 + v.x1) / 2 - w / 2, y = low ? v.y1 - 186 + (1 - a) * 20 : v.y0 + 98 + (1 - a) * -20;
+    ctx.globalAlpha = a;
+    kit.panel(x, y, w, 76, { radius: 14, accent: who.color, alpha: 0.94 });
+    portrait(e.who, x + 44, y + 38);
+    kit.text(who.name, x + 88, y + 18, 16, who.color, { weight: 'bold' });
+    kit.fitText(e.text.slice(0, Math.floor(s[1] * 48)), x + 88, y + 48, w - 108, 18, { color: '#ffffff' });
+    ctx.globalAlpha = 1;
+  }
+
+  /* the first climb or drop: arrows follow the screen */
+  function hint(run, v) {
+    if (!(run.hintT > 0)) return;
+    const o = G.cam.o;
+    if (!o) return;
+    const f = OR.vectors(o.q, o.mi, {});
+    const g = OR.arrowGlyph;
+    const touch = G.input.touch;
+    const line = (touch ? 'Swipe ' : 'Arrows follow the screen: ') + g(f.ux, f.uy) + ' jump   ' + g(-f.ux, -f.uy) + ' slide   ' + g(f.fx, f.fy) + ' dash';
+    const sub = touch ? 'A tap still jumps.' : 'Space, S and Shift work as always.';
+    const a = Math.min(1, run.hintT * 2, (6 - run.hintT) * 4);
+    const down = o.q * o.mi > 0 && o.vert > 0.5;
+    const w = Math.min(640, v.w - 40), x = (v.x0 + v.x1) / 2 - w / 2, y = down ? v.y1 - 280 : v.y0 + 186;
+    ctx.globalAlpha = a;
+    kit.panel(x, y, w, 70, { radius: 12, accent: UI.gold, glow: true, brackets: false });
+    kit.text(line, x + w / 2, y + 24, 20, '#ffffff', { align: 'center', weight: 'bold' });
+    kit.text(sub, x + w / 2, y + 50, 14, UI.textDim, { align: 'center' });
+    ctx.globalAlpha = 1;
+  }
+
   function draw() {
     const run = G.run;
     if (!run || run.demo) return;
@@ -158,6 +236,8 @@
     wallet(run, v);
     topBar(run, v);
     powers(run, v);
+    if (run.phase === 'play' || run.phase === 'ready') caption(run, v);
+    hint(run, v);
     phaseOverlay(run, v);
   }
 
@@ -185,6 +265,6 @@
   }
 
   Object.assign(NS.hud, {
-    MODE_NAMES, draw, drawFlash, drawToasts
+    MODE_NAMES, draw, sayAt, drawFlash, drawToasts
   });
 })();

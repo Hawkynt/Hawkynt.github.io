@@ -1,5 +1,6 @@
-/* Touch play: a tap or an upward swipe jumps, a downward swipe slides (or fast-falls), a swipe
-   to the right dashes; a pause button sits in the corner; the gesture hints fade in for the
+/* Touch play: a tap or a swipe away from the floor jumps, a swipe toward it slides (or
+   fast-falls), a swipe along the run dashes and one against it slides - on screen, so swipes
+   turn with the view; a pause button sits in the corner; the gesture hints fade in for the
    first seconds of a touch run. Owns the active touches. */
 ;(function() {
   'use strict';
@@ -12,6 +13,7 @@
   const { ctx } = NS.view;
 
   const SWIPE = 34;
+  const VEC = {};
   const touches = {};
 
   function pauseRect() {
@@ -43,11 +45,10 @@
     const dx = x - t.x, dy = y - t.y;
     if (Math.abs(dx) < SWIPE && Math.abs(dy) < SWIPE) return;
     t.done = true;
-    if (Math.abs(dy) >= Math.abs(dx)) {
-      if (dy > 0) { push('slide'); G.input.downHeld = false; }
-      else push('jump');
-    } else if (dx > 0) push('dash');
-    else push('slide');
+    const o = G.cam.o;
+    const m = NS.orient.swipeMove(dx, dy, o ? o.q : 0, o ? o.mi : 1);
+    push(m);
+    if (m === 'slide') G.input.downHeld = false;
   }
 
   function up(id) {
@@ -66,8 +67,11 @@
     ctx.globalAlpha = 1;
     if (G.run.t < 4) {
       const v = NS.view.visible();
+      const o = G.cam.o;
+      const f = NS.orient.vectors(o ? o.q : 0, o ? o.mi : 1, VEC);
+      const g = NS.orient.arrowGlyph;
       ctx.globalAlpha = Math.min(1, 4 - G.run.t);
-      kit.text('Tap or swipe up: jump   -   Swipe down: slide   -   Swipe right: dash', (v.x0 + v.x1) / 2, v.y1 - 120, 18, UI.text, { align: 'center', weight: 'bold' });
+      kit.text('Tap or swipe ' + g(f.ux, f.uy) + ': jump   -   Swipe ' + g(-f.ux, -f.uy) + ': slide   -   Swipe ' + g(f.fx, f.fy) + ': dash', (v.x0 + v.x1) / 2, v.y1 - 120, 18, UI.text, { align: 'center', weight: 'bold' });
       ctx.globalAlpha = 1;
     }
   }

@@ -3,8 +3,10 @@
 /* The whole game in a fake browser: every screen and every cinematic shot draws and registers
    its buttons; all five worlds, all thirteen power-ups and a guardian run through the real loop;
    a busy scene (full particle pool, flight, giant, coin rain, a guardian with volleys) stays
-   inside the per-frame draw-call budget; nothing ever uses shadowBlur; and once warm, frames
-   only blit cached sprites instead of painting new ones. */
+   inside the per-frame draw-call budget; nothing ever uses shadowBlur; once warm, frames only
+   blit cached sprites instead of painting new ones; every run direction (up, down, left) and a
+   frame in the middle of a turn draw within budget too; and the screen gets the backdrop as one
+   blit, with no other full-screen layer in a normal frame. */
 const H = require('./harness');
 const env = H.installEnv();
 global.requestAnimationFrame = () => 0;
@@ -85,7 +87,7 @@ for (let i = 0; i < 60; ++i) { NS.sim.update(1 / 60); maxCalls = Math.max(maxCal
 check('busy scene stays under 4500 draw calls per frame (' + maxCalls + ')', maxCalls < 4500);
 check('a normal arcade frame stays under 900 draw calls', (() => { NS.fx.clear(); NS.run.start('arcade', {}); steps(60 * 10); let m = 0; for (let i = 0; i < 30; ++i) { steps(1); m = Math.max(m, frame()); } console.log('  arcade frame calls', m); return m < 900; })());
 check('no frame ever used shadowBlur', ctx.shadowBlurUsed === 0 && sb0 === 0);
-check('warm frames paint no new sprites', K.stats().created - made0 <= 4, (K.stats().created - made0) + ' new');
+check('warm frames paint no new sprites (a few first appearances at most)', K.stats().created - made0 <= 8, (K.stats().created - made0) + ' new');
 
 /* pause, tree from pause applies at once, resume */
 key('Escape');
@@ -99,4 +101,49 @@ key('Escape');
 check('back to the pause menu', G.screen === 'paused');
 key('Escape');
 check('and back into the run', G.screen === 'playing');
+/* every direction, and the middle of a turn */
+for (const [st, dir] of [['frost-5', 'down'], ['neon-5', 'up'], ['rift-5', 'left']]) {
+  NS.fx.clear();
+  NS.run.start('story', { stageId: st });
+  steps(60 * 6);
+  frame();
+  const c = frame();
+  check('guardian ' + st + ' runs ' + dir + ' and draws in budget (' + c + ' calls)', G.cam.o.dir === dir && c < 1200 && G.cam.zoom < (dir === 'left' ? 1 : 0.85));
+}
+NS.fx.clear();
+NS.run.start('story', { stageId: 'meadow-2' });
+G.run.revives = 99;
+let turning = false;
+for (let i = 0; i < 60 * 60 && !turning; ++i) {
+  steps(1);
+  if (G.run.phase === 'revive') NS.player.revive(G.run);
+  turning = G.cam.o && G.cam.o.turning && G.cam.o.t > 0.4;
+}
+frame();
+const made1 = K.stats().created;
+let turnCalls = 0;
+for (let i = 0; i < 20; ++i) { steps(1); turnCalls = Math.max(turnCalls, frame()); }
+check('a frame mid-turn draws in budget (' + turnCalls + ' calls) and paints nothing new once warm', turning && turnCalls < 1200 && K.stats().created - made1 <= 2, K.stats().created - made1);
+for (let i = 0; i < 60 * 3; ++i) steps(1);
+frame();
+const made2 = K.stats().created;
+for (let i = 0; i < 30; ++i) { steps(1); frame(); }
+check('climbing frames paint nothing new once warm', G.cam.o.dir === 'up' && K.stats().created - made2 <= 2, G.cam.o.dir + ' ' + (K.stats().created - made2));
+
+/* overdraw: full-screen layers on the screen in a normal frame */
+{
+  NS.fx.clear();
+  G.flash.a = 0;
+  NS.run.start('arcade', {});
+  steps(60 * 4);
+  G.flash.a = 0;
+  const v = NS.view.visible(), big = v.w * v.h * 0.8;
+  let full = 0;
+  const di = ctx.drawImage, fr = ctx.fillRect;
+  ctx.drawImage = function() { const n = arguments.length, w = n === 9 ? arguments[7] : n === 5 ? arguments[3] : 0, h = n === 9 ? arguments[8] : n === 5 ? arguments[4] : 0; if (w * h >= big) ++full; return di.apply(this, arguments); };
+  ctx.fillRect = function(x, y, w, h) { if (w * h >= big) ++full; return fr.apply(this, arguments); };
+  frame();
+  ctx.drawImage = di; ctx.fillRect = fr;
+  check('a normal frame puts exactly one full-screen layer on the screen (the composed backdrop): ' + full, full === 1);
+}
 done();

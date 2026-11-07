@@ -36,9 +36,10 @@
   function page(p) {
     if (p === 0) {
       lines([['Space / W / Up', 'Jump - press again in the air to double jump'], ['S / Down', 'Slide (on the ground) - fast fall (in the air)'],
-        ['Shift / D / Right', 'Dash forward, smashing small obstacles'], ['Release jump early', 'A shorter hop'], ['Esc / P', 'Pause - tech tree and collection from there'],
+        ['Shift / D / Right', 'Dash forward, smashing small obstacles'], ['Arrows when it turns', 'Follow the screen: away from the floor jumps, toward it slides'],
+        ['Release jump early', 'A shorter hop'], ['Esc / P', 'Pause - tech tree and collection from there'],
         ['Mouse', 'Left click: jump - right click: slide - middle click or wheel: dash'],
-        ['Touch', 'Tap or swipe up: jump - swipe down: slide - swipe right: dash'], ['F2', 'Title screen - your run is saved for Continue']], 120, 170, 44);
+        ['Touch', 'Tap or swipe up: jump - swipe down: slide - swipe right: dash'], ['F2', 'Title screen - your run is saved for Continue']], 120, 160, 40);
     } else if (p === 1) {
       const moves = [['run', 2, 'Run', 'Automatic - the speed climbs as you go.'], ['jump', 0, 'Jump & double jump', 'Two jumps before you land (three with Spring Shoes or Triple Jump).'],
         ['slide', 0, 'Slide', 'Duck under overhangs - you stay down while one is above you.'], ['dash', 0, 'Dash', 'A burst of speed that smashes crates, fences and flyers.']];

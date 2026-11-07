@@ -1,9 +1,10 @@
 /* A run from start to end: building it for a mode (story stage, Arcade, the weekly featured
    Arcade, Zen, the Daily Run, Boss Rush or the title demo) with its course settings, mutators
-   and starting boosts; continuing a saved one; the per-frame flow (ready, play, dying, revive,
-   done) with distance score, combo multiplier, milestones, ghost recording and autosave; the
-   finish and the end, which settles rewards and opens the results or a cinematic. Owns the
-   run's lifecycle. */
+   and starting boosts (and its turns: a story stage's scripted ones, a guardian's direction, the
+   seeded ones of the endless modes); continuing a saved one; the per-frame flow (ready, play,
+   dying, revive, done) with distance score, combo multiplier, milestones, the sound of a turn and
+   the first climb's hint, ghost recording and autosave; the finish and the end, which settles
+   rewards and opens the results or a cinematic. Owns the run's lifecycle. */
 ;(function() {
   'use strict';
 
@@ -21,6 +22,8 @@
   const { MUTATOR_BY_ID } = NS.seasons;
   const { POWERS } = NS.items;
   const R = NS.rng.fx;
+  const OR = NS.orient;
+  const { TURNS, BOSS_DIRS } = NS.story;
 
   const GHOST_CH = 35;
 
@@ -56,23 +59,27 @@
       cfg.world = stage.w;
       cfg.seed = hashString('runner-stage-' + stage.id);
       cfg.v0 = stage.v0; cfg.v1 = stage.v1; cfg.vMax = stage.v1 + 1; cfg.ramp = 2400; cfg.diff = stage.diff;
-      if (!stage.boss) { cfg.lenM = stage.lenM; cfg.shards = 3; }
+      if (!stage.boss) { cfg.lenM = stage.lenM; cfg.shards = 3; cfg.turns = TURNS[stage.id] || null; }
+      else cfg.dir0 = BOSS_DIRS[stage.boss];
     } else if (mode === 'arcade' || mode === 'weekly' || mode === 'demo') {
       cfg.world = opts.world || 0;
       cfg.cycle = mode === 'demo' ? 0 : 1200;
+      if (mode !== 'demo') cfg.turnEvery = 900;
       if (mode === 'weekly' && G.weekly) mut = mergeMutators([G.weekly.id]);
     } else if (mode === 'zen') {
       cfg.world = opts.world !== undefined ? opts.world : (G.season ? G.season.world : 0);
       cfg.cycle = 1500;
       cfg.diff = 0.15;
       cfg.noPower = ['revive', 'shield'];
+      cfg.turnEvery = 1000;
     } else if (mode === 'daily') {
       const d = G.daily;
-      cfg.world = d.world; cfg.seed = d.seed; cfg.lenM = d.lenM; cfg.v0 = 11; cfg.v1 = 15.5; cfg.diff = 0.32;
+      cfg.world = d.world; cfg.seed = d.seed; cfg.lenM = d.lenM; cfg.v0 = 11; cfg.v1 = 15.5; cfg.diff = 0.32; cfg.turnEvery = 450;
       mut = mergeMutators(d.mutators);
     } else if (mode === 'rush') {
       cfg.world = 0;
       cfg.v0 = 12; cfg.vMax = 17; cfg.ramp = 3000; cfg.diff = 0.4;
+      cfg.dir0 = BOSS_DIRS.boar;
     }
     if (mut.speed !== 1) { cfg.v0 *= mut.speed; cfg.vMax *= mut.speed; if (cfg.v1) cfg.v1 *= mut.speed; }
     cfg.powerEvery *= mut.power;
@@ -90,7 +97,7 @@
       pw: {}, shieldHits: 0, revives: mut.glass ? 0 : st.revives, revived: 0, guardianUsed: 0, mut: mut, mods: {},
       projs: [], bolts: [], rain: [], sky: [], rainNext: 0, skyNext: 0, flyLane: 0,
       jumpBuf: 0, dashBuf: 0, lastX: 0, saveT: 0, milestone: 500, gRec: '', gStep: 0, ghost: '', bestX: 0, passedBest: 0,
-      finished: 0, why: '', rush: null, rushIdx: 0,
+      finished: 0, why: '', rush: null, rushIdx: 0, turnX: -1e9, sayX: -1e9, hintT: 0,
     };
     run.mods = PW.mods(run, {});
     if (mode === 'story' && stage && !stage.boss) run.ghost = G.save.ghosts[stage.id] || '';
@@ -143,6 +150,9 @@
     NS.fx.clear();
     const run = saved;
     G.run = run;
+    /* snapshots from before turns existed run straight on */
+    if (!Array.isArray(run.course.dirs)) run.course.dirs = [OR.first('right', run.x0 || 0)];
+    if (run.turnX === undefined) { run.turnX = run.p.x; run.sayX = run.p.x; run.hintT = 0; }
     if (run.feel) { G.hitstop = 0; G.slowmo = 0; }
     NS.stream.build(run);
     if (run.phase === 'play' || run.phase === 'dying' || run.phase === 'revive') {
@@ -221,6 +231,7 @@
     NS.pickups.update(run, sdt);
     NS.bosses.update(run, sdt);
     NS.stream.update(run);
+    turns(run, dt);
     NS.player.trail(run, sdt);
     if (run.flip > 0) run.flip = Math.max(0, run.flip - sdt * 2.6);
 
@@ -242,6 +253,26 @@
       run.phaseT -= dt;
       if (Math.random() < 0.3) fx.burst(p.x + 200 + R() * 600, C.GROUND_Y - 300 - R() * 200, 12, ['#ffd24a', '#ff6ad5', '#5ee0ff', '#7cff9a'], 300, 0.8, 10, fx.SQUARE, 300);
       if (run.phaseT <= 0) end(run);
+    }
+  }
+
+  /* a turn starting: its whoosh; a line about to be said: its blip; the first climb: the hint */
+  function turns(run, dt) {
+    const p = run.p;
+    const ds = run.course.dirs;
+    if (run.hintT > 0) run.hintT -= dt;
+    const i = OR.indexAt(ds, p.x);
+    const e = ds[i];
+    if (e.len > 0 && e.x > run.turnX) {
+      run.turnX = e.x;
+      if (!run.demo) NS.audio.turn(e.dir);
+    }
+    /* the first climb or drop ever, by a turn or from the start of a guardian's stage */
+    if (!run.demo && OR.VERT[e.dir] && p.x >= e.x && !G.save.seen.vert) { G.save.seen.vert = 1; run.hintT = 6; }
+    const n = ds[i + 1];
+    if (n && n.text && n.x > run.sayX && p.x > n.x - CO.speedAt(run.course.cfg, p.x) * 1.6) {
+      run.sayX = n.x;
+      if (!run.demo) sfx('blip', { volume: 0.35, pitch: 1.2 });
     }
   }
 
