@@ -17,6 +17,11 @@ function check(name, ok, details) {
 
 async function main() {
   const game = createGame(path.join(__dirname, '..'), { seed: 42 });
+  /* GitHub Pages (Jekyll) does not publish folders whose name starts with '_' */
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const hidden = [...html.matchAll(/src="([^"]+)"/g)].map(m => m[1]).filter(src => src.split('/').some(seg => seg.startsWith('_')));
+  check('no script lives in a folder GitHub Pages would drop', hidden.length === 0, hidden.join(', '));
+
   const errors = game.load();
   check('scripts load without errors', errors.length === 0, errors.join(' | '));
   /* the window frame is board-sized, so client = board / (9, 15) on the 100x40 fake canvas */

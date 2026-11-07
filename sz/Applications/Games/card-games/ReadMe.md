@@ -10,7 +10,7 @@ The table fills the whole window: the 900x600 board is letterboxed and the felt,
 
 Results are noticed without touching the variants: from the host's round-over callback, from explicit win/lose banners and from result texts a variant paints. Each finished round is recorded once in the local profile (experience, per-game statistics, win and day streaks); levels, achievements and seasons unlock extra tables and card backs.
 
-Each variant lives in its own folder, split by concern (state, rules, flow, AI, render, input, index) with one explicit state object, plus shared family helpers in `js/variants/_shared/`. A seeded golden-master test per variant proved the split behaviour-identical.
+Each variant lives in its own folder, split by concern (state, rules, flow, AI, render, input, index) with one explicit state object, plus shared family helpers in `js/variants/common/`. A seeded golden-master test per variant proved the split behaviour-identical.
 
 ## User Stories
 
@@ -213,7 +213,7 @@ Plain browser JavaScript, IIFE modules on `SZ.CardEngine`, `SZ.CardThemes` and `
 - `js/meta/` -- `profile.js` (experience, levels, per-game statistics, streaks, daily featured game, seasons and unlocks in localStorage), `achievements.js` (33 trophies), `outcomes.js` (notices round results and starts the scenes)
 - `js/ui/` -- `lobby.js` (tabs, featured game, tiles), `screens.js` (trophy cabinet, statistics), `status.js` (status bar, high scores), `input.js` (board-space pointer and keyboard routing), `draw.js` (frame composition and overlays), `menu.js` (menu-bar actions)
 - `js/variants/<id>/` -- one folder per game, split by concern: `state.js` (constants and the one state object on `SZ.CardGames.v.<id>`), `rules.js`, `flow.js` / `game.js` (dealing, turns, round end), `ai.js`, `layout.js` / `anim.js` (solitaires), `render.js`, `input.js`, and `index.js` (the module object and `registerVariant`)
-- `js/variants/_shared/` -- family helpers: solitaire fallback drawing, casino chips, quick-game piles and hands, shedding hand sorting and drawing, trick-taking rules and paint, rummy cards and melds, European card and layout helpers
+- `js/variants/common/` -- family helpers: solitaire fallback drawing, casino chips, quick-game piles and hands, shedding hand sorting and drawing, trick-taking rules and paint, rummy cards and melds, European card and layout helpers
 - `js/app.js` -- loaded last: the frame loop, profile events and start-up
 - `tests/` -- `podium.test.js` drives all six Uno-style games seat by seat and checks the finishing order, skipped finishers and the single podium per round; `harness.js` replays the real script list in a sandboxed browser stub and streams every observable effect into a digest; `boot.test.js` pins a lobby-to-table session; `variants.test.js` pins a seeded session per variant (`variants-baseline.json`); `doppelkopf.test.js` checks the Doppelkopf rules
 - `styles.css`, `icon.svg` -- layout and desktop icon
