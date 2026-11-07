@@ -189,6 +189,7 @@ sz/
       syntax-highlighter.css    Token color classes for syntax highlighting (26 token types)
       syntax-highlighter.js     SZ.SyntaxHighlighter (tokenizer for 19 languages, highlightBlock/highlightLine)
       game-effects.js           SZ.GameEffects (ParticleSystem, ScreenShake, FloatingText, drawGlow)
+      game-music.js             SZ.GameMusic (procedural soundtrack: themes from data, crossfades, intensity, stingers)
     libs/                       Vendored third-party libraries (offline-capable)
       mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
       jszip.min.js              ZIP creation for DOCX export (MIT)
@@ -1111,6 +1112,18 @@ Shared visual effects library for canvas-based games. JS provides `SZ.GameEffect
 - `drawGlow(ctx,drawFn,color,blur)` -- shadow-based glow wrapper (double-draw for intensity)
 
 Used by: Snake, Breakout, Space Invaders, Asteroids, Pac-Man, Bomberman, Space Combat.
+
+**Game Music** (`game-music.js`):
+
+Procedural background music for the games, no sound files. A song is data - `{ id, bpm, root, scale, prog, swing, seed, layers: { pad, bass, arp, lead, bells, drums } }`, each layer with its volume, wave, pattern and the intensity it needs. JS provides `SZ.GameMusic`:
+
+- `play(song)` -- start or crossfade to a song (`null` fades out); bars are scheduled ahead on the shared `SZ.GameAudio` context
+- `setIntensity(0..1)` -- layers come in as it rises (e.g. drums only during a Frenzy)
+- `stinger(name)` -- a short phrase in the current key (`win`, `unlock`, `lose`, `level`, `rare`)
+- `enabled` / `toggle()` / `onChange(fn)` -- the music switch, remembered and shared by every game; the shared sound switch mutes it too
+- `compose(song, bar, intensity)` -- the notes of one bar, pure and deterministic (an A A' B A' phrase shape that varies every eight bars)
+
+Used by: Cookie Clicker.
 
 **Spell Check Core** (`spell-check-core.js`):
 

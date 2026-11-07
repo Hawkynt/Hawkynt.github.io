@@ -198,8 +198,23 @@
     return btn;
   }
 
+  // a gain node under the master volume for long-running sound such as
+  // music; null until the audio context exists
+  const buses = {};
+  function bus(name) {
+    if (!ensure())
+      return null;
+    if (!buses[name]) {
+      buses[name] = ctx.createGain();
+      buses[name].connect(master);
+    }
+    return buses[name];
+  }
+
   SZ.GameAudio = {
-    play, tone, sweep, noise, attachMuteButton,
+    play, tone, sweep, noise, attachMuteButton, bus,
+    get context() { return ctx; },
+    get running() { return ready(); },
     get muted() { return muted; },
     set muted(v) { setMuted(v); },
     toggleMute() { setMuted(!muted); },
