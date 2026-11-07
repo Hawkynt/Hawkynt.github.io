@@ -207,7 +207,7 @@ sz/
     solitaire/                  Klondike solitaire card game (Games)
     task-manager/               Task manager with event-loop lag + NT-style graphs (hidden)
     terminal/                   Multi-shell terminal: cmd.exe + bash with VFS (System Tools)
-    tetris/                     Classic Tetris game (Games)
+    tetris/                     The Spire of Lumen -- block puzzle with a 5-realm story, guardians, 7 modes, powers, tech tree, skins, festivals (Games)
     web-browser/                Iframe-based web browser with bookmarks (Internet)
     wordpad/                    Rich text editor with formatting toolbar (Accessories) — modular: docx-engine, rtf-engine, comments-tracking, toc-footnotes, image-tools, spell-check, styles-gallery, equation-editor, auto-correct, field-codes, sections, bibliography, auto-text
     color-picker/               Advanced color picker with multiple colorspaces (Accessories)

@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Tetris game -- play directly in your browser">
+<meta name="description" content="Free online Tetris-style block puzzle: an original story across five realms with guardian fights and cinematics, Marathon, Sprint, Ultra, Zen, a Daily Challenge, Boss Rush and Master modes, T-spins, combos, powers, a tech tree, block skins, seasonal festivals and daily quests in your browser">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Tetris -- »SynthelicZ« Desktop">
-<meta property="og:description" content="Free online Tetris game -- play directly in your browser">
+<meta property="og:title" content="Tetris -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Free online Tetris-style block puzzle: an original story across five realms with guardian fights and cinematics, Marathon, Sprint, Ultra, Zen, a Daily Challenge, Boss Rush and Master modes, T-spins, combos, powers, a tech tree, block skins, seasonal festivals and daily quests in your browser">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/tetris/index.html">
 <link rel="canonical" href="https://hawkynt.github.io/sz/Applications/Games/tetris/index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Tetris",
   "url": "https://hawkynt.github.io/sz/Applications/Games/tetris/index.html",
-  "description": "Free online Tetris game -- play directly in your browser",
+  "description": "Free online Tetris-style block puzzle: an original story across five realms with guardian fights and cinematics, Marathon, Sprint, Ultra, Zen, a Daily Challenge, Boss Rush and Master modes, T-spins, combos, powers, a tech tree, block skins, seasonal festivals and daily quests in your browser",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,27 +26,34 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=47fb5de5">
-<script defer src="../../vision-renderer.js?v=1cb8ea77"></script>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<noscript><p>Free online Tetris game -- play directly in your browser. <a href="../../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
+<noscript><p>Free online block-stacking puzzle with a story, guardians, seven modes and a tech tree. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-entry" data-action="title">Title Screen<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-entry" data-action="story">Story Map...</div>
+      <div class="menu-entry" data-action="modes">Modes...</div>
+      <div class="menu-entry" data-action="tree">Tech Tree...</div>
+      <div class="menu-entry" data-action="wardrobe">Collection...</div>
+      <div class="menu-entry" data-action="journal">Journal...</div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="music">Music On/Off</div>
+      <div class="menu-entry" data-action="reset">Erase Progress...</div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
     <div class="menu-dropdown">
+      <div class="menu-entry" data-action="help">How to Play...</div>
       <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="about">About Tetris</div>
     </div>
   </div>
@@ -54,92 +61,39 @@
 
 <!-- Game Area -->
 <div class="game-frame">
-  <div class="game-layout">
-    <!-- Hold Panel -->
-    <div class="side-panel hold-panel">
-      <div class="panel-box hold-box" id="holdBox" title="Hold (C / Shift)">
-        <div class="panel-label">HOLD</div>
-        <div class="preview-stack" id="holdGrid"></div>
-      </div>
-    </div>
-    <!-- Board -->
-    <div class="board-border">
-      <div class="board-wrapper">
-        <div class="board" id="board"></div>
-        <!-- Pause overlay -->
-        <div class="game-overlay" id="pauseOverlay">
-          <div class="overlay-text">PAUSED</div>
-          <div class="overlay-subtext">Press P to resume</div>
-        </div>
-        <!-- Game Over overlay -->
-        <div class="game-overlay" id="gameOverOverlay">
-          <div class="overlay-text">GAME OVER</div>
-          <div class="overlay-score" id="finalScore"></div>
-          <div class="overlay-subtext">Tap or press Enter to restart</div>
-        </div>
-      </div>
-    </div>
-    <!-- Side Panel -->
-    <div class="side-panel">
-      <div class="panel-box">
-        <div class="panel-label">NEXT</div>
-        <div class="preview-stack" id="previewGrid"></div>
-      </div>
-      <div class="panel-box">
-        <div class="panel-label">SCORE</div>
-        <div class="led-display" id="scoreDisplay">0</div>
-      </div>
-      <div class="panel-box">
-        <div class="panel-label">LEVEL</div>
-        <div class="led-display" id="levelDisplay">0</div>
-      </div>
-      <div class="panel-box">
-        <div class="panel-label">LINES</div>
-        <div class="led-display" id="linesDisplay">0</div>
-      </div>
-    </div>
-  </div>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
-<!-- High Scores Dialog -->
-<div class="dialog-overlay" id="highScoresBackdrop">
-  <div class="dialog">
-    <div class="dialog-title">High Scores</div>
-    <div class="dialog-body">
-      <table class="high-scores-table">
-        <thead>
-          <tr><th>#</th><th>Score</th><th>Lines</th><th>Level</th></tr>
-        </thead>
-        <tbody id="highScoresBody"></tbody>
-      </table>
-    </div>
-    <div class="dialog-buttons">
-      <button data-result="reset" type="button">Reset</button>
-      <button data-result="ok" type="button">OK</button>
-    </div>
-  </div>
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusScore">Score: 0</div>
+  <div class="status-section" id="statusLevel">Level: 1</div>
+  <div class="status-section" id="statusLines">Lines: 0</div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 440px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Left / Right</td><td>Move piece</td></tr>
+        <tr><td>Left / Right</td><td>Move (hold to repeat)</td></tr>
         <tr><td>Down</td><td>Soft drop</td></tr>
         <tr><td>Space</td><td>Hard drop</td></tr>
-        <tr><td>Up / Z</td><td>Rotate clockwise</td></tr>
-        <tr><td>X</td><td>Rotate counter-CW</td></tr>
-        <tr><td>C / Shift</td><td>Hold piece (once per drop)</td></tr>
-        <tr><td>Tap / swipe</td><td>Rotate / move, swipe down soft drop, up hard drop</td></tr>
-        <tr><td>Tap HOLD</td><td>Hold piece on touch screens</td></tr>
-        <tr><td>P</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Up / X</td><td>Turn clockwise</td></tr>
+        <tr><td>Z / Ctrl</td><td>Turn counter-clockwise</td></tr>
+        <tr><td>A</td><td>Half turn</td></tr>
+        <tr><td>C / Shift</td><td>Hold (once per piece)</td></tr>
+        <tr><td>E</td><td>Use a power</td></tr>
+        <tr><td>Esc / P</td><td>Pause</td></tr>
+        <tr><td>Touch</td><td>Tap turns, drag sideways moves, drag down soft drops, flick down drops, flick up holds</td></tr>
+        <tr><td>Click / any key</td><td>Next cinematic line (Esc skips)</td></tr>
+        <tr><td>F2</td><td>Title screen (the game is saved)</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
-      <button data-result="ok" type="button">OK</button>
+      <button data-result="ok" data-default type="button">OK</button>
     </div>
   </div>
 </div>
@@ -149,56 +103,76 @@
   <div class="dialog">
     <div class="dialog-title">About Tetris</div>
     <div class="dialog-body">
-      <strong>Tetris</strong><br><br>
-      Classic block-stacking puzzle game.<br><br>
-      Stack falling tetrominoes to complete horizontal lines. Completed lines are cleared for points. The game speeds up as you level up.<br><br>
-      Keep a piece in reserve with Hold (C or Shift, once per drop), plan ahead with the five-piece preview and the ghost piece, and slide or spin a landed piece for half a second before it locks (up to 15 moves). Pieces come from a shuffled bag of all seven shapes and rotate with SRS wall kicks. Soft drop scores 1 point per row, hard drop 2.<br><br>
-      Part of the »SynthelicZ« Desktop.
+      <strong>Tetris: The Spire of Lumen</strong><br><br>
+      Help Kip and the stone golem Ollo rebuild five crumbling realms and win back the keystones from their guardians, block by block and line by line.<br><br>
+      Seven more ways to play, T-spins, combos, powers, a tech tree, block skins and seasonal festivals. Every game saves itself.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
-      <button data-result="ok">OK</button>
+      <button data-result="ok" data-default type="button">OK</button>
     </div>
   </div>
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Tetris - Free Online Classic Block-Stacking Puzzle Game</h1>
-<p>Play the timeless block-stacking puzzle game with all 7 tetromino shapes, Super Rotation System wall kicks, ghost piece preview, NES-style scoring, and level progression directly in your browser.</p>
+<h1>Tetris: The Spire of Lumen - Free Online Block Puzzle with a Story</h1>
+<p>Stack falling blocks in a story across five realms - Verdant Ruins, Crystal Hollows, Sunken Temple, Ember Forge and the Starlit Spire - with thirty stages, five guardian fights and cinematics, directly in your browser.</p>
 <h2>Features</h2>
 <ul>
-<li>Standard 10x20 playfield with all 7 tetromino shapes (I, O, T, S, Z, J, L)</li>
-<li>Super Rotation System (SRS) with wall kicks for authentic rotation</li>
-<li>Ghost piece projection showing where the current piece will land</li>
-<li>Five-piece next preview and a hold slot</li>
-<li>Lock delay: move or rotate a landed piece for 0.5 seconds, up to 15 times</li>
-<li>7-bag randomizer for fair piece distribution</li>
-<li>NES-style scoring with bonus points for multi-line clears</li>
-<li>Soft drop and hard drop with screen shake feedback</li>
-<li>Level progression with increasing speed</li>
-<li>Line-clear animation with particle effects</li>
-<li>Level-up announcement with visual effects</li>
-<li>Persistent high score tracking via localStorage</li>
-<li>Pause, resume, and game-over handling</li>
+<li>Guideline play: SRS rotation with wall kicks, 7-bag, hold, five-piece preview, ghost piece, lock delay</li>
+<li>T-spins, back-to-back, combos and perfect clears with big effects</li>
+<li>Story: 30 stages (lines, score, dig, gems, survival, combo) and 5 guardians with special moves</li>
+<li>Marathon, Sprint, Ultra, Zen, Daily Challenge, Boss Rush and Master modes</li>
+<li>Eight powers from power orbs, a 25-node tech tree, block skins, frames and lock effects</li>
+<li>Seasonal festivals, daily quests, streaks, 42 achievements, player levels and autosave</li>
+<li>Procedural soundtrack per realm and mode</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-autopause.js?v=71500526"></script>
-<script src="../../shared/game-audio.js?v=661cd9eb"></script>
-<script src="js/core/namespace.js?v=9da0657e"></script>
-<script src="js/core/constants.js?v=6bf32820"></script>
-<script src="js/core/state.js?v=12bd5884"></script>
-<script src="js/core/dom.js?v=3d487540"></script>
-<script src="js/core/rules.js?v=76cec10e"></script>
-<script src="js/render/effects.js?v=0e595c11"></script>
-<script src="js/render/board.js?v=24d34c93"></script>
-<script src="js/systems/pieces.js?v=6d7e9c9f"></script>
-<script src="js/ui/highscores.js?v=333bb421"></script>
-<script src="js/systems/game.js?v=b1a68d19"></script>
-<script src="js/ui/menu.js?v=aeed20f6"></script>
-<script src="js/ui/input.js?v=f92e6edd"></script>
-<script src="js/app.js?v=6deb5a41"></script>
+<script src="../../shared/game-audio.js?v=131d923f"></script>
+<script src="../../shared/game-music.js"></script>
+<script src="js/core/namespace.js"></script>
+<script src="js/core/constants.js"></script>
+<script src="js/core/rng.js"></script>
+<script src="js/core/engine.js"></script>
+<script src="js/core/bot.js"></script>
+<script src="js/core/data-worlds.js"></script>
+<script src="js/core/data-story.js"></script>
+<script src="js/core/data-meta.js"></script>
+<script src="js/core/seasons.js"></script>
+<script src="js/core/progress.js"></script>
+<script src="js/core/state.js"></script>
+<script src="js/core/save.js"></script>
+<script src="js/core/audio.js"></script>
+<script src="js/core/music.js"></script>
+<script src="js/systems/fx.js"></script>
+<script src="js/systems/boss.js"></script>
+<script src="js/systems/powers.js"></script>
+<script src="js/systems/run.js"></script>
+<script src="js/systems/cine.js"></script>
+<script src="js/systems/demo.js"></script>
+<script src="js/render/view.js"></script>
+<script src="js/render/art-kit.js"></script>
+<script src="js/render/blocks.js"></script>
+<script src="js/render/backdrop.js"></script>
+<script src="js/render/boss-art.js"></script>
+<script src="js/render/board-render.js"></script>
+<script src="js/render/fx-render.js"></script>
+<script src="js/ui/kit.js"></script>
+<script src="js/ui/widgets.js"></script>
+<script src="js/render/hud.js"></script>
+<script src="js/render/cine-render.js"></script>
+<script src="js/ui/screens.js"></script>
+<script src="js/systems/play.js"></script>
+<script src="js/ui/title.js"></script>
+<script src="js/ui/map.js"></script>
+<script src="js/ui/panels.js"></script>
+<script src="js/ui/input.js"></script>
+<script src="js/ui/status-bar.js"></script>
+<script src="js/render/frame.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
