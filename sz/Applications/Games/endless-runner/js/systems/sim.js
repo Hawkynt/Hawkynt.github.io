@@ -1,7 +1,9 @@
 /* One simulation step for whatever is on screen: the clock, toasts and achievement checks,
    hit-stop and dramatic slow motion, the open run (or the title's demo runner, restarted in the
    next world when it has gone far enough), the effects, the camera (it leads the runner, zooms
-   out as the speed climbs and looks up during flights) and the ambience. Owns the demo run. */
+   out as the speed climbs and in vertical views, looks up during flights, turns with the run's
+   direction and keeps the scenery's scroll along the screen) and the ambience. Owns the demo
+   run. */
 ;(function() {
   'use strict';
 
@@ -11,6 +13,7 @@
   const C = NS.constants;
   const CO = NS.course;
   const { WORLDS } = NS.worlds;
+  const OR = NS.orient;
 
   let demoWorld = -1;
 
@@ -35,12 +38,21 @@
     return G.demo || newDemo();
   }
 
+  /* the view of the run at the runner (cam.o), recomputed whenever the scene needs it */
+  function orient(run) {
+    const cam = G.cam;
+    cam.o = OR.at(run.course.dirs, run.p.x, NS.view.visible(), cam.o);
+    return cam.o;
+  }
+
   function camera(run, dt) {
     const p = run.p;
     const v = CO.speedAt(run.course.cfg, p.x);
     const f = Math.max(0, Math.min(1, (v - 480) / 620));
-    const zoom = 1 - 0.14 * f - (p.fly ? 0.06 : 0);
+    const o = orient(run);
+    const zoom = (1 - 0.14 * f - (p.fly ? 0.06 : 0)) * (1 + (OR.VERT_ZOOM - 1) * o.vert);
     const cam = G.cam;
+    const x0 = cam.x;
     cam.zoom += (zoom - cam.zoom) * Math.min(1, dt * 2);
     const chased = run.bs && run.bs.chase && run.bs.phase !== 'gone';
     const tx = p.x - (C.PLAYER_SCREEN_X + (chased ? 230 : 0) + (run.demo ? 260 : 0)) / cam.zoom;
@@ -48,6 +60,13 @@
     if (Math.abs(tx - cam.x) > 900) cam.x = tx;
     const ty = Math.min(0, (p.y - 300) * 0.8);
     cam.y += (ty - cam.y) * Math.min(1, dt * 4);
+    /* how far the scenery has scrolled along the screen (forward is turned with the view) */
+    const d = cam.x - x0;
+    if (Math.abs(d) < 900) {
+      const c = Math.cos(o.a), s = Math.sin(o.a);
+      cam.sx = (cam.sx || 0) + d * cam.zoom * c * o.m;
+      cam.sy = (cam.sy || 0) + d * cam.zoom * s * o.m;
+    }
   }
 
   function update(dt) {
@@ -81,6 +100,6 @@
   }
 
   Object.assign(NS.sim, {
-    update, newDemo, viewRun, camera
+    update, newDemo, viewRun, camera, orient
   });
 })();

@@ -1,7 +1,8 @@
 /* Draws the pooled effects in world space from cached sprites: glows additively, speed streaks
    as lines along their motion, shaped flakes (leaves, petals, stars, snow, squares, bats,
    bubbles) and dots with alpha, in two layers (behind and in front of the runner); then
-   shockwave rings and floating score texts with a pop-in scale. Draws only. */
+   shockwave rings and floating score texts with a pop-in scale, always upright whichever way
+   the view is turned; whatever is off screen is skipped. Draws only. */
 ;(function() {
   'use strict';
 
@@ -13,11 +14,18 @@
   const fx = NS.fx;
   const { ctx } = NS.view;
 
+  /* particles off screen are skipped */
+  function off(P, k, VR) {
+    const x = P.x[k], y = P.y[k], m = P.size[k] * 3 + 20;
+    return x < VR.x0 - m || x > VR.x1 + m || y < VR.y0 - m || y > VR.y1 + m;
+  }
+
   function draw(layer) {
     const P = fx.P;
     const n = P.n;
+    const VR = NS.world.VR;
     for (let k = 0; k < n; ++k) {
-      if (P.layer[k] !== layer) continue;
+      if (P.layer[k] !== layer || off(P, k, VR)) continue;
       const kind = P.kind[k];
       if (kind === fx.GLOW || kind === fx.RIBBON) continue;
       const a = Math.min(1, P.life[k] / P.max[k] * 2.2);
@@ -49,7 +57,7 @@
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'lighter';
     for (let k = 0; k < n; ++k) {
-      if (P.layer[k] !== layer || (P.kind[k] !== fx.GLOW && P.kind[k] !== fx.RIBBON)) continue;
+      if (P.layer[k] !== layer || (P.kind[k] !== fx.GLOW && P.kind[k] !== fx.RIBBON) || off(P, k, VR)) continue;
       ctx.globalAlpha = Math.min(1, P.life[k] / P.max[k] * 1.6) * (P.kind[k] === fx.RIBBON ? 0.7 : 1);
       K.blit(ctx, K.glow(P.color[k]), P.x[k], P.y[k], P.size[k] / 22);
     }
@@ -77,9 +85,11 @@
       ctx.font = 'bold ' + Math.round(t.size * pop) + 'px ' + FONT;
       ctx.lineWidth = 5;
       ctx.strokeStyle = 'rgba(10,8,24,0.75)';
-      ctx.strokeText(t.str, t.x, t.y);
+      NS.world.upright(t.x, t.y);
+      ctx.strokeText(t.str, 0, 0);
       ctx.fillStyle = t.color;
-      ctx.fillText(t.str, t.x, t.y);
+      ctx.fillText(t.str, 0, 0);
+      NS.world.unright(t.x, t.y);
     }
     ctx.globalAlpha = 1;
   }

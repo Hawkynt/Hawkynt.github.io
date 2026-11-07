@@ -1,9 +1,13 @@
 /* The course of a run in world space, behind the actors: the camera transform (lead, zoom,
-   look-up and shake), ground spans tiled from the world's ground sprite with cliff rims and the
-   water, lava, chasm or void below each pit, ledges (cracked ones crumble), spring and boost
-   pads, every obstacle in its world's look with the warning cues of the moving ones (saw rails,
-   drone alerts, falling-rock shadows), coins, gems, shards, tokens, power orbs, spark orbs, the
-   finish gate and Arcade's best-distance flag. Only what is on screen is drawn. Draws only. */
+   look-up, shake, and the run's direction - the whole playfield turned and mirrored about the
+   runner's anchor), ground spans tiled from the world's ground sprite with cliff rims and the
+   water, lava, chasm or void below each pit - or, where the run goes up or down, a wall slab
+   with gaps instead of pits - ledges (cracked ones crumble), spring and boost pads, every
+   obstacle in its world's look with the warning cues of the moving ones (saw rails, drone
+   alerts, falling-rock shadows), the chevrons that announce a turn, coins, gems, shards, tokens,
+   power orbs, spark orbs, the finish gate and Arcade's best-distance flag. Things that hover
+   (flyers, pickups, alerts, labels) are drawn upright whatever the view. Only what is on screen
+   is drawn. Draws only. */
 ;(function() {
   'use strict';
 
@@ -19,21 +23,82 @@
   const PH = NS.physics;
   const { ctx } = NS.view;
 
-  const VR = { x0: 0, x1: 0, y0: 0, y1: 0 };
+  const VA = NS.vertArt;
+  const OR = NS.orient;
 
-  /* plane -> world transform for the current camera; returns the visible world rect */
+  const VR = { x0: 0, x1: 0, y0: 0, y1: 0 };
+  /* the current transform: screen = (ox, oy) + z * R(a) * diag(m, 1) * (world - (fx, fy)) */
+  const XF = { ox: 0, oy: 0, z: 1, c: 1, s: 0, m: 1, a: 0, fx: 0, fy: 0, sg: 1 };
+  const FLAT = OR.at(null, 0);
+
+  /* plane -> world transform for the current camera and view; returns the visible world rect */
   function enter(cam) {
     const v = NS.view.visible();
+    const o = cam.o || FLAT;
     const z = cam.zoom;
-    ctx.translate(G.shakeX || 0, G.shakeY || 0);
-    ctx.translate(0, GROUND_Y);
-    ctx.scale(z, z);
-    ctx.translate(-cam.x, -GROUND_Y - cam.y);
-    VR.x0 = cam.x + v.x0 / z;
-    VR.x1 = cam.x + v.x1 / z;
-    VR.y0 = GROUND_Y + cam.y + (v.y0 - GROUND_Y) / z;
-    VR.y1 = GROUND_Y + cam.y + (v.y1 - GROUND_Y) / z;
+    XF.z = z; XF.a = o.a; XF.m = o.m; XF.c = Math.cos(o.a); XF.s = Math.sin(o.a); XF.sg = o.m < 0 ? -1 : 1;
+    XF.ox = o.ax + (G.shakeX || 0); XF.oy = o.ay + (G.shakeY || 0);
+    XF.fx = cam.x + C.PLAYER_SCREEN_X / z; XF.fy = GROUND_Y + cam.y;
+    ctx.translate(XF.ox, XF.oy);
+    ctx.transform(XF.c * XF.m * z, XF.s * XF.m * z, -XF.s * z, XF.c * z, 0, 0);
+    ctx.translate(-XF.fx, -XF.fy);
+    /* the visible rect is the bounding box of the screen's corners back in the world (a
+       mirror passing through zero in a flip is held at 0.2 so the box stays finite) */
+    const m = Math.abs(XF.m) < 0.2 ? (XF.m < 0 ? -0.2 : 0.2) : XF.m;
+    VR.x0 = VR.y0 = Infinity; VR.x1 = VR.y1 = -Infinity;
+    for (let i = 0; i < 4; ++i) {
+      const dx = ((i & 1) ? v.x1 : v.x0) - XF.ox, dy = ((i & 2) ? v.y1 : v.y0) - XF.oy;
+      /* inverse: diag(1/m, 1) * R(-a) / z */
+      const rx = (XF.c * dx + XF.s * dy) / z, ry = (-XF.s * dx + XF.c * dy) / z;
+      const wx = XF.fx + rx / m, wy = XF.fy + ry;
+      if (wx < VR.x0) VR.x0 = wx;
+      if (wx > VR.x1) VR.x1 = wx;
+      if (wy < VR.y0) VR.y0 = wy;
+      if (wy > VR.y1) VR.y1 = wy;
+    }
+    VR.x0 = Math.max(VR.x0, XF.fx - 4000); VR.x1 = Math.min(VR.x1, XF.fx + 5000);
+    VR.y0 = Math.max(VR.y0, -3000); VR.y1 = Math.min(VR.y1, 4000);
     return VR;
+  }
+
+  /* where a world point lands in plane coordinates */
+  function toScreen(wx, wy, out) {
+    const dx = (wx - XF.fx) * XF.m, dy = wy - XF.fy;
+    out = out || {};
+    out.x = XF.ox + XF.z * (XF.c * dx - XF.s * dy);
+    out.y = XF.oy + XF.z * (XF.s * dx + XF.c * dy);
+    return out;
+  }
+
+  /* draw something upright at a world point: undo the view's turn and mirror (not its squash) */
+  function upright(x, y) {
+    ctx.translate(x, y);
+    if (XF.sg < 0) ctx.scale(-1, 1);
+    if (XF.a) ctx.rotate(-XF.a);
+  }
+
+  function unright(x, y) {
+    if (XF.a) ctx.rotate(XF.a);
+    if (XF.sg < 0) ctx.scale(-1, 1);
+    ctx.translate(-x, -y);
+  }
+
+  /* where the course looks like a wall (up or down) rather than ground: from each turn's middle */
+  function wallAt(run, x) {
+    const ds = run.course.dirs;
+    let i = ds.length - 1;
+    while (i > 0 && ds[i].x + ds[i].len / 2 > x) --i;
+    return !!OR.VERT[ds[i].dir];
+  }
+
+  /* the next x after a where the look changes, or Infinity */
+  function lookChange(run, a) {
+    const ds = run.course.dirs;
+    for (let i = 1; i < ds.length; ++i) {
+      const m = ds[i].x + ds[i].len / 2;
+      if (m > a && !OR.VERT[ds[i].dir] !== !OR.VERT[ds[i - 1].dir]) return m;
+    }
+    return Infinity;
   }
 
   function wOf(run) {
@@ -42,24 +107,39 @@
 
   /* ── ground and pits ── */
   function ground(run) {
+    let a = VR.x0 - 2;
+    const end = VR.x1 + 2;
+    while (a < end) {
+      const b = Math.min(end, lookChange(run, a));
+      if (wallAt(run, a)) wallPiece(run, a, b); else groundPiece(run, a, b);
+      if (b < end) junction(run, b);
+      a = b;
+    }
+  }
+
+  function tileRow(tile, a, b, top) {
+    const src = tile.canvas;
+    const sc = src.width / tile.w;
+    let x = Math.floor(a / tile.w) * tile.w;
+    for (; x < b; x += tile.w) {
+      const x0 = Math.max(x, a), x1 = Math.min(x + tile.w, b);
+      if (x1 - x0 < 0.5) continue;
+      ctx.drawImage(src, (x0 - x) * sc, 0, (x1 - x0) * sc, src.height, x0, top, x1 - x0 + 0.6, tile.h);
+    }
+  }
+
+  function groundPiece(run, A, B) {
     const w = wOf(run);
     const W = WORLDS[w];
     const tile = PA.groundTile(w);
-    const src = tile.canvas;
-    const sc = src.width / tile.w;
     const g = run.course.ground;
     const top = GROUND_Y - 10;
     const deep = top + tile.h;
     for (let i = 0; i < g.length; ++i) {
       const s = g[i];
-      const a = Math.max(s.x, VR.x0 - 2), b = Math.min(s.x + s.w, VR.x1 + 2);
+      const a = Math.max(s.x, A), b = Math.min(s.x + s.w, B);
       if (b <= a) continue;
-      let x = Math.floor(a / tile.w) * tile.w;
-      for (; x < b; x += tile.w) {
-        const x0 = Math.max(x, a), x1 = Math.min(x + tile.w, b);
-        if (x1 - x0 < 0.5) continue;
-        ctx.drawImage(src, (x0 - x) * sc, 0, (x1 - x0) * sc, src.height, x0, top, x1 - x0 + 0.6, tile.h);
-      }
+      tileRow(tile, a, b, top);
       if (deep < VR.y1) {
         ctx.fillStyle = W.ground[3];
         ctx.fillRect(a, deep - 1, b - a, VR.y1 - deep + 2);
@@ -69,8 +149,9 @@
     const pit = PA.pitFill(w);
     const t = G.time;
     for (let i = 0; i + 1 < g.length; ++i) {
-      const x0 = g[i].x + g[i].w, x1 = g[i + 1].x;
-      if (x1 < VR.x0 || x0 > VR.x1 || x1 - x0 < 1) continue;
+      const p0 = g[i].x + g[i].w, p1 = g[i + 1].x;
+      const x0 = Math.max(p0, A), x1 = Math.min(p1, B);
+      if (x1 - x0 < 1) continue;
       const py = GROUND_Y + 40;
       ctx.drawImage(pit.canvas, x0, py, x1 - x0, pit.h);
       if (py + pit.h < VR.y1) {
@@ -91,19 +172,51 @@
         for (let y = py + 30; y < py + 200; y += 34) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
       }
       const eL = PA.groundEdge(w, 1), eR = PA.groundEdge(w, -1);
-      ctx.drawImage(eL.canvas, x0 - 2, top, eL.w, eL.h);
-      ctx.drawImage(eR.canvas, x1 - eR.w + 2, top, eR.w, eR.h);
+      if (p0 >= A) ctx.drawImage(eL.canvas, p0 - 2, top, eL.w, eL.h);
+      if (p1 <= B) ctx.drawImage(eR.canvas, p1 - eR.w + 2, top, eR.w, eR.h);
     }
+  }
+
+  /* where the run climbs or drops, the ground is a wall slab; a pit is a gap right through it */
+  function wallPiece(run, A, B) {
+    const w = wOf(run);
+    const tile = VA.wallTile(w);
+    const g = run.course.ground;
+    const top = GROUND_Y - 10;
+    const pal = VA.PAL[w];
+    for (let i = 0; i < g.length; ++i) {
+      const s = g[i];
+      const a = Math.max(s.x, A), b = Math.min(s.x + s.w, B);
+      if (b <= a) continue;
+      tileRow(tile, a, b, top);
+      ctx.fillStyle = pal.edge;
+      if (s.x >= A) ctx.fillRect(s.x - 3, top + 4, 6, tile.h - 8);
+      if (s.x + s.w <= B) ctx.fillRect(s.x + s.w - 3, top + 4, 6, tile.h - 8);
+    }
+  }
+
+  /* the seam where ground turns into wall: a braced corner in the world's trim colour */
+  function junction(run, x) {
+    const pal = VA.PAL[wOf(run)];
+    const top = GROUND_Y - 10;
+    if (!PH.onGroundSpan(run.course, x - 4, x + 4)) return;
+    ctx.fillStyle = '#141224';
+    ctx.fillRect(x - 14, top - 4, 28, 248);
+    ctx.fillStyle = pal.trim;
+    ctx.fillRect(x - 11, top - 1, 22, 242);
+    ctx.fillStyle = pal.glow;
+    ctx.fillRect(x - 2, top + 8, 4, 224);
   }
 
   function plats(run) {
     const w = wOf(run);
-    const tile = PA.platTile(w);
+    const flat = PA.platTile(w), steep = VA.ledgeTile(w);
     const pl = run.course.plats;
     const px = run.p.x;
     for (let i = 0; i < pl.length; ++i) {
       const q = pl[i];
       if (q.bar || q.x > VR.x1 || q.x + q.w < VR.x0) continue;
+      const tile = wallAt(run, q.x) ? steep : flat;
       for (let x = q.x; x < q.x + q.w; x += tile.w) {
         const ww = Math.min(tile.w, q.x + q.w - x);
         let dy = 0;
@@ -128,6 +241,38 @@
       ctx.globalCompositeOperation = 'source-over';
     }
   }
+
+  /* chevrons on the way into a turn, pointing where the screen's "forward" is about to be */
+  function turnSigns(run) {
+    const ds = run.course.dirs;
+    const t = G.time;
+    for (let i = 1; i < ds.length; ++i) {
+      const e = ds[i];
+      if (e.x < VR.x0 - 300 || e.x - 900 > VR.x1) continue;
+      const f = OR.vectors(e.q, e.m, VEC);
+      const ang = Math.atan2(f.fy, f.fx);
+      const col = WORLDS[wOf(run)].accent;
+      for (let k = 0; k < 3; ++k) {
+        const x = e.x - 640 + k * 210, y = GROUND_Y - 150;
+        if (x < VR.x0 - 60 || x > VR.x1 + 60 || run.p.x > e.x + e.len) continue;
+        const pulse = 0.55 + 0.45 * Math.sin(t * 7 - k * 1.2);
+        upright(x, y);
+        ctx.rotate(ang);
+        ctx.globalCompositeOperation = 'lighter';
+        K.blitAlpha(ctx, K.glow(col), 0, 0, 1.6, 0.35 * pulse);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.5 + 0.5 * pulse;
+        ctx.fillStyle = '#141224';
+        K.poly(ctx, [[-20, -30], [8, 0], [-20, 30], [-6, 30], [22, 0], [-6, -30]]); ctx.fill();
+        ctx.fillStyle = col;
+        K.poly(ctx, [[-16, -24], [8, 0], [-16, 24], [-8, 24], [16, 0], [-8, -24]]); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.rotate(-ang);
+        unright(x, y);
+      }
+    }
+  }
+  const VEC = {};
 
   /* ── obstacles ── */
   function hazards(run) {
@@ -178,7 +323,10 @@
         }
         case 'drone': {
           const m = PH.motion(h, px);
-          K.blit(ctx, PA.drone(w, ((t * 12) | 0) % 2), m.cx, m.cy + Math.sin(t * 6 + h.id) * 3 * m.f);
+          const dy = m.cy + Math.sin(t * 6 + h.id) * 3 * m.f;
+          upright(m.cx, dy);
+          K.blit(ctx, PA.drone(w, ((t * 12) | 0) % 2), 0, 0);
+          unright(m.cx, dy);
           if (m.f > 0.02 && h.x - px < 1100) alert(m.cx, m.cy - 46, h.low ? '#ff5a6a' : '#5ee0ff');
           break;
         }
@@ -202,14 +350,23 @@
 
   function alert(x, y, color) {
     const a = 0.6 + 0.4 * Math.sin(G.time * 16);
+    upright(x, y);
     ctx.globalAlpha = a;
     ctx.fillStyle = color;
-    K.poly(ctx, [[x, y - 14], [x + 13, y + 9], [x - 13, y + 9]]);
+    K.poly(ctx, [[0, -14], [13, 9], [-13, 9]]);
     ctx.fill();
     ctx.fillStyle = '#141224';
-    ctx.fillRect(x - 1.5, y - 5, 3, 8);
-    ctx.fillRect(x - 1.5, y + 4, 3, 3);
+    ctx.fillRect(-1.5, -5, 3, 8);
+    ctx.fillRect(-1.5, 4, 3, 3);
     ctx.globalAlpha = 1;
+    unright(x, y);
+  }
+
+  /* a cached sprite drawn upright at a world point */
+  function blitUp(s, x, y, k, rot) {
+    upright(x, y);
+    if (rot) K.blitRot(ctx, s, 0, 0, rot, k); else K.blit(ctx, s, 0, 0, k);
+    unright(x, y);
   }
 
   /* ── pickups ── */
@@ -226,15 +383,15 @@
           ctx.drawImage(coin.canvas, it.x - 13 * Math.max(0.15, sx), it.y - 13, 26 * Math.max(0.15, sx), 26);
           break;
         }
-        case 'gem': K.blit(ctx, PA.gem(), it.x, it.y + Math.sin(t * 3 + it.x) * 3, 0.9); break;
+        case 'gem': blitUp(PA.gem(), it.x, it.y + Math.sin(t * 3 + it.x) * 3, 0.9); break;
         case 'shard':
           ctx.globalCompositeOperation = 'lighter';
           K.blitAlpha(ctx, K.glow('#5ee0ff'), it.x, it.y, 2.2, 0.6 + 0.3 * Math.sin(t * 5));
           ctx.globalCompositeOperation = 'source-over';
-          K.blitRot(ctx, PA.shard(), it.x, it.y + Math.sin(t * 3) * 5, Math.sin(t * 2) * 0.2, 1);
+          blitUp(PA.shard(), it.x, it.y + Math.sin(t * 3) * 5, 1, Math.sin(t * 2) * 0.2);
           break;
         case 'token':
-          K.blit(ctx, PA.token(G.season ? G.season.token : 'firework'), it.x, it.y + Math.sin(t * 3 + it.x) * 4, 1);
+          blitUp(PA.token(G.season ? G.season.token : 'firework'), it.x, it.y + Math.sin(t * 3 + it.x) * 4, 1);
           break;
         case 'power':
         case 'orb': {
@@ -243,7 +400,7 @@
           ctx.globalCompositeOperation = 'lighter';
           K.blitAlpha(ctx, K.glow(it.k === 'orb' ? '#5ee0ff' : NS.items.POWER_BY_ID[it.p].color), it.x, y, 2.4, 0.55);
           ctx.globalCompositeOperation = 'source-over';
-          K.blit(ctx, PA.orb(id), it.x, y, 1 + Math.sin(t * 6) * 0.04);
+          blitUp(PA.orb(id), it.x, y, 1 + Math.sin(t * 6) * 0.04);
           break;
         }
         case 'finish': {
@@ -260,7 +417,7 @@
       for (let i = 0; i < l.length; ++i) {
         const c = l[i];
         if (c.x < VR.x0 - 30 || c.x > VR.x1 + 30) continue;
-        if (c.gem) K.blit(ctx, gemS, c.x, c.y, 0.8);
+        if (c.gem) blitUp(gemS, c.x, c.y, 0.8);
         else ctx.drawImage(coin.canvas, c.x - 13, c.y - 13, 26, 26);
       }
     }
@@ -275,13 +432,15 @@
     K.poly(ctx, [[x + 3, GROUND_Y - 170], [x + 70, GROUND_Y - 152], [x + 3, GROUND_Y - 134]]);
     ctx.fill();
     ctx.font = 'bold 16px ' + C.FONT;
-    ctx.textAlign = 'left';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, x + 8, GROUND_Y - 186);
+    upright(x + 36, GROUND_Y - 196);
+    ctx.fillText(label, 0, 0);
+    unright(x + 36, GROUND_Y - 196);
   }
 
   Object.assign(NS.world, {
-    VR, enter, ground, plats, hazards, items, alert, flag
+    VR, XF, enter, toScreen, upright, unright, blitUp, wallAt, ground, plats, turnSigns, hazards, items, alert, flag
   });
 })();

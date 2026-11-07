@@ -3,8 +3,10 @@
    until the chaser crashes at the end of the stretch. Three are duels - the Dune Wyrm, Warden
    Mk-II and the Hollow King hold position ahead and fire telegraphed volleys (low: jump, high:
    slide), drop spark orbs that the runner fires back, and hide Spark Shards; the King adds a
-   chasing shadow wall at half health. Also Boss Rush's hand-over to the next guardian. Owns
-   nothing; all state lives in run.bs. */
+   chasing shadow wall at half health. Each guardian keeps its own direction (the avalanche
+   thunders down a mountain face, the Warden is fought climbing its spire, the King turns the
+   world around); Boss Rush hands over to the next guardian with a turn when it runs another
+   way. Owns nothing; all state lives in run.bs. */
 ;(function() {
   'use strict';
 
@@ -20,6 +22,7 @@
 
   const GY = C.GROUND_Y;
   const LOW = GY - 26, HIGH = GY - 66;
+  const OS = {};
 
   /* each duel boss: hit points, attack patterns (lanes of each volley) and its colours */
   const DEF = {
@@ -44,6 +47,7 @@
     run.course.cfg.boostEvery = d.chase ? 5200 : 0;
     run.course.cfg.world = run.world;
     run.projs.length = 0;
+    if (rush && run.rushIdx > 0) NS.stream.addTurn(run, NS.story.BOSS_DIRS[id], NS.story.BOSS_TURN_LINES[id]);
     if (!run.demo) {
       fx.text(p.x + 340, GY - 300, BOSS_NAMES[id], d.color, 40, 2.4);
       sfx('explode', { volume: 0.4, pitch: 0.6 });
@@ -66,7 +70,9 @@
     let y = GY - 250 + Math.sin(t * 1.7) * 26;
     if (bs.id === 'wyrm') y = GY - 150 + Math.sin(t * 1.3) * 40 + (bs.atkT < 1 || bs.flinch > 0 ? -60 : 40);
     if (bs.id === 'king') y = GY - 300 + Math.sin(t * 1.1) * 30;
-    return { x: p.x + 820 + Math.sin(t * 0.9) * 40 + intro * 700, y: y - intro * 200 + out * 500 };
+    /* a vertical view shows less of the way ahead: the guardian hovers closer */
+    const ahead = NS.orient.at(run.course.dirs, p.x, null, OS).vert > 0.5 ? 600 : 820;
+    return { x: p.x + ahead + Math.sin(t * 0.9) * 40 + intro * 700, y: y - intro * 200 + out * 500 };
   }
 
   function lane(ch) {

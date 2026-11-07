@@ -1,7 +1,8 @@
 /* The UI drawing kit in plane coordinates: fonts, fitted and wrapped text, bevelled glass
    panels with corner brackets and glow faked with wide strokes, segmented bars, stars, locks,
    the UI icons (trophy, gift, heart, check, coin, gem, lock, bolt...), the coin and gem
-   counters and the cached game logo. Draws only; owns no state. */
+   counters and the cached game logo. Panels and bar sheens are painted once and reused, so a
+   frame only blits them. Draws only; owns the panel cache. */
 ;(function() {
   'use strict';
 
@@ -64,62 +65,99 @@
     return lines * lineH;
   }
 
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
+  function roundRect(x, y, w, h, r, g) {
+    g = g || ctx;
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.lineTo(x + w - r, y);
+    g.arcTo(x + w, y, x + w, y + r, r);
+    g.lineTo(x + w, y + h - r);
+    g.arcTo(x + w, y + h, x + w - r, y + h, r);
+    g.lineTo(x + r, y + h);
+    g.arcTo(x, y + h, x, y + h - r, r);
+    g.lineTo(x, y + r);
+    g.arcTo(x, y, x + r, y, r);
+    g.closePath();
   }
+
+  function paintPanel(g, x, y, w, h, opts) {
+    const r = opts.radius !== undefined ? opts.radius : 10;
+    const accent = opts.accent || UI.accent;
+    if (opts.glow) {
+      g.strokeStyle = K.rgba(accent, 0.18);
+      g.lineWidth = 10;
+      roundRect(x - 2, y - 2, w + 4, h + 4, r + 2, g);
+      g.stroke();
+    }
+    const gr = g.createLinearGradient(x, y, x, y + h);
+    gr.addColorStop(0, opts.top || UI.panelTop);
+    gr.addColorStop(1, opts.bottom || UI.panelBottom);
+    g.fillStyle = gr;
+    roundRect(x, y, w, h, r, g);
+    g.fill();
+    /* inner sheen across the top */
+    const sh = g.createLinearGradient(x, y, x, y + Math.min(40, h * 0.4));
+    sh.addColorStop(0, 'rgba(255,255,255,0.07)');
+    sh.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = sh;
+    roundRect(x + 1, y + 1, w - 2, Math.min(40, h * 0.4), r, g);
+    g.fill();
+    g.strokeStyle = K.rgba(accent, opts.glow ? 0.95 : 0.45);
+    g.lineWidth = opts.glow ? 2 : 1.2;
+    roundRect(x + 0.5, y + 0.5, w - 1, h - 1, r, g);
+    g.stroke();
+    if (opts.brackets !== false) {
+      const L = Math.min(18, w / 5, h / 3);
+      g.strokeStyle = K.rgba(accent, opts.glow ? 1 : 0.8);
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(x + 2, y + L); g.lineTo(x + 2, y + 2); g.lineTo(x + L, y + 2);
+      g.moveTo(x + w - L, y + 2); g.lineTo(x + w - 2, y + 2); g.lineTo(x + w - 2, y + L);
+      g.moveTo(x + 2, y + h - L); g.lineTo(x + 2, y + h - 2); g.lineTo(x + L, y + h - 2);
+      g.moveTo(x + w - L, y + h - 2); g.lineTo(x + w - 2, y + h - 2); g.lineTo(x + w - 2, y + h - L);
+      g.stroke();
+    }
+  }
+
+  /* panels are painted once per size and look and then only blitted (at most PANELS kept) */
+  const PANELS = 160, PAD = 8;
+  const panels = new Map();
 
   /* A bevelled glass panel; opts: accent, glow, radius, top, bottom, alpha, brackets */
   function panel(x, y, w, h, opts) {
     opts = opts || {};
-    const r = opts.radius !== undefined ? opts.radius : 10;
-    const accent = opts.accent || UI.accent;
-    ctx.save();
-    if (opts.alpha !== undefined) ctx.globalAlpha *= opts.alpha;
-    if (opts.glow) {
-      ctx.strokeStyle = K.rgba(accent, 0.18);
-      ctx.lineWidth = 10;
-      roundRect(x - 2, y - 2, w + 4, h + 4, r + 2);
-      ctx.stroke();
+    const pw = Math.round(w), ph = Math.round(h);
+    const key = pw + 'x' + ph + ':' + (opts.radius !== undefined ? opts.radius : 10) + ':' + (opts.accent || '') + ':' + (opts.glow ? 1 : 0) +
+      ':' + (opts.top || '') + ':' + (opts.bottom || '') + ':' + (opts.brackets === false ? 0 : 1);
+    let s = panels.get(key);
+    if (s) { panels.delete(key); panels.set(key, s); }
+    else {
+      const c = K.makeCanvas((pw + PAD * 2) * K.SCALE, (ph + PAD * 2) * K.SCALE);
+      const g = c.getContext('2d');
+      g.scale(K.SCALE, K.SCALE);
+      paintPanel(g, PAD, PAD, pw, ph, opts);
+      s = { canvas: c, w: pw + PAD * 2, h: ph + PAD * 2 };
+      panels.set(key, s);
+      if (panels.size > PANELS) panels.delete(panels.keys().next().value);
     }
-    const gr = ctx.createLinearGradient(x, y, x, y + h);
-    gr.addColorStop(0, opts.top || UI.panelTop);
-    gr.addColorStop(1, opts.bottom || UI.panelBottom);
-    ctx.fillStyle = gr;
-    roundRect(x, y, w, h, r);
-    ctx.fill();
-    /* inner sheen across the top */
-    const sh = ctx.createLinearGradient(x, y, x, y + Math.min(40, h * 0.4));
-    sh.addColorStop(0, 'rgba(255,255,255,0.07)');
-    sh.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = sh;
-    roundRect(x + 1, y + 1, w - 2, Math.min(40, h * 0.4), r);
-    ctx.fill();
-    ctx.strokeStyle = K.rgba(accent, opts.glow ? 0.95 : 0.45);
-    ctx.lineWidth = opts.glow ? 2 : 1.2;
-    roundRect(x + 0.5, y + 0.5, w - 1, h - 1, r);
-    ctx.stroke();
-    if (opts.brackets !== false) {
-      const L = Math.min(18, w / 5, h / 3);
-      ctx.strokeStyle = K.rgba(accent, opts.glow ? 1 : 0.8);
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(x + 2, y + L); ctx.lineTo(x + 2, y + 2); ctx.lineTo(x + L, y + 2);
-      ctx.moveTo(x + w - L, y + 2); ctx.lineTo(x + w - 2, y + 2); ctx.lineTo(x + w - 2, y + L);
-      ctx.moveTo(x + 2, y + h - L); ctx.lineTo(x + 2, y + h - 2); ctx.lineTo(x + L, y + h - 2);
-      ctx.moveTo(x + w - L, y + h - 2); ctx.lineTo(x + w - 2, y + h - 2); ctx.lineTo(x + w - 2, y + h - L);
-      ctx.stroke();
+    const a = ctx.globalAlpha;
+    if (opts.alpha !== undefined) ctx.globalAlpha = a * opts.alpha;
+    ctx.drawImage(s.canvas, x - PAD, y - PAD, s.w * w / pw, s.h * h / ph);
+    ctx.globalAlpha = a;
+  }
+
+  /* the vertical sheen of a bar, made once per height and colour */
+  const barGrads = {};
+  function barGrad(h, color) {
+    const key = h + color;
+    let gr = barGrads[key];
+    if (!gr) {
+      gr = barGrads[key] = ctx.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, K.shade(color, 0.45));
+      gr.addColorStop(0.5, color);
+      gr.addColorStop(1, K.shade(color, -0.4));
     }
-    ctx.restore();
+    return gr;
   }
 
   /* A bar split into cells; frac in [0, 1] */
@@ -131,12 +169,10 @@
     ctx.fill();
     const f = Math.max(0, Math.min(1, frac));
     if (f > 0) {
-      const gr = ctx.createLinearGradient(x, y, x, y + h);
-      gr.addColorStop(0, K.shade(color, 0.45));
-      gr.addColorStop(0.5, color);
-      gr.addColorStop(1, K.shade(color, -0.4));
-      ctx.fillStyle = gr;
-      ctx.fillRect(x, y, w * f, h);
+      ctx.fillStyle = barGrad(h, color);
+      ctx.translate(x, y);
+      ctx.fillRect(0, 0, w * f, h);
+      ctx.translate(-x, -y);
       if (opts.ghost !== undefined && opts.ghost > f) {
         ctx.fillStyle = 'rgba(255,255,255,0.35)';
         ctx.fillRect(x + w * f, y, w * (Math.min(1, opts.ghost) - f), h);

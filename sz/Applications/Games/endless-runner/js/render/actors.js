@@ -4,7 +4,8 @@
    ghostly fading, blinking while untouchable), the guardians (chasers at the runner's heels with
    an off-screen warning, duel bosses ahead with flinch and defeat), projectiles with their
    telegraphs at the screen edge, spark bolts, effects in front, Night Run's darkness and the
-   weather. Draws only. */
+   weather; while the view turns, rotational speed streaks and a soft blur over the scene.
+   Duel guardians hover upright in every direction. Draws only. */
 ;(function() {
   'use strict';
 
@@ -153,17 +154,21 @@
     ctx.globalCompositeOperation = 'lighter';
     K.blitAlpha(ctx, K.glow(NS.bosses.DEF[bs.id].color), b.x, b.y, 6, 0.25);
     ctx.globalCompositeOperation = 'source-over';
-    K.blit(ctx, spr, b.x + shakeX, b.y, 1);
+    WR.upright(b.x, b.y);
+    K.blit(ctx, spr, shakeX, 0, 1);
+    if (bs.flinch > 0) {
+      const a = ctx.globalAlpha;
+      ctx.globalAlpha = bs.flinch;
+      K.blit(ctx, K.silhouette('boss:' + bs.id + ':' + f, spr), shakeX, 0, 1);
+      ctx.globalAlpha = a;
+    }
+    WR.unright(b.x, b.y);
     if (bs.id === 'wyrm') {
       ctx.fillStyle = '#c08048';
       ctx.beginPath(); ctx.ellipse(b.x, GROUND_Y + 4, 120, 26, 0, Math.PI, 0); ctx.fill();
       ctx.fillStyle = '#e0a060';
       ctx.beginPath(); ctx.ellipse(b.x - 10, GROUND_Y + 2, 90, 14, 0, Math.PI, 0); ctx.fill();
       if (Math.random() < 0.4) NS.fx.spawn(NS.fx.DOT, b.x + (Math.random() - 0.5) * 200, GROUND_Y - 6, (Math.random() - 0.5) * 200, -200 - Math.random() * 200, 0.7, 8, '#e0a060', 900, 1);
-    }
-    if (bs.flinch > 0) {
-      ctx.globalAlpha = bs.flinch;
-      K.blit(ctx, K.silhouette('boss:' + bs.id + ':' + f, spr), b.x + shakeX, b.y, 1);
     }
     ctx.globalAlpha = 1;
     if (bs.id === 'king' && bs.hp <= bs.maxHp / 2 && bs.phase === 'fight') {
@@ -214,8 +219,8 @@
   /* Night Run: darkness everywhere but a pool of light around the runner (plane coordinates) */
   function darkness(run) {
     const v = NS.view.visible();
-    const cam = G.cam;
-    const sx = (run.p.x - cam.x) * cam.zoom, sy = GROUND_Y + (run.p.y - 40 - GROUND_Y - cam.y) * cam.zoom;
+    const sp = WR.toScreen(run.p.x, run.p.y - 40, SP);
+    const sx = sp.x, sy = sp.y;
     const r = 300;
     const spr = K.sprite('darkhole', 128, 128, (g) => {
       const gr = g.createRadialGradient(64, 64, 10, 64, 64, 64);
@@ -232,14 +237,56 @@
     ctx.drawImage(spr.canvas, sx - r, sy - r, 2 * r, 2 * r);
   }
 
+  const SP = {};
+
+  /* while the view turns: arcs swept around the runner's anchor (or sideways streaks in a
+     mirror flip), strongest mid-turn, from a fixed set so nothing flickers */
+  function turnBlur(run, o) {
+    if (!o || !o.turning) return;
+    const k = Math.sin(o.t * Math.PI);
+    if (k < 0.05) return;
+    const v = NS.view.visible();
+    const ds = run.course.dirs;
+    const prev = ds[o.i - 1];
+    const spin = prev ? o.e.q - prev.q : 0;
+    const col = NS.worlds.WORLDS[run.world].accent;
+    /* a mirror flip squashes the world flat at its middle: a white veil hides that instant */
+    const flip = prev && prev.m !== o.e.m;
+    ctx.globalAlpha = flip ? 0.75 * k * k * k : 0.16 * k;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(v.x0, v.y0, v.w, v.h);
+    ctx.lineCap = 'round';
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 26; ++i) {
+      const seed = i * 97.13;
+      ctx.globalAlpha = k * (0.22 + (i % 4) * 0.07);
+      ctx.strokeStyle = i % 3 ? '#ffffff' : col;
+      ctx.lineWidth = 2 + (i % 3) * 2;
+      ctx.beginPath();
+      if (spin) {
+        const r = 140 + (seed * 7) % 900, a0 = (seed % 6.283) + o.a, sweep = 0.2 + k * 0.5;
+        if (spin > 0) ctx.arc(o.ax, o.ay, r, a0 - sweep, a0); else ctx.arc(o.ax, o.ay, r, a0, a0 + sweep);
+      } else {
+        const y = v.y0 + (seed * 13) % v.h, x = v.x0 + (seed * 29) % v.w, len = 120 + k * 280;
+        ctx.moveTo(x - len / 2, y);
+        ctx.lineTo(x + len / 2, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
+
   /* the whole run scene */
   function draw(run) {
     const cam = G.cam;
+    NS.sim.orient(run);
     NS.backdrop.draw(run, cam);
     ctx.save();
     WR.enter(cam);
     WR.ground(run);
     WR.plats(run);
+    WR.turnSigns(run);
     WR.hazards(run);
     if (run.bs && run.bs.chase) boss(run);
     ghost(run);
@@ -254,10 +301,10 @@
     if (run.mut && run.mut.dark && !run.demo) darkness(run);
     NS.backdrop.weather(run.world, cam);
     NS.backdrop.decor(cam);
-    NS.backdrop.vignette();
+    turnBlur(run, cam.o);
   }
 
   Object.assign(NS.actors, {
-    poseOf, chaserGap, runner, ghost, boss, shots, telegraphs, darkness, draw
+    poseOf, chaserGap, runner, ghost, boss, shots, telegraphs, darkness, turnBlur, draw
   });
 })();

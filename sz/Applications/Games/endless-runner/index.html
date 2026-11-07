@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online endless runner: a story campaign across five worlds with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals">
+<meta name="description" content="Free online endless runner: a story campaign across five worlds that turns left, up and down mid-level, with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Endless Runner -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online endless runner: a story campaign across five worlds with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals">
+<meta property="og:description" content="Free online endless runner: a story campaign across five worlds that turns left, up and down mid-level, with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/endless-runner/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Endless Runner",
   "url": "https://hawkynt.github.io/sz/Applications/Games/endless-runner/index.html",
-  "description": "Free online endless runner: a story campaign across five worlds with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals",
+  "description": "Free online endless runner: a story campaign across five worlds that turns left, up and down mid-level, with guardian chases and boss fights, Arcade, Zen, Daily Run and Boss Rush, 13 power-ups, a tech tree and seasonal festivals",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -96,8 +96,9 @@
         <tr><td>Space / W / Up</td><td>Jump (again in the air: double jump; release early for a short hop)</td></tr>
         <tr><td>S / Down</td><td>Slide on the ground, fast fall in the air</td></tr>
         <tr><td>Shift / D / Right</td><td>Dash (smashes small obstacles)</td></tr>
+        <tr><td>Arrow keys when the way turns</td><td>Follow the screen: the arrow away from the floor jumps, toward it slides, along the run dashes</td></tr>
         <tr><td>Mouse</td><td>Left click: jump, right click: slide, middle click or wheel: dash</td></tr>
-        <tr><td>Touch</td><td>Tap or swipe up: jump, swipe down: slide, swipe right: dash</td></tr>
+        <tr><td>Touch</td><td>Tap or swipe up: jump, swipe down: slide, swipe right: dash (swipes turn with the view)</td></tr>
         <tr><td>Esc / P</td><td>Pause (tech tree and collection from the pause menu)</td></tr>
         <tr><td>T</td><td>Tech tree</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
@@ -129,13 +130,14 @@
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
 <h1>Endless Runner - Free Online Runner Game with Story Campaign, Boss Chases, Tech Tree and Seasonal Festivals</h1>
-<p>Run, jump, double jump, slide and dash through procedurally built courses in five worlds: Sunpetal Meadows, Ember Canyon, Frostpeak Pass, Neon Metro and the Hollow Rift. Outrun a stampeding boar and an avalanche, defeat the Dune Wyrm, Warden Mk-II and the Hollow King, and relight the Beacon in this free HTML5 browser game.</p>
+<p>Run, jump, double jump, slide and dash through procedurally built courses in five worlds: Sunpetal Meadows, Ember Canyon, Frostpeak Pass, Neon Metro and the Hollow Rift - and when the story turns the way, run left, climb up or drop down. Outrun a stampeding boar and an avalanche, defeat the Dune Wyrm, Warden Mk-II and the Hollow King, and relight the Beacon in this free HTML5 browser game.</p>
 <h2>Features</h2>
 <ul>
 <li>Story campaign: 5 worlds, 25 stages, 75 stars, 2 guardian chases, 3 boss fights, cinematics and a world map</li>
 <li>6 modes: Story, Arcade, weekly Featured run, Zen, Daily Run and Boss Rush</li>
 <li>13 power-ups: Magnet, Shield, Double Score, Jetpack, Giant, Slow-Mo, Ghost, Rocket, Coin Rain, Phoenix Feather, Spring Shoes, Gem Rush and Shockwave</li>
 <li>Fences, crates, overhangs, walls, spikes, saws, flyers, falling rocks, rollers, pits, ledges, springs and boost pads - every course checked for fairness</li>
+<li>Story-driven turns mid-level: run back left over a collapsing bridge, climb a bell tower or a skyscraper facade, drop down a lava chimney or an elevator shaft - with their own scenery in every world</li>
 <li>Near-miss scoring, combo multiplier up to x5, best-run ghost and a best-distance flag</li>
 <li>25-node tech tree in five branches, bought with coins earned in every mode</li>
 <li>6 runners with perks, 14 outfits and 14 trails</li>
@@ -150,49 +152,51 @@
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
 <script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=131d923f"></script>
-<script src="js/core/namespace.js?v=365d516c"></script>
+<script src="js/core/namespace.js?v=e2274040"></script>
 <script src="js/core/constants.js?v=16249a8b"></script>
 <script src="js/core/rng.js?v=9b506379"></script>
 <script src="js/core/data-worlds.js?v=66be5e27"></script>
-<script src="js/core/data-story.js?v=b23f3546"></script>
+<script src="js/core/data-story.js?v=15d030f5"></script>
 <script src="js/core/data-items.js?v=92b84491"></script>
 <script src="js/core/data-tree.js?v=c3ea18dd"></script>
 <script src="js/core/data-cosmetics.js?v=651f3445"></script>
 <script src="js/core/data-goals.js?v=b0242dc1"></script>
 <script src="js/core/seasons.js?v=02ef7b5c"></script>
 <script src="js/core/physics.js?v=933b5b2a"></script>
-<script src="js/core/course.js?v=f850834d"></script>
+<script src="js/core/orient.js?v=3ce2a842"></script>
+<script src="js/core/course.js?v=aaa8968c"></script>
 <script src="js/core/solver.js?v=abbcef44"></script>
-<script src="js/core/rules.js?v=0881a230"></script>
+<script src="js/core/rules.js?v=56d1bf49"></script>
 <script src="js/core/state.js?v=8d68da82"></script>
-<script src="js/core/audio.js?v=0ea8c5f7"></script>
+<script src="js/core/audio.js?v=66897329"></script>
 <script src="js/core/save.js?v=39b82f90"></script>
 <script src="js/systems/fx.js?v=1a78a944"></script>
-<script src="js/systems/stream.js?v=c58de9ee"></script>
+<script src="js/systems/stream.js?v=06b2aa0d"></script>
 <script src="js/systems/powers.js?v=074aa1dd"></script>
 <script src="js/systems/hazards.js?v=22a31f00"></script>
 <script src="js/systems/pickups.js?v=eabb6624"></script>
 <script src="js/systems/player.js?v=49803a2d"></script>
-<script src="js/systems/bosses.js?v=45b13c4a"></script>
+<script src="js/systems/bosses.js?v=78fada3a"></script>
 <script src="js/systems/progress.js?v=bd392855"></script>
-<script src="js/systems/run.js?v=ba53b4e6"></script>
+<script src="js/systems/run.js?v=2e988fd1"></script>
 <script src="js/systems/autopilot.js?v=7de5e69d"></script>
 <script src="js/systems/cine.js?v=b70498bd"></script>
-<script src="js/systems/sim.js?v=4db07dba"></script>
-<script src="js/render/view.js?v=4c3f22d2"></script>
+<script src="js/systems/sim.js?v=75eed6b0"></script>
+<script src="js/render/view.js?v=e12c100c"></script>
 <script src="js/render/art-kit.js?v=54d07e86"></script>
 <script src="js/render/backdrop-art.js?v=6f4fbf10"></script>
-<script src="js/render/backdrop.js?v=c384155b"></script>
+<script src="js/render/vert-art.js?v=890e43a7"></script>
+<script src="js/render/backdrop.js?v=157a1148"></script>
 <script src="js/render/runner-art.js?v=64e13445"></script>
 <script src="js/render/prop-art.js?v=2bd65852"></script>
 <script src="js/render/boss-art.js?v=fa1ba029"></script>
-<script src="js/render/world.js?v=5d0ee213"></script>
-<script src="js/render/actors.js?v=f1d87d4d"></script>
-<script src="js/render/fx-render.js?v=ffaf9a02"></script>
-<script src="js/render/hud.js?v=63b6389e"></script>
+<script src="js/render/world.js?v=a04e9c04"></script>
+<script src="js/render/actors.js?v=a0bb4f3a"></script>
+<script src="js/render/fx-render.js?v=32601c2f"></script>
+<script src="js/render/hud.js?v=a6ec49b6"></script>
 <script src="js/render/cine-render.js?v=3d6af8c1"></script>
 <script src="js/render/frame.js?v=249b0379"></script>
-<script src="js/ui/kit.js?v=20c4faae"></script>
+<script src="js/ui/kit.js?v=40f6960b"></script>
 <script src="js/ui/widgets.js?v=1e43c514"></script>
 <script src="js/ui/screens.js?v=8a39ab1c"></script>
 <script src="js/ui/title.js?v=6176dc30"></script>
@@ -201,11 +205,11 @@
 <script src="js/ui/wardrobe.js?v=6a984bda"></script>
 <script src="js/ui/journal.js?v=e1fbde0b"></script>
 <script src="js/ui/results.js?v=ea3260a4"></script>
-<script src="js/ui/help.js?v=a26bf8a3"></script>
+<script src="js/ui/help.js?v=71627391"></script>
 <script src="js/ui/pause.js?v=180ffb16"></script>
-<script src="js/ui/touch.js?v=66bcd5f0"></script>
+<script src="js/ui/touch.js?v=29d5c0f0"></script>
 <script src="js/ui/status-bar.js?v=ebe78b5c"></script>
-<script src="js/ui/input.js?v=7d24941b"></script>
-<script src="js/app.js?v=d8111e8d"></script>
+<script src="js/ui/input.js?v=1b6c28a5"></script>
+<script src="js/app.js?v=4fc92ef3"></script>
 </body>
 </html>

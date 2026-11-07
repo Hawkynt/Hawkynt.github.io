@@ -22,7 +22,7 @@
       scores: [], daily: { key: '', best: 0, plays: 0 },
       stats: {}, day: { key: '', c: {}, quests: [] }, streak: { last: '', count: 0, best: 0 },
       season: { event: '', tokens: 0, claimed: [] }, ach: {},
-      seen: { intro: 0, help: 0, finale: 0, cine: {} }, opts: { shake: 1 },
+      seen: { intro: 0, help: 0, finale: 0, vert: 0, cine: {} }, opts: { shake: 1 },
     };
   }
 

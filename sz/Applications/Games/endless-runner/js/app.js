@@ -34,11 +34,14 @@
     requestAnimationFrame(loop);
   }
 
-  /* paint one world's scenery per idle menu frame so the first runs never stall */
+  /* paint one world's scenery per idle menu frame, then its climbs and drops, so the first
+     runs and turns never stall */
   function prewarm() {
-    if (warm >= 5 || G.screen === 'playing' || G.time < 0.6) return;
-    for (const L of ['far', 'mid', 'near']) NS.backdropArt.layer(L, warm);
-    NS.propArt.groundTile(warm);
+    if (warm >= 10 || G.screen === 'playing' || G.time < 0.6) return;
+    if (warm < 5) {
+      for (const L of ['far', 'mid', 'near']) NS.backdropArt.layer(L, warm);
+      NS.propArt.groundTile(warm);
+    } else while (NS.vertArt.warm(warm - 5));
     ++warm;
   }
 
