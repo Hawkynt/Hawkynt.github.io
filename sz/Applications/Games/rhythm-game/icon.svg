@@ -1,16 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <!-- Background circle -->
-  <circle cx="32" cy="32" r="30" fill="#1a0a3a" stroke="#8040ff" stroke-width="2"/>
-  <!-- Music note -->
-  <ellipse cx="22" cy="44" rx="7" ry="5" fill="#ff40a0"/>
-  <rect x="28" y="18" width="3" height="26" fill="#ff40a0"/>
-  <ellipse cx="42" cy="38" rx="7" ry="5" fill="#40a0ff"/>
-  <rect x="48" y="12" width="3" height="26" fill="#40a0ff"/>
-  <!-- Beam connecting notes -->
-  <rect x="28" y="12" width="23" height="3" fill="#fff" rx="1"/>
-  <!-- Hit indicators -->
-  <circle cx="16" cy="56" r="3" fill="#f44" opacity="0.8"/>
-  <circle cx="26" cy="56" r="3" fill="#4f4" opacity="0.8"/>
-  <circle cx="36" cy="56" r="3" fill="#44f" opacity="0.8"/>
-  <circle cx="46" cy="56" r="3" fill="#ff4" opacity="0.8"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c03aa0"/><stop offset="1" stop-color="#3a0a40"/></linearGradient></defs><rect x="2" y="3" width="44" height="44" rx="10" fill="#000" opacity=".28"/><rect x="2" y="2" width="44" height="44" rx="10" fill="url(#t)"/><path d="M12 2h24a10 10 0 0 1 10 10v6c-8-4-36-4-44 0v-6a10 10 0 0 1 10-10z" fill="#fff" opacity=".16"/><rect x="2.5" y="2.5" width="43" height="43" rx="9.5" fill="none" stroke="#000" stroke-opacity=".35"/><rect x="7" y="6" width="7" height="36" rx="2" fill="#fff" opacity=".12"/><rect x="16" y="6" width="7" height="36" rx="2" fill="#fff" opacity=".12"/><rect x="25" y="6" width="7" height="36" rx="2" fill="#fff" opacity=".12"/><rect x="34" y="6" width="7" height="36" rx="2" fill="#fff" opacity=".12"/><rect x="7" y="14" width="7" height="4" rx="1.5" fill="#ff5a8a" stroke="#1a1a2a" stroke-width=".8"/><rect x="16" y="24" width="7" height="4" rx="1.5" fill="#5ad0ff" stroke="#1a1a2a" stroke-width=".8"/><rect x="25" y="10" width="7" height="4" rx="1.5" fill="#ffd25a" stroke="#1a1a2a" stroke-width=".8"/><rect x="34" y="30" width="7" height="4" rx="1.5" fill="#7be08a" stroke="#1a1a2a" stroke-width=".8"/><rect x="5" y="37" width="38" height="3" rx="1.5" fill="#fff" opacity=".85"/><path d="M30 12v13" stroke="#1a1a2a" stroke-width="0"/></svg>
