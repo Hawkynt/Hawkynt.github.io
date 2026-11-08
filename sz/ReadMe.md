@@ -218,7 +218,7 @@ sz/
     freecell/                   FreeCell card game (Games)
     spider-solitaire/           Spider solitaire card game (Games)
     snake/                      Classic Snake game with particle effects (Games)
-    breakout/                   Breakout brick-breaker with power-ups (Games)
+    breakout/                   Prism Run -- brick breaker with a 5-fortress story, guardians, 5 modes, 12 power-ups, tech tree, skins, festivals (Games)
     space-invaders/             Space Invaders with shields and UFO bonus (Games)
     asteroids/                  Asteroids Enhanced -- 7 rock types, 6 enemy types, bosses, allies, zones, powerups, 4 modes, resizable field (Games)
     pacman/                     Pac-Man with 4-ghost AI and maze chase (Games)
@@ -1123,7 +1123,7 @@ Procedural background music for the games, no sound files. A song is data - `{ i
 - `enabled` / `toggle()` / `onChange(fn)` -- the music switch, remembered and shared by every game; the shared sound switch mutes it too
 - `compose(song, bar, intensity)` -- the notes of one bar, pure and deterministic (an A A' B A' phrase shape that varies every eight bars)
 
-Used by: Cookie Clicker.
+Used by: Cookie Clicker, Tetris, Breakout.
 
 **Spell Check Core** (`spell-check-core.js`):
 
