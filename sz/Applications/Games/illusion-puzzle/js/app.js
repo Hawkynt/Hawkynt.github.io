@@ -27,6 +27,7 @@
     lastTimestamp = timestamp;
 
     updateGame(dt);
+    NS.music.update(dt);
 
     FX.particles.update();
     FX.screenShake.update(dt * 1000);

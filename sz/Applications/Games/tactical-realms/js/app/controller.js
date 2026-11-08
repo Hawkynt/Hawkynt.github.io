@@ -478,6 +478,7 @@
       this._lastTime = now;
 
       this._update(dt);
+      if (TR.music) TR.music.update(dt);
       this._render();
 
       this._animFrame = requestAnimationFrame((t) => this._loop(t));

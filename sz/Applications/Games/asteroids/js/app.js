@@ -24,6 +24,7 @@
       acc -= STEP_MS;
       NS.sim.update(STEP);
     }
+    NS.music.update(elapsed / 1000);
     NS.frame.draw();
     NS.rockArt.warmStep(G.screen === 'playing' ? 1 : 3);
     NS.statusBar.tick(elapsed / 1000);
@@ -69,6 +70,7 @@
             else if (scr.isMenu()) scr.open('help', G.screen === 'help' ? G.returns.help : G.screen);
             break;
           case 'controls': SZ.Dialog.show('controlsBackdrop'); break;
+          case 'music': if (SZ.GameMusic) SZ.GameMusic.toggle(); break;
           case 'about': SZ.Dialog.show('dlg-about'); break;
         }
       },

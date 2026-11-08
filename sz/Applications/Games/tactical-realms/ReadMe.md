@@ -9834,3 +9834,7 @@ When `index.html` is implemented, this entry will be added to `Applications/mani
   category: 'Games'
 }
 ```
+
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: an epic title theme, an adventurous overworld theme per dimension, a warm funk in town, a quiet ambient at camp, a dark synthwave in the dungeons and a battle theme. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every dungeon floor and every overworld plays a song of its own. Battles build up and a victory pushes the music into the drop. The theme logic lives in `js/app/music.js`; Game > Music On/Off switches it (shared by every game).

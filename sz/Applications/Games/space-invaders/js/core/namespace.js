@@ -6,7 +6,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceInvaders || (SZ.SpaceInvaders = {});
 
-  const MODULES = ['constants', 'data', 'save', 'statusBar', 'audio', 'progress', 'view', 'backdrop', 'fx',
+  const MODULES = ['constants', 'data', 'save', 'statusBar', 'audio', 'music', 'progress', 'view', 'backdrop', 'fx',
     'special', 'powerups', 'boss', 'combat', 'fleet', 'waves', 'stages', 'player', 'collisions', 'sim',
     'widgets', 'screens', 'world', 'overlays', 'hud', 'title', 'campaignMap', 'hangar', 'armory', 'help',
     'frame', 'input', 'app'];

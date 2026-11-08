@@ -185,3 +185,7 @@ The career runs thirty days across five venues, six days each: every day is busi
 - [x] As a player, I can accumulate lifetime stats — days played, dishes served, perfect dishes — so that long-term progress is tracked
 - [x] As a player, I can open the top 10 high scores by tips from the Game menu so that personal records are reviewable
 - [x] As a player, I can have the save — coins, stars, upgrades, bests and stats — kept in localStorage so that the empire survives a reload
+
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per location (a sunny funk at the food truck, a bouncy chiptune in the corner diner, a smooth synthwave in the bistro, a quick house groove at the sushi bar, an epic swing in the Grand Hotel), a menu theme and a driving theme for Endless and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every career day plays a song of its own made from its location's theme. A busy, impatient room and the Rush Hour Bell raise the intensity: layers come in and the music pushes into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

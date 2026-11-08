@@ -38,6 +38,7 @@ Core (`js/core/`):
 - **`state.js`** -- The shared state object: screens and return targets, save, calendar, run, entity lists, feel timers, scoring, input, per-screen UI
 - **`save.js`** -- Loads and writes the save and the run snapshot (the only module touching `localStorage`), refreshes stats and the calendar (daily rollover at local midnight)
 - **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, throttled per name, quieter in Zen where kills play a pentatonic melody
+- **`music.js`** -- Soundtrack through the shared `SZ.GameMusic`: a theme per chapter (a cold synthwave drift through the Kuiper belt, a dubstep grind in the Ember Belt, soaring trance in the Crystal Reach), a heavier theme for every boss, a menu theme, calm Zen and a fast theme for Rush and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every story level plays a song of its own made from its world's theme. Bosses, combos and the last ship raise the intensity: layers come in and the music pushes into the drop.
 
 Systems (`js/systems/`), one simulation concern each:
 

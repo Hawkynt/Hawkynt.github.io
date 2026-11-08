@@ -34,6 +34,7 @@ Core (`js/core/`):
 - **`state.js`** -- The shared state object: screens, run and stage, entity lists, player, camera and scroll, feel timers, score and grazes, input, per-screen UI
 - **`save.js`** -- Loads and writes the v2 save (the only module touching `localStorage`) and refreshes the derived stats
 - **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, throttled per name and attenuated by distance
+- **`music.js`** -- Soundtrack through the shared `SZ.GameMusic`: a theme per sector (a synthwave patrol through Kepler Reach, an electro dogfight in the Crimson Expanse, blazing trance at the Helios Corona, a dubstep grind in the Abyss Rift, an epic siege at the Void Citadel), a heavier theme for every boss, a menu theme and fast themes for Endless, the Daily and Boss Rush. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every campaign mission plays a song of its own made from its world's theme. Bosses, crowded skies and a failing hull raise the intensity: layers come in and the music pushes into the drop.
 
 Systems (`js/systems/`), one simulation concern each:
 

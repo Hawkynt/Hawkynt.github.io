@@ -61,6 +61,7 @@
       fxScreen.draw(ctx);
       floatingText.draw(ctx);
       drawFade(dt);
+      NS.music.update(dt);
       updateStatusBar();
       animFrameId = requestAnimationFrame(gameLoop);
       return;
@@ -87,6 +88,7 @@
     drawOverlays();
     fxScreen.draw(ctx);
     drawFade(dt);
+    NS.music.update(dt);
     updateStatusBar();
 
     animFrameId = requestAnimationFrame(gameLoop);

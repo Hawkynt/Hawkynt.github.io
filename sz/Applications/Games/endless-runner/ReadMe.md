@@ -41,6 +41,7 @@ Near misses, coins, gems, smashes and power-ups build a combo whose multiplier c
   - `js/core/rules.js` -- profile shape and migration, tree stats and purchases, cosmetics, combo tiers, XP and levels, rewards, stars, quests, streaks, festival tiers, high scores
   - `js/core/state.js` -- the one shared state object
   - `js/core/audio.js` -- throttled sound effects, the coin scale and the ambient chimes
+  - `js/core/music.js` -- Soundtrack through the shared `SZ.GameMusic`: a theme per world (a bright house groove in the meadows, a hard electro drive through the canyon, a soaring trance line over the frost pass, a neon synthwave pulse in the metro, a breakneck drum & bass run through the Rift), a heavier theme for every guardian chase, a menu theme, calm Zen and a fast theme for Rush and the daily and weekly runs. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every story stage plays a song of its own made from its world's theme. Guardians, long combos and the faster stretches raise the intensity: layers come in and the music pushes into the drop.
   - `js/core/save.js` -- the only module touching localStorage: profile load/migrate/write and the run snapshot
   - `js/systems/fx.js` -- pooled particles, rings, floating texts, shake, flash, hit-stop and slow motion
   - `js/systems/stream.js` -- the run's physics environment, course upkeep, guardian drops, world changes and Boss Rush's turns on a cleared stretch

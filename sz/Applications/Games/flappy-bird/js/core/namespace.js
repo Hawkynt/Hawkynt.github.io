@@ -7,7 +7,7 @@
      time; the calls only happen once all scripts have run. Load order (index.html):
        pure      course, hazards, boss, seasons (SZ.Flappy* - also loaded by the tests)
        art       bird, cosmetics, bosses, seasons, story, power icons, scenery, UI kit
-       core      namespace, constants, data tables, state, services, save, progress, rules
+       core      namespace, constants, data tables, state, services, save, progress, rules, music
        systems   particles, goals, run, powers, bossfight, effects, cinematics, autosave,
                  flight, contact
        render    view, shapes, effects, world, hud, cinematic
@@ -17,7 +17,7 @@
   const NS = SZ.FlappyBird || (SZ.FlappyBird = {});
 
   const SLOTS = [
-    'C', 'state', 'services', 'save', 'progress', 'rules',
+    'C', 'state', 'services', 'save', 'progress', 'rules', 'music',
     'goals', 'run', 'powers', 'bossfight', 'fx', 'cine', 'autosave', 'flight', 'contact',
     'view', 'shapes', 'fxDraw', 'world', 'hud', 'cineDraw',
     'menu', 'nav', 'title', 'modes', 'map', 'nest', 'aviary', 'goalsUi', 'help', 'results', 'input',

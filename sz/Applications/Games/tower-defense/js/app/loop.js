@@ -1,6 +1,6 @@
 /* app/loop.js -- the requestAnimationFrame loop.
    Owns state: G.lastTimestamp
-   Reads: constants, env, widgets, effects, simulation, cinematics, frame, input and the shared state G. */
+   Reads: constants, env, widgets, effects, simulation, cinematics, music, frame, input and the shared state G. */
 ;(function() {
   'use strict';
 
@@ -55,6 +55,7 @@
     updateTooltip(dt);
     NS.input.updateHover();
 
+    NS.music.update(dt);
     drawFrame();
     updateStatusBar();
   }

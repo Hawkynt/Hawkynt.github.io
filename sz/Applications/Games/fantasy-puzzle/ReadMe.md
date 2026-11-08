@@ -159,3 +159,7 @@ The page also uses the shared desktop libraries `../../shared/game-effects.js` (
 - [x] As a user, my stars, shards, grimoire ranks, robes, daily puzzle state and lifetime cast and level stats persist in localStorage
 - [x] As a user, my ten best completions persist as high scores
 - [x] As a user, a corrupt or partial save falls back cleanly to defaults, so my game never breaks on load
+
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per realm (a crackling electro in the Ember Grove, flowing trance in the Tide Caverns, an earthy funk on the Stone Peaks, an airy synthwave over the Sky Ruins, an epic choir-like swell in the Elemental Sanctum), a menu theme and a theme for the bonus trials. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every level plays a song of its own made from its realm's theme. Thinking stays calm, running low on mana lifts the music and a solved puzzle pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

@@ -189,7 +189,7 @@ sz/
       syntax-highlighter.css    Token color classes for syntax highlighting (26 token types)
       syntax-highlighter.js     SZ.SyntaxHighlighter (tokenizer for 19 languages, highlightBlock/highlightLine)
       game-effects.js           SZ.GameEffects (ParticleSystem, ScreenShake, FloatingText, drawGlow)
-      game-music.js             SZ.GameMusic (procedural soundtrack: themes from data, crossfades, intensity, stingers)
+      game-music.js             SZ.GameMusic (procedural soundtrack: styles, an endless arranger, level variants, crossfades, intensity, stingers)
     libs/                       Vendored third-party libraries (offline-capable)
       mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
       jszip.min.js              ZIP creation for DOCX export (MIT)
@@ -1118,15 +1118,19 @@ Used by: Snake, Breakout, Space Invaders, Asteroids, Pac-Man, Bomberman, Space C
 
 **Game Music** (`game-music.js`):
 
-Procedural background music for the games, no sound files. A song is data - `{ id, bpm, root, scale, prog, swing, seed, layers: { pad, bass, arp, lead, bells, drums } }`, each layer with its volume, wave, pattern and the intensity it needs. JS provides `SZ.GameMusic`:
+Procedural background music for the games, no sound files. A song is data - `{ id, style, bpm, root, scale, prog, swing, seed, layers }`. A song with a **style** (`house`, `trance`, `electro`, `dnb`, `dubstep`, `chip`, `synthwave`, `funk`, `epic`, `ambient`) is *arranged*: the style brings tempo, sounds and drum kits and one of three forms, and the song runs forever in passes - the first opens with an intro, then groove, build-up (riser, snare roll speeding up, the filter opening, a held breath before the drop), drop (crash, full kit, supersaw hook, chord stabs, the band pumping against the kick) and breakdown. Every pass changes something - a new verse melody, sometimes new harmony, a longer groove, a second drop melody, a half-time drop, a key change - while the hook stays, so a song is recognisable without looping. Calm styles (`ambient`) never build or drop; song styles (`chip`, `synthwave`, `funk`, `epic`) use verse, pre-chorus, chorus and bridge. Melodies come from rhythm templates with step-wise contours and land on chord tones on strong beats. Instruments: supersaw, pluck, wobble, reese and sub basses, bells, kick, snare, clap, closed and open hats, crash, toms and the riser; the band runs through a section filter, the kick's sidechain duck, a level per section and a glue compressor. A song without a style still plays as a plain loop exactly as before (`{ pad, bass, arp, lead, bells, drums }` layers, A A' B A' phrases). JS provides `SZ.GameMusic`:
 
 - `play(song)` -- start or crossfade to a song (`null` fades out); bars are scheduled ahead on the shared `SZ.GameAudio` context
-- `setIntensity(0..1)` -- layers come in as it rises (e.g. drums only during a Frenzy)
+- `setIntensity(0..1)` -- layers come in as it rises; at full intensity breakdowns are skipped and a groove jumps into a build-up and on into the drop
+- `variant(theme, key)` -- a song of its own for a level (`key`): same style, a nearby key and tempo, its own progression, melody and arpeggio; the same object for the same key, so games can compare songs by identity
 - `stinger(name)` -- a short phrase in the current key (`win`, `unlock`, `lose`, `level`, `rare`)
 - `enabled` / `toggle()` / `onChange(fn)` -- the music switch, remembered and shared by every game; the shared sound switch mutes it too
-- `compose(song, bar, intensity)` -- the notes of one bar, pure and deterministic (an A A' B A' phrase shape that varies every eight bars)
+- `compose(song, bar, intensity, pos)` -- the notes of one bar, pure and deterministic; `planCycle`, `start`, `advance`, `sectionOf` expose the arranger, `position` where the player is (pass, section, bar)
+- `render(song, seconds, intensity)` -- renders offline into a buffer with its peak and loudness (browsers), used by the browser test to check levels and save WAVs
 
-Used by: Cookie Clicker, Tetris, Breakout, Bubble Bobble.
+Tests: `node sz/Applications/shared/tests/game-music.test.js` (arranger, sections, variants, every style scheduled on a stand-in audio context); `node sz/Applications/Games/e2e/run.js music` renders every style in a real browser, checks clipping and loudness and writes WAVs.
+
+Used by every game but the Rhythm Game: Tetris, Breakout, Bubble Bobble, Minesweeper, Cookie Clicker, Space Mining, Endless Runner, Snake, Pac-Man, Asteroids, Bomberman, Boulder Dash, Flappy Bird, Tower Defense, Dome Keeper, Space Combat, Space Invaders, Platformer, Physics Puzzle, Fantasy Puzzle, Cooking Game, Space Racing, Space Farming, Card Games, Fantasy Cards, Space Puzzle, Mind Puzzle, Illusion Puzzle and Tactical Realms.
 
 **Spell Check Core** (`spell-check-core.js`):
 

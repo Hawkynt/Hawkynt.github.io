@@ -24,6 +24,7 @@
     G.lastTimestamp = timestamp;
 
     Flight.update(dt);
+    NS.music.update(dt);
     View.beginFrame();
     View.draw();
     FxDraw.drawScreenFx();
@@ -63,6 +64,7 @@
         NS.autosave.saveNow();
         SZ.Dlls.User32.DestroyWindow();
       },
+      music: () => { if (SZ.GameMusic) SZ.GameMusic.toggle(); },
       controls: () => SZ.Dialog.show('controlsBackdrop'),
       about: () => SZ.Dialog.show('dlg-about')
     };

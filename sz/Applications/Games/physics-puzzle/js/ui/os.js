@@ -79,6 +79,9 @@
         if (G.state === 'play') flow.pauseGame();
         flow.openHelp(G.state === 'pause' ? 'pause' : 'title');
         break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
       case 'controls':
         if (G.state === 'play') flow.pauseGame();
         SZ.Dialog.show('controlsBackdrop');

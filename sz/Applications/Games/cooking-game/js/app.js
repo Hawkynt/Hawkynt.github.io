@@ -126,6 +126,7 @@
     updateFx(dt);
     fx.update(dt);
     screenShake.update(dt * 1000);
+    NS.music.update(dt);
 
     draw();
     requestAnimationFrame(gameLoop);
@@ -141,6 +142,9 @@
         break;
       case 'high-scores':
         showHighScores();
+        break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
       case 'exit':
         if (window.parent !== window)

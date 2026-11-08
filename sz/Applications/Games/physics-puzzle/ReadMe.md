@@ -33,6 +33,7 @@ Plain scripts loaded in dependency order by `index.html`, no build step. The pur
 - `context.js` — the constants and the shared context `G`: canvas, drawing kit, module references, the effect systems (field, view and menu particles, shake, slow motion, flash, floating texts) and the live state.
 - `save.js` — loading and writing the save in localStorage, refreshing the Tech Tree stats, the equipped skin and the local date.
 - `sound.js` — synthesized sound effects, throttled per effect.
+- `music.js` — Soundtrack through the shared `SZ.GameMusic`: a theme per world (a tinkering funk in the workshop, a warm synthwave in the greenhouse, crisp trance in the cryo lab, a hot electro beat at the volcano forge, a floating ambient drift on the orbit station), a menu theme, a calm sandbox theme and a theme for trick shots and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every level plays a song of its own made from its world's theme. Aiming stays calm, a shot in flight lifts the music and a solved level pushes it into the drop.
 
 `js/play/` — one level being played:
 

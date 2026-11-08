@@ -29,6 +29,7 @@
     const p = G.perf;
     p.sim = performance.now() - s0;
     p.simAvg = p.simAvg * 0.95 + p.sim * 0.05;
+    NS.music.update(elapsed / 1000);
     NS.frame.draw(Math.min(0.1, elapsed / 1000));
     NS.statusBar.tick();
     prewarm();
@@ -78,6 +79,7 @@
             if (G.screen !== 'cine') scr.open('help', G.screen === 'help' ? G.back.help : G.screen);
             break;
           case 'controls': if (SZ.Dialog) SZ.Dialog.show('controlsBackdrop'); break;
+          case 'music': if (SZ.GameMusic) SZ.GameMusic.toggle(); break;
           case 'about': if (SZ.Dialog) SZ.Dialog.show('dlg-about'); break;
         }
       },

@@ -104,4 +104,17 @@ check('at least 40 achievements', NS.metaData.ACHIEVEMENTS.length >= 40, NS.meta
 /* payout */
 const pay = P.payout(P.newProfile(), { mode: 'marathon', score: 50000, lines: 60, won: false });
 check('a game pays shards and XP', pay.shards > 100 && pay.xp > 200);
+/* music: every stage plays a song of its own made from its world's theme */
+{
+  const saved = { run: G.run, screen: G.screen, cine: G.cine };
+  G.cine = null;
+  G.screen = 'game';
+  G.run = { mode: 'story', stage: 'a-1', world: 0, game: { level: 1 } };
+  const s1 = NS.music.themeFor();
+  G.run = { mode: 'story', stage: 'a-2', world: 0, game: { level: 1 } };
+  const s2 = NS.music.themeFor();
+  G.run = { mode: 'story', stage: 'a-1', world: 0, game: { level: 1 } };
+  check('every stage has a song of its own in its world\'s style', s1 !== s2 && s1.style && s1.style === s2.style && NS.music.themeFor() === s1);
+  G.run = saved.run; G.screen = saved.screen; G.cine = saved.cine;
+}
 done();

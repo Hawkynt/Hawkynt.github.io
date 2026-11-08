@@ -91,6 +91,7 @@
     flash.update(dt);
     flash.draw(ctx, v);
     Hud.drawFade(dt, v);
+    NS.music.update(dt);
     updateStatusBar();
     requestAnimationFrame(gameLoop);
   }
@@ -140,6 +141,9 @@
       case 'tutorial':
         if (G.screen === 'play') Pause.pauseGame();
         Help.openHelp(G.screen === 'pause' ? 'pause' : 'title');
+        break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
       case 'controls':
         if (G.screen === 'play') Pause.pauseGame();

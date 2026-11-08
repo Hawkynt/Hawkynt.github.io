@@ -17,6 +17,7 @@
       SZ.Dialog.show('highScoresBackdrop');
     },
     'exit': () => { if (User32?.DestroyWindow) User32.DestroyWindow(); },
+    'music': () => { if (SZ.GameMusic) SZ.GameMusic.toggle(); },
     'controls': () => SZ.Dialog.show('controlsBackdrop'),
     'about': () => SZ.Dialog.show('dlg-about')
   };

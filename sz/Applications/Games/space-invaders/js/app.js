@@ -34,6 +34,7 @@
       simAccumulator -= SIM_STEP;
       update(SIM_STEP);
     }
+    NS.music.update(elapsed / 1000);
     draw();
     requestAnimationFrame(gameLoop);
   }
@@ -60,6 +61,9 @@
           break;
         case 'controls':
           SZ.Dialog.show('controlsBackdrop');
+          break;
+        case 'music':
+          if (SZ.GameMusic) SZ.GameMusic.toggle();
           break;
         case 'about':
           SZ.Dialog.show('dlg-about');

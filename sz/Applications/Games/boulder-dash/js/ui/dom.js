@@ -69,6 +69,7 @@
     'exit': () => { NS.run.autosave(); if (User32 && User32.DestroyWindow) User32.DestroyWindow(); },
     'tutorial': () => scr.openOverlay('help'),
     'controls': () => { if (G.screen === 'playing') scr.pause(); SZ.Dialog.show('controlsBackdrop'); },
+    'music': () => { if (SZ.GameMusic) SZ.GameMusic.toggle(); },
     'about': () => { if (G.screen === 'playing') scr.pause(); SZ.Dialog.show('dlg-about'); }
   };
 

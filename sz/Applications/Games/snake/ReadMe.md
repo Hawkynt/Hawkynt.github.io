@@ -39,6 +39,7 @@ Core (`js/core/`):
 - **`rules.js`** -- Pure progression rules: default save and migration, tree states, purchases and stats, combo and fruit scoring, stars, scale rewards, story unlocks, cosmetic unlocks, the streak, quests and festival tiers
 - **`state.js`** -- The shared state object: screens and return targets, profile and stats, the run, calendar, feel timers, input, hit areas, per-screen UI
 - **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, the rising fruit scale for combos and the soft chime ambience
+- **`music.js`** -- Soundtrack through the shared `SZ.GameMusic`: a theme per world (a funky stroll through the clover meadow, a dusty house groove in the dunes, glassy trance on the glacier, a dubstep rumble at the volcano, synthwave in the neon city, a pocket chiptune in the classic world and a hard electro grid), a heavier theme for every boss, a menu theme, calm Zen and a fast theme for Rush, Time Attack and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every story stage plays a song of its own made from its world's theme. Bosses, combos and a running-out clock raise the intensity: layers come in and the music pushes into the drop.
 - **`save.js`** -- The only module touching `localStorage`: the v2 profile with migration, the run snapshot, and the derived stats
 
 Systems (`js/systems/`), one simulation concern each:

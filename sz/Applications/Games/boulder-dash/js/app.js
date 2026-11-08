@@ -53,6 +53,7 @@
     const sim = performance.now() - t0;
     G.perf.sim = sim;
     G.perf.avgSim = G.perf.avgSim * 0.95 + sim * 0.05;
+    NS.music.update(elapsed / 1000);
     NS.frame.draw(Math.min(0.05, elapsed / 1000));
     slow += elapsed;
     if (slow >= 1000) { slow -= 1000; housekeeping(); }

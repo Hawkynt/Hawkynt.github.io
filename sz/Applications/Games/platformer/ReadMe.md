@@ -36,6 +36,7 @@ Plain scripts, no build step: `index.html` loads them in dependency order, each 
 - `js/core/context.js` — the shared state `G`: canvas and drawing kit, particle pools, shake/hit-stop/flash, input sets, current screen, the running level, results, toasts, menu cursor and per-screen state.
 - `js/core/view.js` — the 1280 x 720 logical view, letterboxed with devicePixelRatio awareness, the world zoom and pointer mapping.
 - `js/core/sound.js` — sound effects through the shared synthesizer, throttled per effect.
+- `js/core/music.js` — Soundtrack through the shared `SZ.GameMusic`: a theme per world (a sunny chiptune skip across the meadows, a sparkling synthwave in the caverns, soaring trance on the frost peaks, a pounding electro forge, an epic climb up the citadel), a heavier theme for every boss, a menu theme and fast themes for Endless, Trials and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every level plays a song of its own made from its world's theme. Bosses and the last heart raise the intensity: layers come in and the music pushes into the drop.
 - `js/core/util.js` — the local date key and the time format.
 - `js/core/storage.js` — the save and the high scores in localStorage, and the High Scores dialog table.
 - `js/core/input.js` — the key map and the per-step input snapshot.
