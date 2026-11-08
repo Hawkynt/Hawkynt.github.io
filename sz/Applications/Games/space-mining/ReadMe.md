@@ -8,9 +8,9 @@ In every belt you can found an outpost: 23 buildings on a build grid - rigs, sip
 
 The game runs a fixed 60 Hz simulation in world units and draws one frame per display refresh. The view is a 1280 x 720 plane fitted into the window: menus stay letterboxed inside it, while the belt, the scenery and the HUD use every extra pixel of a wider or taller window. Pointer positions are mapped back into the plane on every event, so clicks stay exact after resizing or maximizing.
 
-A trip is one flight into a belt of 6,400 x 4,600 px. The belt is laid out from a seed: two warped bands of rubble plus clumps from value noise, open space round the dock, each rock's ore drawn from the belt's mix (rare ore boosted by research, uranium gathering in radiation fields). The ship flies with inertia; W and S thrust along the nose and back, A and D turn the ship (or the right mouse button thrusts toward the cursor, and the nose then turns to the thrust or the laser). The laser is a ray cast through a uniform spatial grid to the first rock, pirate or wreck. Damage heats a rock and chips ore off it; at zero hit points it cracks into two or three rocks one size smaller plus ore nuggets, with chunks, dust, sparks, a shockwave, screen shake and hit-stop for the big ones. Volatile rocks explode and set off their neighbours. Nuggets drift until the tractor beam reels them in, as long as the hold has space; mining drones pick their own rocks, drill, sweep up and fly their baskets home.
+A trip is one flight into a belt of 6,400 x 4,600 px. The belt is laid out from a seed: two warped bands of rubble plus clumps from value noise, open space round the dock, each rock's ore drawn from the belt's mix (rare ore boosted by research, uranium gathering in radiation fields). The ship flies with inertia; W and S thrust along the nose and back, A and D turn the ship (or the right mouse button thrusts toward the cursor and the nose turns to the thrust). The laser fires along the nose and bends inside a cone of about 35 degrees to either side: the mouse aim is clamped to that cone, and Space locks onto the pirate or ore rock whose edge sits closest to the nose; while firing the ship only eases toward the aim at about 1 rad/s instead of snapping round. The laser is a ray cast through a uniform spatial grid to the first rock, pirate or wreck. Damage heats a rock and chips ore off it; at zero hit points it cracks into two or three rocks one size smaller plus ore nuggets, with chunks, dust, sparks, a shockwave, screen shake and hit-stop for the big ones. Volatile rocks explode and set off their neighbours. Nuggets drift until the tractor beam reels them in, as long as the hold has space; mining drones pick their own rocks, drill, sweep up and fly their baskets home - and when the hold has no room they haul the basket to the station, bank it and fly straight back out.
 
-Docking (slowly, inside the dock ring) plays the docking sequence and ends the trip: the hold goes to the station warehouse, the bill for fuel and repairs is paid, and one market cycle passes. Each ore has a mean-reverting random-walk price factor, a saturation that your own sales push up and that recovers every cycle, booms and busts announced in the news, and a price history. A refinery smelts three ore into one bar worth more; contracts ask for ore or bars and pay credits plus research data. Credits buy hulls, hangar upgrades (six of them, ten levels each, rising costs), station modules (which appear on the station) and belt licences; research data, earned from rare ore, discoveries, contracts and achievements, buys the tech tree, whose purchases take effect at once - also from the pause menu mid-trip.
+Docking (slowly, inside the dock ring) banks the hold in the station warehouse and refuels and repairs the ship for the usual bill, and the flight goes on. The trip ends only when the pilot returns home (Enter while docked, the Return home button, or the pause menu): the docking sequence plays, the last hold is settled, the report counts everything banked during the trip, and one market cycle passes. Each ore has a mean-reverting random-walk price factor, a saturation that your own sales push up and that recovers every cycle, booms and busts announced in the news, and a price history. A refinery smelts three ore into one bar worth more; contracts ask for ore or bars and pay credits plus research data. Credits buy hulls, hangar upgrades (six of them, ten levels each, rising costs), station modules (which appear on the station) and belt licences; research data, earned from rare ore, discoveries, contracts and achievements, buys the tech tree, whose purchases take effect at once - also from the pause menu mid-trip.
 
 All art is painted once into cached canvases at twice its size: hulls from layered lit plates with five bank frames, asteroid bodies per size, variant and belt palette (regolith mottling, strata, craters with lit rims, terminator, rim light) with separate ore-vein, vein-glow and crack overlays, nuggets, the station in parts, pirates, wrecks, the gravity-well disc, and per-belt backdrops (domain-warped fbm nebulae, lit planets with bands and rings, moons, suns, a black hole, three star tiles and a far rubble layer). Per frame the game only blits sprites, draws additive glows and strokes; no blur filters are used. Effects are pooled particles (glows with colour ramps, sparks batched into one path per colour, smoke, rock dust, tumbling chunks, embers, rings, floating texts). A busy scene (pirates, storm, drones, hundreds of particles and nuggets) takes about 2.5 ms of script per frame.
 
@@ -71,10 +71,10 @@ Systems (`js/systems/`), one simulation concern each:
 - **`camera.js`** -- The chase camera with velocity and aim look-ahead, speed zoom, cinematic focus, shake; world and view mapping
 - **`asteroids.js`** -- Seeded belt layout, rock hit points, damage, heat and chipping, fracture into children and nuggets, volatile chains, drift, respawning, geodes and the Crown Heart
 - **`ship.js`** -- The mining ship: inertia flight, boost, banking, fuel, edges, bouncing off rocks with impact damage, shield and hull, blasts, exhaust
-- **`mining.js`** -- The laser ray cast, fault cracks, the split beam, nuggets and salvage, the tractor beam, the hold, the scanner pulse, seismic charges
+- **`mining.js`** -- The laser cone, its lock and the ray cast, fault cracks, the split beam, nuggets and salvage, the tractor beam, the hold, the scanner pulse, seismic charges
 - **`hazards.js`** -- Radiation fields, gravity wells with infall, solar storms with warning and front
 - **`pirates.js`** -- Pirate waves, skimmers that steal ore, raiders and gunships that shoot, rock avoidance, bolts, the point-defense turret, loot
-- **`drones.js`** -- Mining drones: launch, target choice (Prospector AI), drilling, sweeping, returning, unloading, rebuilding
+- **`drones.js`** -- Mining drones: launch, target choice (Prospector AI), drilling, sweeping, returning, unloading, hauling to the station when the hold is full, rebuilding
 - **`formations.js`** -- Formation slots (line, wedge, box, circle), rotation, matching units to slots, group speed
 - **`orders.js`** -- Issuing orders in formation, queued waypoints, patrol legs, escort stations, when an order is done
 - **`base.js`** -- The outpost in a trip: founding, placing, upgrading, demolishing, quarantine, sterilise, purge, EMP, construction, the beat (network, crew, power, production, outbreak), turrets, shields, repair bays, factories, unloading at the hub, damage, alerts, cargo pods
@@ -85,7 +85,7 @@ Systems (`js/systems/`), one simulation concern each:
 - **`events.js`** -- The trip's event schedule, the distress mission, reactions to outbreaks and hijacks, the captain's log
 - **`command.js`** -- The command view: camera, pause-and-plan, selection, groups, formations, smart orders, placement
 - **`resume.js`** -- Autosave snapshot of a running trip and its exact restore
-- **`trip.js`** -- A trip from launch to report: belt setup, outpost and fleet, specials, docking, fuel and hull, mode clocks, Siege, autosave, discoveries, wrecks, the Crown, settling the hold, the outposts' cycle, results
+- **`trip.js`** -- A trip from launch to report: belt setup, outpost and fleet, specials, banking at the dock, returning home, fuel and hull, mode clocks, Siege, autosave, discoveries, wrecks, the Crown, settling the hold, the outposts' cycle, results
 - **`cinematics.js`** -- The sequencer for full-screen and in-world cinematics, their timed events and skipping
 - **`sim.js`** -- One fixed step in order: input, command camera (pause-and-plan stops here), hit-stop, slow motion, every system, the trip, effects, camera
 
@@ -142,6 +142,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - **`rules.test.js`** -- Tree, upgrades, hulls, modules, licences, derived stats, the Daily loadout, hold space, achievements
 - **`economy.test.js`** -- Prices, saturation and recovery, drift bounds, news, history, refining, contracts, service costs
 - **`save.test.js`** -- Migration of the old high scores and tutorial flag, repair of damaged saves, round trip, storage failures
+- **`flight.test.js`** -- The laser cone and its lock, the slow turn while firing, banking at the dock without ending the trip, drones hauling to the station, returning home
 - **`world.test.js`** -- Grid queries, seeded belts, fracture and yield, volatile chains, the laser, the tractor and a full hold, drones, docking, endings, belt hazards
 - **`art.test.js`** -- Every sprite paints and is cached within budget, blit cost, a busy frame's draw-call budget, no blur filters, file sizes
 - **`boot.test.js`** -- The whole game in the fake browser: every screen and cinematic, keys, pausing, research mid-trip, a tow, Gold Rush and Daily Belt scores
@@ -155,13 +156,14 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 ### Flight & Mining
 - [x] As a player, I can fly my mining ship with inertia ship-relative: W/S thrust along the nose and A/D turn it, or thrust toward the cursor with the right mouse button
-- [x] As a player, I can drill with the mining laser at the cursor, or with Space and auto-aim, and see the beam glow, the rock heat up and sparks and dust fly
+- [x] As a player, I can drill with the mining laser along the nose (bending toward the cursor or, with Space, the ore nearest the nose) without the ship spinning round, and see the beam glow, the rock heat up and sparks and dust fly
 - [x] As a player, I can crack asteroids of four sizes into smaller rocks and ore nuggets with chunks, dust, shockwaves, screen shake and hit-stop
 - [x] As a player, I can reel nuggets into my hold with the tractor beam and see the hold fill by ore colour
 - [x] As a player, I can bounce off rocks and take impact damage when I hit them too fast
 - [x] As a player, I can boost, ping the belt with a scanner pulse and drop seismic charges once researched
 - [x] As a player, I can launch mining drones that drill rocks on their own and bring the ore home
-- [x] As a player, I can fly back into the dock ring to end a trip with a docking sequence
+- [x] As a player, I can fly into the dock ring to bank the hold and keep mining, and end the trip only when I choose to return home
+- [x] As a player, my drones haul to the station by themselves when my hold is full
 
 ### Belts & Hazards
 - [x] As a player, I can mine five belts - Kessler Drift, Amber Reach, Verdant Shoals, Crimson Maw and Void Crown - each with its own scenery, ore and hazards

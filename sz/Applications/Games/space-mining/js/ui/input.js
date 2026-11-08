@@ -69,6 +69,7 @@
       case 'KeyQ': NS.mining.pulse(); break;
       case 'KeyC': NS.mining.dropCharge(); break;
       case 'KeyF': NS.drones.toggle(); break;
+      case 'Enter': case 'NumpadEnter': if (G.run && G.run.docked) NS.trip.returnHome(); break;
       case 'Escape':
       case 'KeyP': scr.pause(); break;
       case 'KeyH': scr.pause(); scr.openHelp('paused'); break;
@@ -134,6 +135,12 @@
         NS.commandInput.down(e, p);
         return;
       }
+      /* flight buttons (the dock's Return home) take the press before the sticks and the laser */
+      const hb = e.button === 2 ? -1 : W.hitAt(p.x, p.y);
+      if (hb >= 0) {
+        W.activate(G.hitAreas[hb]);
+        return;
+      }
       if (inp.touch) {
         NS.touch.down(e.pointerId, p.x, p.y);
         return;
@@ -192,33 +199,19 @@
   }
 
   /* keyboard drilling: keep the current rock, else the nearest ore rock ahead (pirates first) */
+  /* keyboard firing locks onto the ore (or pirate) closest to the nose inside the laser's cone
+     and keeps the lock while it stays in the cone */
   function autoAim(s) {
-    const range = LASER_RANGE * 0.95;
-    if (autoTarget && autoTarget.alive && (autoTarget.x - s.x) * (autoTarget.x - s.x) + (autoTarget.y - s.y) * (autoTarget.y - s.y) < range * range * 1.2)
-      return autoTarget;
-    autoTarget = null;
-    let best = null, bs = Infinity;
-    for (let i = 0; i < G.pirates.length; ++i) {
-      const p = G.pirates[i];
-      const d = Math.sqrt((p.x - s.x) * (p.x - s.x) + (p.y - s.y) * (p.y - s.y));
-      if (p.alive && d < range && d < bs) { bs = d; best = p; }
+    const M = NS.mining;
+    if (autoTarget && autoTarget.alive) {
+      const dx = autoTarget.x - s.x, dy = autoTarget.y - s.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d - (autoTarget.r || 0) < LASER_RANGE && Math.abs(NS.rng.angleDiff(s.angle, Math.atan2(dy, dx))) < M.AIM_CONE + 0.15) return autoTarget;
     }
-    if (!best) {
-      const list = NS.asteroids.queryRocks(s.x, s.y, range, near);
-      for (let i = 0; i < list.length; ++i) {
-        const o = list[i];
-        if (!o.alive) continue;
-        const dx = o.x - s.x, dy = o.y - s.y;
-        const d = Math.sqrt(dx * dx + dy * dy) - o.r;
-        if (d > range) continue;
-        const ahead = (dx * Math.cos(s.angle) + dy * Math.sin(s.angle)) / (d + o.r || 1);
-        const score = d * (1.6 - ahead) + (o.ore ? 0 : 140) + (o.volatile ? 400 : 0);
-        if (score < bs) { bs = score; best = o; }
-      }
-    }
-    autoTarget = best;
-    return best;
+    autoTarget = M.coneTarget(s);
+    return autoTarget;
   }
+
 
   function sample() {
     /* keys fly the ship like a ship: W/S thrust along the nose, A/D turn it */

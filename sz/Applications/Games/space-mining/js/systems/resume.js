@@ -23,6 +23,9 @@
     const snap = { v: 1, mode: run.mode, zone: run.zoneIndex, seed: run.seed, day: NS.rng.dayKey(), run: {}, ship: null, rocks: [], units: [], enemies: [], clouds: [] };
     for (let i = 0; i < RUN_KEYS.length; ++i) snap.run[RUN_KEYS[i]] = run[RUN_KEYS[i]];
     snap.run.cargo = Object.assign({}, run.cargo);
+    snap.run.banked = Object.assign({}, run.banked);
+    snap.run.bankedUnits = run.bankedUnits || 0;
+    snap.run.service = run.service || 0;
     snap.run.plan = run.plan || [];
     snap.ship = { x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), angle: r1(s.angle), hull: r1(s.hull), fuel: r1(s.fuel), shield: r1(s.shield) };
     for (let i = 0; i < G.rocks.length; ++i) {
@@ -81,6 +84,10 @@
     run.cargo = {};
     for (const id in snap.run.cargo) if (ORE_BY_ID[id] && snap.run.cargo[id] > 0) run.cargo[id] = snap.run.cargo[id];
     run.plan = Array.isArray(snap.run.plan) ? snap.run.plan : [];
+    run.banked = {};
+    for (const id in snap.run.banked || {}) if (ORE_BY_ID[id] && snap.run.banked[id] > 0) run.banked[id] = snap.run.banked[id];
+    run.bankedUnits = +snap.run.bankedUnits || 0;
+    run.service = +snap.run.service || 0;
     const s = G.ship, p = snap.ship;
     s.x = p.x; s.y = p.y; s.vx = p.vx; s.vy = p.vy; s.angle = p.angle;
     s.hull = Math.min(s.maxHull, p.hull);

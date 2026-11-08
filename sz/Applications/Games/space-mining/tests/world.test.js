@@ -94,10 +94,11 @@ d.ore = 'silver'; d.load = 3; d.state = 'return'; d.x = s.x + 300; d.y = s.y;
 H.run(NS, 120);
 check('a drone flies home and unloads its basket', G.run.cargo.silver === 3 && d.state !== 'return');
 
-/* docking */
+/* docking banks the hold; returning home ends the trip */
 s.x = G.dock.x + 20; s.y = G.dock.y; s.vx = s.vy = 0; G.run.leftDock = true;
 H.run(NS, 4);
-check('slow flight into the ring starts the docking sequence', G.cine && G.cine.kind === 'docking');
+check('slow flight into the ring banks the hold and keeps flying', !G.cine && G.screen === 'playing' && G.run.bankedUnits >= 4);
+NS.trip.returnHome();
 H.run(NS, 60 * 4);
 check('docking ends in the trip report', G.screen === 'results' && G.ui.results.reason === 'dock');
 check('the hold reaches the warehouse', G.save.store.ore.copper >= 1 && G.save.store.ore.silver >= 3);

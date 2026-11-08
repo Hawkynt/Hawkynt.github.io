@@ -89,8 +89,10 @@
     if (relative) target = s.angle;
     else if (want) target = Math.atan2(my, mx);
     else if (inp.firing) target = Math.atan2(inp.aimWY - s.y, inp.aimWX - s.x);
+    /* the laser bends inside its cone, so firing only eases the nose toward the lock */
+    const rate = !want && inp.firing ? NS.mining.AIM_TURN : 7;
     const d = angleDiff(s.angle, target);
-    const auto = clamp(d, -7 * dt, 7 * dt);
+    const auto = clamp(d, -rate * dt, rate * dt);
     s.angle += auto;
     const turn = auto + turnKey * SHIP_TURN * dt;
     s.turnRate += (turn / Math.max(dt, 1e-4) - s.turnRate) * Math.min(1, dt * 8);
