@@ -124,6 +124,15 @@ check('the team run ends in the results with partner saves and the best wall', G
 frames(5);
 for (let w = 0; w < 5; ++w) { NS.play.start('story', { stage: W.WORLDS[w].id + '-6' }); NS.cine.end(); frames(2); }
 check('every fortress and guardian draws', G.run.game.boss && G.run.game.boss.w === 4);
+/* a ball bouncing off the side wall is only a click: no WALL banner, no restarted wall entry */
+NS.play.start('arcade', { seed: 3 });
+NS.cine.end();
+G.run.wallT = 0.5;
+const texts0 = NS.fx.texts.filter(x => x.on).length;
+NS.play.present({ type: 'wall' });
+check('a side-wall bounce shows no WALL banner and keeps the wall in place', NS.fx.texts.filter(x => x.on).length === texts0 && G.run.wallT === 0.5);
+NS.play.present({ type: 'newwall', n: 4 });
+check('a new wall shows its number', NS.fx.texts.some(x => x.on && x.text === 'WALL 4') && G.run.wallT === 0);
 check('no shadowBlur anywhere', ctx.shadowBlurUsed === 0);
 frames(3);
 const s0 = NS.artKit.stats().created;
