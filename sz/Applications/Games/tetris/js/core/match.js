@@ -11,7 +11,9 @@
    far more than the last. Grey stones (garbage from a rival) only break when something bursts
    next to them. Bursts leave 'burst' events with the cells, their colours, the chain link and
    the points; gravity speeds up by level. Holding is not part of these rules. A small bot
-   ranks every placement by simulating the landing and the whole chain. */
+   ranks every placement by simulating the landing and the whole chain. A new piece appears in
+   the top visible rows, and a landed piece that slides or turns gets its lock time back up to
+   fifteen times, as in the block rules. */
 ;(function() {
   'use strict';
 
@@ -24,7 +26,7 @@
     pairs: { colors: 4, size: 2, need: 4, lock: 0.4 },
     jewels: { colors: 6, size: 3, need: 3, lock: 0.4 },
   };
-  const CLEAR_TIME = 0.38, SPAWN_DELAY = 0.08, LEVEL_EVERY = 40, MAX_LEVEL = 15;
+  const LOCK_RESETS = 15, CLEAR_TIME = 0.38, SPAWN_DELAY = 0.08, LEVEL_EVERY = 40, MAX_LEVEL = 15;
 
   function rand(g) {
     const r = makeRng(g.rng);
@@ -80,10 +82,12 @@
   function spawn(g) {
     const c = g.queue.shift();
     g.queue.push(newPiece(g));
-    const p = { c: c, x: 2, y: 1, r: 0 };
+    /* in sight from the start: the whole piece sits in the top visible rows */
+    const p = { c: c, x: 2, y: HIDDEN + RULES[g.rule].size - 1, r: 0 };
     g.piece = p;
     g.fall = 0;
     g.lockT = 0;
+    g.lockResets = 0;
     g.chain = 0;
     if (!fits(g, p)) return topOut(g, 'block');
     g.events.push({ type: 'spawn' });
@@ -107,13 +111,18 @@
     return !!p && !fits(g, { c: p.c, x: p.x, y: p.y + 1, r: p.r });
   }
 
+  /* a landed piece that moves or turns gets its lock time back, up to LOCK_RESETS times */
+  function onShift(g) {
+    if (grounded(g) && (g.lockResets || 0) < LOCK_RESETS) { g.lockT = 0; g.lockResets = (g.lockResets || 0) + 1; }
+  }
+
   function move(g, dx) {
     if (!active(g)) return false;
     const p = g.piece;
     const q = { c: p.c, x: p.x + dx, y: p.y, r: p.r };
     if (!fits(g, q)) return false;
     p.x = q.x;
-    if (grounded(g)) g.lockT = Math.min(g.lockT, RULES[g.rule].lock * 0.5);
+    onShift(g);
     g.events.push({ type: 'move' });
     return true;
   }
@@ -126,6 +135,7 @@
     if (g.rule === 'jewels') {
       const n = p.c.length;
       p.r = (p.r + (dir === -1 ? n - 1 : dir === 2 ? 2 : 1)) % n;
+      onShift(g);
       g.events.push({ type: 'rotate', kick: 0 });
       return true;
     }
@@ -135,6 +145,7 @@
       const q = { c: p.c, x: p.x + k[0], y: p.y + k[1], r: to };
       if (fits(g, q)) {
         p.x = q.x; p.y = q.y; p.r = to;
+        onShift(g);
         g.events.push({ type: 'rotate', kick: k[0] || k[1] ? 1 : 0 });
         return true;
       }

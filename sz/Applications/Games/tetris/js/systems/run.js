@@ -69,6 +69,7 @@
       events: [], done: false, won: false, reason: '', day: mode === 'daily' ? SE.dailyRecipe(date).key : '', rule: rule,
     };
     if (match) { run.slots = 0; run.revives = 0; }
+    if (rule === 'blast') run.slots = 0;
     if (stage) {
       if (stage.time) run.timeLimit = stage.time;
       if (stage.kind === 'dig' || stage.kind === 'gems' || stage.kind === 'combo') {

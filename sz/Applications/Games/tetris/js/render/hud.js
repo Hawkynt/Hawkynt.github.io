@@ -36,8 +36,8 @@
       nh = NS.matchRender.drawNext(g, 810, BOARD_Y);
     } else {
       BR.drawHold(g, 300, BOARD_Y);
-      powers(run, 300, BOARD_Y + 132);
-      objective(run, 300, BOARD_Y + 132 + 26 + run.slots * 58 + 10);
+      if (run.slots) powers(run, 300, BOARD_Y + 132);
+      objective(run, 300, BOARD_Y + 132 + (run.slots ? 26 + run.slots * 58 + 10 : 0));
       nh = BR.drawNext(g, 810, BOARD_Y, fog);
     }
     stats(run, 810, BOARD_Y + nh + 12);

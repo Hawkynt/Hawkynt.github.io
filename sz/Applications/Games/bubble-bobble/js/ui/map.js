@@ -77,7 +77,7 @@
     card(w, G.ui.stage);
     W.button('back', 'Back', 50, 650, 200, 46, { icon: 'back', accent: UI.good, action: () => NS.screens.back() });
     NS.title.coopToggle(262, 650, 280, 46);
-    kit.text(P.starsTotal(p) + ' / 90 stars', 270, 673, 16, UI.gold, { weight: 'bold' });
+    kit.text(P.starsTotal(p) + ' / 90 stars', 560, 673, 16, UI.gold, { weight: 'bold' });
   }
 
   function firstOpen(w) {

@@ -332,7 +332,7 @@
     p.w += (targetW - p.w) * Math.min(1, dt * 10);
     const sp = (p.stunT > 0 ? 0.35 : 1);
     const ox = p.x;
-    if (input.px != null) {
+    if (typeof input.px === 'number' && Number.isFinite(input.px)) {
       const d = input.px - p.x, m = C.PADDLE_FOLLOW * sp * dt;
       p.x += Math.max(-m, Math.min(m, d));
     } else if (input.left || input.right) p.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * C.PADDLE_SPEED * sp * dt;

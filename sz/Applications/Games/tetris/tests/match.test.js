@@ -33,6 +33,20 @@ const after = M.cellsOf('jewels', j.piece).map(c => c[2]).join();
 check('a jewel column has three jewels that cycle when turned', j.piece.c.length === 3 && before !== after && after.split(',').sort().join() === before.split(',').sort().join());
 check('jewels use six colours', j.piece.c.every(c => c >= 1 && c <= 6));
 
+/* steering: a new piece is in sight at once and a landed piece can still slide and turn */
+for (const rule of ['pairs', 'jewels']) {
+  const sg = M.create({ rule: rule, seed: 21 });
+  check(rule + ': a new piece is fully inside the visible well', M.cellsOf(rule, sg.piece).every(c => c[1] >= HIDDEN));
+}
+g = M.create({ rule: 'pairs', seed: 22 });
+g.piece.y = ROWS - 1; g.piece.r = 1;
+let slid = 0;
+for (let k = 0; k < 8; ++k) { run(g, M.RULES.pairs.lock * 0.8); if (M.move(g, k % 2 ? 1 : -1)) ++slid; }
+check('moving a landed pair restarts its lock timer, so it can slide for a while', slid === 8 && g.pieces === 0);
+for (let k = 0; k < 30; ++k) { M.move(g, k % 2 ? 1 : -1); run(g, 0.05); }
+run(g, M.RULES.pairs.lock + 0.1);
+check('but not for ever: after 15 resets it locks', g.pieces === 1);
+
 /* falling apart */
 g = M.create({ rule: 'pairs', seed: 4 });
 g.board[I(2, ROWS - 1)] = 1;

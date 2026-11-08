@@ -198,6 +198,9 @@ commercial title's names, characters, levels or art.
   (tree, cosmetics, XP, achievements, quests, streak, prestige), seasons (every festival by date,
   rollover), save (migration, autosave, Continue mid-action), scene (every screen and every
   cinematic shot draws, draw-call budget under a full particle load, no shadowBlur, cached art).
+- A browser scenario `Applications/Games/e2e/{GAME}.e2e.js` (see sz/ReadMe.md, Game end-to-end
+  tests): every screen reached through real clicks and keys, a stage, a boss, the results, the
+  window at other sizes, canvas-region checks and screenshots - then look at the screenshots.
 - Write the failing test first per user story, then make it pass.
 - Smooth at 60 fps in a maximized window; note the measured budget in ReadMe's Rendering section.
 

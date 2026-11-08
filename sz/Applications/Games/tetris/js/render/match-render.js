@@ -96,20 +96,20 @@
     const b = game.board, rule = game.rule;
     const vis = y => y >= M.HIDDEN;
     const px = x => BOARD_X + x * S, py = y => BOARD_Y + (y - M.HIDDEN) * S;
-    /* pair bridges between touching blobs of one colour */
-    if (rule === 'pairs')
-      for (let y = M.HIDDEN; y < M.ROWS; ++y)
-        for (let x = 0; x < M.COLS; ++x) {
-          const c = b[y * M.COLS + x];
-          if (!c || c === M.STONE) continue;
-          ctx.fillStyle = COLORS[c];
-          if (x + 1 < M.COLS && b[y * M.COLS + x + 1] === c) ctx.fillRect(px(x) + S / 2, py(y) + S * 0.22, S, S * 0.56);
-          if (y + 1 < M.ROWS && b[(y + 1) * M.COLS + x] === c) ctx.fillRect(px(x) + S * 0.22, py(y) + S / 2, S * 0.56, S);
-        }
     const pop = game.popping;
     const k = pop ? 1 - pop.t / M.CLEAR_TIME : 0;
     const popping = {};
     if (pop) for (const c of pop.cells) popping[c[1] * M.COLS + c[0]] = true;
+    /* pair bridges between touching blobs of one colour (gone once they burst) */
+    if (rule === 'pairs')
+      for (let y = M.HIDDEN; y < M.ROWS; ++y)
+        for (let x = 0; x < M.COLS; ++x) {
+          const c = b[y * M.COLS + x];
+          if (!c || c === M.STONE || popping[y * M.COLS + x]) continue;
+          ctx.fillStyle = COLORS[c];
+          if (x + 1 < M.COLS && b[y * M.COLS + x + 1] === c && !popping[y * M.COLS + x + 1]) ctx.fillRect(px(x) + S / 2, py(y) + S * 0.22, S, S * 0.56);
+          if (y + 1 < M.ROWS && b[(y + 1) * M.COLS + x] === c && !popping[(y + 1) * M.COLS + x]) ctx.fillRect(px(x) + S * 0.22, py(y) + S / 2, S * 0.56, S);
+        }
     for (let y = M.HIDDEN; y < M.ROWS; ++y)
       for (let x = 0; x < M.COLS; ++x) {
         const c = b[y * M.COLS + x];
