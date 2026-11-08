@@ -97,6 +97,7 @@
 
     if (S.state !== C.STATE_PAUSED)
       update(dt);
+    NS.music.update(dt);
     render();
 
     requestAnimationFrame(gameLoop);

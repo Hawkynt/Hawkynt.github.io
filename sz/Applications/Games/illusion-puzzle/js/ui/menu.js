@@ -32,6 +32,9 @@
           }
         });
         break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');
         break;

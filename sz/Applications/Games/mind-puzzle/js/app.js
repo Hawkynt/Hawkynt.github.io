@@ -25,6 +25,7 @@
     S.lastTimestamp = timestamp;
 
     updateGame(dt);
+    NS.music.update(dt);
 
     particles.update();
     screenShake.update(dt * 1000);

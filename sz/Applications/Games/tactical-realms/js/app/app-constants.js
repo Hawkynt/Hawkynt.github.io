@@ -39,6 +39,7 @@
     'scenes-full'() { TR.app.controller?.setBattleSceneMode('full'); },
     'scenes-short'() { TR.app.controller?.setBattleSceneMode('short'); },
     'scenes-off'() { TR.app.controller?.setBattleSceneMode('off'); },
+    'music'() { if (SZ.GameMusic) SZ.GameMusic.toggle(); },
     'combat-history'() { TR.app.controller?.showCombatHistory(); },
     'exit'() { window.parent.postMessage({ type: 'sz:close' }, '*'); },
     'about'() {

@@ -20,6 +20,7 @@
     lastTime = timestamp;
 
     update(dt);
+    NS.music.update(dt);
     draw();
     requestAnimationFrame(gameLoop);
   }

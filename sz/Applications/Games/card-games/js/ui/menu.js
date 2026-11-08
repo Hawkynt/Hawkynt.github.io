@@ -33,6 +33,9 @@
       case 'back-to-menu':
         G.initGame();
         break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
       case 'high-scores':
         ST.showHighScores();
         break;

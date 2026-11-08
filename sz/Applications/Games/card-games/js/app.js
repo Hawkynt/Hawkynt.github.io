@@ -45,6 +45,7 @@
     E.particles.update();
     E.screenShake.update(dt * 1000);
     E.floatingText.update();
+    NS.music.update(dt);
 
     DR.draw();
     requestAnimationFrame(gameLoop);
