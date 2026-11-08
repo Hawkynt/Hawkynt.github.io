@@ -31,6 +31,13 @@ function tools(page, base, game, ns) {
   const wrap = body => '(function(){ const W = ' + GW + '; const NS = W.SZ.' + ns + ', G = NS.state; ' + body + ' })()';
   const t = {
     page,
+    /* the desktop itself, fresh, for shell scenarios */
+    async openDesktop() {
+      await page.goto(base + '/sz/index.html', '!!document.querySelector("#sz-start-button, .sz-start-button")');
+      await page.eval('localStorage.clear()');
+      await page.goto(base + '/sz/index.html', '!!document.querySelector("#sz-start-button, .sz-start-button")');
+      await D.sleep(1200);
+    },
     async open() {
       const url = base + '/sz/Applications/Games/' + game + '/index.html';
       await page.goto(url, ready);

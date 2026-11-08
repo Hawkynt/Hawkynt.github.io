@@ -390,6 +390,28 @@
   display: flex;
 }
 
+/* a long list flows into columns so every program is in sight (rows set by the taskbar script);
+   only columns wider than the screen scroll sideways */
+.sz-start-flyout.sz-flyout-columns.visible {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--sz-flyout-rows, 12), auto);
+  grid-auto-columns: var(--sz-flyout-col, 160px);
+  align-content: start;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.sz-start-flyout.sz-flyout-columns .sz-menu-item {
+  min-width: 0;
+}
+
+.sz-start-flyout.sz-flyout-columns .sz-menu-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sz-start-body {
   position: relative;
 }

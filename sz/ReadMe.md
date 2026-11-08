@@ -1002,6 +1002,9 @@ A bottom-anchored bar (default 35px, adapts to start button height) with:
 - Right column (beige): System items -- My Computer, My Documents, Control Panel, Task Manager, Search, Run
 - Footer: Blue gradient strip with Log Off and Turn Off buttons
 - MRU auto-updates when apps are launched (most recent at top, capped at 6)
+- **Long lists:** a flyout taller than the space above the taskbar flows into columns (150-200 px each), so a whole category is visible at once. Only columns wider than the screen scroll sideways, which matters on phones.
+- **Scrolling:** resting the mouse near the top or bottom edge of an overflowing list scrolls it, faster the closer to the edge, and sideways for a flyout in columns. Hovering the scroll arrows scrolls too, as on classic Windows. Fingers scroll as usual.
+- **Touch:** a tap opens the menu and categories. Scrolling with a finger never opens or closes anything. A tap outside the menu closes it, and a tap elsewhere inside it folds the flyout away.
 
 ### Context Menu (`js/context-menu.js`)
 
@@ -1766,7 +1769,7 @@ The overhauled canvas games also have browser tests in `Applications/Games/e2e/`
 node Applications/Games/e2e/run.js [game ...] [--out dir]
 ```
 
-The runner serves the repository over local HTTP and opens each game's page in a headless browser. The page moves into the desktop, so the game runs inside a maximized window there, as players see it. Each `<game>.e2e.js` scenario plays like a player: real clicks on the game's own hit areas and real key presses. The bot only stands in for the player's hands during long stretches. Scenarios check what is on screen by measuring regions of the game canvas, require no uncaught exceptions or console errors, and write screenshots and zoomed close-ups for a human look (default: `<tmp>/sz-e2e`). `SZ_E2E_TRACE=1` logs every DevTools Protocol call. Scenarios so far: Tetris, Breakout, Bubble Bobble.
+The runner serves the repository over local HTTP and opens each game's page in a headless browser. The page moves into the desktop, so the game runs inside a maximized window there, as players see it. Each `<game>.e2e.js` scenario plays like a player: real clicks on the game's own hit areas and real key presses. The bot only stands in for the player's hands during long stretches. Scenarios check what is on screen by measuring regions of the game canvas, require no uncaught exceptions or console errors, and write screenshots and zoomed close-ups for a human look (default: `<tmp>/sz-e2e`). `SZ_E2E_TRACE=1` logs every DevTools Protocol call. Scenarios so far: Tetris, Breakout, Bubble Bobble, and the desktop's start menu (mouse on a normal and a short screen, finger on a small phone). For touch, the page's window is shrunk to the phone size and fingers go through `Input.emulateTouchFromMouseEvent`, because headless Vivaldi maps `Input.dispatchTouchEvent` coordinates through its own window panels. Emulated fingers make no scroll gestures, so scenarios scroll lists in script where a swipe would.
 
 ### Lint
 
