@@ -141,6 +141,8 @@ Plain browser scripts without a build step. Every file is one IIFE that adds its
 | `js/app/input.js` | Mouse, touch and keyboard. |
 | `js/app/menu.js` | Menu-bar actions, resizing and desktop window messages. |
 | `js/app/main.js` | Start-up: dialogs, menu bar, first layout, loading scores, progress and the saved game, and the first frame. |
+| `tests/harness.js` | Node test harness: a fake canvas, DOM and storage, loading the scripts in `index.html` order. |
+| `tests/towers.test.js` | Tower behaviour over time (a battered tower's hurt flash fades out). Run with `node tests/towers.test.js`. |
 
 ## SEO Keywords
 

@@ -301,6 +301,7 @@
       const s = towerStats(t);
       t.flash = Math.max(0, t.flash - dt);
       t.recoil = Math.max(0, t.recoil - dt * 6);
+      if (t.hurtFlash > 0) t.hurtFlash = Math.max(0, t.hurtFlash - dt);
       if (t.flameT) t.flameT = Math.max(0, t.flameT - dt);
       if (s.kind === 'mine' || s.kind === 'trap' || s.kind === 'support') continue;
       if (t.jamT > 0) {
