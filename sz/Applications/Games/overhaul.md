@@ -28,9 +28,9 @@ Legend: ✅ in place · ◐ partial / thin · ❌ missing · — does not fit th
 | Boulder Dash | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
 | Flappy Bird | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
 | Cookie Clicker | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ascension, Sugar Garden, Sanctum Trials, soundtrack |
-| Tetris | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Spire of Lumen; Master mode; soundtrack |
-| Breakout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Prism Run; soundtrack |
-| Bubble Bobble | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Fizz and the Dry Lagoon; generated rooms; soundtrack |
+| Tetris | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Spire of Lumen; Master mode; Blast, Pairs, Jewels; Versus CPU; soundtrack |
+| Breakout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Prism Run; Duo and Arena co-op with CPU partners; soundtrack |
+| Bubble Bobble | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Fizz and the Dry Lagoon; generated rooms; co-op with Pop; soundtrack |
 
 Remaining for Tier A: the November games before Cookie Clicker have no **music** layer yet (wire
 `shared/game-music.js`); late-game prestige / endless scaling exists only in Cookie Clicker.
@@ -78,6 +78,9 @@ Full overhaul needed (Tetris, Breakout and Bubble Bobble are done, see Tier A). 
 - **Music**: `shared/game-music.js` composes soundtracks from data (themes, intensity layers,
   stingers, its own switch); Cookie Clicker, Tetris, Breakout and Bubble Bobble use it - wire the
   rest the same way (a `js/core/music.js` with themes per world/mode).
+- **CPU players**: a game whose bots are proven over the real engine can also seat them as CPU
+  rivals or partners - Tetris Versus (step-by-step steering at four strengths), Breakout's partner
+  paddles and Bubble Bobble's Pop show the pattern; candidates are the other games with bots.
 - **Late game**: apart from Cookie Clicker's ascension there is no prestige / endless scaling, so
   players with everything bought have nothing left to chase.
 - **Cross-game meta**: none (one profile, one trophy case across all games would be a strong pull).

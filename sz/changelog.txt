@@ -6,6 +6,10 @@ by Hawkynt 08.11.2026
 * Breakout: Prism Run - five brick fortresses with guardians and cinematics, Arcade, Blitz, Zen, Daily Challenge and Boss Rush, 12 power-ups, bombs and gold targets, tech tree, paddles and balls, festivals and quests
 * Bubble Bobble: Fizz and the Dry Lagoon - five kingdoms with guardians and cinematics, chain pops, elemental bubbles, candy, Arcade, Blitz, Zen, Daily Challenge and Boss Rush, tech tree, festivals and quests
 * Tetris, Breakout and Bubble Bobble open in a larger, resizable window, save every game for Continue and keep your old high scores
++ Tetris: Versus against a CPU rival (Rookie, Pro, Ace, Legend) on a second board with garbage, cancelling and a speed-up
++ Tetris: Blast, Pairs and Jewels rule sets as modes of their own and in Versus, with bombs, colour chains and stones
++ Breakout: Duo and Arena co-op with CPU partner paddles on the top edge or on the top, left and right edges
++ Bubble Bobble: co-op with Pop as a CPU partner in every mode and story room
 
 Main: 6.31
 by Hawkynt 04.10.2026
