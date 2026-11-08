@@ -5,6 +5,39 @@
   const DEFAULT_MRU_APPS = ['calculator', 'notepad', 'explorer'];
 
   // menu labels may come from file and folder names: always set them as text
+  /**
+   * Resting the mouse near the start or end edge of an overflowing list scrolls it, faster the
+   * closer to the edge - vertically, or sideways for a list laid out in columns. Touch scrolls with
+   * the finger as usual and is left alone.
+   */
+  function _edgeScroll(el) {
+    const EDGE = 28, STEP = 18;
+    let dir = 0, speed = 0, timer = null;
+    const stop = () => { dir = 0; if (timer) { clearInterval(timer); timer = null; } };
+    const tick = () => {
+      const horizontal = el.scrollWidth > el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1;
+      if (horizontal) el.scrollLeft += dir * speed; else el.scrollTop += dir * speed;
+    };
+    el.addEventListener('pointermove', (e) => {
+      if (!SZ.Tap.isHover(e)) return stop();
+      const r = el.getBoundingClientRect();
+      const horizontal = el.scrollWidth > el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1;
+      const pos = horizontal ? e.clientX - r.left : e.clientY - r.top;
+      const size = horizontal ? r.width : r.height;
+      const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+      const at = horizontal ? el.scrollLeft : el.scrollTop;
+      let d = 0, k = 0;
+      if (max > 0 && pos < EDGE && at > 0) { d = -1; k = 1 - pos / EDGE; }
+      else if (max > 0 && pos > size - EDGE && at < max) { d = 1; k = 1 - (size - pos) / EDGE; }
+      if (!d) return stop();
+      dir = d;
+      speed = Math.max(3, Math.round(STEP * Math.min(1, k + 0.2)));
+      if (!timer) timer = setInterval(() => { tick(); if (!dir) stop(); }, 40);
+    });
+    el.addEventListener('pointerleave', stop);
+    el.addEventListener('pointerdown', stop);
+  }
+
   function _span(text, className) {
     const s = document.createElement('span');
     if (className)
@@ -158,6 +191,7 @@
           c.classList.remove('active');
       });
       this.#element.appendChild(this.#flyout);
+      _edgeScroll(this.#flyout);
 
       this.#startMenu.appendChild(body);
 
@@ -331,32 +365,55 @@
         this.#flyout.appendChild(el);
       }
 
-      // Position the flyout — prefer right of menu, fall back to overlap/left
+      this.#layoutFlyout(anchorEl);
+    }
+
+    /**
+     * Places the programs flyout beside the start menu. A list taller than the space above the
+     * taskbar flows into as many columns as it needs (each at least MIN_COL wide), so every program
+     * is in sight at once; only when even the columns are wider than the screen does it scroll
+     * sideways. Pure layout: measures one entry, then sets the grid rows and the position.
+     */
+    #layoutFlyout(anchorEl) {
+      const f = this.#flyout;
+      const MIN_COL = 150, MAX_COL = 200, GAP = 5;
       const menuRect = this.#startMenu.getBoundingClientRect();
       const anchorRect = anchorEl.getBoundingClientRect();
-      const flyoutWidth = Math.min(200, window.innerWidth - 20);
-
-      // Try right side first
-      let flyoutLeft = menuRect.right;
-      // If it would overflow the viewport, shift left to fit
-      if (flyoutLeft + flyoutWidth > window.innerWidth - 5)
-        flyoutLeft = Math.max(5, window.innerWidth - flyoutWidth - 5);
-
-      // Vertical positioning: align with anchor, clamp to viewport
-      let flyoutBottom = window.innerHeight - anchorRect.bottom;
-      this.#flyout.style.left = flyoutLeft + 'px';
-      this.#flyout.style.bottom = Math.max(5, flyoutBottom) + 'px';
-      this.#flyout.style.top = '';
-      this.#flyout.classList.add('visible');
-
-      // After rendering, check if flyout overflows top of viewport
-      requestAnimationFrame(() => {
-        const flyoutRect = this.#flyout.getBoundingClientRect();
-        if (flyoutRect.top < 5) {
-          this.#flyout.style.bottom = '';
-          this.#flyout.style.top = '5px';
-        }
-      });
+      const taskbarTop = this.#element.getBoundingClientRect().top || window.innerHeight;
+      const room = Math.max(60, taskbarTop - 2 * GAP);
+      f.classList.remove('sz-flyout-columns');
+      f.style.removeProperty('--sz-flyout-rows');
+      f.style.width = '';
+      f.style.top = '';
+      f.style.left = '0px';
+      f.style.bottom = GAP + 'px';
+      f.classList.add('visible');
+      const items = f.querySelectorAll('.sz-menu-item');
+      const itemH = items.length ? items[0].getBoundingClientRect().height || 24 : 24;
+      const padding = 10;
+      if (items.length * itemH + padding > room) {
+        const rows = Math.max(1, Math.floor((room - padding) / itemH));
+        const cols = Math.ceil(items.length / rows);
+        const colW = Math.max(MIN_COL, Math.min(MAX_COL, Math.floor((window.innerWidth - 2 * GAP) / cols)));
+        f.classList.add('sz-flyout-columns');
+        f.style.setProperty('--sz-flyout-rows', String(rows));
+        f.style.setProperty('--sz-flyout-col', colW + 'px');
+        f.style.width = Math.min(cols * colW + 4, window.innerWidth - 2 * GAP) + 'px';
+      }
+      const width = f.getBoundingClientRect().width;
+      // prefer the right of the menu, else as far right as fits (over the menu on small screens)
+      let left = menuRect.right;
+      if (left + width > window.innerWidth - GAP)
+        left = Math.max(GAP, window.innerWidth - width - GAP);
+      f.style.left = left + 'px';
+      // level with the category, moved up or pinned to the top when it would leave the screen
+      const height = f.getBoundingClientRect().height;
+      const bottom = Math.max(window.innerHeight - taskbarTop + GAP, window.innerHeight - anchorRect.bottom);
+      if (window.innerHeight - bottom - height < GAP) {
+        f.style.bottom = '';
+        f.style.top = GAP + 'px';
+      } else
+        f.style.bottom = bottom + 'px';
     }
 
     // -----------------------------------------------------------------
@@ -484,6 +541,10 @@
 
       arrowUp.addEventListener('pointerdown', (e) => { e.stopPropagation(); startScroll(-1); });
       arrowDown.addEventListener('pointerdown', (e) => { e.stopPropagation(); startScroll(1); });
+      // like classic menus, resting the mouse on an arrow scrolls too
+      arrowUp.addEventListener('pointerenter', (e) => { if (SZ.Tap.isHover(e)) startScroll(-1); });
+      arrowDown.addEventListener('pointerenter', (e) => { if (SZ.Tap.isHover(e)) startScroll(1); });
+      _edgeScroll(content);
       arrowUp.addEventListener('pointerup', stopScroll);
       arrowDown.addEventListener('pointerup', stopScroll);
       arrowUp.addEventListener('pointerleave', stopScroll);
