@@ -1,169 +1,90 @@
 # Breakout
 
-## Purpose
-
-Classic brick-breaking arcade game where the player moves a paddle to bounce a ball and destroy rows of colored bricks. Features power-ups, progressive difficulty, diverse level layouts, and rich visual effects. Part of the SynthelicZ Desktop game collection.
+The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Prism Run**. Juno and her drone Bolt fly the paddle-ship Aurora into the five brick fortresses where the Gloom Engine has walled up the starlight - Neon Gardens, Glacier Citadel, Clockwork Foundry, Coral Abyss and the Gloom Engine itself, thirty stages, five guardian fights and cinematics. Beside the story wait Arcade, Blitz, Zen, the Daily Challenge and Boss Rush. Shards from every game buy a 25-node tech tree, gems buy paddles, balls and trails, and seasonal festivals, daily quests, streaks, player levels and 38 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
 
 ## How It Works
 
-Canvas-based game with two playfield sizes (small 480x560, large 1200x840) and HiDPI support. The window is resizable and maximizable -- the playfield scales to fit the window while preserving aspect ratio. The ball bounces off walls, the paddle, and bricks. Bricks award points and may drop power-ups. Clearing all destructible bricks advances to the next level with a unique layout. Game effects (particles, screen shake, floating text, confetti, electric arcs, glass brick rendering, starfield) come from the shared `game-effects.js` module.
+**Play:** a 700 x 640 field with a 14-column brick grid. The paddle follows the mouse or a finger (or Left/Right, A/D); where the ball lands on it sets the bounce angle, up to about 60 degrees, and the ball never flies nearly flat. Bricks: six colours (one hit), steel (two), titan (three, stops even a fire ball), glass (the ball passes through), walls (never break), bombs (break their neighbours, chains included), regrowing bricks (come back after eight seconds and do not block the clear), gold targets (two hits, the goal of gold stages) and crystals (always drop a power-up). Breaking bricks without touching the paddle builds a combo that raises every brick's points. A ball that has not touched a brick for a while is nudged out of its loop.
+
+**Power-ups** fall from broken bricks and are caught with the paddle: Wide, Multi (every ball splits into three), Slow, Fire (burns through bricks), Laser (twin cannons on Space or click), Barrier (saves a ball), Extra Life, and from the tech tree Magnet (balls stick), Mega Ball (huge, three times the damage) and Star Shower; Shrink and Haste are grey and best dodged.
+
+**Engine:** a game is one plain object - bricks, paddle, balls, drops, lasers, stars, timers, score, lives, statistics and the seeded generator state - so it saves as JSON and replays the same. It runs on a fixed step of 1/240 s with balls moving in sub-steps no longer than half their radius against walls, bricks, the guardian and the paddle. Every step leaves events (bounce, hit, break, bomb, power, lost, life, cleared ...) that the game turns into sound, particles, words and call-outs. A paddle bot over the same engine predicts where the most urgent ball lands, angles it toward the lowest brick or the guardian and catches good drops; it plays the title demo and proves in the tests that every stage, guardian and mode can be finished.
+
+**Story:** five fortresses of six stages. Stage kinds: clear every brick, break every gold target, clear against the clock, and the guardian. Each stage has three stars: finish it, beat the par time and meet its bonus goal (lose no ball, reach a combo, catch power-ups). Guardians float at the top inside an orbiting ring of shield bricks that grow back; hitting the body hurts them (two points, fire three, mega five; lasers chip). They shoot at the paddle - seeds and bolts stun, ice shrinks, ink clouds the field, void does both - and each has a move of its own: the Hedge Colossus sprouts a row of regrowing bricks, the Frost Warden refreezes its shield, the Gear Tyrant spins its ring hard and fires in threes, the Abyssal Kraken inks the field and the Gloom Engine pulls the balls toward its core when it rages at half health. Cinematics open the story, every fortress and every guardian fight, close every victory and end the game with a finale and credits.
+
+**Modes:** Arcade (endless symmetric walls from a seeded generator, faster and tougher with every wall, three balls, top-ten table), Blitz (two minutes of endless walls with unlimited balls), Zen (no lives, no clock, calm music), the Daily Challenge (three minutes on one seed per local day with two mutators) and Boss Rush (all five guardians back to back, opens with two guardians beaten). Mutators: Turbo Ball, Slim Paddle, Bare Hands, Power Party, Blackout, Regrowth, Heavy Ball and Triple Start.
+
+**Progress without a server:** everything lives in localStorage - the profile (shards, gems, XP and level, tech tree, stars and best times, collection, statistics, high scores, quests, streak, festival track) and the snapshot of the game in progress, written every three seconds, on pause and when the page hides. The old game's top-five table moves into Arcade on first launch. The festival running on the local date tints the fortresses, drifts its decor over every screen, collects tokens from every brick and fills a five-tier track that ends in a paddle and a ball trail.
+
+**Rendering:** the 1280 x 720 plane is fitted into the window with the fortress filling any extra space. Bricks, cracks, paddles (a stretchable body and two emitter caps), balls, capsules, shots, backdrops, guardians, portraits, icons and particle shapes are painted once into cached sprites; no blur filters. Particles, texts and rings live in fixed pools. A busy frame (many balls, all power-ups, a guardian, a full particle pool) stays under 3,000 draw calls.
+
+**Soundtrack:** the shared `SZ.GameMusic` composes a theme per fortress and a faster one per guardian, a menu theme, calm Zen and driving Blitz; combos, multiple balls and the last ball bring drums and lead in. Every action has a sound through `SZ.GameAudio`, the brick chime climbing a scale with the combo.
 
 ## Architecture
 
-- **`index.html`** -- Menu bar (Game/View/Help), canvas, status bar, dialogs (High Scores, Controls, About)
-- **`js/core/`** -- namespace, constants, shared state, canvas view, effect instances, field sizes, collision rules
-- **`js/data/levels-data.js`** -- Level layout definitions (12 hand-crafted levels + procedural generator)
-- **`js/systems/`** -- balls, bricks, power-ups, lasers, game run, fixed-step simulation
-- **`js/render/`** -- brick, paddle, power-up and scene drawing
-- **`js/ui/`** -- high scores, menu bar, keyboard/mouse input
-- **`js/app.js`** -- Bootstrap: game loop, window resize handling, start-up
-- **`styles.css`** -- Game layout and visual styling
-- **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js`
-
-## Features
-
-### Playfield & Display
-- Two playfield sizes: Small (480x560, 10 brick columns) and Large (1200x840, 25 brick columns)
-- Selectable from View menu; switching starts a new game
-- Window is resizable and maximizable; playfield stretches to fill while keeping aspect ratio
-- Large field tiles the level patterns horizontally to fill the wider grid
-- ResizeObserver-based display scaling for smooth fit
-
-### Gameplay
-- Paddle movement via keyboard (Left/Right, A/D) or mouse (pointer lock)
-- Ball physics with angle-based paddle bouncing (hit position affects bounce angle)
-- 12 hand-crafted levels with diverse brick patterns (Diamond, Fortress, Spiral, Heart, etc.)
-- Procedural level generation after all defined levels are exhausted
-- Ball speed increases per level (4.5 base, +0.3/level, max 9)
-- Ball attaches to paddle before launch (Space or mouse click to launch)
-- Combo counter for rapid brick hits (x2!, x3!, etc.) with bonus scoring
-- Wall collision with proper edge bouncing
-
-### Brick Types
-- **Normal** -- Gradient-shaded colored bricks with inner border highlight, 1 hit to destroy
-- **Glass (G)** -- Semi-transparent with animated diagonal glare sweep and specular highlight; ball passes through without bouncing, crystalline shatter effect on contact
-- **Steel (S)** -- Metallic gradient with rivet dots, takes 2 hits; crack overlay appears at 1 HP, metallic particle burst
-- **Indestructible (X)** -- Dark bricks with pulsing purple border and X pattern; cannot be destroyed, skipped in level-clear check
-
-### Power-ups
-- **Wide (W)** -- Expands paddle width (80 -> 120px) for 10 seconds
-- **Multi (M)** -- Spawns 2 extra balls per existing ball
-- **Slow (S)** -- Reduces ball speed to 60% for 10 seconds
-- **Fire (F)** -- Ball turns orange and passes through bricks without bouncing for 8 seconds, flame trail particles
-- **Laser (L)** -- Paddle gets two laser cannons on emitters, fire with Space/click for 10 seconds
-- **Barrier (B)** -- Creates an energy barrier at the bottom that saves one ball
-- 22% drop chance from destroyed bricks
-- Pill-shaped capsules with inner glow, pulsing, and icon letter
-
-### Visual Effects
-- **Electric forcefield paddle** -- Two metallic emitter nodes with multiple jagged lightning arcs between them, energy field glow, spark particles
-- **Comet ball trail** -- White/blue gradient trail (or orange/yellow flame trail for Fire power-up)
-- **Glass brick rendering** -- Animated diagonal highlight sweep, specular highlight, edge refraction
-- **Rich particle bursts** -- 20+ particles on brick destruction with type-specific effects (glass shards, steel sparks, colored bursts)
-- **Combo text** -- Floating multiplier text with increasing size and color on rapid hits
-- **Level transition** -- Bricks cascade in row-by-row from the top with fade-in animation
-- **Ball launch charge glow** -- Pulsing glow on paddle grows while ball is attached
-- **Game over chain explosion** -- Remaining bricks explode one by one in random order
-- **Animated starfield background** -- Slow-drifting stars with twinkle effect for depth
-- **Barrier energy line** -- Translucent gradient at bottom when barrier is active
-- Screen shake on ball loss and steel brick hits
-- Confetti and floating text on level completion
-
-### Zen Mode
-- Toggled from Game menu; infinite lives, no game over
-- Ball auto-launches after loss and after level transitions — no need to press Space
-- Lives display shows infinity symbol
-- Score still tracked normally
-
-### Game Management
-- 3 lives per game (unless Zen Mode is on)
-- Idle/Playing/Paused/Game Over/Level Transition states
-- Level progression with unique layouts and increasing difficulty
-- High scores persisted to localStorage (top 5, with reset option)
-- Status bar showing score, lives, and level
-
-### Controls
-- Left/Right arrows or A/D for paddle movement
-- Mouse movement (with pointer lock) for paddle control
-- Space or mouse click to launch ball
-- Space or mouse click to fire lasers (with L power-up)
-- P to pause/resume
-- F2 for new game
-- Enter to restart after game over
-- Escape to close dialogs
-
-### Integration
-- Menu bar with Game menu (New Game, Pause, High Scores, Exit), View menu (Small/Large Field), and Help menu (Controls, About)
-- SZ OS window management (auto-resize, close via menu)
-- Dialog system for high scores, controls reference, and about info
+- `index.html` -- menu bar, canvas, status bar, Controls and About dialogs, SEO text; loads the modules in order
+- `styles.css` -- window chrome
+- `js/` -- the game under `SZ.Breakout`, one module per concern:
+  - `js/core/namespace.js`, `constants.js` (field, grid, paddle, ball, drops, brick kinds, power-ups, palette), `rng.js`
+  - `js/core/engine.js` -- the pure field engine (layouts, bricks, ball physics, paddle, power-ups, lasers, stars, regrowth, lives)
+  - `js/core/bot.js` -- the paddle bot
+  - `js/core/data-worlds.js` -- five fortresses, 30 stages with their layouts, five guardians
+  - `js/core/data-story.js` -- the cast, every cinematic and the call-outs
+  - `js/core/data-meta.js` -- tech tree, paddles, balls, trails, modes, achievements, quests
+  - `js/core/seasons.js` -- festivals by date and their track, mutators, the Daily Challenge recipe
+  - `js/core/progress.js` -- profile rules: migration, tree, drop list, XP, stars, unlocking, cosmetics, quests, streak, festival, achievements, scores, payouts
+  - `js/core/state.js`, `save.js` (the only module touching localStorage), `audio.js`, `music.js`
+  - `js/systems/fx.js` -- pooled particles, texts, rings, shake, flash, hit-stop
+  - `js/systems/boss.js` -- guardians: movement, shield ring, damage, shots, specials, rage
+  - `js/systems/run.js` -- a session: building any mode or stage, the wall generator, objectives, stars, revives, the fixed-step tick, Boss Rush
+  - `js/systems/play.js` -- sessions on screen: starting with cinematics, Continue, events to juice and call-outs, trails, finishing into results, autosave
+  - `js/systems/cine.js`, `demo.js`
+  - `js/render/view.js`, `art-kit.js`, `sprites.js`, `backdrop.js`, `boss-art.js`, `field-render.js`, `fx-render.js`, `hud.js`, `cine-render.js`, `frame.js`
+  - `js/ui/kit.js`, `widgets.js`, `screens.js`, `title.js` (title and modes), `map.js`, `panels.js` (tech tree, collection, journal, results, pause, how to play), `input.js`, `status-bar.js`
+  - `js/app.js` -- boot, date context, the loop, menu bar
+- `tests/` -- node tests: `harness.js`, `run.test.js` (every brick kind, paddle angles, power-ups, barrier, lives, the bot finishing every stage and guardian, stars, guardian shots and rage, endless walls, timed modes, Boss Rush, mutators, revive, JSON), `scene.test.js` (boot, story, keyboard and mouse play, pause, results, every screen, cinematic, mode and fortress, draw-call budget, no shadowBlur, warm frames paint nothing new), `meta.test.js` (migration, saving, Continue, tree, drop list, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
 
 ## User Stories
 
-### Core Gameplay
-- [x] As a player, I can move the paddle with Left/Right arrows, A/D keys, or mouse (pointer lock) so that I can control the ball
-- [x] As a player, I can break bricks by bouncing the ball into them so that I can score points
-- [x] As a player, I can aim the ball based on where it hits the paddle so that I have directional control
-- [x] As a player, I can launch the ball from the paddle with Space or mouse click so that I start each life on my terms
-- [x] As a player, I can earn combo multipliers (x2!, x3!, etc.) for rapid brick hits so that skillful play is rewarded with bonus scoring
-- [x] As a player, I can start with 3 lives and lose one when the ball falls past the paddle so that failure has consequences
+### Play
+- [x] As a player, I can steer the paddle with the mouse, a finger or the keyboard and aim by where the ball lands
+- [x] As a player, I can break colour, steel, titan, glass, bomb, regrowing, gold and crystal bricks and bounce off walls
+- [x] As a player, I can catch twelve power-ups, dodge the bad ones and build combos
+- [x] As a player, I can feel every hit through particles, flashes, shakes, words and sounds
 
-### Brick Types
-- [x] As a player, I can destroy normal gradient-shaded bricks in one hit so that basic bricks are straightforward
-- [x] As a player, I can see glass bricks shatter with a crystalline effect when the ball passes through without bouncing so that they feel unique
-- [x] As a player, I can hit steel bricks twice with crack overlays appearing at 1 HP so that some bricks require extra effort
-- [x] As a player, I can encounter indestructible bricks with pulsing purple borders as obstacles so that I need to plan shots around them
+### Story
+- [x] As a player, I can follow Juno and Bolt through five fortresses with cinematics, a map and dialogue
+- [x] As a player, I can play thirty stages of four kinds with three stars each
+- [x] As a player, I can fight five guardians with shield rings, shots and special moves that rage at half health
+- [x] As a player, I can see a finale and credits
 
-### Power-Ups
-- [x] As a player, I can collect a Wide paddle power-up (W) that expands my paddle for 10 seconds so that I can catch the ball more easily
-- [x] As a player, I can collect a Multi-ball power-up (M) that spawns 2 extra balls per existing ball so that I can hit more bricks simultaneously
-- [x] As a player, I can collect a Slow power-up (S) that reduces ball speed to 60% for 10 seconds so that I have more time to react
-- [x] As a player, I can collect a Fire power-up (F) that lets the ball pass through bricks for 8 seconds with flame trail particles so that I can blast through rows
-- [x] As a player, I can collect a Laser power-up (L) that adds cannons to my paddle for 10 seconds so that I can shoot bricks directly
-- [x] As a player, I can collect a Barrier power-up (B) that creates an energy line at the bottom saving one ball so that I get a safety net
-- [x] As a player, I can see pill-shaped power-up capsules with inner glow and pulsing so that they are easy to spot
+### Modes
+- [x] As a player, I can play Arcade, Blitz, Zen, the Daily Challenge and Boss Rush
+- [x] As a player, I can play the same Daily Challenge wall as everyone today with two mutators
 
-### Level Design
-- [x] As a player, I can play through 12 hand-crafted levels with diverse brick patterns (Diamond, Fortress, Spiral, Heart, etc.) so that each level feels fresh
-- [x] As a player, I can play procedurally generated levels after the 12 designed ones are exhausted so that the game continues indefinitely
-- [x] As a player, I can see the ball speed up each level (4.5 base, +0.3/level, max 9) so that difficulty increases progressively
-- [x] As a player, I can see bricks cascade in row-by-row during level transitions with fade-in animation so that new levels load smoothly
+### Progress
+- [x] As a player, I can spend shards on a 25-node tech tree that changes my next game
+- [x] As a player, I can collect paddles, balls and trails with gems, stars, levels, achievements, Boss Rush and festivals
+- [x] As a player, I can finish daily quests, keep a streak, level up and earn achievements
+- [x] As a player, I can join seasonal festivals that change the look and pay out a reward track
+- [x] As a player, I can leave at any time and Continue the same game after a reload
+- [x] As a player, I can keep my old high scores
 
-### Visual Effects
-- [x] As a player, I can see an electric forcefield paddle with jagged lightning arcs between metallic emitter nodes so that the game looks visually striking
-- [x] As a player, I can see a comet-style ball trail with white/blue gradient (or orange/yellow flame trail for Fire) so that the ball looks dynamic
-- [x] As a player, I can see rich particle bursts with type-specific effects (glass shards, steel sparks, colored bursts) when bricks break so that destruction is satisfying
-- [x] As a player, I can see screen shake on ball loss and steel brick hits so that impacts feel weighty
-- [x] As a player, I can see confetti and floating text on level completion so that finishing a level feels rewarding
-- [x] As a player, I can see a game-over chain explosion where remaining bricks blow up in random order so that the end is dramatic
-- [x] As a player, I can see an animated starfield background with twinkling stars so that the game has visual depth
-- [x] As a player, I can see a ball launch charge glow that pulses while attached to the paddle so that I know it is ready
+### Controls and Window
+- [x] As a player, I can resize or maximize the window and the fortress fills it while the paddle follows my pointer
+- [x] As a player, I can switch mouse steering off and tune its speed, and switch the music off on its own
 
-### Playfield and Display
-- [x] As a player, I can choose between a Small (480x560) and Large (1200x840) playfield from the View menu so that I can pick my preferred arena size
-- [x] As a player, I can resize and maximize the game window with the playfield scaling to fit while keeping aspect ratio so that it looks correct at any size
-- [x] As a player, I can see the large field have more brick columns so that it fills the wider space properly
+## Controls
 
-### Zen Mode
-- [x] As a player, I can toggle Zen Mode from the Game menu for infinite lives and auto-launching ball so that I can relax without pressure
-- [x] As a player, I can see the lives display show an infinity symbol in Zen Mode so that I know it is active
-- [x] As a player, I can have the ball auto-launch after loss and level transitions in Zen Mode so that gameplay is uninterrupted
+| Input | Action |
+|---|---|
+| Mouse / finger | Steer the paddle |
+| Left / Right, A / D | Move the paddle |
+| Click / tap / Space | Launch the ball, fire lasers |
+| Esc / P | Pause |
+| Click / any key | Next cinematic line (Esc skips) |
+| F2 | Title screen (the game is saved) |
 
-### UI and Integration
-- [x] As a player, I can access Game menu (New Game, Pause, High Scores, Exit), View menu (Small/Large), and Help menu (Controls, About) so that standard management is accessible
-- [x] As a player, I can pause and resume with P, restart with F2, and continue after game over with Enter so that game flow is controllable
-- [x] As a player, I can have my top 5 high scores saved to localStorage with a reset option so that my best runs are remembered
-- [x] As a player, I can use pointer lock for mouse control so that my cursor stays within the game
+## SEO Keywords
 
-### Planned Features
-- [ ] As a player, I can hear sound effects for brick destruction, power-up collection, and ball bouncing so that the game has audio feedback
-- [ ] As a player, I can see a preview of the next level layout so that I can prepare my strategy
-- [ ] As a player, I can encounter boss bricks that require special strategies to destroy so that certain levels have unique challenges
-- [ ] As a player, I can select from multiple paddle styles or ball skins so that I can personalize my appearance
-- [ ] As a player, I can see a tutorial overlay on first play explaining controls and brick types so that I learn the game quickly
-
-## Known Limitations
-
-- Glass brick glare animation is time-based, may look slightly different at varying frame rates
-- Procedurally generated levels (beyond level 12) use a simple hash function; patterns may occasionally feel similar
-- Laser bolts are simple vertical lines; no beam width collision with narrow gaps
-- Barrier saves only a single ball; subsequent balls are not protected
+breakout, brick breaker, arkanoid style, free online arcade game, paddle and ball, power-ups, boss fights, story mode, daily challenge, tech tree, paddle skins, seasonal events, »SynthelicZ« game

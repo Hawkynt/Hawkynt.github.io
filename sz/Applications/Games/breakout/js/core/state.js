@@ -1,52 +1,22 @@
-/* S, the one shared mutable state object: the field dimensions, the run (state,
-   score, lives, level), the entities, the power-up and combo bookkeeping, the
-   high scores and the loop clock. */
+/* G, the one shared mutable state object: the screen and where panels return to, the profile,
+   the running game (run) with its engine state, the demo game behind the title, the date context
+   (day, festival, daily recipe), UI bookkeeping (selection, scroll, toasts, hover), the input,
+   the per-frame hit areas, the cinematic and the screen juice. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Breakout || (SZ.Breakout = {});
-  const C = NS.constants;
 
-  NS.state = NS.state || {
-    /* ---- Mutable Field Dimensions ---- */
-    currentField: C.FIELD_SMALL,
-    CANVAS_W: C.FIELD_SMALL.w,
-    CANVAS_H: C.FIELD_SMALL.h,
-    BRICK_COLS: 10,
-    BRICK_OFFSET_LEFT: (C.FIELD_SMALL.w - (10 * (C.BRICK_WIDTH + C.BRICK_PADDING) - C.BRICK_PADDING)) / 2,
-
-    /* ---- Game State ---- */
-    state: undefined,
-    score: undefined,
-    lives: undefined,
-    level: undefined,
-    paddle: undefined,
-    balls: undefined,
-    bricks: undefined,
-    powerUps: undefined,
-    activePowerUps: undefined,
-    animFrameId: undefined,
-    lastTime: undefined,
-    simAccumulator: 0,
-    keysDown: undefined,
-    gameTime: 0,
-    arcFrame: 0,
-    comboCount: 0,
-    comboTimer: 0,
-    barrier: null,
-    lasers: [],
-    laserCooldown: 0,
-    levelTransitionTimer: 0,
-    levelTransitionPhase: 0,
-    gameOverChainTimer: 0,
-    gameOverChainIndex: 0,
-    zenMode: false,
-
-    /* ---- High Scores ---- */
-    highScores: [],
-
-    /* ---- Input: Mouse (pointer lock) ---- */
-    pointerLocked: false
-  };
+  const G = NS.state = NS.state || {};
+  Object.assign(G, {
+    screen: 'title', back: 'title', time: 0, frame: 0,
+    profile: NS.progress.newProfile(),
+    run: null, demo: null, result: null,
+    today: '', season: null, daily: null, weekly: null,
+    ui: { world: 0, stage: 0, treeSel: 'width', wardTab: 0, journalTab: 0, scroll: 0, toasts: [], hover: null, confirm: null, mode: 'story', callout: null },
+    input: { mx: -1, my: -1, moved: 0, touch: false, px: null, left: false, right: false, launch: false, fire: false, active: false },
+    hitAreas: [], menuCursor: -1,
+    cine: null, shake: 0, flash: 0, flashColor: '#fff', hitStop: 0, autoSaveT: 0, checkT: 0,
+  });
 })();
