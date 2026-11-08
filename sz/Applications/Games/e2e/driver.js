@@ -48,7 +48,7 @@ const trace = (...a) => { if (process.env.SZ_E2E_TRACE) console.error('[e2e]', .
 function start(profile, port, opts) {
   return spawn(findBrowser(), ['--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--mute-audio',
     '--autoplay-policy=no-user-gesture-required', '--user-data-dir=' + profile, '--remote-debugging-port=' + port,
-    '--window-size=' + (opts.width || 1280) + ',' + (opts.height || 760), 'about:blank'], { stdio: 'ignore' });
+    '--window-size=' + (opts.width || 1280) + ',' + (opts.height || 800), 'about:blank'], { stdio: 'ignore' });
 }
 
 async function targets(port, tries) {
@@ -91,6 +91,13 @@ async function launch(opts) {
   await sleep(800);
   const page = await Page.connect(target.webSocketDebuggerUrl);
   trace('connected');
+  /* Vivaldi ignores --window-size headless: size the window over the protocol, so emulated screens
+     up to this size render whole instead of repeating the window's area */
+  try {
+    const w = await page.send('Browser.getWindowForTarget');
+    await page.send('Browser.setWindowBounds', { windowId: w.windowId, bounds: { width: opts.width || 1280, height: opts.height || 800, windowState: 'normal' } });
+    await sleep(300);
+  } catch (e) { trace('window bounds', e.message); }
   return {
     page,
     async close() {
@@ -166,6 +173,52 @@ class Page {
   async click(x, y) {
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
       await this.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  }
+
+  /* sizes the real browser window (no emulation, so coordinates stay exact) */
+  async windowBounds(width, height) {
+    const w = await this.send('Browser.getWindowForTarget');
+    await this.send('Browser.setWindowBounds', { windowId: w.windowId, bounds: { width, height, windowState: 'normal' } });
+    await sleep(400);
+  }
+
+  /* a small touch screen: the window shrunk to it and touch input on (no arguments: back to the
+     normal window and mouse input) */
+  async touchScreen(width, height) {
+    await this.send('Emulation.setTouchEmulationEnabled', width ? { enabled: true, maxTouchPoints: 5 } : { enabled: false });
+    await this.windowBounds(width || 1280, height || 800);
+  }
+
+  /* fingers go through Input.emulateTouchFromMouseEvent: Vivaldi maps Input.dispatchTouchEvent
+     coordinates through its own window panels, while mouse-style coordinates land exactly */
+  async touch(type, x, y) {
+    const t = { touchStart: 'mousePressed', touchMove: 'mouseMoved', touchEnd: 'mouseReleased' }[type];
+    this._finger = type === 'touchEnd' ? this._finger : { x, y };
+    const p = type === 'touchEnd' ? this._finger : { x, y };
+    await this.send('Input.emulateTouchFromMouseEvent', { type: t, x: Math.round(p.x), y: Math.round(p.y), button: type === 'touchMove' ? 'left' : 'left',
+      clickCount: type === 'touchMove' ? 0 : 1, timestamp: Date.now() / 1000 });
+  }
+
+  /* a finger tap: down and up in place */
+  async tap(x, y) {
+    await this.touch('touchStart', x, y);
+    await sleep(60);
+    await this.touch('touchEnd');
+  }
+
+  /* a finger drag from one point to another in small steps */
+  async swipe(x0, y0, x1, y1, steps) {
+    steps = steps || 10;
+    await this.touch('touchStart', x0, y0);
+    for (let i = 1; i <= steps; ++i) {
+      await sleep(20);
+      await this.touch('touchMove', x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps);
+    }
+    await this.touch('touchEnd');
+  }
+
+  async mouseMove(x, y) {
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
   }
 
   async key(key, code, keyCode) {
