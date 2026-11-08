@@ -182,6 +182,20 @@
     });
   }
 
+  /* the bomb a Blast piece carries: a dark ball with a lit fuse */
+  function bombMark(s) {
+    return K.sprite('blk:bomb:' + s, s, s, (g) => {
+      const r = s * 0.27;
+      const gr = g.createRadialGradient(s * 0.42, s * 0.5, 1, s / 2, s * 0.56, r);
+      gr.addColorStop(0, '#6a6a7a'); gr.addColorStop(1, '#0a0a12');
+      g.fillStyle = gr; g.beginPath(); g.arc(s / 2, s * 0.56, r, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#d0b070'; g.lineWidth = Math.max(1.5, s * 0.06);
+      g.beginPath(); g.moveTo(s * 0.6, s * 0.34); g.quadraticCurveTo(s * 0.7, s * 0.14, s * 0.8, s * 0.2); g.stroke();
+      K.circle(g, s * 0.8, s * 0.2, s * 0.08, '#ffd25a');
+      K.circle(g, s * 0.8, s * 0.2, s * 0.04, '#ffffff');
+    });
+  }
+
   function ghost(t, s, bright) {
     return K.sprite('blk:ghost:' + t + ':' + s + ':' + (bright ? 1 : 0), s, s, (g) => {
       const c = base(t);
@@ -197,5 +211,5 @@
     return garbage(s);
   }
 
-  Object.assign(NS.blocks, { block, garbage, crystal, orb, gemMark, ghost, forCode });
+  Object.assign(NS.blocks, { bombMark, block, garbage, crystal, orb, gemMark, ghost, forCode });
 })();

@@ -97,20 +97,35 @@ check('every cinematic shot draws', errs.length === 0, errs.join(' | '));
 /* every guardian fight and mode draws, busy frames stay in budget */
 let worst = 0;
 errs = [];
-for (const mode of ['story', 'marathon', 'sprint', 'ultra', 'zen', 'daily', 'rush', 'master', 'versus']) {
-  const opts = mode === 'story' ? { stage: 'void-6' } : {};
+const playOne = gm => gm.match ? NS.match.playPiece(gm) : NS.bot.playPiece(gm);
+const MODE_RUNS = ['story', 'marathon', 'sprint', 'ultra', 'zen', 'daily', 'rush', 'master', 'blast', 'pairs', 'jewels', 'versus', 'versus:blast', 'versus:pairs', 'versus:jewels'];
+for (const entry of MODE_RUNS) {
+  const mode = entry.split(':')[0];
+  const opts = mode === 'story' ? { stage: 'void-6' } : entry.indexOf(':') > 0 ? { rule: entry.split(':')[1] } : {};
   try {
     NS.play.start(mode, opts);
     NS.cine.end();
-    for (let i = 0; i < 40; ++i) { if (G.run.game.piece) NS.bot.playPiece(G.run.game); frames(1, 1 / 20); }
+    for (let i = 0; i < 40; ++i) { if (G.run.game.piece && NS.run.engineOf(G.run.game).active(G.run.game)) playOne(G.run.game); frames(1, 1 / 20); }
+    if (opts.rule && G.run.rule !== opts.rule) errs.push(entry + ': wrong rule');
     G.run.powers = ['bomb', 'laser'].slice(0, G.run.slots);
     for (let i = 0; i < 700; ++i) NS.fx.spawn(640, 360, 0, 0, 2, 5, '#fff', i % 12, 0);
     NS.fx.text(640, 300, 'TEST', '#fff', 20, 2);
     worst = Math.max(worst, calls());
   } catch (e) { errs.push(mode + ': ' + e.message); console.log(e.stack); }
 }
-check('every mode starts and draws', errs.length === 0, errs.join(' | '));
+check('every mode and Versus rule set starts and draws', errs.length === 0, errs.join(' | '));
 check('a busy frame stays under 3,000 draw calls', worst < 3000, worst);
+/* the Versus card: pick Jewels, then the Rookie */
+NS.screens.setScreen('modes');
+frames(2);
+NS.widgets.activate(G.hitAreas.find(a => a.id === 'vsr-jewels'));
+frames(1);
+NS.widgets.activate(G.hitAreas.find(a => a.id === 'vs-rookie'));
+check('the Versus card plays the chosen rule set', G.screen === 'game' && G.run.rule === 'jewels' && G.run.rival.match && G.profile.settings.vsRule === 'jewels');
+NS.cine.end();
+for (let i = 0; i < 60; ++i) { if (NS.match.active(G.run.game)) NS.match.playPiece(G.run.game); frames(1, 1 / 20); }
+G.profile.settings.vsRule = 'blocks';
+
 /* Versus from the modes screen: pick the Rookie, play until someone tops out */
 NS.screens.setScreen('modes');
 frames(2);

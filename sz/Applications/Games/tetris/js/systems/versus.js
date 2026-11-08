@@ -7,7 +7,9 @@
    player - it waits, holds, turns and slides the piece one step at a time and drops it - at one
    of four strengths (Rookie, Pro, Ace, Legend) that differ in thinking time, step speed, look-ahead
    and how often it settles for a worse spot. Its choices come from its own seeded generator, so
-   a match replays the same. Pure. */
+   a match replays the same. Every rule set works: Blast adds a row per bomb that goes off, and
+   in Pairs and Jewels bursts send grey stones instead of rows (Pairs: one per blob past the
+   third, four per chain link; Jewels: one per jewel past the second, three per link). Pure. */
 ;(function() {
   'use strict';
 
@@ -32,13 +34,18 @@
   const COMBO = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5];
   const LAND = 1.5, SPEEDUP = 25, MAX_LEVEL = 15;
 
-  /* rows a clear event sends */
-  function attackFor(ev) {
+  /* rows (or stones) a clear or burst event sends */
+  function attackFor(ev, rule) {
+    if (ev && ev.type === 'burst') {
+      const chain = Math.max(0, (ev.chain || 1) - 1);
+      return rule === 'jewels' ? Math.max(0, ev.cleared - 2) + chain * 3 : Math.max(0, ev.cleared - 3) + chain * 4;
+    }
     if (!ev || !ev.lines || ev.source !== 'piece') return 0;
     let n = ev.tspin === 'full' ? TSPIN[ev.lines] : ev.tspin === 'mini' ? (ev.lines === 2 ? 1 : 0) : LINES[ev.lines];
     if (ev.b2b) n += 1;
     n += COMBO[Math.min(COMBO.length - 1, ev.combo || 0)];
     if (ev.perfect) n += 10;
+    n += ev.bombs || 0;
     return n;
   }
 
@@ -49,7 +56,9 @@
   /* run fields for a match; cpu: id from CPUS */
   function attach(run, cpu, seed) {
     const def = CPU_BY_ID[cpu] || CPUS[1];
-    const rival = E.create({ seed: seed, level: 1, levelMode: 'fixed', preview: 5, hold: true, orbChance: 0 });
+    const g0 = run.game;
+    const rival = g0.match ? NS.match.create({ rule: g0.rule, seed: seed, level: 1, levelMode: 'fixed', preview: 2 })
+      : E.create({ seed: seed, level: 1, levelMode: 'fixed', preview: 5, hold: true, orbChance: 0, bombChance: g0.bombChance });
     run.game.levelMode = 'fixed';
     run.game.level = 1;
     run.game.orbChance = 0;
@@ -57,6 +66,10 @@
     run.rival = rival;
     run.kind = 'versus';
     return run;
+  }
+
+  function en(g) {
+    return g.match ? NS.match : E;
   }
 
   function sideOf(run, who) {
@@ -75,7 +88,7 @@
 
   /* a clear by `who`: cancel own incoming, send the rest; -> rows sent on */
   function onClear(run, who, ev) {
-    let n = attackFor(ev);
+    let n = attackFor(ev, run.game.rule);
     if (!n) return 0;
     const me = sideOf(run, who), them = sideOf(run, who === 'you' ? 'rival' : 'you');
     while (n > 0 && me.incoming.length) {
@@ -89,7 +102,7 @@
     if (!n) return 0;
     me.sent += n;
     const target = gameOf(run, who === 'you' ? 'rival' : 'you');
-    them.incoming.push({ rows: n, t: LAND, hole: Math.floor(E.rand(target) * C.COLS) });
+    them.incoming.push({ rows: n, t: LAND, hole: Math.floor(en(target).rand(target) * C.COLS) });
     run.events.push({ type: 'send', from: who, rows: n });
     return n;
   }
@@ -100,7 +113,7 @@
     while (s.incoming.length && s.incoming[0].t <= 0 && !g.over) {
       const a = s.incoming.shift();
       s.received += a.rows;
-      E.addGarbage(g, a.rows, a.hole);
+      en(g).addGarbage(g, a.rows, a.hole);
       if (who === 'you') ++run.hitsTaken;
       run.events.push({ type: 'land', to: who, rows: a.rows });
     }
@@ -130,6 +143,12 @@
   function plan(run) {
     const g = run.rival, vs = run.vs, def = CPU_BY_ID[vs.cpu];
     if (!g.piece) return null;
+    if (g.match) {
+      const list = NS.match.ranked(g);
+      if (!list.length) return null;
+      const k = def.miss && rnd(vs) < def.miss ? Math.min(list.length - 1, 1 + Math.floor(rnd(vs) * 3)) : 0;
+      return { r: list[k].r, x: list[k].x, hold: false };
+    }
     let best = def.deep ? BOT.deepFor(g.board, g.piece.t, g.queue[0], 0) : BOT.choose(g);
     if (!best) return null;
     best = { r: best.r, x: best.x, hold: !!best.hold };
@@ -144,13 +163,14 @@
   /* the rival's hands: one action per step gap */
   function steer(run, dt) {
     const g = run.rival, vs = run.vs, def = CPU_BY_ID[vs.cpu];
-    if (!E.active(g)) { vs.plan = null; return; }
+    const EN = en(g);
+    if (!EN.active(g)) { vs.plan = null; return; }
     vs.wait -= dt;
     if (vs.wait > 0) return;
     if (!vs.plan) {
       vs.plan = plan(run);
       vs.wait = def.gap;
-      if (!vs.plan) { E.hardDrop(g); vs.wait = def.think; }
+      if (!vs.plan) { EN.hardDrop(g); vs.wait = def.think; }
       return;
     }
     const p = vs.plan, pc = g.piece;
@@ -164,15 +184,15 @@
       return;
     }
     if (pc.r !== p.r) {
-      const d = (p.r - pc.r + 4) & 3;
-      if (!E.rotate(g, d === 3 ? -1 : d === 2 ? 2 : 1)) { E.placeAt(g, p.r, p.x); finishPiece(vs, def); }
+      const d = g.rule === 'jewels' ? 1 : (p.r - pc.r + 4) & 3;
+      if (!EN.rotate(g, d === 3 ? -1 : d === 2 ? 2 : 1)) { EN.placeAt(g, p.r, p.x); finishPiece(vs, def); }
       return;
     }
     if (pc.x !== p.x) {
-      if (!E.move(g, p.x > pc.x ? 1 : -1)) { E.placeAt(g, p.r, p.x); finishPiece(vs, def); }
+      if (!EN.move(g, p.x > pc.x ? 1 : -1)) { EN.placeAt(g, p.r, p.x); finishPiece(vs, def); }
       return;
     }
-    E.hardDrop(g);
+    EN.hardDrop(g);
     finishPiece(vs, def);
   }
 
@@ -192,10 +212,10 @@
       run.events.push({ type: 'levelup', level: lv });
     }
     steer(run, dt);
-    E.step(run.rival, dt, null);
-    const evs = E.takeEvents(run.rival);
+    en(run.rival).step(run.rival, dt, null);
+    const evs = en(run.rival).takeEvents(run.rival);
     for (const e of evs) {
-      if (e.type === 'clear') onClear(run, 'rival', e);
+      if (e.type === 'clear' || e.type === 'burst') onClear(run, 'rival', e);
       run.events.push({ type: 'rival', ev: e });
     }
     landing(run, 'you', dt);

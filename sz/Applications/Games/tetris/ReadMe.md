@@ -1,6 +1,6 @@
 # Tetris
 
-The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop: **The Spire of Lumen**. Kip the young builder and Ollo the stone golem rebuild five crumbling realms and win the stolen keystones back from their guardians - Verdant Ruins, Crystal Hollows, Sunken Temple, Ember Forge and the Starlit Spire, thirty stages, five guardian fights and cinematics. Beside the story wait Marathon, Sprint, Ultra, Zen, the Daily Challenge, Boss Rush, Master and Versus against a CPU rival. Shards from every game buy a 25-node tech tree, gems buy block skins, frames and lock effects, and seasonal festivals, daily quests, streaks, player levels and 46 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
+The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop: **The Spire of Lumen**. Kip the young builder and Ollo the stone golem rebuild five crumbling realms and win the stolen keystones back from their guardians - Verdant Ruins, Crystal Hollows, Sunken Temple, Ember Forge and the Starlit Spire, thirty stages, five guardian fights and cinematics. Beside the story wait Marathon, Sprint, Ultra, Zen, the Daily Challenge, Boss Rush, Master, three more puzzle rule sets - Blast, Pairs and Jewels - and Versus against a CPU rival with any of them. Shards from every game buy a 25-node tech tree, gems buy block skins, frames and lock effects, and seasonal festivals, daily quests, streaks, player levels and 53 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
 
 ## How It Works
 
@@ -12,7 +12,9 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
 
 **Modes:** Marathon (endless, a level every ten lines, top-ten table), Sprint (40 lines against the clock), Ultra (two minutes of score attack), Zen (no pressure and no game over - a full well melts its lower half), the Daily Challenge (three minutes on one seed per local day with two mutators), Boss Rush (all five guardians back to back, opens with two guardians beaten) and Master (instant gravity from the first piece, opens with three guardians or 150 Marathon lines).
 
-**Versus CPU:** a second, smaller board on the right where a CPU rival plays the same pieces from the same seed. Clears send garbage after the attack table - double 1, triple 2, quad 4, T-spin single/double/triple 2/4/6, mini double 1, back-to-back +1, combos up to +5, a perfect clear +10 - which first cancels your own incoming rows and lands on the other board after 1.5 seconds with one hole per attack. Both boards speed up every 25 seconds, and the first to top out loses. The rival is the placement bot steered like a hand on the controls (it waits, holds, turns and slides step by step) at four strengths: Rookie, Pro, Ace and Legend, which differ in thinking time, step speed, look-ahead and how often they settle for a worse spot. Wins count toward four achievements and a daily quest. Mutators: Overclock, Rising Tide, Empty Pockets, Power Party, Fog, Gem Fever, Earthquake and Ghost Blocks.
+**Rule sets:** Blast plays the falling blocks with bombs - about one piece in six carries one, and when its row clears it blows away every block within two cells, the columns collapse and any rows that fill clear too. Pairs and Jewels run on a separate colour-match engine with the same interface, in a six-wide, twelve-tall well. In Pairs a pair of blobs (four colours) turns around its lower blob with small kicks; after landing every blob falls on its own, and four or more touching blobs of a colour burst. In Jewels a column of three jewels (six colours, each with its own cut) cycles its order when turned, and three or more in a row across, down or diagonally shatter. In both, whatever falls into a new burst is the next link of a chain and scores far more (Pairs multiplies by 8, 16, 32... per link, Jewels by the square of the link), grey stones only break next to a burst, and gravity speeds up every 40 cleared cells. Each rule set is a mode of its own with a best score.
+
+**Versus CPU:** a second, smaller board on the right where a CPU rival plays the same pieces from the same seed. Clears send garbage after the attack table - double 1, triple 2, quad 4, T-spin single/double/triple 2/4/6, mini double 1, back-to-back +1, combos up to +5, a perfect clear +10 - which first cancels your own incoming rows and lands on the other board after 1.5 seconds with one hole per attack. Both boards speed up every 25 seconds, and the first to top out loses. The rival is the placement bot steered like a hand on the controls (it waits, holds, turns and slides step by step) at four strengths: Rookie, Pro, Ace and Legend, which differ in thinking time, step speed, look-ahead and how often they settle for a worse spot. Versus takes any rule set: in Blast every bomb that goes off adds a row, in Pairs and Jewels bursts send grey stones instead of rows (Pairs: one per blob past the third and four per chain link; Jewels: one per jewel past the second and three per link). The rival plans its pieces with each engine's own placement bot. Wins count toward five achievements and a daily quest. Mutators: Overclock, Rising Tide, Empty Pockets, Power Party, Fog, Gem Fever, Earthquake and Ghost Blocks.
 
 **Powers:** some pieces carry a glowing orb; clearing its row puts a power in a free slot, E uses it: Sweep (two bottom rows), Slow Time, I-Storm (three bars), and from the tech tree Quake (every column settles), Laser (the tallest column), Bomb (a 4 x 4 hole), Score Rush and Aegis (blocks an attack or a top-out).
 
@@ -30,8 +32,9 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
   - `js/core/namespace.js` -- the namespace with one empty object per module
   - `js/core/constants.js` -- view plane and layout, board size, timings, the shapes, the SRS kick tables, guideline scoring, pools, storage keys, palette
   - `js/core/rng.js` -- seeded generators with saveable state, hashing, day and week keys, easing
-  - `js/core/engine.js` -- the pure playfield engine (bag, movement, kicks, hold, drops, gravity, lock delay, T-spins, clears, scoring, garbage, crystals, mirror, cascade, sweep, laser, bomb)
+  - `js/core/engine.js` -- the pure playfield engine (bag, movement, kicks, hold, drops, gravity, lock delay, T-spins, clears, scoring, garbage, crystals, mirror, cascade, sweep, laser, bomb, Blast bombs)
   - `js/core/bot.js` -- the placement bot with look-ahead
+  - `js/core/match.js` -- the colour-match engine for Pairs and Jewels (pieces, kicks, falling apart, bursts, chains, stones, gravity) and its chain-simulating placement bot
   - `js/core/data-worlds.js` -- the five realms, their 30 stages and guardians
   - `js/core/data-story.js` -- the cast, every cinematic and the call-outs
   - `js/core/data-meta.js` -- powers, tech tree, block skins, frames, lock effects, modes, achievements, quests
@@ -54,7 +57,8 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
   - `js/render/blocks.js` -- every block skin, garbage, crystals, orbs, gems, ghost
   - `js/render/backdrop.js` -- realm backdrops, ambience, festival decor, vignette and danger glow
   - `js/render/boss-art.js` -- portraits and guardians
-  - `js/render/board-render.js` -- the well, blocks, clears, ghost, piece, garbage meter, hold and next
+  - `js/render/board-render.js` -- the well, blocks, bombs, clears, ghost, piece, garbage meter, hold and next
+  - `js/render/match-render.js` -- the Pairs and Jewels well: blobs with bridges, jewels, stones, bursts, ghost, piece, stone meter, next
   - `js/render/fx-render.js` -- particles, rings, texts, flash
   - `js/render/hud.js` -- powers, objective, stats, guardian panel, effects, combo, call-outs, touch buttons
   - `js/render/cine-render.js` -- letterbox, cards, dialogue, guardian reveals, victories, credits, the count
@@ -68,7 +72,7 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
   - `js/ui/input.js` -- keyboard with DAS/ARR, touch gestures, mouse
   - `js/ui/status-bar.js` -- the window status bar
   - `js/app.js` -- boot, date context, the loop, menu bar
-- `tests/` -- node tests: `harness.js` (fake DOM, canvas, storage and clock), `engine.test.js` (bag, kicks, T-spins, scoring, hold, lock delay, levels, top-out, Zen, garbage and powers, a 400-piece bot game, JSON), `run.test.js` (the bot finishes every stage and guardian and every mode, stars, guardian mechanics, powers, revives, mutators), `scene.test.js` (boot, story, keyboard play, pause, every screen and cinematic, every mode and realm, draw-call budget, no shadowBlur, warm frames paint nothing new), `versus.test.js` (attack table, same pieces on both boards, sending, cancelling and landing, the rival steers and plays, speed-up, a quick player beats the Rookie, the Legend beats a slow player, JSON replay), `meta.test.js` (migration, saving, Continue, tree, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
+- `tests/` -- node tests: `harness.js` (fake DOM, canvas, storage and clock), `engine.test.js` (bag, kicks, T-spins, scoring, hold, lock delay, levels, top-out, Zen, garbage and powers, a 400-piece bot game, JSON), `run.test.js` (the bot finishes every stage and guardian and every mode, stars, guardian mechanics, powers, revives, mutators), `scene.test.js` (boot, story, keyboard play, pause, every screen and cinematic, every mode and realm, draw-call budget, no shadowBlur, warm frames paint nothing new), `match.test.js` (spawning, pair turns and kicks, jewel cycling, falling apart, bursts of four and lines of three, stones, chains and their scoring, rival stones, gravity, the bot playing long games with chains, JSON), `rules.test.js` (each rule set on its engine, a Blast bomb going off and the collapse, solo runs as score runs, Versus with every rule, stone attacks, the Rookie and Legend tests per rule, JSON), `versus.test.js` (attack table, same pieces on both boards, sending, cancelling and landing, the rival steers and plays, speed-up, a quick player beats the Rookie, the Legend beats a slow player, JSON replay), `meta.test.js` (migration, saving, Continue, tree, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
 
 ## User Stories
 
@@ -89,6 +93,7 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
 ### Modes
 - [x] As a player, I can play Marathon, Sprint, Ultra, Zen, the Daily Challenge, Boss Rush and Master
 - [x] As a player, I can play Versus against a CPU rival of four strengths, sending and cancelling garbage
+- [x] As a player, I can play Blast, Pairs and Jewels on their own or in Versus
 - [x] As a player, I can play the same Daily Challenge as everyone today with two mutators
 
 ### Progress

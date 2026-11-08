@@ -6,7 +6,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Tetris || (SZ.Tetris = {});
 
-  const MODULES = ['constants', 'rng', 'engine', 'bot', 'progress', 'seasons', 'save', 'audio', 'music',
+  const MODULES = ['constants', 'rng', 'engine', 'bot', 'match', 'matchRender', 'progress', 'seasons', 'save', 'audio', 'music',
     'fx', 'boss', 'powers', 'versus', 'run', 'play', 'cine', 'demo',
     'view', 'artKit', 'blocks', 'backdrop', 'boardRender', 'bossArt', 'hud', 'fxRender', 'cineRender', 'frame',
     'kit', 'widgets', 'screens', 'title', 'map', 'tree', 'wardrobe', 'journal', 'results', 'pause', 'help', 'input', 'statusBar', 'app'];

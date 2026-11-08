@@ -47,7 +47,7 @@
     let danger = 0;
     if (s === 'game' || s === 'paused') {
       drawGame();
-      if (G.run && G.run.game) danger = Math.max(0, Math.min(1, (NS.engine.stackHeight(G.run.game) - 13) / 4));
+      if (G.run && G.run.game) danger = Math.max(0, Math.min(1, (NS.run.engineOf(G.run.game).stackHeight(G.run.game) - 13) / 4));
       if (s === 'paused') { W.beginFrame(); NS.pause.draw(); }
     } else if (s === 'results') {
       if (G.run) { NS.boardRender.drawBoard(G.run.game); }

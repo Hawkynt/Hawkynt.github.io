@@ -1,7 +1,8 @@
 /* A game session as one plain object (saved as JSON for Continue): the mode, the story stage or
    guardian, the engine game built with the profile's tech tree (preview, lock delay, gravity,
    orbs, score), mutators, the stage objective, power slots, Aegis and Second Chance, rising
-   garbage, a guardian fight or a Boss Rush chain. tick() advances it on a fixed step, feeds the
+   garbage, a guardian fight or a Boss Rush chain. The rule set picks the engine: the falling
+   blocks (also with Blast bombs) or the colour-match engine for Pairs and Jewels. tick() advances it on a fixed step, feeds the
    engine's events to the guardian and the powers, and decides when the session is won or lost.
    No drawing, sound or storage here. */
 ;(function() {
@@ -16,9 +17,22 @@
   const SE = NS.seasons;
   const { hashString } = NS.rng;
 
-  /* opts: stage (id), seed, date, mutators, cpu (Versus rival id) */
+  const RULES = ['blocks', 'blast', 'pairs', 'jewels'];
+
+  /* the engine module a game runs on */
+  function engineOf(g) {
+    return g && g.match ? NS.match : E;
+  }
+
+  function ruleOf(mode, opts) {
+    if (mode === 'versus') return RULES.indexOf(opts.rule) >= 0 ? opts.rule : 'blocks';
+    return mode === 'blast' || mode === 'pairs' || mode === 'jewels' ? mode : 'blocks';
+  }
+
+  /* opts: stage (id), seed, date, mutators, cpu (Versus rival id), rule (Versus rule set) */
   function build(mode, opts, profile) {
     opts = opts || {};
+    const rule = ruleOf(mode, opts);
     const T = name => P.stat(profile, name);
     const date = opts.date || new Date();
     const seed = opts.seed != null ? opts.seed : mode === 'daily' ? SE.dailyRecipe(date).seed : (hashString(mode + ':' + Date.now() + ':' + Math.random()) >>> 0);
@@ -36,10 +50,12 @@
     const gravityMul = stage ? Math.max(0.5, 1 - T('gravityCut')) : mode === 'zen' ? 0.6 : 1;
     const preview = Math.min(C.NEXT_MAX, 3 + Math.round(T('preview')));
     const holdAllowed = !has('noHold');
-    const game = E.create({
+    const match = rule === 'pairs' || rule === 'jewels';
+    const game = match ? NS.match.create({ rule: rule, seed: seed, level: 1, levelMode: 'lines', preview: 2 }) : E.create({
       seed: seed, level: level, levelMode: levelMode, gravity: gravity, gravityMul: gravityMul,
       lockDelay: C.LOCK_DELAY + T('lockDelay'), preview: has('preview') ? 2 : preview, hold: holdAllowed,
-      orbChance: mode === 'master' || mode === 'versus' ? 0 : (has('orbs') ? has('orbs').orbs : 0.07 + T('orbChance')), zen: mode === 'zen',
+      orbChance: mode === 'master' || mode === 'versus' || rule === 'blast' ? 0 : (has('orbs') ? has('orbs').orbs : 0.07 + T('orbChance')), zen: mode === 'zen',
+      bombChance: rule === 'blast' ? 0.18 : 0,
     });
     const scoreMul = 1 + T('scoreGain') + T('allGain');
     game.scoreMul = scoreMul;
@@ -50,8 +66,9 @@
       baseScoreMul: scoreMul, baseGravityMul: gravityMul, holdAllowed: holdAllowed,
       riseT: 0, rise: 0, mirrorT: 0, mirror: 0, invisible: !!has('invisible'), mutators: mutators,
       boss: false, bossState: null, rushIndex: 0, hitsTaken: 0, tokens: 0, b2bChain: 0, bestB2B: 0, noHoldLines: 0,
-      events: [], done: false, won: false, reason: '', day: mode === 'daily' ? SE.dailyRecipe(date).key : '',
+      events: [], done: false, won: false, reason: '', day: mode === 'daily' ? SE.dailyRecipe(date).key : '', rule: rule,
     };
+    if (match) { run.slots = 0; run.revives = 0; }
     if (stage) {
       if (stage.time) run.timeLimit = stage.time;
       if (stage.kind === 'dig' || stage.kind === 'gems' || stage.kind === 'combo') {
@@ -99,6 +116,9 @@
       }
       case 'sprint': return { have: g.lines, need: 40, text: 'Clear 40 lines' };
       case 'ultra': case 'daily': return { have: run.t, need: run.timeLimit, text: 'Score as much as you can' };
+      case 'blast': return { have: g.lines, need: 0, text: 'Clear rows with bombs in them and blast the stack apart' };
+      case 'pairs': return { have: g.lines, need: 0, text: 'Link four of a colour - chains score big' };
+      case 'jewels': return { have: g.lines, need: 0, text: 'Line up three jewels in any direction' };
       case 'versus': return { have: run.vs.you.sent, need: 0, text: 'Bury ' + NS.versus.CPU_BY_ID[run.vs.cpu].name + ' before it buries you' };
       default: return { have: g.lines, need: 0, text: '' };
     }
@@ -155,7 +175,7 @@
         revive(run);
         return;
       }
-      finish(run, run.mode === 'marathon' || run.mode === 'master', 'topout');
+      finish(run, ['marathon', 'master', 'blast', 'pairs', 'jewels'].indexOf(run.mode) >= 0, 'topout');
       return;
     }
     const o = objective(run);
@@ -201,17 +221,18 @@
   /* one frame of play; input: { soft } */
   function tick(run, dt, input, profile) {
     if (run.done) return run.events;
-    if (run.digStart == null) run.digStart = Math.round(E.garbageLeft(run.game) / C.COLS);
-    if (run.gemStart == null) run.gemStart = E.gemsLeft(run.game);
+    if (run.digStart == null) run.digStart = run.game.match ? 0 : Math.round(E.garbageLeft(run.game) / C.COLS);
+    if (run.gemStart == null) run.gemStart = run.game.match ? 0 : E.gemsLeft(run.game);
+    const EN = engineOf(run.game);
     run.acc += Math.min(dt, C.MAX_DT);
     const g = run.game;
     while (run.acc >= C.STEP && !run.done) {
       run.acc -= C.STEP;
       run.t += C.STEP;
-      E.step(g, C.STEP, input);
+      EN.step(g, C.STEP, input);
       if (run.vs) NS.versus.step(run, C.STEP);
       if (run.bossState) NS.boss.update(run, C.STEP, profile);
-      NS.powers.update(run, C.STEP);
+      if (!g.match) NS.powers.update(run, C.STEP);
       if (run.rise) {
         run.riseT -= C.STEP;
         if (run.riseT <= 0) {
@@ -226,10 +247,14 @@
           E.mirror(g);
         }
       }
-      const evs = E.takeEvents(g);
+      const evs = EN.takeEvents(g);
       for (let i = 0; i < evs.length; ++i) {
         const e = evs[i];
         if (e.type === 'clear') onClear(run, e, profile);
+        else if (e.type === 'burst') {
+          run.tokens += Math.floor(e.cleared / 3) + (e.chain > 1 ? e.chain * 2 : 0);
+          if (run.vs) e.sent = NS.versus.onClear(run, 'you', e);
+        }
         run.events.push(e);
       }
       judge(run, profile);
@@ -240,7 +265,7 @@
   function onClear(run, e, profile) {
     const g = run.game;
     if (e.lines) {
-      run.tokens += e.lines + (e.lines === 4 ? 3 : 0) + (e.tspin === 'full' ? 3 : 0) + (e.perfect ? 10 : 0);
+      run.tokens += e.lines + (e.lines === 4 ? 3 : 0) + (e.tspin === 'full' ? 3 : 0) + (e.perfect ? 10 : 0) + (e.bombs || 0);
       if (g.stats.holds === 0) run.noHoldLines = g.lines;
     }
     if (e.tspin === 'full' && e.lines === 3) run.tst = (run.tst || 0) + 1;
@@ -270,5 +295,5 @@
     return e;
   }
 
-  Object.assign(NS.run, { build, startBoss, objective, bonusMet, bonusText, judge, tick, starsFor, takeEvents, finish });
+  Object.assign(NS.run, { RULES, engineOf, ruleOf, build, startBoss, objective, bonusMet, bonusText, judge, tick, starsFor, takeEvents, finish });
 })();

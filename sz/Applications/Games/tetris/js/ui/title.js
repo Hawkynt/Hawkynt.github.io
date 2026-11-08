@@ -158,44 +158,58 @@
       case 'daily': { const b = p.scores.daily[G.today]; return b ? 'today ' + b.toLocaleString('en-US') : G.daily.mutators.map(id => NS.seasons.MUT_BY_ID[id].name).join(' + '); }
       case 'rush': return s.rushWins ? s.rushWins + ' wins' : 'opens with 2 guardians beaten';
       case 'master': return s.masterBest ? 'best level ' + s.masterBest : 'opens with 3 guardians or 150 Marathon lines';
+      case 'blast': return s.blastBest ? 'best ' + s.blastBest.toLocaleString('en-US') : 'no score yet';
+      case 'pairs': return s.pairsBest ? 'best ' + s.pairsBest.toLocaleString('en-US') + (s.bestChain ? '  -  chain x' + s.bestChain : '') : 'no score yet';
+      case 'jewels': return s.jewelsBest ? 'best ' + s.jewelsBest.toLocaleString('en-US') : 'no score yet';
       case 'versus': return s.vsWins ? s.vsWins + ' wins' + (s.vsBest ? ', beat ' + NS.versus.CPUS[s.vsBest - 1].name : '') : 'pick your rival';
     }
     return '';
   }
 
+  /* eleven cards in three rows; Versus is a wide card with the rule set and the CPU to pick */
   function drawModes() {
     kit.text('MODES', 60, 56, 40, '#ffffff', { weight: 'bold', shadow: true });
     const list = MODES.filter(m => m.id !== 'story');
     for (let i = 0; i < list.length; ++i) {
       const m = list[i];
-      const x = 60 + (i % 4) * 296, y = 110 + Math.floor(i / 4) * 250;
+      const x = 60 + (i % 4) * 296, y = 96 + Math.floor(i / 4) * 176;
+      if (m.id === 'versus') { versusCard(m, x, y); continue; }
       const open = modeOpen(m);
-      const vs = m.id === 'versus';
-      const hot = W.area('mode-' + m.id, x, y, 280, 234, open && !vs ? () => NS.play.start(m.id) : null, { disabled: !open, nonav: vs });
-      kit.panel(x, y, 280, 234, { accent: open ? UI.accent : '#3a4460', glow: hot && open, alpha: open ? 1 : 0.6 });
+      const hot = W.area('mode-' + m.id, x, y, 280, 166, open ? () => NS.play.start(m.id) : null, { disabled: !open });
+      kit.panel(x, y, 280, 166, { accent: open ? UI.accent : '#3a4460', glow: hot && open, alpha: open ? 1 : 0.6 });
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = hot ? 0.4 : 0.2;
-      K.blit(ctx, K.glow(open ? UI.accent : '#556'), x + 140, y + 70, 1.6);
+      K.blit(ctx, K.glow(open ? UI.accent : '#556'), x + 140, y + 40, 1.1);
       ctx.restore();
-      kit.icon(m.icon, x + 140, y + 70, 54, open ? '#ffffff' : '#8890a8');
-      kit.text(m.name, x + 140, y + 134, 22, open ? '#ffffff' : UI.textMute, { align: 'center', weight: 'bold' });
-      if (vs) {
-        kit.fitText(modeBest(m), x + 140, y + 160, 250, 13, { align: 'center', color: UI.gold, weight: 'bold' });
-        NS.versus.CPUS.forEach((c, k) => {
-          const beat = G.profile.stats.vsBest > k;
-          W.button('vs-' + c.id, c.name, x + 10 + (k % 2) * 132, y + 174 + Math.floor(k / 2) * 28, 126, 25,
-            { px: 12, accent: c.color, sub: '', action: () => NS.play.start('versus', { cpu: c.id }) });
-          if (beat) kit.icon('star', x + 128 + (k % 2) * 132, y + 186 + Math.floor(k / 2) * 28, 12, UI.gold);
-        });
-        continue;
-      }
-      kit.wrap(m.desc, x + 20, y + 162, 240, 13, UI.textDim);
-      kit.fitText(modeBest(m), x + 140, y + 214, 250, 13, { align: 'center', color: open ? UI.gold : UI.textMute, weight: 'bold' });
-      if (!open) kit.lock(x + 250, y + 30, 22);
+      kit.icon(m.icon, x + 140, y + 40, 40, open ? '#ffffff' : '#8890a8');
+      kit.text(m.name, x + 140, y + 86, 20, open ? '#ffffff' : UI.textMute, { align: 'center', weight: 'bold' });
+      kit.wrap(m.desc, x + 18, y + 108, 244, 12, UI.textDim);
+      kit.fitText(modeBest(m), x + 140, y + 152, 250, 12, { align: 'center', color: open ? UI.gold : UI.textMute, weight: 'bold' });
+      if (!open) kit.lock(x + 250, y + 26, 20);
     }
     W.button('back', 'Back', 60, 640, 220, 48, { icon: 'back', accent: UI.good, action: () => NS.screens.back() });
   }
+
+  function versusCard(m, x, y) {
+    const w = 576, set = G.profile.settings;
+    const rule = NS.metaData.RULE_BY_ID[set.vsRule] ? set.vsRule : 'blocks';
+    kit.panel(x, y, w, 166, { accent: UI.accent });
+    kit.icon(m.icon, x + 34, y + 30, 30, '#ffffff');
+    kit.text(m.name, x + 60, y + 30, 20, '#ffffff', { weight: 'bold' });
+    kit.fitText(modeBest(m), x + w - 16, y + 30, 300, 12, { align: 'right', color: UI.gold, weight: 'bold' });
+    NS.metaData.RULES.forEach((r, k) => {
+      const won = G.profile.stats.vsRules && G.profile.stats.vsRules[r.id];
+      W.button('vsr-' + r.id, r.name, x + 12 + k * 140, y + 54, 132, 38, { icon: r.icon, px: 13, selected: r.id === rule,
+        action: () => { set.vsRule = r.id; NS.save.saveProfile(G.profile); } });
+      if (won) kit.icon('star', x + 132 + k * 140, y + 58, 11, UI.gold);
+    });
+    NS.versus.CPUS.forEach((c, k) => {
+      W.button('vs-' + c.id, c.name, x + 12 + k * 140, y + 110, 132, 42, { px: 14, accent: c.color, action: () => NS.play.start('versus', { cpu: c.id, rule: rule }) });
+      if (G.profile.stats.vsBest > k) kit.icon('star', x + 132 + k * 140, y + 114, 11, UI.gold);
+    });
+  }
+
 
   function update(dt) {
     NS.demo.update(dt);

@@ -27,7 +27,7 @@
   function start(mode, opts) {
     opts = opts || {};
     const p = G.profile;
-    G.run = R.build(mode, { stage: opts.stage, seed: opts.seed, cpu: opts.cpu, date: new Date() }, p);
+    G.run = R.build(mode, { stage: opts.stage, seed: opts.seed, cpu: opts.cpu, rule: opts.rule, date: new Date() }, p);
     G.run.started = Date.now();
     FX.clear();
     G.ui.callout = null;
@@ -43,7 +43,7 @@
       if (st.kind === 'boss') shots.push.apply(shots, ST.bossIntro(st.world, w.boss));
       else shots.push({ kind: 'card', title: st.name, sub: R.objective(G.run).text + (st.bonus ? '  -  bonus: ' + R.bonusText(st.bonus) : ''), world: st.world, dur: 2.2 });
     } else if (mode === 'rush') shots.push.apply(shots, ST.bossIntro(0, W.BOSSES[0]));
-    else if (mode === 'versus') shots.push({ kind: 'card', title: 'VS  ' + NS.versus.CPU_BY_ID[G.run.vs.cpu].name.toUpperCase(), sub: 'Same pieces, two boards - doubles and up send garbage, the first to top out loses', world: G.run.world, dur: 2 });
+    else if (mode === 'versus') shots.push({ kind: 'card', title: 'VS  ' + NS.versus.CPU_BY_ID[G.run.vs.cpu].name.toUpperCase(), sub: NS.metaData.RULE_BY_ID[G.run.rule].name + '  -  same pieces, two boards: ' + (G.run.game.match ? 'bursts and chains send stones' : 'doubles and up send garbage') + ', the first to top out loses', world: G.run.world, dur: 2 });
     else shots.push({ kind: 'card', title: NS.metaData.MODE_BY_ID[mode].name, sub: modeLine(G.run), world: G.run.world, dur: 1.8 });
     shots.push({ kind: 'count', dur: 1.5 });
     NS.cine.play(shots, mode === 'story' ? 'stage' : 'mode');
@@ -85,7 +85,7 @@
     R.tick(run, dt, { soft: NS.input.softHeld() }, G.profile);
     const evs = R.takeEvents(run);
     for (let i = 0; i < evs.length; ++i) present(evs[i]);
-    const h = E.stackHeight(run.game);
+    const h = R.engineOf(run.game).stackHeight(run.game);
     if (h >= 15 && !run.warned) {
       run.warned = true;
       callout('kip', ST.CALLOUTS.danger[0]);
@@ -184,6 +184,17 @@
         FX.flash(0.6, '#ff2a2a');
         break;
       case 'send': sendFx(e); break;
+      case 'burst': burstFx(e); break;
+      case 'blast': {
+        const c = cellXY(e.x, e.y);
+        FX.shake(10 + Math.min(10, e.cells));
+        FX.flash(0.4, '#ff9a3a');
+        FX.ring(c.x, c.y, 10, 170, 0.6, '#ffb14a', 8);
+        FX.burst(c.x, c.y, 40 + e.cells * 3, ['#ff9a3a', '#ffd25a', '#ffffff', '#ff5a3a'], 'ember', 520, 300, 7);
+        FX.text(c.x, c.y - 40, 'BLAST! +' + e.points.toLocaleString('en-US'), '#ffb14a', 26, 1.2);
+        sfx('explode');
+        break;
+      }
       case 'land':
         if (e.to === 'rival') rivalBurst(['#ff6a6a', '#ffd25a'], 18);
         break;
@@ -234,6 +245,31 @@
     if (e.perfect) for (let i = 0; i < 80; ++i) FX.spawn(BOARD_X + Math.random() * 300, BOARD_Y + 600, (Math.random() - 0.5) * 200, -300 - Math.random() * 500, 1.6, 6, ['#ffd25a', '#ff7ad8', '#7affea', '#ffffff'][i % 4], 'confetti', 500);
   }
 
+  /* Pairs and Jewels: every bursting cell sprays its colour, chains grow the words and shakes */
+  function burstFx(e) {
+    const MR = NS.matchRender, M = NS.match;
+    const xy = (x, y) => ({ x: BOARD_X + x * MR.S + MR.S / 2, y: BOARD_Y + (y - M.HIDDEN) * MR.S + MR.S / 2 });
+    let sx = 0, sy = 0;
+    for (const c of e.cells) {
+      const p = xy(c[0], c[1]);
+      sx += p.x; sy += p.y;
+      const col = c[2] === M.STONE ? '#a8adb8' : MR.COLORS[c[2]];
+      for (let i = 0; i < 6; ++i) FX.spawn(p.x, p.y, (Math.random() - 0.5) * 320, -80 - Math.random() * 260, 0.6 + Math.random() * 0.4, 5, col, G.run.game.rule === 'jewels' ? 'shard' : 'bubble', 600);
+      FX.ring(p.x, p.y, 6, 40, 0.35, col, 3);
+    }
+    const n = e.cells.length || 1;
+    const cx = sx / n, cy = sy / n;
+    FX.text(cx, cy - 20, '+' + e.points.toLocaleString('en-US'), '#ffffff', 18, 1);
+    if (e.chain > 1) {
+      FX.text(BOARD_X + 150, BOARD_Y + 220, e.chain + ' CHAIN!', K_CHAIN[Math.min(K_CHAIN.length - 1, e.chain - 2)], 26 + Math.min(16, e.chain * 3), 1.3);
+      FX.shake(4 + e.chain * 2);
+      FX.flash(Math.min(0.6, 0.15 * e.chain), '#ffffff');
+      if (e.chain >= 3) callout(Math.random() < 0.5 ? 'kip' : 'ollo', pick(ST.CALLOUTS.quad));
+    } else FX.shake(2);
+    sfx('pickup', { pitch: 1 + (e.chain - 1) * 0.12, volume: 0.6 });
+  }
+  const K_CHAIN = ['#ffd25a', '#ff9a3a', '#ff5a8a', '#c08aff', '#7affea'];
+
   /* Versus: a comet of sparks flies from the sender's board to the other one */
   function rivalCenter() {
     const H = NS.hud;
@@ -262,7 +298,11 @@
   }
 
   function rivalFx(e) {
-    if (e.type === 'clear' && e.lines) {
+    if (e.type === 'burst') {
+      const c = rivalCenter();
+      FX.burst(c.x + (Math.random() - 0.5) * 100, c.y + 60, 6 + e.cleared, ['#ffffff', NS.matchRender.COLORS[1 + (e.chain % 6)]], 'spark', 200, 300, 4);
+      if (e.chain > 1) FX.text(c.x, c.y - 60, e.chain + ' CHAIN', '#ffb14a', 18, 1);
+    } else if (e.type === 'clear' && e.lines) {
       const c = rivalCenter();
       for (const y of e.rows) FX.spawn(c.x + (Math.random() - 0.5) * 120, NS.hud.RIVAL_Y + (14 + (y - HIDDEN) * CELL) * NS.hud.RIVAL_S, (Math.random() - 0.5) * 200, -100, 0.6, 4, '#ffffff', 'spark', 300);
       if (e.lines === 4 || e.tspin === 'full') FX.text(c.x, c.y - 60, e.lines === 4 ? 'QUAD' : 'T-SPIN', '#ffb14a', 20, 1);
@@ -348,12 +388,18 @@
       P.questProgress(p, 'zen', Math.floor(run.t / 60)).forEach(q => res.quests.push(q));
     }
     if (run.mode === 'rush' && run.won) ++s.rushWins;
+    res.rule = run.rule;
+    if (g.match) { res.bestChain = g.stats.bestChain; s.bestChain = Math.max(s.bestChain, g.stats.bestChain); s.bursts += g.stats.bursts; }
+    if (g.stats.blasts) s.blasts += g.stats.blasts;
+    const bestKey = { blast: 'blastBest', pairs: 'pairsBest', jewels: 'jewelsBest' }[run.mode];
+    if (bestKey) { res.best = g.score > s[bestKey]; s[bestKey] = Math.max(s[bestKey], g.score); }
     if (run.vs) {
       res.cpu = run.vs.cpu;
       res.sent = run.vs.you.sent;
       s.vsSent += run.vs.you.sent;
       if (run.won) {
         ++s.vsWins;
+        s.vsRules[run.rule] = (s.vsRules[run.rule] || 0) + 1;
         s.vsBest = Math.max(s.vsBest, NS.versus.CPUS.findIndex(c => c.id === run.vs.cpu) + 1);
         P.questProgress(p, 'versus', 1).forEach(q => res.quests.push(q));
       }

@@ -114,8 +114,21 @@
     { id: 'daily', name: 'Daily Challenge', desc: 'Three minutes, one seed for everyone today, two mutators', icon: 'calendar', time: 180 },
     { id: 'rush', name: 'Boss Rush', desc: 'All five guardians back to back', icon: 'skull', need: 2 },
     { id: 'master', name: 'Master', desc: 'Instant gravity from the first piece - for experts', icon: 'crown' },
-    { id: 'versus', name: 'Versus CPU', desc: 'Same pieces, two boards: bury the CPU in garbage', icon: 'swords' },
+    { id: 'blast', name: 'Blast', desc: 'Pieces carry bombs: clear their row and they blast the stack apart', icon: 'bomb' },
+    { id: 'pairs', name: 'Pairs', desc: 'Falling colour pairs: link four of a colour, set up chains', icon: 'chain' },
+    { id: 'jewels', name: 'Jewels', desc: 'Columns of three jewels: line up three in any direction', icon: 'gem' },
+    { id: 'versus', name: 'Versus CPU', desc: 'Two boards, any rule set: bury the CPU', icon: 'swords' },
   ];
+
+  /* the rule sets a Versus match can be played with */
+  const RULES = [
+    { id: 'blocks', name: 'Blocks', icon: 'piece' },
+    { id: 'blast', name: 'Blast', icon: 'bomb' },
+    { id: 'pairs', name: 'Pairs', icon: 'chain' },
+    { id: 'jewels', name: 'Jewels', icon: 'gem' },
+  ];
+  const RULE_BY_ID = {};
+  for (const r of RULES) RULE_BY_ID[r.id] = r;
 
   /* ---- achievements ---- */
   const A = [];
@@ -161,6 +174,13 @@
   add('level20', 'Seasoned', 'Reach player level 20', 'xp', s => s.level >= 20);
   add('level50', 'Veteran', 'Reach player level 50', 'xp', s => s.level >= 50);
   add('festival', 'Festive', 'Finish a festival reward track', 'gift', s => s.festivalDone >= 1);
+  add('blast10', 'Demolition', 'Set off 10 bombs in Blast', 'bomb', s => s.blasts >= 10);
+  add('blast50k', 'Big Bang', 'Score 50,000 in Blast', 'bomb', s => s.blastBest >= 50000);
+  add('chain3', 'Chain Reaction', 'Make a 3 chain in Pairs or Jewels', 'chain', s => s.bestChain >= 3);
+  add('chain5', 'Domino Master', 'Make a 5 chain in Pairs or Jewels', 'chain', s => s.bestChain >= 5);
+  add('pairs20k', 'Pair Pro', 'Score 20,000 in Pairs', 'chain', s => s.pairsBest >= 20000);
+  add('jewels20k', 'Jeweller', 'Score 20,000 in Jewels', 'gem', s => s.jewelsBest >= 20000);
+  add('vsAll', 'All-Rounder', 'Win Versus with every rule set', 'swords', s => ['blocks', 'blast', 'pairs', 'jewels'].every(r => s.vsRules && s.vsRules[r]));
   add('vs1', 'Rival Down', 'Win a Versus match', 'swords', s => s.vsWins >= 1);
   add('vs25', 'Duelist', 'Win 25 Versus matches', 'swords', s => s.vsWins >= 25);
   add('vsAce', 'Ace Breaker', 'Beat the Ace in Versus', 'swords', s => s.vsBest >= 3);
@@ -189,5 +209,5 @@
   const MODE_BY_ID = {};
   for (const m of MODES) MODE_BY_ID[m.id] = m;
 
-  NS.metaData = { POWERS, POWER_BY_ID, BRANCHES, TREE, TREE_BY_ID, SKINS, FRAMES, EFFECTS, MODES, MODE_BY_ID, ACHIEVEMENTS: A, QUESTS };
+  NS.metaData = { RULES, RULE_BY_ID, POWERS, POWER_BY_ID, BRANCHES, TREE, TREE_BY_ID, SKINS, FRAMES, EFFECTS, MODES, MODE_BY_ID, ACHIEVEMENTS: A, QUESTS };
 })();
