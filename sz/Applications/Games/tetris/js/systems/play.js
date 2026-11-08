@@ -191,7 +191,8 @@
         FX.flash(0.4, '#ff9a3a');
         FX.ring(c.x, c.y, 10, 170, 0.6, '#ffb14a', 8);
         FX.burst(c.x, c.y, 40 + e.cells * 3, ['#ff9a3a', '#ffd25a', '#ffffff', '#ff5a3a'], 'ember', 520, 300, 7);
-        FX.text(c.x, c.y - 40, 'BLAST! +' + e.points.toLocaleString('en-US'), '#ffb14a', 26, 1.2);
+        present.blasts = ((present.blasts || 0) + 1) % 3;
+        FX.text(c.x, c.y - 40 - present.blasts * 32, 'BLAST! +' + e.points.toLocaleString('en-US'), '#ffb14a', 26, 1.2);
         sfx('explode');
         break;
       }
@@ -287,7 +288,8 @@
         0.25 + k * 0.45, 4 + e.rows * 0.6, i % 3 ? col : '#ffffff', 'spark', 0);
     }
     FX.ring(b.x, b.y, 8, 90 + e.rows * 12, 0.6, col, 5);
-    FX.text(e.from === 'you' ? b.x : BOARD_X + 150, e.from === 'you' ? b.y - 40 : BOARD_Y + 470, (e.from === 'you' ? 'SENT ' : 'INCOMING ') + e.rows, col, 22, 1.1);
+    sendFx.n = ((sendFx.n || 0) + 1) % 3;
+    FX.text(e.from === 'you' ? b.x : BOARD_X + 150, (e.from === 'you' ? b.y - 40 : BOARD_Y + 470) - sendFx.n * 26, (e.from === 'you' ? 'SENT ' : 'INCOMING ') + e.rows, col, 22, 1.1);
     if (e.from === 'rival') { FX.shake(5); sfx('select', { pitch: 0.6 }); }
     else sfx('powerup', { pitch: 1.6, volume: 0.5 });
   }
@@ -420,6 +422,7 @@
     res.achievements = P.checkAchievements(p);
     G.result = res;
     G.resultT = G.time;
+    if (run.vs) FX.clear();
     NS.save.clearRun();
     NS.save.saveProfile(p);
     const finale = run.mode === 'story' && run.won && run.stage === 'void-6' && !p.seen.finale;
