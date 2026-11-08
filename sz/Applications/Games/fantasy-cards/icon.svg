@@ -1,15 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <!-- Card back -->
-  <rect x="10" y="4" width="28" height="40" rx="3" fill="#1a237e" stroke="#5c6bc0" stroke-width="1.5"/>
-  <!-- Card face behind -->
-  <rect x="6" y="6" width="28" height="38" rx="3" fill="#283593" stroke="#7986cb" stroke-width="1"/>
-  <!-- Card face front -->
-  <rect x="14" y="2" width="28" height="40" rx="3" fill="#e8eaf6" stroke="#3f51b5" stroke-width="1.5"/>
-  <!-- Star symbol on card -->
-  <polygon points="28,12 30,18 36,18 31,22 33,28 28,24 23,28 25,22 20,18 26,18" fill="#ffd54f" stroke="#f9a825" stroke-width="0.5"/>
-  <!-- Mana gem -->
-  <circle cx="28" cy="36" r="4" fill="#42a5f5" opacity="0.9"/>
-  <circle cx="28" cy="36" r="2" fill="#90caf9"/>
-  <!-- Sparkle -->
-  <circle cx="18" cy="8" r="1.5" fill="#fff" opacity="0.8"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a2a9a"/><stop offset="1" stop-color="#1e0a40"/></linearGradient></defs><rect x="2" y="3" width="44" height="44" rx="10" fill="#000" opacity=".28"/><rect x="2" y="2" width="44" height="44" rx="10" fill="url(#t)"/><path d="M12 2h24a10 10 0 0 1 10 10v6c-8-4-36-4-44 0v-6a10 10 0 0 1 10-10z" fill="#fff" opacity=".16"/><rect x="2.5" y="2.5" width="43" height="43" rx="9.5" fill="none" stroke="#000" stroke-opacity=".35"/><rect x="12" y="8" width="22" height="31" rx="3" transform="rotate(-8 23 23)" fill="#2a1a5a" stroke="#ffd25a" stroke-width="1.6"/><rect x="15" y="10" width="21" height="30" rx="3" transform="rotate(6 25 25)" fill="#f4ecd8" stroke="#1a1a2a" stroke-width="1.4"/><path d="M26 15l2.6 6 6.4.4-5 4 1.6 6.2-5.6-3.4-5.6 3.4 1.6-6.2-5-4 6.4-.4z" transform="rotate(6 25 25)" fill="#ffd25a" stroke="#c07a1a" stroke-width=".9"/><circle cx="25" cy="36" r="2.2" fill="#5ad0ff" stroke="#1a1a2a" stroke-width=".8"/></svg>

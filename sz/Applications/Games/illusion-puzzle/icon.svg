@@ -1,14 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <!-- Impossible triangle (Penrose) -->
-  <polygon points="24,6 42,38 6,38" fill="none" stroke="#88f" stroke-width="2.5" stroke-linejoin="round"/>
-  <!-- Inner impossible detail -->
-  <line x1="24" y1="6" x2="24" y2="22" stroke="#88f" stroke-width="1.5"/>
-  <line x1="15" y1="30" x2="33" y2="30" stroke="#88f" stroke-width="1.5"/>
-  <!-- Isometric tiles -->
-  <polygon points="24,26 32,30 24,34 16,30" fill="#334" stroke="#556" stroke-width="0.5"/>
-  <polygon points="24,20 32,24 24,28 16,24" fill="#445" stroke="#556" stroke-width="0.5"/>
-  <!-- Gem collectible -->
-  <polygon points="24,14 27,17 24,20 21,17" fill="#ff0" opacity="0.8"/>
-  <!-- Player dot -->
-  <circle cx="24" cy="30" r="3" fill="#0af" opacity="0.9"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb07a"/><stop offset="1" stop-color="#c0507a"/></linearGradient></defs><rect x="2" y="3" width="44" height="44" rx="10" fill="#000" opacity=".28"/><rect x="2" y="2" width="44" height="44" rx="10" fill="url(#t)"/><path d="M12 2h24a10 10 0 0 1 10 10v6c-8-4-36-4-44 0v-6a10 10 0 0 1 10-10z" fill="#fff" opacity=".16"/><rect x="2.5" y="2.5" width="43" height="43" rx="9.5" fill="none" stroke="#000" stroke-opacity=".35"/><path d="M24 8l17 30H7z" fill="none" stroke="#1a1a2a" stroke-width="7" stroke-linejoin="round" opacity=".25"/><path d="M24 8l17 30h-8L24 22z" fill="#7a5ad0" stroke="#1a1a2a" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 38L24 8l4 7-13 23z" fill="#5ad0ff" stroke="#1a1a2a" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 38h34l-4-7H19z" fill="#ffe07a" stroke="#1a1a2a" stroke-width="1.2" stroke-linejoin="round"/></svg>
