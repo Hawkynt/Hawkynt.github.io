@@ -1758,6 +1758,16 @@ Test categories:
 - **Integration**: Skin loader + renderer, app launcher + window manager
 - **Visual regression**: Screenshot comparison of rendered windows with known skins
 
+#### Game end-to-end tests
+
+The overhauled canvas games also have browser tests in `Applications/Games/e2e/`, with no dependencies beyond Node 18+ and a Chromium-family browser (Vivaldi, Chromium or Chrome; set `SZ_BROWSER` to pick one):
+
+```
+node Applications/Games/e2e/run.js [game ...] [--out dir]
+```
+
+The runner serves the repository over local HTTP and opens each game's page in a headless browser. The page moves into the desktop, so the game runs inside a maximized window there, as players see it. Each `<game>.e2e.js` scenario plays like a player: real clicks on the game's own hit areas and real key presses. The bot only stands in for the player's hands during long stretches. Scenarios check what is on screen by measuring regions of the game canvas, require no uncaught exceptions or console errors, and write screenshots and zoomed close-ups for a human look (default: `<tmp>/sz-e2e`). `SZ_E2E_TRACE=1` logs every DevTools Protocol call. Scenarios so far: Tetris, Breakout, Bubble Bobble.
+
 ### Lint
 
 ```
