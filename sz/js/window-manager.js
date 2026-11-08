@@ -233,9 +233,38 @@
       this.#zStack = this.#zStack.filter(wid => wid !== id);
       this.#zStack.push(id);
       this.#updateZIndices();
+      this.#focusFrame(win);
 
       if (this.onWindowFocused)
         this.onWindowFocused(win);
+    }
+
+    /**
+     * The keyboard follows the active window: an app in a frame gets the focus when its window is
+     * opened or activated (and again once its page has loaded), so keys reach it without a second
+     * click inside. Not while the user is typing in a shell field outside the window.
+     */
+    #focusFrame(win) {
+      const frame = win.iframe;
+      if (!frame)
+        return;
+      const go = () => {
+        if (!win.active || win.state === 'minimized')
+          return;
+        const a = document.activeElement;
+        if (a && a !== frame && a !== document.body && !win.element.contains(a) && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))
+          return;
+        try {
+          frame.focus({ preventScroll: true });
+          if (frame.contentWindow)
+            frame.contentWindow.focus();
+        } catch (_) {}
+      };
+      go();
+      if (!frame.dataset.szFocusOnLoad) {
+        frame.dataset.szFocusOnLoad = '1';
+        frame.addEventListener('load', go);
+      }
     }
 
     minimizeWindow(id) {

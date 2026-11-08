@@ -59,6 +59,8 @@
       this.#titleTextEl.textContent = title;
     }
 
+    get active() { return this.#active; }
+
     setActive(active) {
       this.#active = !!active;
       this.#element.classList.toggle('sz-window-active', this.#active);

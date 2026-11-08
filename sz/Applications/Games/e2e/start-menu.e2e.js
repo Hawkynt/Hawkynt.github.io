@@ -57,6 +57,16 @@ exports.run = async (t) => {
   await t.shot('01-mouse-games');
   t.check('mouse: hovering Games shows its programs', s.flyout && s.items > 10, s);
   t.check('mouse: every program fits on screen without scrolling, in columns if needed', s.flyoutScroll.sh <= s.flyoutScroll.ch + 1 && s.flyoutRect.y >= 0 && s.flyoutRect.y + s.flyoutRect.h <= s.vh, s);
+  /* launching from the menu puts the keyboard into the new window: keys reach the game at once */
+  p = await centre(page, '.sz-start-flyout .sz-menu-item', 'Tetris');
+  await page.click(p.x, p.y);
+  await page.waitFor('Array.from(document.querySelectorAll("iframe")).some(f => /tetris/.test(f.src) && f.contentWindow.SZ && f.contentWindow.SZ.Tetris && f.contentWindow.SZ.Tetris.state && f.contentWindow.SZ.Tetris.state.screen)', 15000);
+  await t.wait(500);
+  await page.eval('(function(){ const f = Array.from(document.querySelectorAll("iframe")).find(f => /tetris/.test(f.src)); f.contentWindow.__keys = 0; f.contentWindow.addEventListener("keydown", () => ++f.contentWindow.__keys, true); })()');
+  await page.key('ArrowDown', 'ArrowDown', 40);
+  await page.key('d', 'KeyD', 68);
+  const keys = await page.eval('Array.from(document.querySelectorAll("iframe")).find(f => /tetris/.test(f.src)).contentWindow.__keys');
+  t.check('mouse: a game launched from the menu gets the keyboard without another click', keys === 2, keys);
   await page.click(5, 5);
   await t.wait(300);
 
