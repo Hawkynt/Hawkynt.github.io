@@ -1,6 +1,6 @@
 # Breakout
 
-The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Prism Run**. Juno and her drone Bolt fly the paddle-ship Aurora into the five brick fortresses where the Gloom Engine has walled up the starlight - Neon Gardens, Glacier Citadel, Clockwork Foundry, Coral Abyss and the Gloom Engine itself, thirty stages, five guardian fights and cinematics. Beside the story wait Arcade, Blitz, Zen, the Daily Challenge and Boss Rush. Shards from every game buy a 25-node tech tree, gems buy paddles, balls and trails, and seasonal festivals, daily quests, streaks, player levels and 38 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
+The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Prism Run**. Juno and her drone Bolt fly the paddle-ship Aurora into the five brick fortresses where the Gloom Engine has walled up the starlight - Neon Gardens, Glacier Citadel, Clockwork Foundry, Coral Abyss and the Gloom Engine itself, thirty stages, five guardian fights and cinematics. Beside the story wait Arcade, Blitz, Zen, the Daily Challenge, Boss Rush and the Duo and Arena team modes with CPU partners. Shards from every game buy a 25-node tech tree, gems buy paddles, balls and trails, and seasonal festivals, daily quests, streaks, player levels and 41 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
 
 ## How It Works
 
@@ -12,7 +12,9 @@ The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Pris
 
 **Story:** five fortresses of six stages. Stage kinds: clear every brick, break every gold target, clear against the clock, and the guardian. Each stage has three stars: finish it, beat the par time and meet its bonus goal (lose no ball, reach a combo, catch power-ups). Guardians float at the top inside an orbiting ring of shield bricks that grow back; hitting the body hurts them (two points, fire three, mega five; lasers chip). They shoot at the paddle - seeds and bolts stun, ice shrinks, ink clouds the field, void does both - and each has a move of its own: the Hedge Colossus sprouts a row of regrowing bricks, the Frost Warden refreezes its shield, the Gear Tyrant spins its ring hard and fires in threes, the Abyssal Kraken inks the field and the Gloom Engine pulls the balls toward its core when it rages at half health. Cinematics open the story, every fortress and every guardian fight, close every victory and end the game with a finale and credits.
 
-**Modes:** Arcade (endless symmetric walls from a seeded generator, faster and tougher with every wall, three balls, top-ten table), Blitz (two minutes of endless walls with unlimited balls), Zen (no lives, no clock, calm music), the Daily Challenge (three minutes on one seed per local day with two mutators) and Boss Rush (all five guardians back to back, opens with two guardians beaten). Mutators: Turbo Ball, Slim Paddle, Bare Hands, Power Party, Blackout, Regrowth, Heavy Ball and Triple Start.
+**Modes:** Arcade (endless symmetric walls from a seeded generator, faster and tougher with every wall, three balls, top-ten table), Blitz (two minutes of endless walls with unlimited balls), Zen (no lives, no clock, calm music), the Daily Challenge (three minutes on one seed per local day with two mutators) and Boss Rush (all five guardians back to back, opens with two guardians beaten).
+
+**Team modes:** endless walls played together with CPU partner paddles. In Duo, Bolt guards the top edge; in Arena, Captain Orla and Bolt-2 guard the left and right edges as well, so every edge has a paddle. A guarded edge is open (it glows red): a ball that gets past a partner is lost like one that falls past your paddle, and the team shares the balls. Partners bounce balls back at an angle set by where they land, look again every tenth of a second, move at a capped speed and aim their returns at the middle of the remaining bricks. The walls sit in the middle of the field and are trimmed to twelve columns, leaving lanes past them. Best walls, partner saves, three achievements and a daily quest. Mutators: Turbo Ball, Slim Paddle, Bare Hands, Power Party, Blackout, Regrowth, Heavy Ball and Triple Start.
 
 **Progress without a server:** everything lives in localStorage - the profile (shards, gems, XP and level, tech tree, stars and best times, collection, statistics, high scores, quests, streak, festival track) and the snapshot of the game in progress, written every three seconds, on pause and when the page hides. The old game's top-five table moves into Arcade on first launch. The festival running on the local date tints the fortresses, drifts its decor over every screen, collects tokens from every brick and fills a five-tier track that ends in a paddle and a ball trail.
 
@@ -26,8 +28,8 @@ The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Pris
 - `styles.css` -- window chrome
 - `js/` -- the game under `SZ.Breakout`, one module per concern:
   - `js/core/namespace.js`, `constants.js` (field, grid, paddle, ball, drops, brick kinds, power-ups, palette), `rng.js`
-  - `js/core/engine.js` -- the pure field engine (layouts, bricks, ball physics, paddle, power-ups, lasers, stars, regrowth, lives)
-  - `js/core/bot.js` -- the paddle bot
+  - `js/core/engine.js` -- the pure field engine (layouts, bricks, ball physics, paddle, power-ups, lasers, stars, regrowth, lives, partner paddles on open edges)
+  - `js/core/bot.js` -- the paddle bot and the CPU partners' steering
   - `js/core/data-worlds.js` -- five fortresses, 30 stages with their layouts, five guardians
   - `js/core/data-story.js` -- the cast, every cinematic and the call-outs
   - `js/core/data-meta.js` -- tech tree, paddles, balls, trails, modes, achievements, quests
@@ -36,13 +38,13 @@ The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Pris
   - `js/core/state.js`, `save.js` (the only module touching localStorage), `audio.js`, `music.js`
   - `js/systems/fx.js` -- pooled particles, texts, rings, shake, flash, hit-stop
   - `js/systems/boss.js` -- guardians: movement, shield ring, damage, shots, specials, rage
-  - `js/systems/run.js` -- a session: building any mode or stage, the wall generator, objectives, stars, revives, the fixed-step tick, Boss Rush
+  - `js/systems/run.js` -- a session: building any mode or stage, the wall generator, the team modes and their partners, objectives, stars, revives, the fixed-step tick, Boss Rush
   - `js/systems/play.js` -- sessions on screen: starting with cinematics, Continue, events to juice and call-outs, trails, finishing into results, autosave
   - `js/systems/cine.js`, `demo.js`
   - `js/render/view.js`, `art-kit.js`, `sprites.js`, `backdrop.js`, `boss-art.js`, `field-render.js`, `fx-render.js`, `hud.js`, `cine-render.js`, `frame.js`
   - `js/ui/kit.js`, `widgets.js`, `screens.js`, `title.js` (title and modes), `map.js`, `panels.js` (tech tree, collection, journal, results, pause, how to play), `input.js`, `status-bar.js`
   - `js/app.js` -- boot, date context, the loop, menu bar
-- `tests/` -- node tests: `harness.js`, `run.test.js` (every brick kind, paddle angles, power-ups, barrier, lives, the bot finishing every stage and guardian, stars, guardian shots and rage, endless walls, timed modes, Boss Rush, mutators, revive, JSON), `scene.test.js` (boot, story, keyboard and mouse play, pause, results, every screen, cinematic, mode and fortress, draw-call budget, no shadowBlur, warm frames paint nothing new), `meta.test.js` (migration, saving, Continue, tree, drop list, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
+- `tests/` -- node tests: `harness.js`, `run.test.js` (every brick kind, paddle angles, power-ups, barrier, lives, the bot finishing every stage and guardian, stars, guardian shots and rage, endless walls, timed modes, Boss Rush, mutators, revive, JSON), `scene.test.js` (boot, story, keyboard and mouse play, pause, results, every screen, cinematic, mode and fortress, draw-call budget, no shadowBlur, warm frames paint nothing new), `team.test.js` (open guarded edges, partner bounces and angles, capped partner speed, centred and trimmed walls, partner steering, Duo and Arena sessions where the partners keep balls in play and walls get cleared, the team run's end, JSON), `meta.test.js` (migration, saving, Continue, tree, drop list, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
 
 ## User Stories
 
@@ -60,6 +62,7 @@ The brick breaker grown into an adventure for the »SynthelicZ« Desktop: **Pris
 
 ### Modes
 - [x] As a player, I can play Arcade, Blitz, Zen, the Daily Challenge and Boss Rush
+- [x] As a player, I can play Duo with a CPU partner on the top edge, or Arena with CPU partners on the top, left and right edges
 - [x] As a player, I can play the same Daily Challenge wall as everyone today with two mutators
 
 ### Progress

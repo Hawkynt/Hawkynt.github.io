@@ -265,7 +265,7 @@
     if (r.best) kit.text('NEW PERSONAL BEST!', 640, story ? 304 : 254, 22, UI.good, { align: 'center', weight: 'bold' });
     else if (r.rank >= 0) kit.text('Rank #' + (r.rank + 1) + ' in your top ten', 640, story ? 304 : 254, 18, UI.textDim, { align: 'center' });
     const s = r.stats;
-    const facts = [['Bricks', r.bricks], ['Best combo', s.best], ['Power-ups', s.caught], ['Balls lost', s.lost], [r.mode === 'story' ? 'Bombs' : 'Wall', r.mode === 'story' ? s.bombs : r.wall], ['Time', NS.hud.clock(r.time)]];
+    const facts = [['Bricks', r.bricks], ['Best combo', s.best], r.mateHits != null ? ['Partner saves', r.mateHits] : ['Power-ups', s.caught], ['Balls lost', s.lost], [r.mode === 'story' ? 'Bombs' : 'Wall', r.mode === 'story' ? s.bombs : r.wall], ['Time', NS.hud.clock(r.time)]];
     for (let i = 0; i < facts.length; ++i) {
       const x = 260 + i * 152;
       kit.text(String(facts[i][1]), x, 350, 22, '#ffffff', { align: 'center', weight: 'bold' });
@@ -335,8 +335,8 @@
     ['Power-ups', 'Catch falling capsules: Wide, Multi, Slow, Fire, Laser (Space or click to fire), Barrier, Extra Life and more from the tech tree. Grey ones are bad - dodge them.'],
     ['Combos', 'Break bricks without touching the paddle to build a combo: every brick in a chain scores more.'],
     ['Guardians', 'Each fortress ends with a guardian behind an orbiting shield. Hit its body to hurt it and dodge its shots - they stun or shrink your paddle.'],
-    ['Stars', 'Every stage has three stars: finish it, beat the par time and reach its bonus goal. Stars unlock paddles, balls and trails.'],
-    ['Grow stronger', 'Every game pays shards for the tech tree and XP for levels. Quests, streaks and festivals bring something new every day.'],
+    ['Team play', 'Duo puts Bolt on the top edge, Arena adds Captain Orla and Bolt-2 on the sides. Open edges glow red: a ball past a partner is lost.'],
+    ['Grow stronger', 'Stages give up to three stars. Every game pays shards for the tech tree and XP; quests and festivals add more each day.'],
   ];
 
 

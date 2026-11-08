@@ -135,8 +135,15 @@
         break;
       }
       case 'lost':
-        FX.burst(FIELD_X + e.x, FIELD_Y + C.FIELD_H - 4, 20, ['#ff5a6a', '#ffffff'], 'spark', 300, 400, 5);
+        FX.burst(FIELD_X + e.x, FIELD_Y + (e.y == null ? C.FIELD_H - 4 : e.y), 20, ['#ff5a6a', '#ffffff'], 'spark', 300, 400, 5);
         break;
+      case 'mate': {
+        const mate = NS.metaData.MATES[e.side];
+        const def = NS.metaData.PADDLES.find(x => x.id === mate.paddle) || NS.metaData.PADDLES[0];
+        FX.burst(FIELD_X + e.x, FIELD_Y + e.y, 7, ['#ffffff', def.accent], 'spark', 170, 0, 3);
+        if (Math.random() < 0.04) callout(mate.who, ST.CALLOUTS.team[Math.floor(Math.random() * ST.CALLOUTS.team.length)]);
+        break;
+      }
       case 'life':
         FX.shake(12);
         FX.flash(0.4, '#ff3a3a');
@@ -236,6 +243,14 @@
     }
     if (run.mode === 'zen') { s.zenSeconds += run.t; P.questProgress(p, 'zen', Math.floor(run.t / 60)).forEach(q => res.quests.push(q)); }
     if (run.mode === 'rush' && run.won) ++s.rushWins;
+    if (g.mates.length) {
+      const key = run.mode === 'duo' ? 'duoBest' : 'arenaBest';
+      res.best = run.wall > s[key];
+      s[key] = Math.max(s[key], run.wall);
+      res.mateHits = g.mates.reduce((n, m) => n + m.hits, 0);
+      s.mateHits += res.mateHits;
+      if (run.wall > 1) P.questProgress(p, 'team', run.wall - 1).forEach(q => res.quests.push(q));
+    }
     const mutShards = run.mutators.reduce((k, id) => k * NS.seasons.MUT_BY_ID[id].shards, 1);
     const pay = P.payout(p, { mode: run.mode, score: g.score, bricks: g.stats.bricks, best: g.stats.best, won: run.won, stars: res.newStars, mutatorShards: mutShards });
     p.shards += pay.shards;

@@ -91,7 +91,7 @@ check('every cinematic shot draws', errs.length === 0, errs.join(' | '));
 
 let worst = 0;
 errs = [];
-for (const mode of ['story', 'arcade', 'blitz', 'zen', 'daily', 'rush']) {
+for (const mode of ['story', 'arcade', 'blitz', 'zen', 'daily', 'rush', 'duo', 'arena']) {
   try {
     NS.play.start(mode, mode === 'story' ? { stage: 'gloom-6' } : {});
     NS.cine.end();
@@ -105,6 +105,23 @@ for (const mode of ['story', 'arcade', 'blitz', 'zen', 'daily', 'rush']) {
 }
 check('every mode starts and draws with many balls and power-ups', errs.length === 0, errs.join(' | '));
 check('a busy frame stays under 3,000 draw calls', worst < 3000, worst);
+/* Duo from the modes screen, played by the bot with the CPU partner, until the balls run out */
+NS.screens.setScreen('modes');
+frames(2);
+NS.widgets.activate(G.hitAreas.find(a => a.id === 'mode-duo'));
+check('the Duo card starts a team run with a partner', G.screen === 'game' && G.run.game.mates.length === 1);
+NS.cine.end();
+NS.play.start('duo', { seed: 11 });
+NS.cine.end();
+for (let i = 0; i < 900; ++i) { NS.run.tick(G.run, 1 / 30, NS.bot.input(G.run.game), G.profile); NS.run.takeEvents(G.run); if (i % 10 === 0) frames(1, 1 / 30); }
+const saves = G.run.game.mates[0].hits;
+G.run.game.lives = 0;
+for (let i = 0; i < 200 && G.screen === 'game'; ++i) {
+  for (const b of G.run.game.balls) { b.stuck = false; b.x = 350; b.y = 660; b.vx = 0; b.vy = 400; }
+  frames(1, 1 / 30);
+}
+check('the team run ends in the results with partner saves and the best wall', G.screen === 'results' && G.result.mateHits === saves && saves > 0 && G.profile.stats.duoBest >= 1);
+frames(5);
 for (let w = 0; w < 5; ++w) { NS.play.start('story', { stage: W.WORLDS[w].id + '-6' }); NS.cine.end(); frames(2); }
 check('every fortress and guardian draws', G.run.game.boss && G.run.game.boss.w === 4);
 check('no shadowBlur anywhere', ctx.shadowBlurUsed === 0);

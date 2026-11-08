@@ -7,7 +7,11 @@
    bricks return, a ball that has not touched a brick for a while is nudged out of its loop.
    Drops are caught to switch powers on; lasers and falling stars break bricks; a barrier saves a
    ball. Each step leaves events (bounce, hit, break, drop, power, lost, life, cleared, over...)
-   for sound and effects. A guardian (systems/boss.js) plugs in through g.boss. */
+   for sound and effects. A guardian (systems/boss.js) plugs in through g.boss. Team play: CPU
+   partner paddles ("mates") guard the top, left and right edges, which then stop being walls - a
+   ball that gets past a mate is lost like one that falls past the paddle; mates bounce balls back
+   at an angle set by where they land, and a team field centres its bricks (trimmed to twelve
+   columns by the team modes) to leave lanes past them and room behind the mates. */
 ;(function() {
   'use strict';
 
@@ -25,7 +29,8 @@
   }
 
   /* opts: seed, layout (strings), level (speed step), lives, speedMul, paddleMul, drops (chance
-     factor), powers (allowed ids), wideW, durMul, multi, gravity, regrow */
+     factor), powers (allowed ids), wideW, durMul, multi, gravity, regrow, sides (mate edges:
+     'top', 'left', 'right'), center (bricks centred vertically), cols (brick columns) */
   function create(opts) {
     opts = opts || {};
     const g = {
@@ -38,22 +43,35 @@
       slowT: 0, fastT: 0, fireT: 0, megaT: 0, barrier: opts.barrier || 0, starT: 0,
       score: 0, combo: 0, comboT: 0, time: 0, noHitT: 0, over: false, cleared: false, scoreMul: opts.scoreMul || 1,
       boss: null, projectiles: [],
+      mates: [], open: { top: false, left: false, right: false }, center: !!opts.center, cols: opts.cols || C.COLS,
       stats: { bricks: 0, best: 0, powers: 0, lost: 0, caught: 0, missedDrops: 0, lasers: 0, bombs: 0, gold: 0, crystals: 0, bounces: 0, hitsTaken: 0 },
     };
+    for (const side of opts.sides || []) {
+      g.open[side] = true;
+      g.mates.push({ side: side, pos: side === 'top' ? g.w / 2 : g.h / 2, w: C.MATE_W, hits: 0, tgt: side === 'top' ? g.w / 2 : g.h / 2, reT: 0 });
+    }
     if (opts.layout) loadLayout(g, opts.layout);
     resetBalls(g);
     return g;
   }
 
+  function teamPlay(g) {
+    return g.mates.length > 0;
+  }
+
   function loadLayout(g, rows) {
     g.bricks.length = 0;
+    const cols = g.cols || C.COLS;
+    const left = (g.w - cols * C.BRICK_W) / 2;
+    const top = g.center ? Math.round(g.h * 0.47 - rows.length * C.BRICK_H / 2) : C.BRICK_TOP;
     for (let y = 0; y < rows.length; ++y) {
-      const row = rows[y];
-      const off = Math.floor((C.COLS - row.length) / 2);
+      let row = rows[y];
+      if (row.length > cols) { const cut = Math.floor((row.length - cols) / 2); row = row.slice(cut, cut + cols); }
+      const off = Math.floor((cols - row.length) / 2);
       for (let x = 0; x < row.length; ++x) {
         const def = BRICKS[row[x]];
         if (!def) continue;
-        g.bricks.push({ x: (off + x) * C.BRICK_W, y: C.BRICK_TOP + y * C.BRICK_H, w: C.BRICK_W, h: C.BRICK_H, ch: row[x], kind: def.kind,
+        g.bricks.push({ x: left + (off + x) * C.BRICK_W, y: top + y * C.BRICK_H, w: C.BRICK_W, h: C.BRICK_H, ch: row[x], kind: def.kind,
           hp: def.hp, max: def.hp, alive: true, regenT: 0, flash: 0 });
       }
     }
@@ -219,6 +237,50 @@
     g.events.push({ type: 'paddle', x: b.x, off: off });
   }
 
+  /* where a mate's face is: the line a ball bounces off */
+  function mateFace(g, m) {
+    return m.side === 'top' ? C.MATE_TOP : m.side === 'left' ? C.MATE_SIDE : g.w - C.MATE_SIDE;
+  }
+
+  function mateBounce(g, m, b, px, py, r) {
+    const f = mateFace(g, m);
+    let off;
+    if (m.side === 'top') {
+      if (!(b.vy < 0 && py - r >= f - 2 && b.y - r <= f && Math.abs(b.x - m.pos) <= m.w / 2 + r)) return;
+      off = (b.x - m.pos) / (m.w / 2);
+    } else if (m.side === 'left') {
+      if (!(b.vx < 0 && px - r >= f - 2 && b.x - r <= f && Math.abs(b.y - m.pos) <= m.w / 2 + r)) return;
+      off = (b.y - m.pos) / (m.w / 2);
+    } else {
+      if (!(b.vx > 0 && px + r <= f + 2 && b.x + r >= f && Math.abs(b.y - m.pos) <= m.w / 2 + r)) return;
+      off = (b.y - m.pos) / (m.w / 2);
+    }
+    const a = Math.max(-1, Math.min(1, off)) * 1.05;
+    const s = speed(g);
+    if (m.side === 'top') { b.vx = Math.sin(a) * s; b.vy = Math.cos(a) * s; b.y = f + r + 0.5; }
+    else if (m.side === 'left') { b.vx = Math.cos(a) * s; b.vy = Math.sin(a) * s; b.x = f + r + 0.5; }
+    else { b.vx = -Math.cos(a) * s; b.vy = Math.sin(a) * s; b.x = f - r - 0.5; }
+    ++m.hits;
+    g.combo = 0;
+    g.events.push({ type: 'mate', side: m.side, x: b.x, y: b.y });
+  }
+
+  /* moves the mates toward their targets (input.mates, one number per mate) at their top speed */
+  function moveMates(g, dt, targets) {
+    for (let i = 0; i < g.mates.length; ++i) {
+      const m = g.mates[i];
+      const t = targets && targets[i] != null ? targets[i] : m.pos;
+      const k = C.MATE_SPEED * dt;
+      m.pos += Math.max(-k, Math.min(k, t - m.pos));
+      const span = m.side === 'top' ? g.w : g.h;
+      m.pos = Math.max(m.w / 2, Math.min(span - m.w / 2, m.pos));
+    }
+  }
+
+  function outOfField(g, b, r) {
+    return b.y > g.h + r || (g.open.top && b.y < -r) || (g.open.left && b.x < -r) || (g.open.right && b.x > g.w + r);
+  }
+
   /* one ball sub-step against walls, bricks, the guardian and the paddle */
   function moveBall(g, b, dt) {
     const r = ballR(g);
@@ -226,9 +288,10 @@
     if (g.gravity) b.vy += g.gravity * dt;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
-    if (b.x < r) { b.x = r; b.vx = Math.abs(b.vx); g.events.push({ type: 'wall' }); }
-    else if (b.x > g.w - r) { b.x = g.w - r; b.vx = -Math.abs(b.vx); g.events.push({ type: 'wall' }); }
-    if (b.y < r) { b.y = r; b.vy = Math.abs(b.vy); g.events.push({ type: 'wall' }); }
+    if (b.x < r && !g.open.left) { b.x = r; b.vx = Math.abs(b.vx); g.events.push({ type: 'wall' }); }
+    else if (b.x > g.w - r && !g.open.right) { b.x = g.w - r; b.vx = -Math.abs(b.vx); g.events.push({ type: 'wall' }); }
+    if (b.y < r && !g.open.top) { b.y = r; b.vy = Math.abs(b.vy); g.events.push({ type: 'wall' }); }
+    for (const m of g.mates) mateBounce(g, m, b, px, py, r);
     const fire = g.fireT > 0, mega = g.megaT > 0;
     let bounced = false;
     for (const br of g.bricks) {
@@ -275,6 +338,7 @@
     } else if (input.left || input.right) p.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * C.PADDLE_SPEED * sp * dt;
     p.x = Math.max(p.w / 2, Math.min(g.w - p.w / 2, p.x));
     p.vx = (p.x - ox) / dt;
+    if (g.mates.length) moveMates(g, dt, input.mates);
     if (input.launch) launch(g);
     if (p.laserT > 0 && input.fire && p.fireCd <= 0) {
       p.fireCd = C.LASER_GAP;
@@ -298,15 +362,15 @@
       const dist = Math.hypot(b.vx, b.vy) * dt;
       const n = Math.max(1, Math.ceil(dist / (r * 0.45)));
       for (let k = 0; k < n && !b.stuck; ++k) moveBall(g, b, dt / n);
-      if (b.y > g.h + r) {
-        if (g.barrier > 0) {
+      if (outOfField(g, b, r)) {
+        if (g.barrier > 0 && b.y > g.h) {
           --g.barrier;
           b.y = g.h - r;
           b.vy = -Math.abs(b.vy);
           g.events.push({ type: 'barrier', x: b.x });
         } else {
           g.balls.splice(i, 1);
-          g.events.push({ type: 'lost', x: b.x });
+          g.events.push({ type: 'lost', x: Math.max(0, Math.min(g.w, b.x)), y: Math.max(0, Math.min(g.h, b.y)) });
         }
       }
     }
@@ -407,7 +471,7 @@
   }
 
   Object.assign(NS.engine, {
-    rand, create, loadLayout, speed, ballR, resetBalls, launch, breakable, remaining, goldLeft, hitBrick, spawnDrop, addBall, applyPower,
+    rand, create, teamPlay, mateFace, mateBounce, moveMates, outOfField, loadLayout, speed, ballR, resetBalls, launch, breakable, remaining, goldLeft, hitBrick, spawnDrop, addBall, applyPower,
     rescale, paddleBounce, moveBall, step, loseLife, takeEvents,
   });
 })();

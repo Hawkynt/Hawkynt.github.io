@@ -158,6 +158,8 @@
       case 'mega': K.circle(g, 0, 0, 10, c); K.circle(g, -3, -3, 3, 'rgba(255,255,255,0.7)'); break;
       case 'heart': g.beginPath(); g.moveTo(0, 9); g.bezierCurveTo(-13, 0, -7, -11, 0, -4); g.bezierCurveTo(7, -11, 13, 0, 0, 9); g.fill(); break;
       case 'brick': g.fillRect(-11, -6, 10, 5); g.fillRect(1, -6, 10, 5); g.fillRect(-5, 1, 10, 5); break;
+      case 'swords': g.lineWidth = 2.6; g.beginPath(); g.moveTo(-9, -9); g.lineTo(8, 8); g.moveTo(9, -9); g.lineTo(-8, 8); g.stroke(); g.beginPath(); g.moveTo(-9, 3); g.lineTo(-3, 9); g.moveTo(9, 3); g.lineTo(3, 9); g.stroke(); break;
+      case 'duo': K.circle(g, -5, -4, 4.5, c); K.circle(g, 5, -4, 4.5, c); g.beginPath(); g.arc(-5, 10, 7, Math.PI, 0); g.fill(); g.beginPath(); g.arc(5, 10, 7, Math.PI, 0); g.fill(); break;
       default: K.circle(g, 0, 0, 9, c);
     }
   }
