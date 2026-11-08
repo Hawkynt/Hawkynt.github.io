@@ -95,6 +95,7 @@
     screenShake.update(dt * 1000);
     refreshHover();
     updateTooltipTimer(dt);
+    NS.music.update(dt);
 
     ctx.clearRect(0, 0, G.canvasW, G.canvasH);
     drawFrame();
@@ -145,6 +146,9 @@
             renderHighScores();
           }
         });
+        break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');

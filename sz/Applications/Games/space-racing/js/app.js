@@ -199,6 +199,7 @@
     screenShake.restore(ctx);
     ctx.restore();
 
+    NS.music.update(dt);
     updateStatusBar();
 
     // Clear just-pressed flags at end of frame
@@ -235,6 +236,9 @@
             renderHighScores();
           }
         });
+        break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');

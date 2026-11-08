@@ -42,6 +42,7 @@
     if (G.state === STATE_MINIGAME)
       updateMinigame(dt);
     updateTooltipHover(dt);
+    NS.music.update(dt);
 
     particles.update();
     screenShake.update(dt * 1000);
@@ -90,6 +91,9 @@
             renderHighScores();
           }
         });
+        break;
+      case 'music':
+        if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');

@@ -6,7 +6,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceCombat || (SZ.SpaceCombat = {});
 
-  const MODULES = ['constants', 'rng', 'ships', 'enemyData', 'campaign', 'treeData', 'rules', 'save', 'audio',
+  const MODULES = ['constants', 'rng', 'ships', 'enemyData', 'campaign', 'treeData', 'rules', 'save', 'audio', 'music',
     'grid', 'waves', 'formations', 'fx', 'camera', 'player', 'weapons', 'projectiles', 'enemyAi', 'enemies', 'bosses', 'hazards',
     'pickups', 'combat', 'missions', 'sim', 'artKit', 'shipArt', 'enemyArt', 'propArt', 'backdropArt', 'view', 'backdrop', 'actors',
     'world', 'fxRender', 'hud', 'kit', 'widgets', 'screens', 'title', 'map', 'briefing', 'hangar', 'tree',

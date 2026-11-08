@@ -69,6 +69,7 @@
     G.flash.update(dt);
     G.flash.draw(ctx, v);
     drawFade(dt, v);
+    NS.music.update(dt);
     updateStatusBar();
     G.frameMs = performance.now() - t0;
     G.frameMsAvg += (G.frameMs - G.frameMsAvg) * 0.05;

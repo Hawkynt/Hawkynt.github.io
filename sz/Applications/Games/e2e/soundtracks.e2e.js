@@ -10,7 +10,9 @@ const GAMES = [
   ['tetris', 'Tetris', 'tt-'], ['breakout', 'Breakout', 'bo-'], ['bubble-bobble', 'BubbleBobble', 'bb-'], ['minesweeper', 'Minesweeper', 'ms-'],
   ['cookie-clicker', 'CookieClicker', 'cc-'], ['space-mining', 'SpaceMining', 'sm-'], ['endless-runner', 'EndlessRunner', 'er-'], ['snake', 'Snake', 'sn-'],
   ['pacman', 'Pacman', 'pm-'], ['asteroids', 'Asteroids', 'as-'], ['bomberman', 'Bomberman', 'bm-'], ['boulder-dash', 'BoulderDash', 'bd-'],
-  ['flappy-bird', 'FlappyBird', 'fb-'],
+  ['flappy-bird', 'FlappyBird', 'fb-'], ['tower-defense', 'TowerDefense', 'td-'], ['dome-keeper', 'DomeKeeper', 'dk-'], ['space-combat', 'SpaceCombat', 'sc-'],
+  ['space-invaders', 'SpaceInvaders', 'si-'], ['platformer', 'Platformer', 'pf-'], ['physics-puzzle', 'PhysicsPuzzle', 'pp-'], ['fantasy-puzzle', 'FantasyPuzzle', 'fp-'],
+  ['cooking-game', 'CookingGame', 'cg-'], ['space-racing', 'SpaceRacing', 'sr-'], ['space-farming', 'SpaceFarming', 'sf-'],
 ].concat(process.env.SZ_SOUNDTRACKS ? JSON.parse(process.env.SZ_SOUNDTRACKS) : []);
 
 exports.run = async (t) => {
