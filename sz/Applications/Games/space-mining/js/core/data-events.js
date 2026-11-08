@@ -20,6 +20,10 @@
   const SEASONS = [
     { id: 'perihelion', name: 'Perihelion Lights', m0: 12, d0: 18, m1: 1, d1: 6, color: '#ffd25a',
       text: 'Festival lights on every station - contracts pay a quarter more', mods: { contracts: 1.25, reward: 1.1 } },
+    { id: 'frostbelt', name: 'Frostbelt', m0: 1, d0: 15, m1: 2, d1: 20, color: '#bfe8ff',
+      text: 'Ice comets drift through the belts - ice and crystal sell a third higher', mods: { reward: 1.15, yield: 1.1 } },
+    { id: 'solstice', name: 'Solar Solstice', m0: 6, d0: 15, m1: 7, d1: 10, color: '#ffb03a',
+      text: 'The solar wind runs strong - engines burn hotter, rocks crack richer', mods: { yield: 1.2, reward: 1.1 } },
     { id: 'bloom', name: 'Spring Bloom', m0: 4, d0: 10, m1: 5, d1: 10, color: '#9ae04a',
       text: 'The Bloom flowers - twice the lifeforms, bio-matter sells high', mods: { life: 2, bioPrice: 1.5 } },
     { id: 'meteor', name: 'Perseid Drift', m0: 8, d0: 5, m1: 8, d1: 25, color: '#ffb44a',

@@ -417,14 +417,15 @@
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     const fl = 0.85 + Math.sin(G.time * 60) * 0.15;
+    const own = G.save ? NS.cosmetics.equipped(G.save, 'beam') : NS.cosmeticData.BEAMS[0];
     for (let i = 0; i < G.beams.length; ++i) {
       const b = G.beams[i];
       const w = b.drone ? 0.45 : b.primary ? 1 : 0.7;
-      const col = b.drone ? '#5cff9a' : '#ff6a3a';
+      const col = b.drone ? '#5cff9a' : own.color;
       ctx.strokeStyle = K.rgba(col, 0.22);
       ctx.lineWidth = 14 * w * fl;
       line(b);
-      ctx.strokeStyle = K.rgba(b.drone ? '#b4ffc8' : '#ffb070', 0.6);
+      ctx.strokeStyle = K.rgba(b.drone ? '#b4ffc8' : own.core, 0.6);
       ctx.lineWidth = 5 * w * fl;
       line(b);
       ctx.strokeStyle = '#ffffff';

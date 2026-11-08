@@ -1,8 +1,8 @@
 /* The station screen, the career hub: Kessler Station turning beside your docked rig, the
-   credits, research and news ticker, and seven tabs - Market (stock, prices, history,
+   credits, research and news ticker, and eight tabs - Market (stock, prices, history,
    forecasts, selling ore, bars and components), Refinery (smelting 3 ore into bars), Contracts
    (deliveries and waves held for credits and data, the daily contract), Shipyard and Modules
-   (drawn by NS.shipyard), Colonies and Log (drawn by NS.colonies) - with buttons to the belt
+   (drawn by NS.shipyard), Hangar (liveries, beams, plumes and the festival track, NS.hangar), Colonies and Log (drawn by NS.colonies) - with buttons to the belt
    map, tech tree, help and title. */
 ;(function() {
   'use strict';
@@ -26,6 +26,7 @@
     { id: 'contracts', name: 'Contracts', icon: 'contract' },
     { id: 'shipyard', name: 'Shipyard', icon: 'engine' },
     { id: 'modules', name: 'Modules', icon: 'station' },
+    { id: 'hangar', name: 'Hangar', icon: 'engine' },
     { id: 'colonies', name: 'Colonies', icon: 'habitat' },
     { id: 'log', name: 'Log', icon: 'log' },
   ];
@@ -83,6 +84,7 @@
       case 'contracts': contracts(save); break;
       case 'shipyard': NS.shipyard.drawShipyard(PX, PY + 40, PW, PH - 40); break;
       case 'modules': NS.shipyard.drawModules(PX, PY + 40, PW, PH - 40); break;
+      case 'hangar': NS.hangar.draw(PX, PY + 40, PW, PH - 40); break;
       case 'colonies': NS.colonies.drawColonies(PX, PY + 40, PW, PH - 40); break;
       case 'log': NS.colonies.drawLog(PX, PY + 40, PW, PH - 40); break;
     }

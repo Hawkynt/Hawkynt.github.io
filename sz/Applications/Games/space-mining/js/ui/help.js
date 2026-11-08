@@ -94,9 +94,9 @@
     kit.text('the tractor beam reels nuggets in', 820, 510, 13, UI.textDim, { align: 'center' });
     para([
       'Fly like a ship: W (or Up) thrusts along the nose, S brakes and backs off, A/D (or Left/Right) turn - or hold the right mouse button to thrust toward the cursor. Space has inertia: let go to drift, the engines brake gently.',
-      'Aim with the mouse and hold the left button to drill. Space drills with auto-aim. The laser heats a rock until it cracks into smaller rocks and ore nuggets; the smallest crumble completely.',
+      'The laser fires along the nose and bends up to about 35 degrees to either side: aim with the mouse and hold the left button, or hold Space to lock onto the ore closest to the nose - the ship only turns slowly toward a lock. The laser heats a rock until it cracks into smaller rocks and ore nuggets; the smallest crumble completely.',
       'The tractor beam pulls nearby nuggets into the hold. Shift boosts once you have researched the Afterburner.',
-      'Fly back into the DOCK ring slowly to end the trip - the hold is unloaded at the station.',
+      'Fly slowly into the DOCK ring to bank the hold at the station and refuel - then fly on. Return home (Enter in the ring, or the pause menu) ends the trip. Drones with no room in the hold haul to the station themselves.',
     ], 90, 140, 520);
   }
 
@@ -166,7 +166,7 @@
       'Licences open the next belt once your total earnings are high enough. Each belt has its own look, ore and hazards. Geodes and derelicts hide in them; somewhere in the Void Crown waits the Crown Heart.',
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
-    const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill with auto-aim'],
+    const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill the ore nearest the nose'], ['Enter (docked)', 'Return home, end the trip'],
       ['Shift', 'Boost'], ['Q', 'Scanner pulse'], ['C', 'Seismic charge'], ['F', 'Recall / launch drones'], ['Esc / P', 'Pause'], ['Tab', 'Command view / station tabs'],
       ['B', 'Research the selected node'], ['F2', 'Title screen']];
     kit.panel(680, 140, 500, 440, { alpha: 0.8, brackets: false });

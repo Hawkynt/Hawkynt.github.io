@@ -1,6 +1,7 @@
 /* Mining drones: launched from the ship, each picks an ore rock near the ship (the most
    valuable one with Prospector AI), hovers and drills it with its own small laser, sweeps up the
-   nuggets it breaks loose, flies its basket home and unloads into the hold. F recalls or
+   nuggets it breaks loose, flies its basket home and unloads into the hold - or, when the hold
+   has no room, hauls it to the station, banks it there and flies straight back out. F recalls or
    relaunches the swarm; destroyed drones are rebuilt aboard after a while. Owns G.drones. */
 ;(function() {
   'use strict';
@@ -89,7 +90,7 @@
         d.vx = s.vx;
         d.vy = s.vy;
         d.angle = s.angle;
-        if (G.run.dronesOut && NS.mining.spaceLeft() > 1) d.state = 'seek';
+        if (G.run.dronesOut) d.state = d.load > 0 ? 'haul' : 'seek';
         continue;
       }
       if (d.state === 'seek') {
@@ -117,7 +118,10 @@
         }
         sweep(d, st);
       } else if (d.state === 'return') {
-        if (fly(d, s.x, s.y, dt, speed * 1.2) < s.r + 14) unload(d);
+        if (G.run.dronesOut && d.load > 0 && !roomFor(d)) d.state = 'haul';
+        else if (fly(d, s.x, s.y, dt, speed * 1.2) < s.r + 14) unload(d);
+      } else if (d.state === 'haul') {
+        if (fly(d, G.dock.x, G.dock.y, dt, speed * 1.2) < 70) haulIn(d);
       }
       const ta = Math.atan2(d.vy, d.vx);
       if (d.vx * d.vx + d.vy * d.vy > 400) d.angle += clamp(angleDiff(d.angle, ta), -8 * dt, 8 * dt);
@@ -147,6 +151,23 @@
     }
   }
 
+  function roomFor(d) {
+    return d.ore && NS.mining.spaceLeft() >= NS.rules.oreSpace(G.stats, d.ore);
+  }
+
+  /* a basket banked at the station; the drone goes straight back to work */
+  function haulIn(d) {
+    if (d.load > 0 && d.ore) {
+      NS.trip.bank(d.ore, d.load);
+      NS.fx.text(G.dock.x, G.dock.y - 60, '+' + d.load + ' ' + ORE_BY_ID[d.ore].name + ' banked', '#b4ffc8', 14, 1.2);
+      NS.audio.sfxAt('pickup', G.dock.x, G.dock.y, { volume: 0.25, pitch: 1.3 });
+    }
+    d.load = 0;
+    d.ore = null;
+    d.target = null;
+    d.state = G.run.dronesOut ? 'seek' : 'return';
+  }
+
   function unload(d) {
     if (d.load > 0 && d.ore) {
       const room = Math.floor(NS.mining.spaceLeft() / NS.rules.oreSpace(G.stats, d.ore));
@@ -159,7 +180,7 @@
       d.load -= n;
       if (!d.load) d.ore = null;
     }
-    d.state = 'docked';
+    d.state = d.load > 0 && G.run.dronesOut ? 'haul' : 'docked';
     d.target = null;
   }
 

@@ -32,6 +32,7 @@
     warnings(v, run, s);
     dockArrow(v, s);
     hints(v, run);
+    dockPanel(v, run);
     if (G.base) NS.commandHud.pilotWidget(v);
     drawBanner(v);
     if (NS.touch.active()) NS.touch.draw();
@@ -301,11 +302,19 @@
     kit.text('DOCK ' + Math.round(d / 10) * 10 + 'm', x - Math.cos(a) * 30, y - Math.sin(a) * 26, 11, UI.gold, { align: 'center', weight: 'bold' });
   }
 
+  /* parked in the dock ring (career): the way home, on the pilot's say-so */
+  function dockPanel(v, run) {
+    if (run.mode !== 'career' || !run.docked || run.ending) return;
+    const cx = (v.x0 + v.x1) / 2, y = v.y1 - 150;
+    kit.text('DOCKED  -  hold banked, ship serviced', cx, y - 14, 14, UI.gold, { align: 'center', weight: 'bold' });
+    NS.widgets.button('dock-home', NS.touch.active() ? 'Return home' : 'Return home  [Enter]', cx - 110, y, 220, 40, { action: () => NS.trip.returnHome(), accent: UI.gold });
+  }
+
   function hints(v, run) {
     if (run.mode !== 'career' || G.save.stats.trips > 1 || run.t > 40) return;
     const lines = ['W/S thrust, A/D turn  -  Mouse aims, hold left button to drill',
       'Break rocks, the tractor beam pulls the ore in',
-      'Fly back into the DOCK ring to sell at the station'];
+      'Fly into the DOCK ring to bank the hold - the trip goes on until you return home'];
     const i = Math.min(2, Math.floor(run.t / 13));
     ctx.globalAlpha = Math.min(1, (run.t % 13) * 2, (13 - run.t % 13));
     kit.text(lines[i], (v.x0 + v.x1) / 2, v.y1 - 96, 15, '#ffffff', { align: 'center' });

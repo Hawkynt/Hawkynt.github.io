@@ -15,7 +15,7 @@ const D = require('./driver');
 const args = process.argv.slice(2);
 const outAt = args.indexOf('--out');
 const OUT = outAt >= 0 ? path.resolve(args[outAt + 1]) : path.join(os.tmpdir(), 'sz-e2e');
-const games = args.filter((a, i) => !a.startsWith('--') && i !== outAt + 1);
+const games = args.filter((a, i) => !a.startsWith('--') && !(outAt >= 0 && i === outAt + 1));
 const all = fs.readdirSync(__dirname).filter(f => f.endsWith('.e2e.js')).map(f => f.replace('.e2e.js', ''));
 const list = games.length ? games : all;
 

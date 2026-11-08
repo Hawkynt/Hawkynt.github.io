@@ -16,9 +16,14 @@
   const R = NS.rng.fx;
   const near = [];
   const near2 = [];
+  const near3 = [];
   const hit = { t: 0, obj: null, kind: '' };
   const pool = createPool(() => ({ alive: false }));
   let laserSfx = 0, fullT = 0;
+  /* the laser fires along the nose and bends at most this far to either side; a lock off the nose
+     turns the ship toward it only this fast (rad/s) */
+  const AIM_CONE = 0.6;
+  const AIM_TURN = 1.1;
 
   /* ── hold ── */
   function spaceLeft() {
@@ -193,6 +198,35 @@
     return hit.obj;
   }
 
+  /* The lock for keyboard firing: the pirate or ore rock inside the cone whose edge sits closest
+     to the nose, within laser reach. Barren and volatile rocks are skipped. */
+  function coneTarget(s) {
+    const reach = LASER_RANGE * 0.95;
+    let best = null, bs = Infinity;
+    const consider = (o, pad) => {
+      const dx = o.x - s.x, dy = o.y - s.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (d - o.r > reach) return;
+      const off = Math.max(0, Math.abs(NS.rng.angleDiff(s.angle, Math.atan2(dy, dx))) - Math.asin(Math.min(1, o.r / d)));
+      if (off > AIM_CONE) return;
+      const score = off + d * 0.0004 + pad;
+      if (score < bs) { bs = score; best = o; }
+    };
+    for (let i = 0; i < G.pirates.length; ++i) if (G.pirates[i].alive) consider(G.pirates[i], -1);
+    const list = NS.asteroids.queryRocks(s.x, s.y, reach + 120, near3);
+    for (let i = 0; i < list.length; ++i) {
+      const o = list[i];
+      if (o.alive && o.ore && !o.volatile) consider(o, 0);
+    }
+    return best;
+  }
+
+  /* the beam's heading: toward the aim, clamped to the cone around the nose */
+  function beamAngle(s, ox, oy, ax, ay) {
+    const off = NS.rng.angleDiff(s.angle, Math.atan2(ay - oy, ax - ox));
+    return s.angle + Math.max(-AIM_CONE, Math.min(AIM_CONE, off));
+  }
+
   function updateLaser(dt) {
     G.beams.length = 0;
     const s = G.ship;
@@ -204,11 +238,10 @@
     const st = G.stats;
     const ca = Math.cos(s.angle), sa = Math.sin(s.angle);
     const ox = s.x + ca * s.r * 0.9, oy = s.y + sa * s.r * 0.9;
-    let dx = inp.aimWX - ox, dy = inp.aimWY - oy;
-    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const d = Math.sqrt((inp.aimWX - ox) * (inp.aimWX - ox) + (inp.aimWY - oy) * (inp.aimWY - oy)) || 1;
     const reach = LASER_RANGE * (1 + (st.scale - 1) * 0.5);
-    dx /= d;
-    dy /= d;
+    const ba = beamAngle(s, ox, oy, inp.aimWX, inp.aimWY);
+    const dx = Math.cos(ba), dy = Math.sin(ba);
     const len = Math.max(60, Math.min(reach, d + 40));
     const main = fire(ox, oy, ox + dx * len, oy + dy * len, st.laser, dt, true, null);
     G.run.lasering = true;
@@ -337,6 +370,6 @@
   }
 
   Object.assign(NS.mining, {
-    spaceLeft, fits, addCargo, spawnNugget, spawnSalvage, raycast, update, pulse, dropCharge, clear
+    AIM_CONE, AIM_TURN, spaceLeft, fits, addCargo, spawnNugget, spawnSalvage, raycast, update, updateLaser, coneTarget, beamAngle, pulse, dropCharge, clear
   });
 })();

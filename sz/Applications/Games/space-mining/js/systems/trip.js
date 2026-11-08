@@ -2,8 +2,10 @@
    life and gas, geodes, wrecks, the Crown Heart), the ship, drones, the outpost's fleet and
    events, or restores an autosaved trip; watches docking, fuel, hull and mode timers; autosaves;
    handles discoveries, wreck salvage and the Crown; Siege starts a starter outpost and rebuilds
-   the ship at the hub; settles the hold at the station (or sells it on the spot in Gold Rush
-   and Siege), runs the outposts' market cycle and fills in the results.
+   the ship at the hub. Flying into the dock ring banks the hold in the warehouse and services
+   the ship (or sells the hold on the spot in Gold Rush, Daily and Siege) and the trip goes on;
+   it ends only when the pilot returns home (or on a tow, a lost ship or the clock). Settles the
+   last hold, runs the outposts' market cycle and fills in the results.
    Owns G.run, G.specials, G.dock and G.banner. */
 ;(function() {
   'use strict';
@@ -67,7 +69,7 @@
       rockTarget: 0, pulled: 0, lasering: false, leftDock: false, ending: null, endT: 0, towT: 0,
       inRad: 0, inWell: 0, crownBroken: false, dronesOut: false, pickT: 0, pickText: null, turretAngle: 0,
       contam: 0, survivors: 0, waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
-      siegeWon: false, reviveT: 0,
+      siegeWon: false, reviveT: 0, banked: {}, bankedUnits: 0, docked: false,
     };
     G.specials.length = 0;
     NS.fx.clear();
@@ -210,12 +212,10 @@
     const dd = Math.sqrt(dx * dx + dy * dy);
     if (dd > DOCK_R * 3) run.leftDock = true;
     const sp = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+    run.docked = dd < DOCK_R * 1.2;
     if (run.leftDock && dd < DOCK_R && sp < DOCK_SPEED && !G.cine) {
       if (run.mode !== 'career') quickSell();
-      else {
-        NS.cinematics.play('docking', {});
-        return;
-      }
+      else deposit();
     }
     /* fuel */
     if (s.fuel <= 0 && !run.towT) {
@@ -274,6 +274,65 @@
     NS.audio.sfx('coin', { volume: 0.8 });
     NS.audio.sfx('levelup', { volume: 0.4 });
     G.ship.fuel = G.ship.maxFuel;
+  }
+
+  /* One load into the station: banked in the warehouse in the career, sold at standard prices
+     elsewhere (Siege pays the outpost's credits). Used by the ship and the hauling drones. */
+  function bank(oreId, n) {
+    const run = G.run;
+    if (!run || !(n > 0)) return 0;
+    if (run.mode === 'career') {
+      const store = G.save.store.ore;
+      store[oreId] = (store[oreId] || 0) + n;
+      run.banked[oreId] = (run.banked[oreId] || 0) + n;
+      run.bankedUnits += n;
+      rules.bump(G.save, 'units', n);
+      return n;
+    }
+    const v = n * ORE_BY_ID[oreId].value;
+    run.sold += v;
+    if (run.mode === 'siege') run.credits += v;
+    return v;
+  }
+
+  /* Career docking: the hold goes into the warehouse, the ship is refuelled and patched up for
+     the usual service fee, and the flight goes on */
+  function deposit() {
+    const run = G.run, s = G.ship, save = G.save;
+    let n = 0;
+    const full = run.cargoUsed >= run.cargoMax - 0.5;
+    for (const id in run.cargo) {
+      const k = Math.floor(run.cargo[id]);
+      if (k > 0) n += bank(id, k);
+    }
+    const fuelMissing = s.maxFuel - s.fuel, hullMissing = s.maxHull - s.hull;
+    if (!n && fuelMissing < 1 && hullMissing < 1) return;
+    run.cargo = {};
+    run.cargoUsed = 0;
+    run.leftDock = false;
+    if (n && full) rules.bump(save, 'fullDocks', 1);
+    const fee = Math.min(save.credits, eco.serviceCost(G.stats, fuelMissing, hullMissing));
+    save.credits -= fee;
+    run.service = (run.service || 0) + fee;
+    s.fuel = s.maxFuel;
+    s.hull = s.maxHull;
+    NS.fx.text(G.dock.x, G.dock.y - 80, n ? 'BANKED ' + n + ' ORE' : 'SERVICED', '#ffd25a', 28, 1.6);
+    if (fee) NS.fx.text(G.dock.x, G.dock.y - 46, 'service -' + fee + ' cr', '#ffb347', 16, 1.6);
+    NS.fx.ring(G.dock.x, G.dock.y, 40, 260, 0.6, '#ffd25a', 8);
+    NS.audio.sfx('coin', { volume: 0.8 });
+    if (n) NS.screens.toast('Hold banked at the station - keep mining, or return home to end the trip', '#ffd25a');
+    NS.resume.save();
+    NS.save.writeSave();
+  }
+
+  /* the pilot ends the trip: the autopilot docks and the report follows */
+  function returnHome() {
+    const run = G.run;
+    if (!run || run.ending || G.cine || !G.ship || !G.ship.alive) return false;
+    if (run.mode !== 'career') { abort(); return true; }
+    NS.screens.setScreen('playing');
+    NS.cinematics.play('docking', {});
+    return true;
   }
 
   /* begins the end of a trip after a short delay (explosions play out) */
@@ -401,12 +460,14 @@
       const n = Math.floor(run.cargo[id] * keep);
       if (n > 0) { hold[id] = n; units += n; }
     }
-    const res = { mode: run.mode, reason: reason, zone: run.zone, hold: hold, units: units, lost: run.units - units, rd: run.rd,
+    const all = Object.assign({}, hold);
+    for (const id in run.banked) all[id] = (all[id] || 0) + run.banked[id];
+    const res = { mode: run.mode, reason: reason, zone: run.zone, hold: all, units: units + run.bankedUnits, lost: run.units - units - run.bankedUnits, rd: run.rd,
       salvage: run.salvage, fractures: run.fractures, kills: run.kills, t: 0, time: run.t, achievements: [], crown: run.crownBroken, jump: stats.jump,
       waves: run.waves, invaders: run.invaders, survivors: run.survivors };
     if (run.mode === 'career') {
       for (const id in hold) save.store.ore[id] = (save.store.ore[id] || 0) + hold[id];
-      res.value = eco.cargoValue(save, stats, hold);
+      res.value = eco.cargoValue(save, stats, all);
       save.credits += run.salvage;
       rules.bump(save, 'earned', run.salvage);
       save.rd += run.rd;
@@ -416,8 +477,9 @@
       if (reason === 'dock' && run.cargoUsed >= run.cargoMax - 0.5) rules.bump(save, 'fullDocks', 1);
       const s = G.ship;
       const fee = eco.serviceCost(stats, s.maxFuel - s.fuel, reason === 'destroyed' ? s.maxHull * 1.5 : s.maxHull - s.hull);
-      res.service = Math.min(save.credits, fee);
-      save.credits -= res.service;
+      const last = Math.min(save.credits, fee);
+      save.credits -= last;
+      res.service = last + (run.service || 0);
       if (run.survivors > 0 && reason !== 'destroyed') {
         res.bounty = run.survivors * 150;
         save.credits += res.bounty;
@@ -458,6 +520,10 @@
       }
       rules.addHighScore(save, v, run.mode, run.zone.name);
     }
+    /* a running festival collects tokens from every haul */
+    const haul = run.mode === 'career' ? (res.value || 0) + run.salvage : (res.score || 0);
+    res.tokens = NS.calendar.season(new Date()) ? NS.cosmetics.tokensFor(haul) : 0;
+    res.festival = NS.cosmetics.addTokens(save, res.tokens, new Date());
     res.achievements = rules.checkAchievements(save);
     if (res.achievements.length) NS.screens.achievements(res.achievements);
     G.ui.results = res;
@@ -485,6 +551,6 @@
 
   Object.assign(NS.trip, {
     flightStats, refreshFlightStats, startTrip, siegeStart, update, banner, finish, revive, shipDestroyed, cutWreck, onSpecialBroken,
-    keepShare, endTrip, abort, quickSell
+    keepShare, endTrip, abort, quickSell, bank, deposit, returnHome
   });
 })();
