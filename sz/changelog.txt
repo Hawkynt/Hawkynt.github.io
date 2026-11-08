@@ -1,3 +1,12 @@
+Main: 6.32
+by Hawkynt 08.11.2026
++ Cookie Clicker: the Sugar Garden with 17 plants that ripen in real time, give bonuses and breed mutations up to a Crystal Rose; six Sanctum Trials after ascending; save export and import
++ Games: procedural soundtracks that follow the eras, realms, modes and seasons, with their own music switch
+* Tetris: The Spire of Lumen - a five-realm story with guardians and cinematics, Marathon, Sprint, Ultra, Zen, Daily Challenge, Boss Rush and Master, T-spins, combos, powers, tech tree, block skins, festivals and quests
+* Breakout: Prism Run - five brick fortresses with guardians and cinematics, Arcade, Blitz, Zen, Daily Challenge and Boss Rush, 12 power-ups, bombs and gold targets, tech tree, paddles and balls, festivals and quests
+* Bubble Bobble: Fizz and the Dry Lagoon - five kingdoms with guardians and cinematics, chain pops, elemental bubbles, candy, Arcade, Blitz, Zen, Daily Challenge and Boss Rush, tech tree, festivals and quests
+* Tetris, Breakout and Bubble Bobble open in a larger, resizable window, save every game for Continue and keep your old high scores
+
 Main: 6.31
 by Hawkynt 04.10.2026
 * Tower Defense: fills the window sharply with one panel style for HUD, build bar, tower inspector, tooltips and all screens; works with keyboard, mouse and touch

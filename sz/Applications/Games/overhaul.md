@@ -27,10 +27,13 @@ Legend: ✅ in place · ◐ partial / thin · ❌ missing · — does not fit th
 | Bomberman | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
 | Boulder Dash | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
 | Flappy Bird | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
-| Cookie Clicker | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ascension = prestige loop |
+| Cookie Clicker | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ascension, Sugar Garden, Sanctum Trials, soundtrack |
+| Tetris | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Spire of Lumen; Master mode; soundtrack |
+| Breakout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Prism Run; soundtrack |
+| Bubble Bobble | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Fizz and the Dry Lagoon; generated rooms; soundtrack |
 
-Remaining for Tier A: none of them has a **music** layer (only sound effects); late-game prestige /
-endless scaling exists only in Cookie Clicker.
+Remaining for Tier A: the November games before Cookie Clicker have no **music** layer yet (wire
+`shared/game-music.js`); late-game prestige / endless scaling exists only in Cookie Clicker.
 
 ### Tier B — first-wave overhaul (October 2026), the "keep coming back" layer is missing
 
@@ -54,13 +57,10 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 
 ### Tier C — never overhauled (small, ~2–3k lines; only module split, sound, touch and digest tests)
 
-Full overhaul needed. Suggested order by player pull:
+Full overhaul needed (Tetris, Breakout and Bubble Bobble are done, see Tier A). Suggested order:
 
 | # | Game | Today | Overhaul hook |
 |---|---|---|---|
-| 1 | Tetris | hold, 5-preview, lock delay | story of a falling-block world, marathon/sprint/ultra/Zen/Daily, piece skins, garbage bosses |
-| 2 | Breakout | power-ups, combos, lasers | world map of brick fortresses, boss bricks, paddle/ball skins, physics-heavy FX |
-| 3 | Bubble Bobble | basic levels | two-dragon story, enemy roster with bosses, bubble/dragon skins |
 | 4 | Rhythm Game | procedural music, combo | song campaign, note skins, lane FX, Daily song, difficulty mastery |
 | 5 | Minesweeper | classic + effects | adventure board with special tiles, puzzle-proven boards, themes |
 | 6 | Fantasy Cards | deck building, AI | campaign of duels, card collection/rarities, pack openings, card backs |
@@ -75,9 +75,9 @@ Full overhaul needed. Suggested order by player pull:
 
 ### Shared gaps (all tiers)
 
-- **Music**: no game has a soundtrack layer; `shared/game-audio.js` only carries effects. A shared,
-  procedural (Web Audio) music module with per-world themes, boss and festival variants would lift
-  every game at once — build it once, then wire each game.
+- **Music**: `shared/game-music.js` composes soundtracks from data (themes, intensity layers,
+  stingers, its own switch); Cookie Clicker, Tetris, Breakout and Bubble Bobble use it - wire the
+  rest the same way (a `js/core/music.js` with themes per world/mode).
 - **Late game**: apart from Cookie Clicker's ascension there is no prestige / endless scaling, so
   players with everything bought have nothing left to chase.
 - **Cross-game meta**: none (one profile, one trophy case across all games would be a strong pull).
