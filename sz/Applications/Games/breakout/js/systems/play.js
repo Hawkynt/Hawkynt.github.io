@@ -179,7 +179,7 @@
         sfx('levelup', { pitch: 0.7 });
         break;
       }
-      case 'wall':
+      case 'newwall':
         run.wallT = 0;
         FX.text(640, 330, 'WALL ' + e.n, UI.gold, 40, 1.6);
         sfx('levelup');

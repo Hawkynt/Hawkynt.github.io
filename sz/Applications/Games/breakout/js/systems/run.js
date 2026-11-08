@@ -144,7 +144,7 @@
     g.drops.length = 0;
     E.resetBalls(g);
     run.startBricks = E.remaining(g);
-    run.events.push({ type: 'wall', n: run.wall });
+    run.events.push({ type: 'newwall', n: run.wall });
   }
 
   function onEvent(run, e, profile) {

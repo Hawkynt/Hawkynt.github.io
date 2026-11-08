@@ -125,7 +125,9 @@ const firstWall = JSON.stringify(run.game.bricks.map(b => b.ch));
 R.tick(run, 0.01, {}, profile);
 for (const b of run.game.bricks) b.alive = false;
 R.tick(run, 0.05, {}, profile);
-check('Arcade builds the next wall', run.wall === 2 && run.game.bricks.some(b => b.alive) && R.takeEvents(run).some(e => e.type === 'wall'));
+const wallEvs = R.takeEvents(run);
+check('Arcade builds the next wall and announces it as a new wall', run.wall === 2 && run.game.bricks.some(b => b.alive) && wallEvs.some(e => e.type === 'newwall' && e.n === 2));
+check('a new wall is not confused with a ball bouncing off the side wall', !wallEvs.some(e => e.type === 'wall' && e.n != null));
 check('walls are symmetric and seeded', R.generateWall(4, 3).every(r => r === r.split('').reverse().join('')) && R.generateWall(4, 3).join() === R.generateWall(4, 3).join());
 run = R.build('blitz', { seed: 9 }, profile);
 while (!run.done) { R.tick(run, 0.1, NS.bot.input(run.game), profile); R.takeEvents(run); }
