@@ -79,7 +79,7 @@
       const label = run.kind === 'survive' || run.kind === 'ultra' || run.kind === 'daily' ? clock(Math.max(0, o.need - o.have)) + ' left'
         : run.kind === 'boss' || run.kind === 'rush' ? Math.max(0, run.bossState.hp) + ' HP left' : Math.floor(o.have) + ' / ' + o.need;
       kit.text(label, x + 85, y + 96, 12, UI.textDim, { align: 'center' });
-    } else kit.text(run.mode === 'zen' ? 'Breathe. Stack. Relax.' : 'Survive as long as you can', x + 85, y + 82, 12, UI.textDim, { align: 'center' });
+    } else kit.text(run.mode === 'zen' ? 'Breathe. Stack. Relax.' : run.vs ? 'Doubles and up send garbage' : 'Survive as long as you can', x + 85, y + 82, 12, UI.textDim, { align: 'center' });
     if (st) {
       const b = st.bonus;
       const met = NS.run.bonusMet(run, b);
@@ -106,7 +106,33 @@
     }
   }
 
+  /* the CPU rival: its board at a smaller scale, name, strength and the rows sent both ways */
+  const RIVAL_X = 1012, RIVAL_Y = 118, RIVAL_S = 0.62;
+  function rival(run) {
+    const vs = run.vs;
+    const def = NS.versus.CPU_BY_ID[vs.cpu];
+    kit.panel(1000, 46, 240, 62, { accent: def.color, glow: run.rival.over });
+    kit.icon('swords', 1024, 77, 22, def.color);
+    kit.fitText('CPU  ' + def.name.toUpperCase(), 1044, 70, 186, 17, { weight: 'bold', color: '#ffffff' });
+    kit.fitText('sent ' + vs.rival.sent + '  -  took ' + vs.rival.received, 1044, 92, 186, 11, { color: UI.textDim });
+    ctx.save();
+    ctx.translate(RIVAL_X, RIVAL_Y);
+    ctx.scale(RIVAL_S, RIVAL_S);
+    ctx.translate(-(BOARD_X - 14), -(BOARD_Y - 14));
+    BR.drawBoard(run.rival, { rival: true });
+    ctx.restore();
+    if (run.rival.over) kit.text('K.O.!', RIVAL_X + 102, RIVAL_Y + 200, 44, UI.gold, { align: 'center', weight: 'bold', shadow: true });
+    const y = RIVAL_Y + 400;
+    kit.panel(1000, y, 240, 84, { accent: UI.accent });
+    kit.text('YOU', 1016, y + 18, 12, UI.textDim, { weight: 'bold' });
+    kit.fitText('sent ' + vs.you.sent + '  -  cancelled ' + vs.you.cancelled + '  -  took ' + vs.you.received, 1016, y + 40, 210, 12, { color: '#ffffff' });
+    const n = NS.versus.pending(run, 'you');
+    if (n > 0) kit.text('INCOMING ' + n + ' ROW' + (n > 1 ? 'S' : ''), 1120, y + 66, 15, UI.bad, { align: 'center', weight: 'bold' });
+    else kit.text('speed ' + vs.level + '  -  faster every ' + NS.versus.SPEEDUP + 's', 1120, y + 66, 11, UI.textDim, { align: 'center' });
+  }
+
   function side(run) {
+    if (run.vs) return rival(run);
     const bs = run.bossState;
     const g = run.game;
     if (bs) {
@@ -191,5 +217,5 @@
     btn('t-cw', 'Turn R', 'spin', 900, 600, 80, 56, () => NS.input.act('cw'));
   }
 
-  Object.assign(NS.hud, { clock, draw, powers, objective, stats, side, combo, calloutBubble });
+  Object.assign(NS.hud, { clock, draw, powers, objective, stats, side, rival, combo, calloutBubble, RIVAL_X, RIVAL_Y, RIVAL_S });
 })();

@@ -96,7 +96,16 @@
     { id: 'zen', name: 'Zen', desc: 'No lives, no clock, soft music', icon: 'leaf' },
     { id: 'daily', name: 'Daily Challenge', desc: 'Three minutes, one wall for everyone today, two mutators', icon: 'calendar', time: 180 },
     { id: 'rush', name: 'Boss Rush', desc: 'All five guardians back to back', icon: 'skull', need: 2 },
+    { id: 'duo', name: 'Duo', desc: 'Co-op with Bolt guarding the top edge, bricks in the middle', icon: 'duo' },
+    { id: 'arena', name: 'Arena', desc: 'Four paddles, four open edges: you and three CPU partners', icon: 'swords' },
   ];
+
+  /* the CPU partners of the team modes by the edge they guard */
+  const MATES = {
+    top: { name: 'Bolt', who: 'bolt', paddle: 'chrome' },
+    left: { name: 'Captain Orla', who: 'orla', paddle: 'jade' },
+    right: { name: 'Bolt-2', who: 'bolt', paddle: 'ember' },
+  };
 
   const A = [];
   const add = (id, name, desc, icon, test) => A.push({ id: id, name: name, desc: desc, icon: icon, test: test });
@@ -127,6 +136,9 @@
   add('daily1', 'Daily Pilot', 'Finish a Daily Challenge', 'calendar', s => s.dailies >= 1);
   add('daily7', 'Regular', 'Finish 7 Daily Challenges', 'calendar', s => s.dailies >= 7);
   add('rush', 'Gauntlet', 'Win Boss Rush', 'skull', s => s.rushWins >= 1);
+  add('duo5', 'Two Can Play', 'Reach wall 5 in Duo', 'duo', s => s.duoBest >= 5);
+  add('arena5', 'Four Corners', 'Reach wall 5 in Arena', 'swords', s => s.arenaBest >= 5);
+  add('team500', 'Teamwork', 'Let your partners return 500 balls', 'duo', s => s.mateHits >= 500);
   add('balls12', 'Ball Storm', 'Have 12 balls in play at once', 'multi', s => s.maxBalls >= 12);
   add('tree10', 'Engineer', 'Buy 10 tech tree levels', 'tree', s => s.treeLevels >= 10);
   add('treeAll', 'Chief Engineer', 'Buy every tech tree level', 'tree', s => s.treeLevels >= s.treeMax);
@@ -141,6 +153,7 @@
 
   const QUESTS = [
     { id: 'bricks', text: 'Break {n} bricks', n: [150, 250, 400], reward: 60 },
+    { id: 'team', text: 'Clear {n} walls in Duo or Arena', n: [1, 2, 3], reward: 70 },
     { id: 'combo', text: 'Reach a combo of {n}', n: [10, 15, 20], reward: 70, max: true },
     { id: 'powers', text: 'Catch {n} power-ups', n: [5, 8, 12], reward: 60 },
     { id: 'stage', text: 'Finish {n} story stages', n: [1, 2, 3], reward: 80 },
@@ -157,5 +170,5 @@
   const MODE_BY_ID = {};
   for (const m of MODES) MODE_BY_ID[m.id] = m;
 
-  NS.metaData = { BRANCHES, TREE, TREE_BY_ID, PADDLES, BALLS, TRAILS, MODES, MODE_BY_ID, ACHIEVEMENTS: A, QUESTS };
+  NS.metaData = { BRANCHES, TREE, TREE_BY_ID, PADDLES, BALLS, TRAILS, MODES, MODE_BY_ID, ACHIEVEMENTS: A, QUESTS, MATES };
 })();

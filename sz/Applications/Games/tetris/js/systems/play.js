@@ -27,7 +27,7 @@
   function start(mode, opts) {
     opts = opts || {};
     const p = G.profile;
-    G.run = R.build(mode, { stage: opts.stage, seed: opts.seed, date: new Date() }, p);
+    G.run = R.build(mode, { stage: opts.stage, seed: opts.seed, cpu: opts.cpu, date: new Date() }, p);
     G.run.started = Date.now();
     FX.clear();
     G.ui.callout = null;
@@ -43,6 +43,7 @@
       if (st.kind === 'boss') shots.push.apply(shots, ST.bossIntro(st.world, w.boss));
       else shots.push({ kind: 'card', title: st.name, sub: R.objective(G.run).text + (st.bonus ? '  -  bonus: ' + R.bonusText(st.bonus) : ''), world: st.world, dur: 2.2 });
     } else if (mode === 'rush') shots.push.apply(shots, ST.bossIntro(0, W.BOSSES[0]));
+    else if (mode === 'versus') shots.push({ kind: 'card', title: 'VS  ' + NS.versus.CPU_BY_ID[G.run.vs.cpu].name.toUpperCase(), sub: 'Same pieces, two boards - doubles and up send garbage, the first to top out loses', world: G.run.world, dur: 2 });
     else shots.push({ kind: 'card', title: NS.metaData.MODE_BY_ID[mode].name, sub: modeLine(G.run), world: G.run.world, dur: 1.8 });
     shots.push({ kind: 'count', dur: 1.5 });
     NS.cine.play(shots, mode === 'story' ? 'stage' : 'mode');
@@ -182,6 +183,11 @@
         FX.shake(16);
         FX.flash(0.6, '#ff2a2a');
         break;
+      case 'send': sendFx(e); break;
+      case 'land':
+        if (e.to === 'rival') rivalBurst(['#ff6a6a', '#ffd25a'], 18);
+        break;
+      case 'rival': rivalFx(e.ev); break;
     }
     if (e.type === 'clear' && e.lines && run.bossState && e.hit) {
       FX.text(1100, 250, '-' + e.hit.damage, '#ff6a6a', 30, 1.2);
@@ -226,6 +232,46 @@
       if (Math.random() < 0.6 || e.perfect) callout(e.tspin ? 'ollo' : 'kip', pick(list));
     } else FX.shake(2 + e.lines);
     if (e.perfect) for (let i = 0; i < 80; ++i) FX.spawn(BOARD_X + Math.random() * 300, BOARD_Y + 600, (Math.random() - 0.5) * 200, -300 - Math.random() * 500, 1.6, 6, ['#ffd25a', '#ff7ad8', '#7affea', '#ffffff'][i % 4], 'confetti', 500);
+  }
+
+  /* Versus: a comet of sparks flies from the sender's board to the other one */
+  function rivalCenter() {
+    const H = NS.hud;
+    return { x: H.RIVAL_X + (14 + 150) * H.RIVAL_S, y: H.RIVAL_Y + (14 + 300) * H.RIVAL_S };
+  }
+
+  function sendFx(e) {
+    const a = e.from === 'you' ? { x: BOARD_X + 150, y: BOARD_Y + 300 } : rivalCenter();
+    const b = e.from === 'you' ? rivalCenter() : { x: BOARD_X + 150, y: BOARD_Y + 560 };
+    const col = e.from === 'you' ? '#7affea' : '#ff6a6a';
+    const n = 18 + e.rows * 4;
+    for (let i = 0; i < n; ++i) {
+      const k = i / n;
+      FX.spawn(a.x + (b.x - a.x) * k + (Math.random() - 0.5) * 10, a.y + (b.y - a.y) * k - Math.sin(k * Math.PI) * 90, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40,
+        0.25 + k * 0.45, 4 + e.rows * 0.6, i % 3 ? col : '#ffffff', 'spark', 0);
+    }
+    FX.ring(b.x, b.y, 8, 90 + e.rows * 12, 0.6, col, 5);
+    FX.text(e.from === 'you' ? b.x : BOARD_X + 150, e.from === 'you' ? b.y - 40 : BOARD_Y + 470, (e.from === 'you' ? 'SENT ' : 'INCOMING ') + e.rows, col, 22, 1.1);
+    if (e.from === 'rival') { FX.shake(5); sfx('select', { pitch: 0.6 }); }
+    else sfx('powerup', { pitch: 1.6, volume: 0.5 });
+  }
+
+  function rivalBurst(colors, n) {
+    const c = rivalCenter();
+    FX.burst(c.x, c.y + 80, n, colors, 'spark', 220, 300, 4);
+  }
+
+  function rivalFx(e) {
+    if (e.type === 'clear' && e.lines) {
+      const c = rivalCenter();
+      for (const y of e.rows) FX.spawn(c.x + (Math.random() - 0.5) * 120, NS.hud.RIVAL_Y + (14 + (y - HIDDEN) * CELL) * NS.hud.RIVAL_S, (Math.random() - 0.5) * 200, -100, 0.6, 4, '#ffffff', 'spark', 300);
+      if (e.lines === 4 || e.tspin === 'full') FX.text(c.x, c.y - 60, e.lines === 4 ? 'QUAD' : 'T-SPIN', '#ffb14a', 20, 1);
+    } else if (e.type === 'topout') {
+      rivalBurst(['#ffd25a', '#ffffff', '#ff7ad8', '#7affea'], 70);
+      FX.flash(0.5, '#ffffff');
+      FX.stop(0.2);
+      callout('kip', 'Down it goes! That board is buried!');
+    } else if (e.type === 'garbage') FX.shake(2);
   }
 
   function specialFx(e) {
@@ -302,6 +348,16 @@
       P.questProgress(p, 'zen', Math.floor(run.t / 60)).forEach(q => res.quests.push(q));
     }
     if (run.mode === 'rush' && run.won) ++s.rushWins;
+    if (run.vs) {
+      res.cpu = run.vs.cpu;
+      res.sent = run.vs.you.sent;
+      s.vsSent += run.vs.you.sent;
+      if (run.won) {
+        ++s.vsWins;
+        s.vsBest = Math.max(s.vsBest, NS.versus.CPUS.findIndex(c => c.id === run.vs.cpu) + 1);
+        P.questProgress(p, 'versus', 1).forEach(q => res.quests.push(q));
+      }
+    }
     if (run.mode === 'story' && run.stage && run.won && W.BY_ID[run.stage].kind === 'boss') s.bosses = Math.max(s.bosses, P.bossesBeaten(p));
     const mutShards = run.mutators.reduce((k, id) => k * NS.seasons.MUT_BY_ID[id].shards, 1);
     const pay = P.payout(p, { mode: run.mode, score: g.score, lines: g.lines, time: run.t, won: run.won, stars: res.newStars, mutatorShards: mutShards });

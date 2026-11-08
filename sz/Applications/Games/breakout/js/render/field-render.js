@@ -3,7 +3,8 @@
    Kraken's ink), the guardian with its shield ring and shots, falling power-up capsules, laser
    bolts and stars, the barrier line, the balls (on fire, mega or in the chosen skin), the paddle
    in the chosen style with cannons, magnet glow and stun flicker, and the aim line for a held
-   ball. */
+   ball; in the team modes the CPU partners' paddles on their edges with a name tag, and a glowing
+   danger strip along every open edge. */
 ;(function() {
   'use strict';
 
@@ -62,6 +63,30 @@
       ctx.fillRect(x0 + p.w - 10, y - 10, 6, 10);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /* a CPU partner's paddle, turned to lie along its edge */
+  function drawMate(g, m, ox, oy) {
+    const mate = M.MATES[m.side];
+    const def = M.PADDLES.find(x => x.id === mate.paddle) || M.PADDLES[0];
+    const H = C.MATE_H;
+    ctx.save();
+    if (m.side === 'top') ctx.translate(ox + m.pos, oy + C.MATE_TOP - H / 2);
+    else if (m.side === 'left') { ctx.translate(ox + C.MATE_SIDE - H / 2, oy + m.pos); ctx.rotate(Math.PI / 2); }
+    else { ctx.translate(ox + g.w - C.MATE_SIDE + H / 2, oy + m.pos); ctx.rotate(-Math.PI / 2); }
+    ctx.drawImage(S.paddleBody(def), -m.w / 2 + 6, -H / 2, Math.max(1, m.w - 12), H);
+    const cap = S.paddleCap(def);
+    ctx.drawImage(cap, -m.w / 2 - 6, -H / 2 - 4);
+    ctx.drawImage(cap, m.w / 2 - 14, -H / 2 - 4);
+    ctx.restore();
+  }
+
+  function drawEdges(g, ox, oy) {
+    const a = 0.25 + 0.12 * Math.sin(G.time * 3);
+    ctx.fillStyle = 'rgba(255,90,110,' + a + ')';
+    if (g.open.top) ctx.fillRect(ox, oy, g.w, 3);
+    if (g.open.left) ctx.fillRect(ox, oy, 3, g.h);
+    if (g.open.right) ctx.fillRect(ox + g.w - 3, oy, 3, g.h);
   }
 
   function visibleNear(g, br) {
@@ -130,8 +155,12 @@
       }
     }
     drawPaddle(g, ox, oy);
+    if (g.mates.length) {
+      drawEdges(g, ox, oy);
+      for (const m of g.mates) drawMate(g, m, ox, oy);
+    }
     ctx.restore();
   }
 
-  Object.assign(NS.fieldRender, { paddleDef, ballDef, frame, drawPaddle, draw });
+  Object.assign(NS.fieldRender, { paddleDef, ballDef, frame, drawPaddle, drawMate, drawEdges, draw });
 })();

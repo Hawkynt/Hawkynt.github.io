@@ -16,6 +16,9 @@
   const SE = NS.seasons;
   const { makeRng, hashString } = NS.rng;
 
+  /* the team modes and the edges their CPU partners guard */
+  const TEAM = { duo: ['top'], arena: ['top', 'left', 'right'] };
+
   /* a symmetric wall for the endless modes; n grows the difficulty */
   function generateWall(seed, n) {
     const r = makeRng(seed);
@@ -78,6 +81,7 @@
       o.level = 0;
     }
     if (mode === 'blitz' || mode === 'zen' || mode === 'daily') o.infinite = true;
+    if (TEAM[mode]) { o.sides = TEAM[mode]; o.center = true; o.cols = 12; }
     if (mode === 'zen') o.speedMul *= 0.85;
     const game = E.create(o);
     const run = {
@@ -99,6 +103,7 @@
       case 'gold': return { have: (run.startGold || 0) - E.goldLeft(g), need: run.startGold || 1, text: 'Break every gold target' };
       case 'boss': case 'rush': return { have: g.boss ? g.boss.max - g.boss.hp : 1, need: g.boss ? g.boss.max : 1, text: 'Defeat ' + W.BOSSES[run.world].name };
       case 'arcade': return { have: run.wall, need: 0, text: 'Wall ' + run.wall + ' - keep your balls alive' };
+      case 'duo': case 'arena': return { have: run.wall, need: 0, text: 'Wall ' + run.wall + ' - keep the balls in play together' };
       case 'blitz': case 'daily': return { have: run.t, need: run.timeLimit, text: 'Score as much as you can' };
       default: return { have: run.wall, need: 0, text: 'Relax and break bricks' };
     }
@@ -154,7 +159,7 @@
         g.lives = 0;
         E.resetBalls(g);
         run.events.push({ type: 'revive' });
-      } else finish(run, run.mode === 'arcade', 'out');
+      } else finish(run, run.mode === 'arcade' || !!TEAM[run.mode], 'out');
     }
     if (e.type === 'cleared' || e.type === 'bossdown') {
       if (run.mode === 'story') finish(run, true, 'goal');
@@ -182,7 +187,9 @@
     while (run.acc >= C.STEP && !run.done) {
       run.acc -= C.STEP;
       run.t += C.STEP;
-      E.step(g, C.STEP, launched ? Object.assign({}, input, { launch: false }) : input);
+      let inp = launched ? Object.assign({}, input, { launch: false }) : input;
+      if (g.mates.length) inp = Object.assign({}, inp, { mates: NS.bot.mateInputs(g, C.STEP) });
+      E.step(g, C.STEP, inp);
       launched = launched || !!(input && input.launch);
       run.maxBalls = Math.max(run.maxBalls, g.balls.length);
       const evs = E.takeEvents(g);
@@ -208,5 +215,5 @@
     return e;
   }
 
-  Object.assign(NS.run, { generateWall, options, build, objective, bonusMet, bonusText, finish, nextWall, tick, starsFor, takeEvents });
+  Object.assign(NS.run, { TEAM, generateWall, options, build, objective, bonusMet, bonusText, finish, nextWall, tick, starsFor, takeEvents });
 })();

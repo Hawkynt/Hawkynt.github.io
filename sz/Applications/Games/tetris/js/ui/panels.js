@@ -244,10 +244,10 @@
     ctx.fillRect(v.x0, v.y0, v.w, v.h);
     const story = r.mode === 'story';
     const st = r.stage ? NS.worldData.BY_ID[r.stage] : null;
-    const title = r.won ? (story ? 'STAGE CLEAR!' : r.mode === 'sprint' ? 'FINISH!' : r.mode === 'rush' ? 'GAUNTLET WON!' : r.reason === 'time' ? 'TIME!' : 'WELL PLAYED')
+    const title = r.mode === 'versus' && r.reason !== 'quit' ? (r.won ? 'YOU WIN!' : 'DEFEATED') : r.won ? (story ? 'STAGE CLEAR!' : r.mode === 'sprint' ? 'FINISH!' : r.mode === 'rush' ? 'GAUNTLET WON!' : r.reason === 'time' ? 'TIME!' : 'WELL PLAYED')
       : r.reason === 'quit' ? 'GAME ENDED' : r.reason === 'time' ? 'OUT OF TIME' : 'TOPPED OUT';
     kit.text(title, 640, 82, 54, r.won ? UI.gold : '#ffffff', { align: 'center', weight: 'bold', shadow: 'rgba(0,0,0,0.8)' });
-    kit.text(st ? st.name : M.MODE_BY_ID[r.mode].name, 640, 128, 20, UI.textDim, { align: 'center' });
+    kit.text(st ? st.name : r.cpu ? 'Versus ' + NS.versus.CPU_BY_ID[r.cpu].name + '  -  sent ' + r.sent + ' rows' : M.MODE_BY_ID[r.mode].name, 640, 128, 20, UI.textDim, { align: 'center' });
     if (story) {
       for (let k = 0; k < 3; ++k) {
         const pop = Math.min(1, Math.max(0, (G.time - (G.resultT || 0)) * 2 - k * 0.6));
@@ -285,7 +285,7 @@
     for (let i = 0; i < Math.min(3, notes.length); ++i) kit.fitText(notes[i], 640, y + 10 + i * 22, 900, 14, { align: 'center', color: UI.gold, weight: 'bold' });
     const bx = 260;
     const next = story && r.won ? nextStage(r.stage) : null;
-    W.button('r-again', story ? 'Retry' : 'Play again', bx, 640, 240, 52, { icon: 'play', action: () => NS.play.start(r.mode, { stage: r.stage }) });
+    W.button('r-again', story ? 'Retry' : 'Play again', bx, 640, 240, 52, { icon: 'play', action: () => NS.play.start(r.mode, { stage: r.stage, cpu: r.cpu }) });
     if (next) W.button('r-next', 'Next stage', bx + 260, 640, 240, 52, { icon: 'flag', accent: UI.gold, action: () => NS.play.start('story', { stage: next }) });
     else W.button('r-tree', 'Tech Tree', bx + 260, 640, 240, 52, { icon: 'tree', accent: UI.shard, action: () => NS.screens.open('tree', 'results') });
     W.button('r-map', story ? 'Map' : 'Modes', bx + 520, 640, 240, 52, { icon: story ? 'map' : 'flag', action: () => { G.run = null; NS.screens.setScreen(story ? 'map' : 'modes', 'title'); } });
@@ -333,8 +333,8 @@
     ['Spins and chains', 'Turn a T piece into a tight slot for a T-spin. Clear with every piece for a combo; Quads and T-spins in a row are back-to-back.'],
     ['Powers', 'Some pieces carry a glowing orb. Clear its row to earn a power, then press E: Sweep, Slow Time, I-Storm and more from the tech tree.'],
     ['Guardians', 'Each realm ends with a guardian. Clear lines to hurt it; a warning shows incoming garbage - clear lines quickly to cancel it.'],
-    ['Stars', 'Every stage has three stars: finish it, beat the par time, and reach its bonus goal. Stars unlock skins and frames.'],
-    ['Grow stronger', 'Every game pays shards for the tech tree and XP for levels. Quests, streaks and festivals bring something new every day.'],
+    ['Versus CPU', 'Race a CPU rival dealt the same pieces. Doubles, quads, T-spins and combos send garbage; clears cancel what comes at you.'],
+    ['Grow stronger', 'Stages give up to three stars. Every game pays shards for the tech tree and XP; quests and festivals add more each day.'],
   ];
 
   function drawHelp() {

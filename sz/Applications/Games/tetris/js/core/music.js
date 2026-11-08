@@ -41,7 +41,7 @@
     if ((s === 'game' || s === 'paused' || s === 'results') && r) {
       if (r.mode === 'zen') return ZEN;
       if (r.mode === 'sprint' || r.mode === 'ultra' || r.mode === 'daily') return SPRINT;
-      if (r.mode === 'master') return MASTER;
+      if (r.mode === 'master' || r.mode === 'versus') return MASTER;
       if (r.boss) return BOSS[r.world || 0];
       return REALM[(r.world || 0) % REALM.length];
     }
@@ -55,7 +55,7 @@
     if (r.mode === 'zen') return 0.2;
     const h = NS.engine.stackHeight(r.game);
     let k = 0.4 + Math.min(0.4, h / 30);
-    if (r.boss || r.game.combo >= 2) k = Math.max(k, 0.8);
+    if (r.boss || r.vs || r.game.combo >= 2) k = Math.max(k, 0.8);
     if (h >= 14) k = 1;
     return k;
   }

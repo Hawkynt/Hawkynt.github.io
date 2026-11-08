@@ -61,6 +61,7 @@
   const CALLOUTS = {
     chain: ['What a chain!', 'Pop pop pop!', 'Look at them go!'],
     hurry: ['Hurry up!', 'They\'re getting angry!'],
+    popDown: ['Ow! Be right back!', 'I\'ll float back in a moment!', 'Keep going, Fizz!'],
     shade: ['Something is coming... run!'],
     power: ['Ooh, candy!', 'Power-up!'],
   };

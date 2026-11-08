@@ -75,7 +75,7 @@
     const style = skinStyle();
     const clearing = game.clearing;
     const ct = clearing ? 1 - clearing.t / C.CLEAR_TIME : 0;
-    const invisible = run && run.invisible && !opts.demo;
+    const invisible = run && run.invisible && !opts.demo && !opts.rival;
     for (let y = HIDDEN; y < ROWS; ++y) {
       const isClear = clearing && clearing.rows.indexOf(y) >= 0;
       for (let x = 0; x < COLS; ++x) {
@@ -106,7 +106,7 @@
     const p = game.piece;
     if (p && !game.clearing) {
       const gy = E.ghostY(game);
-      const bright = NS.progress.stat(G.profile, 'ghost') > 0;
+      const bright = !opts.rival && NS.progress.stat(G.profile, 'ghost') > 0;
       if (G.profile.settings.ghost !== false && gy > p.y) {
         const sh = SHAPES[p.t][p.r];
         for (let yy = 0; yy < sh.length; ++yy)
@@ -129,8 +129,9 @@
         ctx.globalAlpha = 1;
       }
     }
-    if (run && run.bossState && run.bossState.incoming > 0 && !opts.demo) {
-      const n = run.bossState.incoming;
+    const incoming = opts.demo || !run ? 0 : run.vs ? NS.versus.pending(run, opts.rival ? 'rival' : 'you') : run.bossState ? run.bossState.incoming : 0;
+    if (incoming > 0) {
+      const n = incoming;
       const h = Math.min(BH, n * CELL);
       const pulse = 0.6 + 0.4 * Math.sin(G.time * 12);
       ctx.fillStyle = 'rgba(255,60,60,' + pulse + ')';

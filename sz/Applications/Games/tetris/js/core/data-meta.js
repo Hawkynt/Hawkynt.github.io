@@ -114,6 +114,7 @@
     { id: 'daily', name: 'Daily Challenge', desc: 'Three minutes, one seed for everyone today, two mutators', icon: 'calendar', time: 180 },
     { id: 'rush', name: 'Boss Rush', desc: 'All five guardians back to back', icon: 'skull', need: 2 },
     { id: 'master', name: 'Master', desc: 'Instant gravity from the first piece - for experts', icon: 'crown' },
+    { id: 'versus', name: 'Versus CPU', desc: 'Same pieces, two boards: bury the CPU in garbage', icon: 'swords' },
   ];
 
   /* ---- achievements ---- */
@@ -160,6 +161,10 @@
   add('level20', 'Seasoned', 'Reach player level 20', 'xp', s => s.level >= 20);
   add('level50', 'Veteran', 'Reach player level 50', 'xp', s => s.level >= 50);
   add('festival', 'Festive', 'Finish a festival reward track', 'gift', s => s.festivalDone >= 1);
+  add('vs1', 'Rival Down', 'Win a Versus match', 'swords', s => s.vsWins >= 1);
+  add('vs25', 'Duelist', 'Win 25 Versus matches', 'swords', s => s.vsWins >= 25);
+  add('vsAce', 'Ace Breaker', 'Beat the Ace in Versus', 'swords', s => s.vsBest >= 3);
+  add('vsLegend', 'Living Legend', 'Beat the Legend in Versus', 'crown', s => s.vsBest >= 4);
   add('nohold', 'No Pockets', 'Clear 40 lines in one game without holding', 'bar', s => s.noHoldLines >= 40);
 
   const QUESTS = [
@@ -172,6 +177,7 @@
     { id: 'powers', text: 'Use {n} powers', n: [2, 4, 6], reward: 50 },
     { id: 'games', text: 'Play {n} games in any mode', n: [2, 3, 5], reward: 50 },
     { id: 'sprint', text: 'Finish a Sprint', n: [1], reward: 60 },
+    { id: 'versus', text: 'Win {n} Versus match(es)', n: [1, 2], reward: 70 },
     { id: 'zen', text: 'Spend {n} minutes in Zen', n: [3, 5], reward: 40 },
     { id: 'pieces', text: 'Place {n} pieces', n: [150, 250, 400], reward: 50 },
   ];

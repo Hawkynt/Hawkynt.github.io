@@ -16,7 +16,7 @@
   const SE = NS.seasons;
   const { hashString } = NS.rng;
 
-  /* opts: stage (id), seed, date */
+  /* opts: stage (id), seed, date, mutators, cpu (Versus rival id) */
   function build(mode, opts, profile) {
     opts = opts || {};
     const T = name => P.stat(profile, name);
@@ -39,7 +39,7 @@
     const game = E.create({
       seed: seed, level: level, levelMode: levelMode, gravity: gravity, gravityMul: gravityMul,
       lockDelay: C.LOCK_DELAY + T('lockDelay'), preview: has('preview') ? 2 : preview, hold: holdAllowed,
-      orbChance: mode === 'master' ? 0 : (has('orbs') ? has('orbs').orbs : 0.07 + T('orbChance')), zen: mode === 'zen',
+      orbChance: mode === 'master' || mode === 'versus' ? 0 : (has('orbs') ? has('orbs').orbs : 0.07 + T('orbChance')), zen: mode === 'zen',
     });
     const scoreMul = 1 + T('scoreGain') + T('allGain');
     game.scoreMul = scoreMul;
@@ -65,6 +65,10 @@
     if (mode === 'ultra') run.timeLimit = 120;
     if (mode === 'daily') run.timeLimit = 180;
     if (mode === 'rush') startBoss(run, 0, profile, 0.8);
+    if (mode === 'versus') {
+      NS.versus.attach(run, opts.cpu, seed);
+      run.revives = 0;
+    }
     if (has('rise')) { run.rise = has('rise').rise; run.riseT = run.rise; }
     if (has('mirror')) { run.mirror = has('mirror').mirror; run.mirrorT = run.mirror; }
     if (has('gems')) for (let i = 0; i < has('gems').gems; ++i) E.addGarbage(game, 1, null, { gem: true });
@@ -95,6 +99,7 @@
       }
       case 'sprint': return { have: g.lines, need: 40, text: 'Clear 40 lines' };
       case 'ultra': case 'daily': return { have: run.t, need: run.timeLimit, text: 'Score as much as you can' };
+      case 'versus': return { have: run.vs.you.sent, need: 0, text: 'Bury ' + NS.versus.CPU_BY_ID[run.vs.cpu].name + ' before it buries you' };
       default: return { have: g.lines, need: 0, text: '' };
     }
   }
@@ -134,6 +139,11 @@
   function judge(run, profile) {
     const g = run.game;
     if (run.done) return;
+    if (run.vs) {
+      const w = NS.versus.winner(run);
+      if (w) finish(run, w === 'you', w === 'you' ? 'ko' : 'topout');
+      return;
+    }
     if (g.over) {
       if (run.revives > 0) {
         --run.revives;
@@ -199,6 +209,7 @@
       run.acc -= C.STEP;
       run.t += C.STEP;
       E.step(g, C.STEP, input);
+      if (run.vs) NS.versus.step(run, C.STEP);
       if (run.bossState) NS.boss.update(run, C.STEP, profile);
       NS.powers.update(run, C.STEP);
       if (run.rise) {
@@ -239,6 +250,7 @@
     }
     for (let i = 0; i < e.orbs; ++i) NS.powers.gainOrb(run, profile);
     if (e.gems && run.mutators.indexOf('gems') >= 0) g.score += e.gems * 500;
+    if (run.vs) e.sent = NS.versus.onClear(run, 'you', e);
     if (run.bossState) {
       const hit = NS.boss.onClear(run, e, profile);
       if (hit) e.hit = hit;

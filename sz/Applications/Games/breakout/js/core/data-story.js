@@ -63,6 +63,7 @@
     power: ['Power up!', 'Ooh, shiny!', 'Bolt approves.'],
     danger: ['Last ball, Juno!', 'Careful now!'],
     boss: ['Aim for its body!', 'Break the shield ring!'],
+    team: ['Got it!', 'Yours, Juno!', 'Back it goes!', 'Nice pass!', 'Covering you!'],
   };
 
   function worldIntro(w, world) {

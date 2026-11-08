@@ -18,12 +18,12 @@
       v: 1, shards: 0, gems: 0, xp: 0, level: 1, tree: {}, stars: {}, best: {}, achievements: {},
       cosmetics: { paddle: 'mint', ball: 'pearl', trail: 'spark', owned: {} },
       stats: { trapped: 0, bestChain: 0, fruit: 0, powers: 0, elements: 0, bounces: 0, starLives: 0, deaths: 0, games: 0, zenSeconds: 0, dailies: 0, rushWins: 0,
-        arcadeBest: 0, blitzBest: 0, flawless: 0, calm: 0, playSeconds: 0, bosses: 0, stages: 0, quests: 0, festivalDone: 0, score: 0 },
+        arcadeBest: 0, blitzBest: 0, flawless: 0, calm: 0, playSeconds: 0, bosses: 0, stages: 0, quests: 0, festivalDone: 0, score: 0, coopRooms: 0, popTraps: 0 },
       scores: { arcade: [], blitz: [], zen: [], daily: {} },
       quests: null, streak: { last: '', count: 0, best: 0 },
       festival: { event: '', tokens: 0, claimed: 0 },
       seen: { intro: false, worlds: {}, bosses: {}, finale: false, help: false },
-      settings: { autofire: false },
+      settings: { autofire: false, coop: false },
       migrated: false,
     };
   }

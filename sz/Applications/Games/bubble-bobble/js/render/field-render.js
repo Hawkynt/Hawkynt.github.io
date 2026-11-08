@@ -2,8 +2,9 @@
    items, floods, flames and bolts, the guardian, enemies (bobbing, angry red, frozen blue,
    blinking while stunned), bubbles (empty, elemental, or with a curled-up enemy that shakes
    before breaking out), enemy shots, the shade, and Fizz (blinking while safe after a hit,
-   spinning away when hit), the shield and the hurry-up warning; Dim Rooms darken everything but
-   a circle of light around the player. */
+   spinning away when hit), Pop in his own colours in co-op (floating back as a faint bubble while
+   knocked out), the shields and the hurry-up warning; Dim Rooms darken everything but a circle of
+   light around each newt. */
 ;(function() {
   'use strict';
 
@@ -54,6 +55,48 @@
       g.strokeStyle = K.rgba(W.glow, 0.9); g.lineWidth = 2; K.roundRect(g, 3, 3, FIELD_W + 18, FIELD_H + 18, 16); g.stroke();
       for (let k = 0; k < 14; ++k) { g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1; g.beginPath(); g.arc(8 + (k * 53) % (FIELD_W + 8), k % 2 ? 6 : FIELD_H + 18, 4, 0, TAU); g.stroke(); }
     });
+  }
+
+  /* one newt with pose, blink while safe, spin when hit and shield ring; Pop floats back as a
+     faint bubble while knocked out */
+  function drawNewt(p, def, ox, oy, buddy) {
+    if (p.inv > 0 && p.inv < 100 && Math.floor(G.time * 14) % 2) return;
+    if (buddy && p.dead) {
+      const k = Math.max(0, p.dead / C.BUDDY_BACK);
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(G.time * 8);
+      const bx = ox + p.x, by = oy + p.y - 20 - (1 - k) * 40;
+      ctx.drawImage(S.newt(def, 'jump', p.face || 1), bx - 20, by - 20 - Math.sin(G.time * 3) * 4);
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by - Math.sin(G.time * 3) * 4, 22, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    const pose = p.dead ? 'jump' : !p.ground ? 'jump' : p.shotT > C.SHOT_GAP * 0.6 ? 'blow' : p.vx ? (Math.floor(p.walk * 8) % 2 ? 'walk1' : 'walk2') : 'stand';
+    const img = S.newt(def, pose, p.face || 1);
+    ctx.save();
+    ctx.translate(ox + p.x, oy + p.y - 20);
+    if (p.dead) ctx.rotate(G.time * 12);
+    ctx.drawImage(img, -20, -20);
+    ctx.restore();
+    if (p.shield) {
+      ctx.strokeStyle = 'rgba(200,160,255,' + (0.5 + 0.3 * Math.sin(G.time * 6)) + ')';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(ox + p.x, oy + p.y - 16, 24, 0, TAU);
+      ctx.stroke();
+    }
+    if (buddy) {
+      ctx.fillStyle = def.accent;
+      ctx.beginPath();
+      ctx.moveTo(ox + p.x - 5, oy + p.y - 50);
+      ctx.lineTo(ox + p.x + 5, oy + p.y - 50);
+      ctx.lineTo(ox + p.x, oy + p.y - 43);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   function draw(g, opts) {
@@ -114,32 +157,19 @@
     for (const s of g.shots) ctx.drawImage(S.shot(!!s.boss), ox + s.x - 10, oy + s.y - 10);
     if (g.shade) ctx.drawImage(S.shade(), ox + g.shade.x - 24, oy + g.shade.y - 24 + Math.sin(G.time * 4) * 3);
     const p = g.player;
-    if (p && !(p.inv > 0 && p.inv < 100 && Math.floor(G.time * 14) % 2)) {
-      const pose = p.dead ? 'jump' : !p.ground ? 'jump' : p.shotT > C.SHOT_GAP * 0.6 ? 'blow' : p.vx ? (Math.floor(p.walk * 8) % 2 ? 'walk1' : 'walk2') : 'stand';
-      const img = S.newt(newtDef(), pose, p.face || 1);
-      ctx.save();
-      ctx.translate(ox + p.x, oy + p.y - 20);
-      if (p.dead) ctx.rotate(G.time * 12);
-      ctx.drawImage(img, -20, -20);
-      ctx.restore();
-      if (p.shield) {
-        ctx.strokeStyle = 'rgba(200,160,255,' + (0.5 + 0.3 * Math.sin(G.time * 6)) + ')';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(ox + p.x, oy + p.y - 16, 24, 0, TAU);
-        ctx.stroke();
-      }
-    }
+    if (g.buddy) drawNewt(g.buddy, NS.metaData.POP_NEWT, ox, oy, true);
+    if (p) drawNewt(p, newtDef(), ox, oy, false);
     if (!opts.demo && run && run.dark && p) {
       ctx.fillStyle = 'rgba(0,0,8,0.88)';
       ctx.beginPath();
       ctx.rect(ox, oy, FIELD_W, FIELD_H);
       ctx.arc(ox + p.x, oy + p.y - 14, 120, 0, TAU, true);
+      if (g.buddy) { ctx.moveTo(ox + g.buddy.x + 90, oy + g.buddy.y - 14); ctx.arc(ox + g.buddy.x, oy + g.buddy.y - 14, 90, 0, TAU, true); }
       ctx.fill('evenodd');
     }
     if (!opts.demo && g.angry && !g.boss && Math.floor(G.time * 3) % 2) NS.kit.text('HURRY UP!', ox + FIELD_W / 2, oy + 60, 30, '#ff6a6a', { align: 'center', weight: 'bold', shadow: true });
     ctx.restore();
   }
 
-  Object.assign(NS.fieldRender, { newtDef, bubbleDef, room, frame, draw, paddleDef: newtDef, ballDef: bubbleDef });
+  Object.assign(NS.fieldRender, { newtDef, bubbleDef, room, frame, drawNewt, draw, paddleDef: newtDef, ballDef: bubbleDef });
 })();

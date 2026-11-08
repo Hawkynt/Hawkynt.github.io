@@ -155,6 +155,8 @@
       case 'zen': return Math.floor(s.zenSeconds / 60) + ' minutes of calm';
       case 'daily': { const b = p.scores.daily[G.today]; return b ? 'today ' + b.toLocaleString('en-US') : G.daily.mutators.map(id => NS.seasons.MUT_BY_ID[id].name).join(' + '); }
       case 'rush': return s.rushWins ? s.rushWins + ' wins' : 'opens with 2 guardians beaten';
+      case 'duo': return s.duoBest ? 'best wall ' + s.duoBest : 'no team run yet';
+      case 'arena': return s.arenaBest ? 'best wall ' + s.arenaBest : 'no team run yet';
     }
     return '';
   }
@@ -164,7 +166,7 @@
     const list = MODES.filter(m => m.id !== 'story');
     for (let i = 0; i < list.length; ++i) {
       const m = list[i];
-      const x = 90 + (i % 3) * 380, y = 110 + Math.floor(i / 3) * 250;
+      const x = 60 + (i % 4) * 296, y = 110 + Math.floor(i / 4) * 250;
       const open = modeOpen(m);
       const hot = W.area('mode-' + m.id, x, y, 280, 234, open ? () => NS.play.start(m.id) : null, { disabled: !open });
       kit.panel(x, y, 280, 234, { accent: open ? UI.accent : '#3a4460', glow: hot && open, alpha: open ? 1 : 0.6 });

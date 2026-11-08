@@ -180,11 +180,20 @@
       if (!open) kit.lock(x + 250, y + 30, 22);
     }
     W.button('back', 'Back', 60, 640, 220, 48, { icon: 'back', accent: UI.good, action: () => NS.screens.back() });
+    coopToggle(300, 640, 300, 48);
+  }
+
+  /* co-op on or off for every mode and story room */
+  function coopToggle(x, y, w, h) {
+    const s = G.profile.settings;
+    W.button('coop', s.coop ? 'Co-op: Pop joins' : 'Solo: Fizz alone', x, y, w, h, { icon: 'duo', selected: !!s.coop, px: 15,
+      sub: s.coop ? 'a CPU partner on the right' : 'click to bring Pop along', accent: NS.metaData.POP_NEWT.color,
+      action: () => { s.coop = !s.coop; NS.save.saveProfile(G.profile); } });
   }
 
   function update(dt) {
     NS.demo.update(dt);
   }
 
-  Object.assign(NS.title, { draw, drawModes, update, modeOpen, modeBest, logo });
+  Object.assign(NS.title, { draw, drawModes, update, modeOpen, modeBest, logo, coopToggle });
 })();

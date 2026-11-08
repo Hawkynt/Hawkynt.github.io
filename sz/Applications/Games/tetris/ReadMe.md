@@ -1,6 +1,6 @@
 # Tetris
 
-The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop: **The Spire of Lumen**. Kip the young builder and Ollo the stone golem rebuild five crumbling realms and win the stolen keystones back from their guardians - Verdant Ruins, Crystal Hollows, Sunken Temple, Ember Forge and the Starlit Spire, thirty stages, five guardian fights and cinematics. Beside the story wait Marathon, Sprint, Ultra, Zen, the Daily Challenge, Boss Rush and Master. Shards from every game buy a 25-node tech tree, gems buy block skins, frames and lock effects, and seasonal festivals, daily quests, streaks, player levels and 42 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
+The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop: **The Spire of Lumen**. Kip the young builder and Ollo the stone golem rebuild five crumbling realms and win the stolen keystones back from their guardians - Verdant Ruins, Crystal Hollows, Sunken Temple, Ember Forge and the Starlit Spire, thirty stages, five guardian fights and cinematics. Beside the story wait Marathon, Sprint, Ultra, Zen, the Daily Challenge, Boss Rush, Master and Versus against a CPU rival. Shards from every game buy a 25-node tech tree, gems buy block skins, frames and lock effects, and seasonal festivals, daily quests, streaks, player levels and 46 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
 
 ## How It Works
 
@@ -10,7 +10,9 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
 
 **Story:** five realms of six stages. Stage kinds: clear lines, reach a score in time, dig through every garbage row, clear every gem, survive rising garbage, reach a combo, and the guardian fight. Each stage has three stars: finish it, beat the par time, and meet its bonus goal (a quad, a T-spin, a combo, never holding, a perfect clear or taking no hits). Guardians have hit points; clears hurt them (lines, T-spins, back-to-back, combo and perfect clears hit harder) and first cancel the garbage they send - an attack is telegraphed, then its rows land two seconds later. Each has a special move: Grumbleroot's roots seize the hold slot, Shardmaw drops crystals, Maelora's tide fogs the preview, Vulkar's heat doubles gravity and the Hollow Mason mirrors the stack. At half health they rage. Cinematics open the story, every realm and every guardian fight, close every victory and end the game with a finale and credits; the cast also calls out quads, T-spins, perfect clears and danger during play.
 
-**Modes:** Marathon (endless, a level every ten lines, top-ten table), Sprint (40 lines against the clock), Ultra (two minutes of score attack), Zen (no pressure and no game over - a full well melts its lower half), the Daily Challenge (three minutes on one seed per local day with two mutators), Boss Rush (all five guardians back to back, opens with two guardians beaten) and Master (instant gravity from the first piece, opens with three guardians or 150 Marathon lines). Mutators: Overclock, Rising Tide, Empty Pockets, Power Party, Fog, Gem Fever, Earthquake and Ghost Blocks.
+**Modes:** Marathon (endless, a level every ten lines, top-ten table), Sprint (40 lines against the clock), Ultra (two minutes of score attack), Zen (no pressure and no game over - a full well melts its lower half), the Daily Challenge (three minutes on one seed per local day with two mutators), Boss Rush (all five guardians back to back, opens with two guardians beaten) and Master (instant gravity from the first piece, opens with three guardians or 150 Marathon lines).
+
+**Versus CPU:** a second, smaller board on the right where a CPU rival plays the same pieces from the same seed. Clears send garbage after the attack table - double 1, triple 2, quad 4, T-spin single/double/triple 2/4/6, mini double 1, back-to-back +1, combos up to +5, a perfect clear +10 - which first cancels your own incoming rows and lands on the other board after 1.5 seconds with one hole per attack. Both boards speed up every 25 seconds, and the first to top out loses. The rival is the placement bot steered like a hand on the controls (it waits, holds, turns and slides step by step) at four strengths: Rookie, Pro, Ace and Legend, which differ in thinking time, step speed, look-ahead and how often they settle for a worse spot. Wins count toward four achievements and a daily quest. Mutators: Overclock, Rising Tide, Empty Pockets, Power Party, Fog, Gem Fever, Earthquake and Ghost Blocks.
 
 **Powers:** some pieces carry a glowing orb; clearing its row puts a power in a free slot, E uses it: Sweep (two bottom rows), Slow Time, I-Storm (three bars), and from the tech tree Quake (every column settles), Laser (the tallest column), Bomb (a 4 x 4 hole), Score Rush and Aegis (blocks an attack or a top-out).
 
@@ -42,6 +44,7 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
   - `js/systems/fx.js` -- pooled particles, texts, rings, shake, flash, hit-stop
   - `js/systems/boss.js` -- guardian fights: attacks, cancelling, specials, rage, damage
   - `js/systems/powers.js` -- orbs to powers and their effects
+  - `js/systems/versus.js` -- Versus: the attack table, sending, cancelling and landing garbage, the CPU rival's strengths and its step-by-step steering, the speed-up
   - `js/systems/run.js` -- a session: building any mode or stage, objectives, stars, revives, the fixed-step tick, Boss Rush
   - `js/systems/play.js` -- sessions on screen: starting with cinematics, Continue, events to juice and call-outs, finishing into results, autosave
   - `js/systems/cine.js` -- the cinematic player
@@ -65,7 +68,7 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
   - `js/ui/input.js` -- keyboard with DAS/ARR, touch gestures, mouse
   - `js/ui/status-bar.js` -- the window status bar
   - `js/app.js` -- boot, date context, the loop, menu bar
-- `tests/` -- node tests: `harness.js` (fake DOM, canvas, storage and clock), `engine.test.js` (bag, kicks, T-spins, scoring, hold, lock delay, levels, top-out, Zen, garbage and powers, a 400-piece bot game, JSON), `run.test.js` (the bot finishes every stage and guardian and every mode, stars, guardian mechanics, powers, revives, mutators), `scene.test.js` (boot, story, keyboard play, pause, every screen and cinematic, every mode and realm, draw-call budget, no shadowBlur, warm frames paint nothing new), `meta.test.js` (migration, saving, Continue, tree, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
+- `tests/` -- node tests: `harness.js` (fake DOM, canvas, storage and clock), `engine.test.js` (bag, kicks, T-spins, scoring, hold, lock delay, levels, top-out, Zen, garbage and powers, a 400-piece bot game, JSON), `run.test.js` (the bot finishes every stage and guardian and every mode, stars, guardian mechanics, powers, revives, mutators), `scene.test.js` (boot, story, keyboard play, pause, every screen and cinematic, every mode and realm, draw-call budget, no shadowBlur, warm frames paint nothing new), `versus.test.js` (attack table, same pieces on both boards, sending, cancelling and landing, the rival steers and plays, speed-up, a quick player beats the Rookie, the Legend beats a slow player, JSON replay), `meta.test.js` (migration, saving, Continue, tree, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
 
 ## User Stories
 
@@ -85,6 +88,7 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
 
 ### Modes
 - [x] As a player, I can play Marathon, Sprint, Ultra, Zen, the Daily Challenge, Boss Rush and Master
+- [x] As a player, I can play Versus against a CPU rival of four strengths, sending and cancelling garbage
 - [x] As a player, I can play the same Daily Challenge as everyone today with two mutators
 
 ### Progress

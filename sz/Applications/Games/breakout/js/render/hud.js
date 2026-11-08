@@ -97,10 +97,27 @@
     }
   }
 
+  /* the team of a Duo or Arena run: each partner's portrait, edge and returns */
+  function team(run, x, y) {
+    const g = run.game;
+    const h = 34 + g.mates.length * 62;
+    kit.panel(x, y, 240, h, { accent: UI.good });
+    kit.text('YOUR TEAM', x + 16, y + 18, 12, UI.textDim, { weight: 'bold' });
+    g.mates.forEach((m, i) => {
+      const mate = NS.metaData.MATES[m.side];
+      const def = NS.metaData.PADDLES.find(p => p.id === mate.paddle) || NS.metaData.PADDLES[0];
+      const ry = y + 34 + i * 62;
+      ctx.drawImage(NS.bossArt.portrait(mate.who), x + 10, ry, 54, 54);
+      kit.fitText(mate.name, x + 72, ry + 18, 156, 15, { weight: 'bold', color: def.accent });
+      kit.fitText('guards the ' + m.side + '  -  ' + m.hits + ' saves', x + 72, ry + 38, 156, 11, { color: UI.textDim });
+    });
+  }
+
   function side(run, x, y) {
     const g = run.game;
     const bs = g.boss;
-    if (bs) {
+    if (g.mates.length) team(run, x, y);
+    else if (bs) {
       const b = NS.worldData.BOSSES[bs.w];
       kit.panel(x, y, 240, 100, { accent: b.color, glow: bs.rage });
       kit.fitText(b.name, x + 16, y + 22, 210, 17, { weight: 'bold', color: '#ffffff' });
