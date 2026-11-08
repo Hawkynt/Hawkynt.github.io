@@ -330,7 +330,7 @@
   /* ---- help ---- */
   const HELP = [
     ['Stack and clear', 'Pieces fall into the well. Fill a whole row and it clears. The more rows at once, the more points: four at once is a Quad.'],
-    ['Move and turn', 'Left/Right move, Up or X turns clockwise, Z turns back, A turns half way. Down drops faster, Space drops at once.'],
+    ['Move and turn', 'Arrows or WASD: Left/Right or A/D move, Up/W/X turns, Z turns back, Q turns half way. Down/S drops faster, Space drops at once.'],
     ['Hold and plan', 'C or Shift puts the piece in Hold for later (once per piece). The Next panel shows what is coming; the ghost shows where it lands.'],
     ['Spins and chains', 'Turn a T piece into a tight slot for a T-spin. Clear with every piece for a combo; Quads and T-spins in a row are back-to-back.'],
     ['Powers', 'Some pieces carry a glowing orb. Clear its row to earn a power, then press E: Sweep, Slow Time, I-Storm and more from the tech tree.'],

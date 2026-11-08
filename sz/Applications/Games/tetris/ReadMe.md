@@ -114,12 +114,12 @@ The falling-block puzzle grown into an adventure for the »SynthelicZ« Desktop:
 
 | Input | Action |
 |---|---|
-| Left / Right | Move (hold to repeat) |
-| Down | Soft drop |
+| Left / Right or A / D | Move (hold to repeat) |
+| Down or S | Soft drop |
 | Space | Hard drop |
-| Up / X | Turn clockwise |
+| Up / W / X | Turn clockwise |
 | Z / Ctrl | Turn counter-clockwise |
-| A | Half turn |
+| Q | Half turn |
 | C / Shift | Hold |
 | E | Use a power |
 | Esc / P | Pause |

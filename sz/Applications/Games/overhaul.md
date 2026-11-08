@@ -81,6 +81,10 @@ Full overhaul needed (Tetris, Breakout and Bubble Bobble are done, see Tier A). 
 - **CPU players**: a game whose bots are proven over the real engine can also seat them as CPU
   rivals or partners - Tetris Versus (step-by-step steering at four strengths), Breakout's partner
   paddles and Bubble Bobble's Pop show the pattern; candidates are the other games with bots.
+- **Browser tests**: only Tetris, Breakout, Bubble Bobble and the start menu have an
+  `e2e/<game>.e2e.js` scenario; every game needs one (real clicks and keys, screenshots looked at).
+- **Keyboard**: every action game should steer with the arrows and WASD alike (Tetris got WASD in
+  November 2026); the desktop now hands the keyboard to a game's window when it opens.
 - **Late game**: apart from Cookie Clicker's ascension there is no prestige / endless scaling, so
   players with everything bought have nothing left to chase.
 - **Cross-game meta**: none (one profile, one trophy case across all games would be a strong pull).
