@@ -29,6 +29,7 @@
     }
     G.perf.sim = performance.now() - t0;
     G.perf.simAvg = G.perf.simAvg * 0.95 + G.perf.sim * 0.05;
+    NS.music.update(elapsed / 1000);
     NS.frame.draw();
     NS.statusBar.tick(elapsed / 1000);
     prewarm();
@@ -88,6 +89,7 @@
             if (G.screen !== 'cine') scr.open('help', G.screen === 'paused' ? 'paused' : G.screen);
             break;
           case 'controls': SZ.Dialog.show('controlsBackdrop'); break;
+          case 'music': if (SZ.GameMusic) SZ.GameMusic.toggle(); break;
           case 'about': SZ.Dialog.show('dlg-about'); break;
         }
       }

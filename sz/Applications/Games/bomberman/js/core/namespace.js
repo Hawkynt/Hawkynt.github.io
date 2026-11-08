@@ -7,7 +7,7 @@
   const NS = SZ.Bomberman || (SZ.Bomberman = {});
 
   const MODULES = [
-    'constants', 'rng', 'story', 'content', 'meta', 'season', 'rules', 'save',
+    'constants', 'rng', 'story', 'content', 'meta', 'season', 'rules', 'save', 'music',
     'levelgen', 'arena', 'fx', 'bombs', 'items', 'player', 'enemies', 'bosses', 'run', 'tracker', 'sim',
     'view', 'artKit', 'icons', 'tileArt', 'actorArt', 'bossArt', 'itemArt', 'backdrop', 'world', 'fxRender', 'hud', 'cineRender', 'frame',
     'kit', 'screens', 'title', 'modes', 'map', 'cine', 'tree', 'wardrobe', 'goals', 'stats', 'results', 'pause', 'help',

@@ -7,7 +7,7 @@
   const NS = SZ.Asteroids || (SZ.Asteroids = {});
 
   const MODULES = ['constants', 'rng', 'rockData', 'enemyData', 'powerData', 'campaign', 'treeData', 'cosmetics', 'goalData',
-    'seasons', 'rules', 'save', 'audio',
+    'seasons', 'rules', 'save', 'audio', 'music',
     'grid', 'fx', 'ship', 'weapons', 'rocks', 'enemies', 'bosses', 'powerups', 'hazards', 'collision', 'waves', 'progress',
     'cinematics', 'snapshot', 'sim', 'bot',
     'artKit', 'rockArt', 'shipArt', 'enemyArt', 'propArt', 'view', 'backdrop', 'world', 'fxRender', 'cineRender',

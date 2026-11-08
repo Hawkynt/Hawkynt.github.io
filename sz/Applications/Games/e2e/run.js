@@ -31,6 +31,7 @@ function tools(page, base, game, ns) {
   const wrap = body => '(function(){ const W = ' + GW + '; const NS = W.SZ.' + ns + ', G = NS.state; ' + body + ' })()';
   const t = {
     page,
+    base,
     /* the desktop itself, fresh, for shell scenarios */
     async openDesktop() {
       await page.goto(base + '/sz/index.html', '!!document.querySelector("#sz-start-button, .sz-start-button")');

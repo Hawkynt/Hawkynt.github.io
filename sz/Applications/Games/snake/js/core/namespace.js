@@ -7,7 +7,7 @@
   const NS = SZ.Snake || (SZ.Snake = {});
 
   const MODULES = ['constants', 'rng', 'worlds', 'story', 'items', 'treeData', 'cosmetics', 'goals', 'seasons',
-    'levels', 'rules', 'autopilot', 'save', 'audio',
+    'levels', 'rules', 'autopilot', 'save', 'audio', 'music',
     'fx', 'board', 'food', 'powerups', 'enemies', 'bosses', 'combat', 'snake', 'progress', 'run', 'cine', 'sim',
     'view', 'artKit', 'tileArt', 'snakeArt', 'itemArt', 'creatureArt', 'backdrop', 'world', 'fxRender', 'hud',
     'cineRender', 'kit', 'widgets', 'screens', 'title', 'map', 'tree', 'wardrobe', 'journal', 'results', 'help',

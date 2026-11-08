@@ -7,7 +7,7 @@
   const NS = SZ.EndlessRunner || (SZ.EndlessRunner = {});
 
   const MODULES = ['constants', 'rng', 'worlds', 'story', 'items', 'treeData', 'cosmetics', 'goals', 'seasons',
-    'physics', 'orient', 'course', 'solver', 'rules', 'state', 'audio', 'save',
+    'physics', 'orient', 'course', 'solver', 'rules', 'state', 'audio', 'music', 'save',
     'fx', 'stream', 'player', 'hazards', 'pickups', 'powers', 'bosses', 'progress', 'run', 'autopilot', 'cine', 'sim',
     'view', 'artKit', 'backdropArt', 'vertArt', 'backdrop', 'runnerArt', 'propArt', 'bossArt', 'world', 'actors', 'fxRender', 'hud',
     'cineRender', 'kit', 'widgets', 'screens', 'title', 'map', 'tree', 'wardrobe', 'journal', 'results', 'help',

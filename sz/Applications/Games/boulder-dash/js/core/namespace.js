@@ -7,7 +7,7 @@
   const NS = SZ.BoulderDash || (SZ.BoulderDash = {});
 
   const MODULES = [
-    'constants', 'rng', 'story', 'items', 'meta', 'progression', 'save',
+    'constants', 'rng', 'story', 'items', 'meta', 'progression', 'save', 'music',
     'levels', 'cavegen', 'solver', 'physics', 'creatures', 'boss', 'player', 'run', 'fx', 'sim', 'bot',
     'view', 'artKit', 'tileArt', 'spriteArt', 'backdrop', 'world', 'fxRender', 'hud', 'frame',
     'creatureArt', 'kit', 'screens', 'title', 'map', 'cinema', 'tree', 'wardrobe', 'journal', 'overlays', 'help',
