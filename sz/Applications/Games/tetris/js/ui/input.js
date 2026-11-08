@@ -1,6 +1,6 @@
-/* Input: the keyboard in play (Left/Right with auto-repeat after DAS at ARR, Down soft drop,
-   Space hard drop, Up/X clockwise, Z/Ctrl counter-clockwise, A half turn, C/Shift hold, E power,
-   Esc/P pause), touch in play (tap turns, horizontal drags move cell by cell, a downward drag
+/* Input: the keyboard in play (Left/Right or A/D with auto-repeat after DAS at ARR, Down or S
+   soft drop, Space hard drop, Up/W/X clockwise, Z/Ctrl counter-clockwise, Q half turn, C/Shift
+   hold, E power, Esc/P pause), touch in play (tap turns, horizontal drags move cell by cell, a downward drag
    soft drops, a quick flick down hard drops, a flick up holds), the mouse and arrow keys in menus
    through the hit areas, and cinematics (click: next, any key or Esc: skip). */
 ;(function() {
@@ -91,15 +91,15 @@
       return;
     }
     if (G.screen === 'game' && G.run && !G.run.done) {
-      if (e.repeat && k !== 'ArrowDown') return;
+      if (e.repeat && k !== 'ArrowDown' && k !== 's' && k !== 'S') return;
       switch (k) {
-        case 'ArrowLeft': held.left = true; press(-1); break;
-        case 'ArrowRight': held.right = true; press(1); break;
-        case 'ArrowDown': held.down = true; break;
+        case 'ArrowLeft': case 'a': case 'A': held.left = true; press(-1); break;
+        case 'ArrowRight': case 'd': case 'D': held.right = true; press(1); break;
+        case 'ArrowDown': case 's': case 'S': held.down = true; break;
         case ' ': act('drop'); break;
-        case 'ArrowUp': case 'x': case 'X': act('cw'); break;
+        case 'ArrowUp': case 'w': case 'W': case 'x': case 'X': act('cw'); break;
         case 'z': case 'Z': case 'Control': act('ccw'); break;
-        case 'a': case 'A': act('180'); break;
+        case 'q': case 'Q': act('180'); break;
         case 'c': case 'C': case 'Shift': act('hold'); break;
         case 'e': case 'E': usePower(0); break;
         case 'Escape': case 'p': case 'P': NS.screens.pause(); break;
@@ -116,9 +116,9 @@
 
   function onKeyUp(e) {
     const k = e.key;
-    if (k === 'ArrowLeft') { held.left = false; dir = held.right ? 1 : 0; dasT = arrT = 0; }
-    else if (k === 'ArrowRight') { held.right = false; dir = held.left ? -1 : 0; dasT = arrT = 0; }
-    else if (k === 'ArrowDown') held.down = false;
+    if (k === 'ArrowLeft' || k === 'a' || k === 'A') { held.left = false; dir = held.right ? 1 : 0; dasT = arrT = 0; }
+    else if (k === 'ArrowRight' || k === 'd' || k === 'D') { held.right = false; dir = held.left ? -1 : 0; dasT = arrT = 0; }
+    else if (k === 'ArrowDown' || k === 's' || k === 'S') held.down = false;
   }
 
   function arrows(k) {
