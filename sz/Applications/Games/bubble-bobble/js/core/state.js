@@ -1,69 +1,22 @@
-/* S, the one shared mutable state object: the run state and score/lives/level, the
-   player, the bubbles/enemies/items/platforms/power-ups, the power-up and level-flow
-   flags, the input map, the tutorial bookkeeping, the loop clock and the fixed
-   background sparkle dots (seeded once, at load). */
+/* G, the one shared mutable state object: the screen and where panels return to, the profile,
+   the running game (run) with its engine state, the demo game behind the title, the date context
+   (day, festival, daily recipe), UI bookkeeping (selection, scroll, toasts, hover), the input,
+   the per-frame hit areas, the cinematic and the screen juice. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.BubbleBobble || (SZ.BubbleBobble = {});
-  const C = NS.constants;
 
-  NS.state = NS.state || {
-    /* Game state */
-    state: C.STATE_READY,
-    score: 0,
-    lives: C.MAX_LIVES,
-    popCombo: 0,
-    lastPopTime: 0,
-    currentLevel: 1,
-    highScores: [],
-
-    /* Player */
-    player: {
-      x: 32, y: 384, vx: 0, vy: 0,
-      w: 24, h: 24,
-      facingRight: true,
-      grounded: false,
-      isJumping: false,
-      animFrame: 0,
-      animTimer: 0,
-      alive: true,
-      invincible: 0
-    },
-
-    /* Bubbles, enemies, items, platforms, power-ups */
-    bubbles: [],
-    enemies: [],
-    items: [],
-    platforms: [],
-    powerUps: [],
-    shootCooldown: 0,
-
-    /* Power-up state */
-    powerUpSpeed: false,
-    powerUpRange: false,
-    powerUpTimer: 0,
-
-    /* Level flow properties */
-    levelFlow: { windX: 0, floatSpeed: 1.0 },
-
-    /* Input */
-    keysDown: {},
-
-    /* Tutorial */
-    tutorialSeen: false,
-    showTutorial: false,
-    tutorialPage: 0,
-
-    /* Loop clock */
-    lastTime: 0,
-
-    /* Background sparkle dots — fixed random positions with unique seeds */
-    sparkles: []
-  };
-
-  const S = NS.state;
-  for (let i = 0; i < 25; ++i)
-    S.sparkles.push({ x: Math.random() * C.CANVAS_W, y: Math.random() * C.CANVAS_H, seed: Math.random() * Math.PI * 2 });
+  const G = NS.state = NS.state || {};
+  Object.assign(G, {
+    screen: 'title', back: 'title', time: 0, frame: 0,
+    profile: NS.progress.newProfile(),
+    run: null, demo: null, result: null,
+    today: '', season: null, daily: null, weekly: null,
+    ui: { world: 0, stage: 0, treeSel: 'width', wardTab: 0, journalTab: 0, scroll: 0, toasts: [], hover: null, confirm: null, mode: 'story', callout: null },
+    input: { mx: -1, my: -1, moved: 0, touch: false, px: null, left: false, right: false, launch: false, fire: false, active: false },
+    hitAreas: [], menuCursor: -1,
+    cine: null, shake: 0, flash: 0, flashColor: '#fff', hitStop: 0, autoSaveT: 0, checkT: 0,
+  });
 })();

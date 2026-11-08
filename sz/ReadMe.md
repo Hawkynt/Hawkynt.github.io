@@ -1123,7 +1123,7 @@ Procedural background music for the games, no sound files. A song is data - `{ i
 - `enabled` / `toggle()` / `onChange(fn)` -- the music switch, remembered and shared by every game; the shared sound switch mutes it too
 - `compose(song, bar, intensity)` -- the notes of one bar, pure and deterministic (an A A' B A' phrase shape that varies every eight bars)
 
-Used by: Cookie Clicker, Tetris, Breakout.
+Used by: Cookie Clicker, Tetris, Breakout, Bubble Bobble.
 
 **Spell Check Core** (`spell-check-core.js`):
 
