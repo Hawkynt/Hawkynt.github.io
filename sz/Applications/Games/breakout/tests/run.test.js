@@ -119,6 +119,16 @@ NS.boss.damage(run.game, bs.max);
 R.tick(run, 0.05, {}, profile);
 check('it falls and the stage is won', run.done && run.won);
 
+/* a broken pointer value is ignored instead of sending the paddle and balls off into nowhere */
+{
+  const gg = E.create({ seed: 4, layout: ['1111'] });
+  const px0 = gg.paddle.x;
+  E.step(gg, C.STEP, { px: NaN });
+  E.step(gg, C.STEP, { px: 'x', launch: true });
+  for (let i = 0; i < 240; ++i) E.step(gg, C.STEP, {});
+  check('a non-numeric pointer target leaves the paddle where it is', gg.paddle.x === px0 && gg.balls.every(b => Number.isFinite(b.x) && Number.isFinite(b.y)) && gg.stats.bricks < 4);
+}
+
 /* endless and timed modes */
 run = R.build('arcade', { seed: 9 }, profile);
 const firstWall = JSON.stringify(run.game.bricks.map(b => b.ch));

@@ -124,7 +124,7 @@
         NS.cine.play(NS.storyData.SHOTS.intro, 'intro', () => NS.screens.setScreen('map', 'title'));
       } else NS.screens.setScreen('map', 'title');
     }, saved ? 50 : 56);
-    b('t-modes', 'Modes', 'Arcade, Blitz, Zen, Daily Challenge, Boss Rush', 'flag', UI.good, () => NS.screens.setScreen('modes', 'title'));
+    b('t-modes', 'Modes', 'Arcade, Blitz, Zen, Daily, Boss Rush, Duo and Arena co-op', 'flag', UI.good, () => NS.screens.setScreen('modes', 'title'));
     const half = (w - 8) / 2;
     W.button('t-tree', 'Tech Tree', x, y, half, 50, { icon: 'tree', sub: G.profile.shards.toLocaleString('en-US') + ' shards', accent: UI.shard, action: () => NS.screens.open('tree', 'title') });
     W.button('t-ward', 'Collection', x + half + 8, y, half, 50, { icon: 'palette', sub: 'skins, frames, effects', accent: UI.gem, action: () => NS.screens.open('wardrobe', 'title') });
