@@ -262,7 +262,7 @@
     if (r.best) kit.text('NEW PERSONAL BEST!', 640, story ? 304 : 254, 22, UI.good, { align: 'center', weight: 'bold' });
     else if (r.rank >= 0) kit.text('Rank #' + (r.rank + 1) + ' in your top ten', 640, story ? 304 : 254, 18, UI.textDim, { align: 'center' });
     const s = r.stats;
-    const facts = [['Trapped', r.trapped], ['Best chain', s.bestChain], ['Fruit', s.fruit], ['Lives lost', s.deaths], [r.mode === 'story' ? 'Candy' : 'Room', r.mode === 'story' ? s.powers : r.wall], ['Time', NS.hud.clock(r.time)]];
+    const facts = [['Trapped', r.trapped], ['Best chain', s.bestChain], r.popTrapped != null ? ['Pop trapped', r.popTrapped] : ['Fruit', s.fruit], ['Lives lost', s.deaths], [r.mode === 'story' ? 'Candy' : 'Room', r.mode === 'story' ? s.powers : r.wall], ['Time', NS.hud.clock(r.time)]];
     for (let i = 0; i < facts.length; ++i) {
       const x = 260 + i * 152;
       kit.text(String(facts[i][1]), x, 350, 22, '#ffffff', { align: 'center', weight: 'bold' });
@@ -284,7 +284,7 @@
     for (let i = 0; i < Math.min(3, notes.length); ++i) kit.fitText(notes[i], 640, y + 10 + i * 22, 900, 14, { align: 'center', color: UI.gold, weight: 'bold' });
     const bx = 260;
     const next = story && r.won ? nextStage(r.stage) : null;
-    W.button('r-again', story ? 'Retry' : 'Play again', bx, 640, 240, 52, { icon: 'play', action: () => NS.play.start(r.mode, { stage: r.stage }) });
+    W.button('r-again', story ? 'Retry' : 'Play again', bx, 640, 240, 52, { icon: 'play', action: () => NS.play.start(r.mode, { stage: r.stage, coop: r.popTrapped != null }) });
     if (next) W.button('r-next', 'Next stage', bx + 260, 640, 240, 52, { icon: 'flag', accent: UI.gold, action: () => NS.play.start('story', { stage: next }) });
     else W.button('r-tree', 'Tech Tree', bx + 260, 640, 240, 52, { icon: 'tree', accent: UI.shard, action: () => NS.screens.open('tree', 'results') });
     W.button('r-map', story ? 'Map' : 'Modes', bx + 520, 640, 240, 52, { icon: story ? 'map' : 'flag', action: () => { G.run = null; NS.screens.setScreen(story ? 'map' : 'modes', 'title'); } });
@@ -328,7 +328,7 @@
     ['Run and jump', 'Left/Right or A/D run, Up, W or Z jumps. You jump up through platforms from below. Fall through the gap in the floor and you come back from the top.'],
     ['Blow bubbles', 'Space or X blows a bubble. It flies a little way, then floats up and drifts where the wind blows. A flying bubble traps an enemy (big ones take two).'],
     ['Pop them', 'Touch a trapped enemy to pop it into fruit. Bubbles touching each other pop together - every enemy in a chain is worth double the last.'],
-    ['Bounce', 'Land on a bubble while holding jump to bounce off it and reach higher places.'],
+    ['Bounce and co-op', 'Hold jump when you land on a bubble to bounce higher. Switch co-op on in Modes or on the map to bring Pop along; when hit he floats back for free.'],
     ['Hurry up', 'Trapped enemies break out angry after a while. After 40 s every enemy is angry; after 55 s a shade comes for you. Be quick!'],
     ['Special bubbles', 'Water floods down the platforms, lightning shoots a bolt, fire burns a platform. Five star bubbles give an extra life.'],
     ['Guardians', 'Each kingdom ends with a guardian. Hit it with bubbles and with lightning bolts, and dodge its shots and helpers.'],

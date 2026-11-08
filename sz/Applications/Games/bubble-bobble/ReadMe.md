@@ -1,6 +1,6 @@
 # Bubble Bobble
 
-The bubble-trapping platformer grown into an adventure for the »SynthelicZ« Desktop: **Fizz and the Dry Lagoon**. Baron Dryspell has bottled the water of five kingdoms; Fizz the bubble newt, her cousin Pop and Grandma Tide set out to win it back - Candy Caverns, Toybox Tower, Canopy Kingdom, Cloudworks and Dryspell Castle, thirty rooms, five guardian fights and cinematics. Beside the story wait Arcade, Blitz, Zen, the Daily Challenge and Boss Rush. Shards from every game buy a 25-node tech tree, gems buy newt colours, bubbles and pop trails, and seasonal festivals, daily quests, streaks, player levels and 37 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
+The bubble-trapping platformer grown into an adventure for the »SynthelicZ« Desktop: **Fizz and the Dry Lagoon**. Baron Dryspell has bottled the water of five kingdoms; Fizz the bubble newt, her cousin Pop and Grandma Tide set out to win it back - Candy Caverns, Toybox Tower, Canopy Kingdom, Cloudworks and Dryspell Castle, thirty rooms, five guardian fights and cinematics. Beside the story wait Arcade, Blitz, Zen, the Daily Challenge and Boss Rush, and every room can be played in co-op with Pop as a CPU partner. Shards from every game buy a 25-node tech tree, gems buy newt colours, bubbles and pop trails, and seasonal festivals, daily quests, streaks, player levels and 40 achievements bring something new every day. Every game saves itself, so Continue always picks up exactly where you left off.
 
 ## How It Works
 
@@ -16,7 +16,11 @@ The bubble-trapping platformer grown into an adventure for the »SynthelicZ« De
 
 **Story:** five kingdoms of six rooms: trap them all, beat the clock, and the guardian. Each room has three stars: finish it, beat the par time and meet its bonus goal (lose no life, pop a chain, collect fruit). Guardians bounce around the room; flying bubbles hurt them (big ones double) and lightning bubbles, which drift in often during a fight, strike for four. They throw fans of shots, call in helpers and rage at half health. Cinematics open the story, every kingdom and every guardian fight, close every victory and end the game with a finale and credits.
 
-**Modes:** Arcade (endless generated rooms with three lives, tougher every room, top-ten table), Blitz (three minutes of endless rooms with unlimited lives), Zen (nothing can hurt you, no hurry-up), the Daily Challenge (three minutes on one seed per local day with two mutators) and Boss Rush (all five guardians back to back, opens with two guardians beaten). Mutators: Angry Mob, Short Breath, No Candy, Candy Party, Dim Rooms, Stormy, Thin Bubbles and Crowded.
+**Modes:** Arcade (endless generated rooms with three lives, tougher every room, top-ten table), Blitz (three minutes of endless rooms with unlimited lives), Zen (nothing can hurt you, no hurry-up), the Daily Challenge (three minutes on one seed per local day with two mutators) and Boss Rush (all five guardians back to back, opens with two guardians beaten).
+
+**Co-op:** a switch on the modes screen and the story map brings Pop into every mode and room as a CPU partner, steered by the same bot that proves the rooms can be cleared. He starts on the mirrored spawn on the right, blows his own bubbles, picks up his own candy and counts his own traps and pops; enemies, shots, guardians and the shade treat both newts alike and chase the nearer one. When Pop is hit he floats back as a bubble after 3.5 seconds without costing a life - only Fizz spends lives. Rooms cleared together and Pop's traps count toward three achievements and a daily quest.
+
+Mutators: Angry Mob, Short Breath, No Candy, Candy Party, Dim Rooms, Stormy, Thin Bubbles and Crowded.
 
 **Progress without a server:** everything lives in localStorage - the profile and the snapshot of the game in progress, written every three seconds, on pause and when the page hides. The old game's top-five table moves into Arcade on first launch. The festival running on the local date tints the kingdoms, drifts its decor over every screen, collects tokens from every pop and fills a five-tier track that ends in a newt colour and a pop trail.
 
@@ -31,14 +35,14 @@ The bubble-trapping platformer grown into an adventure for the »SynthelicZ« De
   - `js/core/namespace.js`, `constants.js` (room, physics, bubbles, enemy kinds, candy, palette), `rng.js`
   - `js/core/levels.js` -- the seeded room generator and the reachability search
   - `js/core/data-worlds.js` -- five kingdoms, 30 rooms, five guardians, the room of a stage
-  - `js/core/engine.js` -- the pure room engine (platform physics, bubbles, trapping, chains, enemies, hurry-up, shade, elements, candy, lives)
-  - `js/core/bot.js` -- the player bot
+  - `js/core/engine.js` -- the pure room engine (platform physics, bubbles, trapping, chains, enemies, hurry-up, shade, elements, candy, lives, Pop in co-op)
+  - `js/core/bot.js` -- the player bot (also steers Pop in co-op)
   - `js/core/data-story.js`, `data-meta.js` (tech tree, newts, bubbles, trails, modes, achievements, quests), `seasons.js`, `progress.js`, `state.js`, `save.js`, `audio.js`, `music.js`
   - `js/systems/fx.js`, `boss.js` (guardians), `run.js` (sessions, endless rooms, objectives, stars, revives, Boss Rush), `play.js` (on screen, juice, results, autosave), `cine.js`, `demo.js`
   - `js/render/view.js`, `art-kit.js`, `sprites.js`, `backdrop.js`, `boss-art.js`, `field-render.js`, `fx-render.js`, `hud.js`, `cine-render.js`, `frame.js`
   - `js/ui/kit.js`, `widgets.js`, `screens.js`, `title.js`, `map.js`, `panels.js`, `input.js`, `status-bar.js`
   - `js/app.js`
-- `tests/` -- node tests: `harness.js`, `run.test.js` (reachability of every room, movement, trapping, chains, bounces, escapes, hurry-up and shade, elements, stars, candy, lives, the bot clearing every room and guardian, stars, guardian shots, rage and bolts, endless rooms, timed modes, Zen, Boss Rush, revive, JSON), `scene.test.js` (boot, story, keyboard play, pause, results, every screen, cinematic, mode and kingdom, draw-call budget, no shadowBlur, warm frames paint nothing new), `meta.test.js` (migration, saving, Continue, tree, candy list, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
+- `tests/` -- node tests: `harness.js`, `run.test.js` (reachability of every room, movement, trapping, chains, bounces, escapes, hurry-up and shade, elements, stars, candy, lives, the bot clearing every room and guardian, stars, guardian shots, rage and bolts, endless rooms, timed modes, Zen, Boss Rush, revive, JSON), `scene.test.js` (boot, story, keyboard play, pause, results, every screen, cinematic, mode and kingdom, draw-call budget, no shadowBlur, warm frames paint nothing new), `coop.test.js` (Pop's spawn, bubbles, traps and pops, hits on either newt, free recovery, candy to whoever grabs it, guardians, the pair clearing every room and guardian, rooms, Zen, JSON), `meta.test.js` (migration, saving, Continue, tree, candy list, cosmetics, quests, streak, festivals, daily, XP, achievements, payouts)
 
 ## User Stories
 
@@ -55,6 +59,7 @@ The bubble-trapping platformer grown into an adventure for the »SynthelicZ« De
 
 ### Modes
 - [x] As a player, I can play Arcade, Blitz, Zen, the Daily Challenge and Boss Rush
+- [x] As a player, I can switch on co-op and play every mode and story room with Pop as a CPU partner
 
 ### Progress
 - [x] As a player, I can spend shards on a 25-node tech tree that changes my next game

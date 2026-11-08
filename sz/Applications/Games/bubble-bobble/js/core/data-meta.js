@@ -89,6 +89,9 @@
     { id: 'confetti', name: 'Confetti', kind: 'confetti', color: '#ffd23a', unlock: { k: 'festival', id: 'starfall' } },
   ];
 
+  /* Pop's colours when he joins in co-op */
+  const POP_NEWT = { id: 'pop', name: 'Pop', color: '#ffc07a', accent: '#5a8aff', style: 'field' };
+
   const MODES = [
     { id: 'story', name: 'Story', desc: 'Five kingdoms, thirty rooms, five guardians', icon: 'book' },
     { id: 'arcade', name: 'Arcade', desc: 'Endless rooms with three lives, tougher every room', icon: 'flag' },
@@ -128,6 +131,9 @@
   add('daily1', 'Daily Bubbler', 'Finish a Daily Challenge', 'calendar', s => s.dailies >= 1);
   add('daily7', 'Regular', 'Finish 7 Daily Challenges', 'calendar', s => s.dailies >= 7);
   add('rush', 'Gauntlet', 'Win Boss Rush', 'skull', s => s.rushWins >= 1);
+  add('coop10', 'Bubble Buddies', 'Clear 10 rooms in co-op with Pop', 'duo', s => s.coopRooms >= 10);
+  add('coop100', 'Inseparable', 'Clear 100 rooms in co-op with Pop', 'duo', s => s.coopRooms >= 100);
+  add('pop250', 'Pop Star', 'Let Pop trap 250 enemies', 'duo', s => s.popTraps >= 250);
   add('tree10', 'Researcher', 'Buy 10 tech tree levels', 'tree', s => s.treeLevels >= 10);
   add('treeAll', 'Scholar', 'Buy every tech tree level', 'tree', s => s.treeLevels >= s.treeMax);
   add('style', 'Colourful', 'Own 5 newt colours', 'palette', s => s.paddles >= 5);
@@ -140,6 +146,7 @@
 
   const QUESTS = [
     { id: 'trapped', text: 'Trap {n} enemies', n: [20, 35, 50], reward: 60 },
+    { id: 'coop', text: 'Clear {n} rooms in co-op with Pop', n: [2, 3, 5], reward: 60 },
     { id: 'chain', text: 'Pop a chain of {n}', n: [2, 3, 4], reward: 70, max: true },
     { id: 'fruit', text: 'Collect {n} fruit', n: [15, 25, 40], reward: 60 },
     { id: 'stage', text: 'Finish {n} story rooms', n: [1, 2, 3], reward: 80 },
@@ -156,5 +163,5 @@
   const MODE_BY_ID = {};
   for (const m of MODES) MODE_BY_ID[m.id] = m;
 
-  NS.metaData = { BRANCHES, TREE, TREE_BY_ID, PADDLES: NEWTS, NEWTS, BALLS: BUBBLES, BUBBLES, TRAILS, MODES, MODE_BY_ID, ACHIEVEMENTS: A, QUESTS };
+  NS.metaData = { POP_NEWT, BRANCHES, TREE, TREE_BY_ID, PADDLES: NEWTS, NEWTS, BALLS: BUBBLES, BUBBLES, TRAILS, MODES, MODE_BY_ID, ACHIEVEMENTS: A, QUESTS };
 })();

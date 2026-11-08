@@ -22,7 +22,7 @@
   function start(mode, opts) {
     opts = opts || {};
     const p = G.profile;
-    G.run = R.build(mode, { stage: opts.stage, seed: opts.seed, date: new Date() }, p);
+    G.run = R.build(mode, { stage: opts.stage, seed: opts.seed, coop: opts.coop != null ? opts.coop : !!p.settings.coop, date: new Date() }, p);
     FX.clear();
     G.ui.callout = null;
     NS.screens.setScreen('game');
@@ -95,7 +95,7 @@
     const t = trailDef();
     const kind = t.kind === 'rainbow' ? 'spark' : t.kind;
     switch (e.type) {
-      case 'blow': FX.burst(FIELD_X + e.x + g.player.face * 14, FIELD_Y + e.y - 14, 4, ['#ffffff', NS.fieldRender.bubbleDef().color], 'bubble', 80, -40, 3); break;
+      case 'blow': FX.burst(FIELD_X + e.x + (e.who && g.buddy ? g.buddy : g.player).face * 14, FIELD_Y + e.y - 14, 4, ['#ffffff', NS.fieldRender.bubbleDef().color], 'bubble', 80, -40, 3); break;
       case 'trap': FX.ring(at(e.x, e.y).x, at(e.x, e.y).y, 6, 40, 0.4, '#ffffff', 3); break;
       case 'dent': FX.text(at(e.x, e.y).x, at(e.x, e.y).y - 30, 'THUNK', '#ffffff', 14, 0.6); break;
       case 'pop': {
@@ -134,9 +134,18 @@
       case 'extralife': FX.text(640, 300, 'EXTRA LIFE!', UI.good, 34, 1.6); FX.flash(0.4, '#ff9ad8'); break;
       case 'hurry': FX.flash(0.3, '#ff3a3a'); callout('pop', ST.CALLOUTS.hurry[0]); break;
       case 'shade': FX.flash(0.4, '#5a1a5a'); callout('fizz', ST.CALLOUTS.shade[0]); break;
-      case 'die': FX.shake(12); FX.flash(0.4, '#ff3a3a'); FX.burst(at(e.x, e.y).x, at(e.x, e.y).y - 12, 30, [NS.fieldRender.newtDef().color, '#ffffff'], 'star', 300, 300, 5); break;
+      case 'die':
+        if (e.who) {
+          FX.burst(at(e.x, e.y).x, at(e.x, e.y).y - 12, 18, [NS.metaData.POP_NEWT.color, '#ffffff'], 'star', 240, 300, 4);
+          FX.text(at(e.x, e.y).x, at(e.x, e.y).y - 40, 'OOF!', NS.metaData.POP_NEWT.color, 16, 0.9);
+          if (Math.random() < 0.5) callout('pop', ST.CALLOUTS.popDown[Math.floor(Math.random() * ST.CALLOUTS.popDown.length)]);
+        } else { FX.shake(12); FX.flash(0.4, '#ff3a3a'); FX.burst(at(e.x, e.y).x, at(e.x, e.y).y - 12, 30, [NS.fieldRender.newtDef().color, '#ffffff'], 'star', 300, 300, 5); }
+        break;
       case 'shieldpop': FX.ring(at(e.x, e.y).x, at(e.x, e.y).y - 16, 10, 80, 0.5, '#c8a0ff', 5); break;
-      case 'respawn': if (e.lives === 0) callout('fizz', 'Last life - careful now!'); break;
+      case 'respawn':
+        if (e.who) FX.ring(FIELD_X + g.buddy.x, FIELD_Y + g.buddy.y - 14, 6, 50, 0.5, NS.metaData.POP_NEWT.accent, 3);
+        else if (e.lives === 0) callout('fizz', 'Last life - careful now!');
+        break;
       case 'bosshit': {
         const c = at(e.x, e.y);
         FX.text(c.x, c.y - 40, '-' + e.dmg, '#ff6a6a', 24, 0.8);
@@ -217,6 +226,13 @@
     }
     if (run.mode === 'zen') { s.zenSeconds += run.t; P.questProgress(p, 'zen', Math.floor(run.t / 60)).forEach(q => res.quests.push(q)); }
     if (run.mode === 'rush' && run.won) ++s.rushWins;
+    if (g.buddy) {
+      res.popTrapped = g.buddy.trapped;
+      s.popTraps += g.buddy.trapped;
+      const rooms = run.mode === 'story' ? (run.won ? 1 : 0) : run.room - 1;
+      s.coopRooms += rooms;
+      if (rooms) P.questProgress(p, 'coop', rooms).forEach(q => res.quests.push(q));
+    }
     const mutShards = run.mutators.reduce((k, id) => k * NS.seasons.MUT_BY_ID[id].shards, 1);
     const pay = P.payout(p, { mode: run.mode, score: g.score, trapped: g.stats.trapped, best: g.stats.bestChain, won: run.won, stars: res.newStars, mutatorShards: mutShards });
     p.shards += pay.shards;

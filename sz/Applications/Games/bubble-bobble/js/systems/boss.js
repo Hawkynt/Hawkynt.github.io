@@ -1,8 +1,9 @@
 /* Guardians: a big foe that bounces around the room. Flying bubbles that reach it burst for one
    point of damage (big bubbles two), lightning bolts from popped lightning bubbles - which drift
-   in often during a fight - hit for four. It throws a fan of shots at the player, calls in
-   helpers now and then (never more than three) and touching it hurts. At half health it rages:
-   faster, more shots, more helpers. Each world's guardian has its own pattern of shots. */
+   in often during a fight - hit for four. It throws a fan of shots at the player (the nearer
+   newt in co-op), calls in helpers now and then (never more than three) and touching it hurts.
+   At half health it rages: faster, more shots, more helpers. Each world's guardian has its own
+   pattern of shots. */
 ;(function() {
   'use strict';
 
@@ -64,8 +65,8 @@
     bs.y += bs.vy * k * dt;
     if (bs.x < TILE + bs.r || bs.x > FIELD_W - TILE - bs.r) { bs.vx = -bs.vx; bs.x = Math.max(TILE + bs.r, Math.min(FIELD_W - TILE - bs.r, bs.x)); }
     if (bs.y < TILE + bs.r || bs.y > FIELD_H - TILE - bs.r) { bs.vy = -bs.vy; bs.y = Math.max(TILE + bs.r, Math.min(FIELD_H - TILE - bs.r, bs.y)); }
-    const p = g.player;
-    if (!p.dead && Math.hypot(p.x - bs.x, p.y - 12 - bs.y) < bs.r + 10) E.hurt(g, 'boss');
+    for (const q of E.newts(g)) if (!q.dead && Math.hypot(q.x - bs.x, q.y - 12 - bs.y) < bs.r + 10) E.hurt(g, 'boss', q);
+    const p = E.nearest(g, bs.x, bs.y);
     bs.shootT -= dt;
     if (bs.shootT <= 0) {
       bs.shootT = def.shoot / k;

@@ -2,8 +2,8 @@
    hunts the nearest enemy - walking along its row, jumping up through platforms when the target
    is higher, dropping down when it is lower - blows bubbles when an enemy is ahead on its level,
    hops away from foes that come too close and fights guardians by blowing bubbles and popping
-   lightning bubbles. It plays the title demo and shows in the tests that rooms and guardians can
-   be cleared. Pure. */
+   lightning bubbles. It plays the title demo, steers Pop in co-op and shows in the tests that
+   rooms and guardians can be cleared. Pure. */
 ;(function() {
   'use strict';
 
@@ -19,10 +19,11 @@
     return false;
   }
 
-  /* -> input for one step; mem keeps the bot's small memory between steps */
-  function input(g, mem) {
+  /* -> input for one step; mem keeps the bot's small memory between steps; who: the newt to
+     steer (Fizz by default, Pop in co-op) */
+  function input(g, mem, who) {
     mem = mem || {};
-    const p = g.player;
+    const p = who || g.player;
     const inp = { left: false, right: false, jump: false, shoot: false };
     if (p.dead) return inp;
     mem.t = (mem.t || 0) + C.STEP;

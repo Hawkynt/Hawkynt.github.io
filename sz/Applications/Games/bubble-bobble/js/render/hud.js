@@ -97,9 +97,20 @@
     }
   }
 
+  /* Pop's card in co-op: portrait, traps and whether he is floating back */
+  function partner(g, x, y) {
+    const b = g.buddy;
+    const def = NS.metaData.POP_NEWT;
+    kit.panel(x, y, 240, 74, { accent: def.color, glow: !!b.dead });
+    ctx.drawImage(NS.bossArt.portrait('pop'), x + 8, y + 8, 58, 58);
+    kit.fitText('Pop  -  your partner', x + 74, y + 24, 156, 15, { weight: 'bold', color: def.color });
+    kit.fitText(b.dead ? 'floating back...' : b.trapped + ' trapped  -  ' + b.popped + ' popped', x + 74, y + 48, 156, 12, { color: b.dead ? UI.bad : UI.textDim });
+  }
+
   function side(run, x, y) {
     const g = run.game;
     const bs = g.boss;
+    if (g.buddy) { partner(g, x, y); y += 84; }
     if (bs) {
       const b = NS.worldData.BOSSES[bs.w];
       kit.panel(x, y, 240, 100, { accent: b.color, glow: bs.rage });
@@ -116,7 +127,7 @@
         kit.fitText(m.name, x + 16, y + 38 + i * 40, 210, 14, { weight: 'bold', color: '#ffffff' });
         kit.fitText(m.desc, x + 16, y + 54 + i * 40, 210, 10, { color: UI.textDim });
       });
-    } else {
+    } else if (!g.buddy) {
       ctx.globalAlpha = 0.9;
       ctx.drawImage(NS.bossArt.portrait('fizz'), x + 20, y + 140, 140, 140);
       ctx.drawImage(NS.bossArt.portrait('pop'), x + 110, y + 190, 110, 110);

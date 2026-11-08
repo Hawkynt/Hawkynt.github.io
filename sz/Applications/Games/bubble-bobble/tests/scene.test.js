@@ -109,6 +109,38 @@ for (const mode of ['story', 'arcade', 'blitz', 'zen', 'daily', 'rush']) {
 }
 check('every mode starts and draws with candy, elements and the shade', errs.length === 0, errs.join(' | '));
 check('a busy frame stays under 3,000 draw calls', worst < 3000, worst);
+
+/* co-op: the toggle on the modes screen brings Pop into every mode; he draws, gets knocked out
+   and floats back on screen, and the results count his traps */
+NS.screens.setScreen('modes');
+frames(2);
+NS.widgets.activate(G.hitAreas.find(a => a.id === 'coop'));
+check('the co-op toggle switches Pop on and is saved', G.profile.settings.coop === true);
+errs = [];
+for (const mode of ['story', 'arcade', 'zen', 'rush']) {
+  try {
+    NS.play.start(mode, mode === 'story' ? { stage: 'candy-2' } : {});
+    NS.cine.end();
+    if (!G.run.game.buddy) errs.push(mode + ': no Pop');
+    const m = {};
+    for (let i = 0; i < 60; ++i) { NS.run.tick(G.run, 1 / 30, NS.bot.input(G.run.game, m), G.profile); NS.run.takeEvents(G.run); frames(1, 1 / 30); }
+    G.run.game.buddy.inv = 0;
+    NS.engine.hurt(G.run.game, 'enemy', G.run.game.buddy);
+    for (let i = 0; i < 10; ++i) { NS.play.present({ type: 'die', who: 1, x: 300, y: 300 }); frames(1, 1 / 30); }
+    worst = Math.max(worst, calls());
+  } catch (e) { errs.push(mode + ': ' + e.message); console.log(e.stack); }
+}
+check('Pop joins every mode and draws, knocked out or not', errs.length === 0, errs.join(' | '));
+NS.play.start('story', { stage: 'candy-1', seed: 21 });
+NS.cine.end();
+const cm = {};
+for (let i = 0; i < 6000 && G.screen === 'game'; ++i) {
+  if (!G.cine) NS.run.tick(G.run, 1 / 30, NS.bot.input(G.run.game, cm), G.profile);
+  if (G.run.done) NS.play.complete();
+  else frames(1, 1 / 30);
+}
+check('a co-op room ends in the results with Pop\'s traps counted', G.screen === 'results' && G.result.popTrapped != null && G.profile.stats.coopRooms >= 1, G.result && G.result.won);
+G.profile.settings.coop = false;
 for (let w = 0; w < 5; ++w) { NS.play.start('story', { stage: W.WORLDS[w].id + '-6' }); NS.cine.end(); frames(2); }
 check('every kingdom and guardian draws', G.run.game.boss && G.run.game.boss.w === 4);
 check('no shadowBlur anywhere', ctx.shadowBlurUsed === 0);

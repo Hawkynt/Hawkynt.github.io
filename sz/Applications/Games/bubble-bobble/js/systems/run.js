@@ -38,6 +38,7 @@
     };
   }
 
+  /* opts: stage, seed, date, mutators, coop (Pop joins as a CPU partner) */
   function build(mode, opts, profile) {
     opts = opts || {};
     const date = opts.date || new Date();
@@ -59,16 +60,17 @@
       o.speed = o.speedMul;
     }
     o.level = level;
+    o.coop = !!opts.coop;
     if (mode === 'blitz' || mode === 'zen' || mode === 'daily') o.infinite = true;
     if (mode === 'zen') { o.noHurry = true; o.speed *= 0.8; }
     const game = E.create(o);
-    if (mode === 'zen') game.player.inv = 1e9;
+    if (mode === 'zen') for (const p of E.newts(game)) p.inv = 1e9;
     const run = {
       mode: mode, stage: st ? st.id : null, world: st ? st.world : 0, seed: seed, game: game, kind: st ? st.kind : mode,
       t: 0, acc: 0, timeLimit: st && st.kind === 'timed' ? st.time : mode === 'blitz' || mode === 'daily' ? 180 : 0,
       room: 1, revives: Math.round(P.stat(profile, 'revive')), mutators: mutators, dark: !!mutators.find(id => SE.MUT_BY_ID[id].dark), extra: o.extra,
       rushIndex: 0, tokens: 0, calm: 0, starLives: 0, done: false, won: false, reason: '', events: [], day: recipe ? recipe.key : '',
-      damageMul: 1 + P.stat(profile, 'damage'), wall: 1,
+      damageMul: 1 + P.stat(profile, 'damage'), wall: 1, coop: !!opts.coop, buddyMem: {},
     };
     if (st && st.kind === 'boss') NS.boss.attach(game, st.world, 1, run.damageMul);
     if (mode === 'rush') NS.boss.attach(game, 0, 0.8, run.damageMul);
@@ -117,7 +119,7 @@
     run.wall = run.room;
     g.speed = Math.min(1.8, g.speed + 0.04);
     E.loadLevel(g, endlessRoom(run.seed, run.room, run.extra));
-    if (run.mode === 'zen') g.player.inv = 1e9;
+    if (run.mode === 'zen') for (const p of E.newts(g)) p.inv = 1e9;
     run.startEnemies = g.enemies.length;
     run.events.push({ type: 'room', n: run.room });
   }
@@ -163,7 +165,7 @@
     while (run.acc >= C.STEP && !run.done) {
       run.acc -= C.STEP;
       run.t += C.STEP;
-      E.step(g, C.STEP, input);
+      E.step(g, C.STEP, g.buddy ? Object.assign({}, input, { buddy: NS.bot.input(g, run.buddyMem, g.buddy) }) : input);
       const evs = E.takeEvents(g);
       for (const e of evs) {
         run.events.push(e);

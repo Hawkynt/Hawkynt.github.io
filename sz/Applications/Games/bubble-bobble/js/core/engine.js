@@ -9,7 +9,10 @@
    is angry, after 55 s an unbeatable shade hunts the player. Water, lightning, fire and star
    bubbles drift in: water floods down the platforms, lightning shoots a bolt, fire burns a
    platform, five stars give a life. Candy power-ups drop from chains. Each step leaves events
-   for sound and effects. A guardian (systems/boss.js) plugs in through g.boss. */
+   for sound and effects. A guardian (systems/boss.js) plugs in through g.boss. Co-op: Pop joins
+   as g.buddy, a second newt with his own bubbles, power-ups and spawn on the right; enemies,
+   shots, the shade and fruit treat both newts alike, the bubbles each one traps are counted for
+   him, and when Pop is hit he floats back after a few seconds without costing a life. */
 ;(function() {
   'use strict';
 
@@ -28,7 +31,7 @@
   }
 
   /* opts: seed, level ({ map, spawn, enemies, wind }), lives, speed (enemy factor), powers,
-     elements (seconds between elemental bubbles), range, rateMul, runMul, infinite */
+     elements (seconds between elemental bubbles), range, rateMul, runMul, infinite, coop */
   function create(opts) {
     opts = opts || {};
     const g = {
@@ -38,7 +41,7 @@
       speed: opts.speed || 1, powers: opts.powers || ['shoes', 'rapid', 'range', 'shield'], elementEvery: opts.elements || 11, elementT: 6,
       rangeMul: opts.range || 1, rateMul: opts.rateMul || 1, runMul: opts.runMul || 1, trapMul: opts.trapMul || 1, scoreMul: opts.scoreMul || 1,
       dropMul: opts.drops == null ? 1 : opts.drops, noHurry: !!opts.noHurry, invMul: opts.invMul || 1, patience: opts.patience || 0, startShield: !!opts.startShield,
-      angry: false, shade: null, freezeT: 0, cleared: false, over: false, boss: null,
+      angry: false, shade: null, freezeT: 0, cleared: false, over: false, boss: null, coop: !!opts.coop, buddy: null,
       stats: { trapped: 0, popped: 0, bestChain: 0, fruit: 0, powers: 0, deaths: 0, bounces: 0, elements: 0, stars: 0, hitsTaken: 0 },
     };
     if (opts.level) loadLevel(g, opts.level);
@@ -61,10 +64,31 @@
     g.angry = false;
     g.shade = null;
     g.cleared = false;
-    const keep = g.player;
-    g.player = { x: g.spawn.x, y: g.spawn.y, vx: 0, vy: 0, face: 1, ground: true, inv: 1.5, shield: keep ? keep.shield : false, shotT: 0,
-      dead: 0, shoes: false, rapid: false, range: false, big: false, magnet: false, jumpHeld: false, walk: 0 };
-    if (g.startShield) g.player.shield = true;
+    g.player = newNewt(g, g.player, g.spawn.x, 1, 0);
+    if (g.coop) g.buddy = newNewt(g, g.buddy, FIELD_W - g.spawn.x, -1, 1);
+  }
+
+  function newNewt(g, keep, x, face, id) {
+    const p = { id: id, x: x, y: g.spawn.y, vx: 0, vy: 0, face: face, ground: true, inv: 1.5, shield: keep ? keep.shield : false, shotT: 0,
+      dead: 0, shoes: false, rapid: false, range: false, big: false, magnet: false, jumpHeld: false, walk: 0, trapped: keep ? keep.trapped : 0, popped: keep ? keep.popped : 0 };
+    if (g.startShield) p.shield = true;
+    return p;
+  }
+
+  /* the newts in play: Fizz and, in co-op, Pop */
+  function newts(g) {
+    return g.buddy ? [g.player, g.buddy] : [g.player];
+  }
+
+  /* the living newt nearest to (x, y), for enemies to chase */
+  function nearest(g, x, y) {
+    let best = g.player, bd = Infinity;
+    for (const p of newts(g)) {
+      if (p.dead) continue;
+      const d = Math.abs(p.x - x) + Math.abs(p.y - y);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
   }
 
   function newEnemy(g, type, x, y) {
@@ -124,34 +148,43 @@
   }
 
   /* ---- player ---- */
-  function shoot(g) {
-    const p = g.player;
+  function shoot(g, who) {
+    const p = who || g.player;
     if (p.dead || p.shotT > 0) return false;
     p.shotT = C.SHOT_GAP / (p.rapid ? 2 : 1) / g.rateMul;
     const r = C.BUBBLE_R * (p.big ? 1.5 : 1);
     g.bubbles.push({ x: p.x + p.face * 12, y: p.y - PH / 2, vx: p.face * C.BUBBLE_SPEED, vy: 0, r: r, phase: 'shot', dist: 0,
-      range: C.BUBBLE_RANGE * (p.range ? 2 : 1) * g.rangeMul, life: C.BUBBLE_LIFE, trap: null, elem: null, t: 0, wob: rand(g) * 6 });
-    g.events.push({ type: 'blow', x: p.x, y: p.y });
+      range: C.BUBBLE_RANGE * (p.range ? 2 : 1) * g.rangeMul, life: C.BUBBLE_LIFE, trap: null, elem: null, t: 0, wob: rand(g) * 6, owner: p.id || 0 });
+    g.events.push({ type: 'blow', x: p.x, y: p.y, who: p.id || 0 });
     return true;
   }
 
-  function hurt(g, why) {
-    const p = g.player;
+  function hurt(g, why, who) {
+    const p = who || g.player;
     if (p.dead || p.inv > 0) return;
     if (p.shield) {
       p.shield = false;
       p.inv = 1.2;
-      g.events.push({ type: 'shieldpop', x: p.x, y: p.y });
+      g.events.push({ type: 'shieldpop', x: p.x, y: p.y, who: p.id || 0 });
       return;
     }
-    p.dead = 1.4;
-    ++g.stats.deaths;
-    ++g.stats.hitsTaken;
-    g.events.push({ type: 'die', x: p.x, y: p.y, why: why });
+    p.dead = p.id ? C.BUDDY_BACK : 1.4;
+    if (!p.id) { ++g.stats.deaths; ++g.stats.hitsTaken; }
+    g.events.push({ type: 'die', x: p.x, y: p.y, why: why, who: p.id || 0 });
   }
 
-  function respawn(g) {
-    const p = g.player;
+  function respawn(g, who) {
+    const p = who || g.player;
+    if (p.id) {
+      p.x = FIELD_W - g.spawn.x;
+      p.y = g.spawn.y;
+      p.vx = p.vy = 0;
+      p.dead = 0;
+      p.inv = C.INVULN;
+      p.rapid = p.range = p.big = p.shoes = p.magnet = false;
+      g.events.push({ type: 'respawn', who: 1 });
+      return;
+    }
     if (!g.infinite) --g.lives;
     if (g.lives < 0) {
       g.lives = 0;
@@ -168,12 +201,12 @@
     g.events.push({ type: 'respawn', lives: g.lives });
   }
 
-  function updatePlayer(g, dt, input) {
-    const p = g.player;
+  function updatePlayer(g, dt, input, who) {
+    const p = who || g.player;
     if (p.dead) {
       p.dead -= dt;
       p.vy = Math.min(C.FALL_MAX, p.vy + C.GRAVITY * dt * 0.3);
-      if (p.dead <= 0) respawn(g);
+      if (p.dead <= 0) respawn(g, p);
       return;
     }
     if (p.inv > 0) p.inv -= dt;
@@ -185,10 +218,10 @@
     if (input.jump && p.ground) {
       p.vy = -C.JUMP;
       p.ground = false;
-      g.events.push({ type: 'jump' });
+      g.events.push({ type: 'jump', who: p.id || 0 });
     }
     body(g, p, PW, PH, dt);
-    if (input.shoot) shoot(g);
+    if (input.shoot) shoot(g, p);
   }
 
   /* ---- bubbles ---- */
@@ -197,7 +230,6 @@
   }
 
   function updateBubbles(g, dt) {
-    const p = g.player;
     for (let i = g.bubbles.length - 1; i >= 0; --i) {
       const b = g.bubbles[i];
       b.t += dt;
@@ -241,8 +273,9 @@
         const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, min = a.r + b.r - 2;
         if (d < min) { const k = (min - d) / 2 / d; a.x -= dx * k; a.y -= dy * k; b.x += dx * k; b.y += dy * k; }
       }
-    /* the player and the bubbles */
-    if (!p.dead) {
+    /* the newts and the bubbles */
+    for (const p of newts(g)) {
+      if (p.dead) continue;
       for (let i = g.bubbles.length - 1; i >= 0; --i) {
         const b = g.bubbles[i];
         if (b.phase === 'shot' && b.t < 0.18) continue;
@@ -250,11 +283,11 @@
         if (dx * dx + dy * dy > (b.r + 13) * (b.r + 13)) continue;
         if (p.vy > 0 && p.y < b.y && p.jumpHeld) {
           p.vy = -C.JUMP * 0.92;
-          ++g.stats.bounces;
-          g.events.push({ type: 'bounce', x: b.x, y: b.y });
+          if (!p.id) ++g.stats.bounces;
+          g.events.push({ type: 'bounce', x: b.x, y: b.y, who: p.id || 0 });
           continue;
         }
-        popChain(g, b);
+        popChain(g, b, p);
         break;
       }
     }
@@ -276,7 +309,9 @@
     b.y = e.y - 12;
     g.enemies.splice(g.enemies.indexOf(e), 1);
     ++g.stats.trapped;
-    g.events.push({ type: 'trap', x: b.x, y: b.y, kind: e.type });
+    const by = b.owner && g.buddy ? g.buddy : g.player;
+    ++by.trapped;
+    g.events.push({ type: 'trap', x: b.x, y: b.y, kind: e.type, who: by.id || 0 });
   }
 
   function release(g, b) {
@@ -287,7 +322,8 @@
   }
 
   /* pops a bubble and every bubble touching it, recursively; -> enemies freed */
-  function popChain(g, start) {
+  function popChain(g, start, who) {
+    const popper = who || g.player;
     const list = [start];
     const done = new Set([start]);
     for (let k = 0; k < list.length; ++k) {
@@ -302,9 +338,10 @@
         const pts = Math.min(64000, 1000 * Math.pow(2, n - 1)) * g.scoreMul;
         g.score += pts;
         ++g.stats.popped;
-        g.events.push({ type: 'pop', x: b.x, y: b.y, n: n, points: pts, kind: b.trap.type });
+        ++popper.popped;
+        g.events.push({ type: 'pop', x: b.x, y: b.y, n: n, points: pts, kind: b.trap.type, who: popper.id || 0 });
         g.items.push({ x: b.x, y: b.y, vx: (rand(g) - 0.5) * 220, vy: -320, kind: 'fruit', fruit: Math.min(7, n - 1 + Math.floor(rand(g) * 2)), value: 500 * n, t: 0, ground: false });
-      } else if (b.elem) element(g, b);
+      } else if (b.elem) element(g, b, popper);
       else g.events.push({ type: 'popempty', x: b.x, y: b.y });
     }
     if (n) {
@@ -331,9 +368,9 @@
     g.events.push({ type: 'element', elem: elem });
   }
 
-  function element(g, b) {
+  function element(g, b, who) {
     ++g.stats.elements;
-    const p = g.player;
+    const p = who || g.player;
     if (b.elem === 'water') g.floods.push({ x: b.x, y: b.y, vx: (p.face || 1) * 220, vy: 0, t: 0 });
     else if (b.elem === 'bolt') g.bolts.push({ x: b.x, y: b.y, vx: (p.face || 1) * 520, t: 0 });
     else if (b.elem === 'fire') g.flames.push({ x: b.x, y: b.y, vy: 0, t: 3.5, ground: false });
@@ -389,10 +426,10 @@
 
   /* ---- enemies ---- */
   function updateEnemies(g, dt) {
-    const p = g.player;
     const frozen = g.freezeT > 0;
     for (const e of g.enemies) {
       const d = ENEMIES[e.type];
+      const p = nearest(g, e.x, e.y);
       e.t += dt;
       if (frozen) continue;
       if (e.stun > 0) { e.stun -= dt; e.vx = 0; body(g, e, 24, 24, dt); continue; }
@@ -429,24 +466,27 @@
           } else if (e.shootT <= 0) e.shootT = 0.4;
         }
       }
-      if (!p.dead && overlap(p.x, p.y, PW - 6, PH - 4, e.x, e.y, 22, 22)) hurt(g, 'enemy');
+      for (const q of newts(g)) if (!q.dead && overlap(q.x, q.y, PW - 6, PH - 4, e.x, e.y, 22, 22)) hurt(g, 'enemy', q);
     }
     for (let i = g.shots.length - 1; i >= 0; --i) {
       const s = g.shots[i];
       s.x += s.vx * dt;
       s.t += dt;
-      if (!p.dead && Math.abs(s.x - p.x) < 12 && Math.abs(s.y - (p.y - PH / 2)) < 14) { hurt(g, 'shot'); g.shots.splice(i, 1); continue; }
+      const q = newts(g).find(q => !q.dead && Math.abs(s.x - q.x) < 12 && Math.abs(s.y - (q.y - PH / 2)) < 14);
+      if (q) { hurt(g, 'shot', q); g.shots.splice(i, 1); continue; }
       if (s.x < TILE || s.x > FIELD_W - TILE || s.t > 4) g.shots.splice(i, 1);
     }
   }
 
   /* ---- items ---- */
   function updateItems(g, dt) {
-    const p = g.player;
+    const list = newts(g);
     for (let i = g.items.length - 1; i >= 0; --i) {
       const it = g.items[i];
       it.t += dt;
-      if (p.magnet && it.kind === 'fruit' && !p.dead) {
+      const mag = list.find(q => q.magnet && !q.dead);
+      const p = list.find(q => !q.dead && it.t > 0.3 && overlap(q.x, q.y, PW + 6, PH + 6, it.x, it.y, 20, 20)) || mag || g.player;
+      if (mag && it.kind === 'fruit') {
         it.x += (p.x - it.x) * Math.min(1, dt * 4);
         it.y += (p.y - 10 - it.y) * Math.min(1, dt * 4);
       } else {
@@ -458,16 +498,16 @@
         if (it.kind === 'fruit') {
           g.score += it.value * g.scoreMul;
           ++g.stats.fruit;
-          g.events.push({ type: 'fruit', x: it.x, y: it.y, value: it.value * g.scoreMul, fruit: it.fruit });
-        } else applyPower(g, it.kind);
+          g.events.push({ type: 'fruit', x: it.x, y: it.y, value: it.value * g.scoreMul, fruit: it.fruit, who: p.id || 0 });
+        } else applyPower(g, it.kind, p);
         continue;
       }
       if (it.t > 9) g.items.splice(i, 1);
     }
   }
 
-  function applyPower(g, id) {
-    const p = g.player;
+  function applyPower(g, id, who) {
+    const p = who || g.player;
     ++g.stats.powers;
     switch (id) {
       case 'shoes': p.shoes = true; break;
@@ -479,16 +519,17 @@
       case 'magnet': p.magnet = true; break;
       case 'bomb': for (const b of g.bubbles.slice()) if (b.trap && g.bubbles.indexOf(b) >= 0) popChain(g, b); break;
     }
-    g.events.push({ type: 'power', id: id });
+    g.events.push({ type: 'power', id: id, who: p.id || 0 });
   }
 
-  /* one fixed step; input: { left, right, jump, shoot } */
+  /* one fixed step; input: { left, right, jump, shoot, buddy: Pop's input in co-op } */
   function step(g, dt, input) {
     if (g.over || g.cleared) return;
     input = input || {};
     g.time += dt;
     if (g.freezeT > 0) g.freezeT = Math.max(0, g.freezeT - dt);
     updatePlayer(g, dt, input);
+    if (g.buddy) updatePlayer(g, dt, input.buddy || {}, g.buddy);
     updateBubbles(g, dt);
     updateEnemies(g, dt);
     updateElements(g, dt);
@@ -499,12 +540,12 @@
       if (!g.shade && g.time > C.SHADE_AT + g.patience && g.enemies.length) { g.shade = { x: FIELD_W / 2, y: TILE * 2 }; g.events.push({ type: 'shade' }); }
     }
     if (g.shade) {
-      const p = g.player;
+      const p = nearest(g, g.shade.x, g.shade.y);
       const dx = p.x - g.shade.x, dy = (p.y - 12) - g.shade.y, d = Math.hypot(dx, dy) || 1;
       const sp = 55 + (g.time - C.SHADE_AT - g.patience) * 2;
       g.shade.x += dx / d * sp * dt;
       g.shade.y += dy / d * sp * dt;
-      if (!p.dead && d < 22) hurt(g, 'shade');
+      for (const q of newts(g)) if (!q.dead && Math.hypot(q.x - g.shade.x, q.y - 12 - g.shade.y) < 22) hurt(g, 'shade', q);
     }
     const trapped = g.bubbles.some(b => b.trap);
     if (!g.boss && !g.enemies.length && !trapped) {
@@ -523,6 +564,6 @@
     return e;
   }
 
-  Object.assign(NS.engine, { rand, create, loadLevel, newEnemy, solidTile, body, overlap, shoot, hurt, respawn, windX, trapEnemy, release, popChain,
+  Object.assign(NS.engine, { rand, create, loadLevel, newNewt, newts, nearest, newEnemy, solidTile, body, overlap, shoot, hurt, respawn, windX, trapEnemy, release, popChain,
     spawnElement, element, killEnemy, applyPower, step, takeEvents });
 })();
