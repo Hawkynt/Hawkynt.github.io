@@ -26,6 +26,10 @@ While you are in a belt with an outpost a wave timer runs; the next wave is comp
 
 Gas pockets and Bloom clouds drift in the belts (fly through to scoop them); living rocks burst with spores when drilled, crystalline ones shed swarmers, hive nests sleep in hollow rocks. Bio-matter contaminates the hold. Unloaded at a hub without a cargo scan it seeds infection, which grows logistically in staffed buildings, spreads along links, slows work and kills crew - when the last crew dies the outpost is abandoned, scavengers strip it and after three cycles it becomes a hive. Quarantine cuts a building from the links, the medical bay treats nearby crew (and with serum vaccinates the outpost), sterilising kills the spores and some crew. Lattice corruption replicates inside a building and spreads along links; at 100% the building turns: turrets fire on your fleet, factories make Lattice drones, reactors drain the grid, and corrupted units desert. Purges (a circuit each), purge tenders and the hub's EMP clean it; vaccine and firewall research slow both. Distress calls lead to silent stations guarded by a hive or Lattice drones; clear them, dock, and bring the survivors to an outpost as crew. Seasons (by local date), a weekly anomaly belt with its own rules and pay, the daily and weekly contracts with a streak, and seven captain's log chapters played as cinematics complete the loop.
 
+### Hangar, festivals and soundtrack
+
+The station's Hangar tab collects 15 liveries (paint schemes laid over any hull), 11 mining-beam colours and 11 thruster plumes. Each opens from the start, with credits or research, with achievements, belt licences, by breaking the Crown, or on a festival track. Six seasons a year (Perihelion Lights, Frostbelt, Spring Bloom, Solar Solstice, Perseid Drift, Void Night) each run a six-tier track: every finished trip pays tokens by the value of its haul, and the track pays credits, research and that season's own livery, beam and plume. The shared `SZ.GameMusic` composes a theme per belt, a station theme, a menu theme, a driving theme for Gold Rush and the Daily Belt and a battle theme for Siege; pirates and invaders raise the intensity.
+
 Progress lives in one versioned save (credits, research, hulls, upgrades, tree, modules, licences, warehouse with components, market, contracts, achievements, statistics, bests, high scores, outposts with their buildings, stock, crew and fleet, the log, the streak, and an autosave of the trip in flight so Continue resumes exactly where you left). The first version's high-score list and tutorial flag are migrated once into it; veterans start with half their best haul as credits (up to 5,000). Saves from before the outposts load with empty sites and keep their market prices. In a battle of 44 buildings and 180 ships the game spends about 0.3 ms of script on a simulation step and 1.5 ms on drawing calls per frame.
 
 ## Architecture
@@ -53,6 +57,9 @@ Core (`js/core/`):
 - **`production.js`** -- Pure production chains per step, the while-away yield and the market cycle of every outpost (upkeep, scavengers, hives)
 - **`outbreak.js`** -- Pure crew, infection and corruption model: arrivals, growth, spread, quarantine, treatment, deaths, abandonment, hijacking, purge, EMP, reclaiming
 - **`calendar.js`** -- Pure date rules: seasons, ISO weeks and the anomaly belt, trip modifiers, daily and weekly contracts, streaks, the seeded event schedule
+- **`data-cosmetics.js`** -- Liveries, beams, plumes with their unlocks, and the festival track tiers
+- **`cosmetics.js`** -- Collection rules: owning, buying, equipping, livery colours, the festival track and its rewards, repair of stored data
+- **`music.js`** -- The soundtrack themes and their choice per belt, mode and screen
 - **`state.js`** -- The shared state object: screens, save and stats, the trip, entity lists, ship, camera, effects, feel timers, cinematic, input, per-screen UI
 - **`save.js`** -- Loads and writes the v2 save (the only module touching `localStorage`) and refreshes the derived stats
 - **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, throttled per name and attenuated by distance
@@ -111,6 +118,7 @@ UI (`js/ui/`):
 - **`touch.js`** -- Virtual fly and aim sticks and ability buttons for touch screens
 - **`title.js`** -- The animated title with a rig drilling a gold-veined rock, Continue, the mode menu, pilot record and preview
 - **`station.js`** -- The career hub: station art, header and news, the Market, Refinery and Contracts tabs, coin payouts
+- **`hangar.js`** -- The Hangar tab: liveries, beams and plumes with live previews, buying and equipping, the festival track
 - **`colonies.js`** -- The Colonies tab (daily contract and streak, anomaly, season, every outpost) and the Log tab
 - **`shipyard.js`** -- The Shipyard tab (hulls, level-up upgrade cards) and the Modules tab
 - **`map.js`** -- The belt map with planets, lanes, details, launching and buying licences

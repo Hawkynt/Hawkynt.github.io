@@ -28,6 +28,7 @@
     }
     NS.frame.draw();
     NS.statusBar.tick(elapsed / 1000);
+    NS.music.update(elapsed / 1000);
     prewarm();
     requestAnimationFrame(loop);
   }
@@ -79,6 +80,7 @@
             if (G.screen === 'playing') scr.pause();
             NS.statusBar.showHighScores();
             break;
+          case 'music': if (SZ.GameMusic) SZ.GameMusic.toggle(); break;
           case 'exit': if (User32) User32.DestroyWindow(); break;
           case 'tutorial':
             if (G.cine) break;

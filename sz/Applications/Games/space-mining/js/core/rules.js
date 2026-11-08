@@ -32,6 +32,7 @@
       achievements: {}, stats: stats, best: { rush: 0, daily: { day: '', score: 0 }, siege: 0 }, highScores: [],
       seenIntro: false, seenHelp: false, crownDone: false,
       bases: {}, log: [], logSeen: [], daily: { day: '', streak: 0, last: '', week: '' }, cine: {}, resume: null,
+      cosmetics: NS.cosmetics.blank(), festival: { event: '', tokens: 0, claimed: 0 },
     };
   }
 
@@ -107,6 +108,8 @@
       if (src.cine && typeof src.cine === 'object')
         for (const k in src.cine) if (src.cine[k] === true && /^[a-zA-Z]{1,20}$/.test(k)) s.cine[k] = true;
       s.resume = src.resume && typeof src.resume === 'object' && src.resume.v === 1 ? src.resume : null;
+      s.cosmetics = NS.cosmetics.repair(src.cosmetics);
+      s.festival = NS.cosmetics.repairFestival(src.festival);
       if (Array.isArray(src.highScores))
         s.highScores = src.highScores.filter(h => h && typeof h.score === 'number' && isFinite(h.score)).slice(0, 10)
           .map(h => ({ score: Math.floor(h.score), mode: typeof h.mode === 'string' ? h.mode : 'career', detail: typeof h.detail === 'string' ? h.detail : '' }));
@@ -250,7 +253,7 @@
     const t = (k) => treeSum(save, k);
     const thrustMul = upMul(save, 'thrust') * (1 + t('thrustMul'));
     return {
-      hullId: h.id, scale: h.scale, colors: h.colors,
+      hullId: h.id, scale: h.scale, colors: NS.cosmetics.colorsFor(save, h.colors),
       thrust: h.thrust * thrustMul,
       maxSpeed: h.maxSpeed * (1 + (thrustMul - 1) * 0.7),
       laser: h.laser * upMul(save, 'laser') * (1 + t('laserMul')),

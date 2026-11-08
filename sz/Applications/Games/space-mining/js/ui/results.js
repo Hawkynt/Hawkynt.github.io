@@ -120,6 +120,13 @@
       kit.text('MARKET  ' + r.news, 640, yy, 13, UI.warn, { align: 'center', weight: 'bold' });
       yy += 24;
     }
+    if (r.tokens) {
+      const se = NS.calendar.season(new Date());
+      const got = (r.festival || []).map(t => t.kind === 'credits' ? kit.group(t.amount) + ' credits' : t.kind === 'rd' ? t.amount + ' research'
+        : (NS.cosmetics.festivalItem(t.season, t.kind) || { name: t.kind }).name + ' unlocked');
+      kit.text('+' + r.tokens + ' festival tokens' + (got.length ? '  -  ' + got.join(', ') : ''), 640, yy, 13, se ? se.color : UI.gold, { align: 'center', weight: 'bold' });
+      yy += 22;
+    }
     for (let k = 0; k < r.achievements.length && k < 2; ++k) {
       kit.icon('trophy', x + 52, yy, 18, UI.gold);
       kit.text(r.achievements[k].name + '  -  ' + r.achievements[k].desc, x + 72, yy, 13, UI.gold, { weight: 'bold' });

@@ -458,6 +458,10 @@
       }
       rules.addHighScore(save, v, run.mode, run.zone.name);
     }
+    /* a running festival collects tokens from every haul */
+    const haul = run.mode === 'career' ? (res.value || 0) + run.salvage : (res.score || 0);
+    res.tokens = NS.calendar.season(new Date()) ? NS.cosmetics.tokensFor(haul) : 0;
+    res.festival = NS.cosmetics.addTokens(save, res.tokens, new Date());
     res.achievements = rules.checkAchievements(save);
     if (res.achievements.length) NS.screens.achievements(res.achievements);
     G.ui.results = res;

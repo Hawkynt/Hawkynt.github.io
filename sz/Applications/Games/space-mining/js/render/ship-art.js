@@ -199,7 +199,7 @@
     const f = bankFrame(bank);
     const b = (f - 2) / 2;
     const S = SIZE[id] || 72;
-    return K.sprite('ship:' + id + ':' + colors.hull + ':' + f, S, S, (g, w, h) => {
+    return K.sprite('ship:' + id + ':' + colors.hull + colors.trim + colors.dark + colors.glass + ':' + f, S, S, (g, w, h) => {
       const cx = w / 2, cy = h / 2;
       /* soft contact shadow */
       g.fillStyle = 'rgba(0,0,0,0.25)';
