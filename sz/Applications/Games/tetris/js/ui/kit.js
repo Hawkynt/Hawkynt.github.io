@@ -150,6 +150,8 @@
       case 'map': g.beginPath(); g.moveTo(-10, -7); g.lineTo(-4, -9); g.lineTo(4, -6); g.lineTo(10, -8); g.lineTo(10, 8); g.lineTo(4, 10); g.lineTo(-4, 7); g.lineTo(-10, 9); g.closePath(); g.stroke(); break;
       case 'help': g.font = 'bold 18px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, 1); break;
       case 'piece': g.fillRect(-9, -2, 6, 6); g.fillRect(-3, -2, 6, 6); g.fillRect(3, -2, 6, 6); g.fillRect(-3, -8, 6, 6); break;
+      case 'swords': g.lineWidth = 2.6; g.beginPath(); g.moveTo(-9, -9); g.lineTo(8, 8); g.moveTo(9, -9); g.lineTo(-8, 8); g.stroke(); g.beginPath(); g.moveTo(-9, 3); g.lineTo(-3, 9); g.moveTo(9, 3); g.lineTo(3, 9); g.stroke(); break;
+      case 'duo': K.circle(g, -5, -4, 4.5, c); K.circle(g, 5, -4, 4.5, c); g.beginPath(); g.arc(-5, 10, 7, Math.PI, 0); g.fill(); g.beginPath(); g.arc(5, 10, 7, Math.PI, 0); g.fill(); break;
       default: K.circle(g, 0, 0, 9, c);
     }
   }

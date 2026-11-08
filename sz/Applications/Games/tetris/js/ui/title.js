@@ -158,6 +158,7 @@
       case 'daily': { const b = p.scores.daily[G.today]; return b ? 'today ' + b.toLocaleString('en-US') : G.daily.mutators.map(id => NS.seasons.MUT_BY_ID[id].name).join(' + '); }
       case 'rush': return s.rushWins ? s.rushWins + ' wins' : 'opens with 2 guardians beaten';
       case 'master': return s.masterBest ? 'best level ' + s.masterBest : 'opens with 3 guardians or 150 Marathon lines';
+      case 'versus': return s.vsWins ? s.vsWins + ' wins' + (s.vsBest ? ', beat ' + NS.versus.CPUS[s.vsBest - 1].name : '') : 'pick your rival';
     }
     return '';
   }
@@ -169,7 +170,8 @@
       const m = list[i];
       const x = 60 + (i % 4) * 296, y = 110 + Math.floor(i / 4) * 250;
       const open = modeOpen(m);
-      const hot = W.area('mode-' + m.id, x, y, 280, 234, open ? () => NS.play.start(m.id) : null, { disabled: !open });
+      const vs = m.id === 'versus';
+      const hot = W.area('mode-' + m.id, x, y, 280, 234, open && !vs ? () => NS.play.start(m.id) : null, { disabled: !open, nonav: vs });
       kit.panel(x, y, 280, 234, { accent: open ? UI.accent : '#3a4460', glow: hot && open, alpha: open ? 1 : 0.6 });
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -178,6 +180,16 @@
       ctx.restore();
       kit.icon(m.icon, x + 140, y + 70, 54, open ? '#ffffff' : '#8890a8');
       kit.text(m.name, x + 140, y + 134, 22, open ? '#ffffff' : UI.textMute, { align: 'center', weight: 'bold' });
+      if (vs) {
+        kit.fitText(modeBest(m), x + 140, y + 160, 250, 13, { align: 'center', color: UI.gold, weight: 'bold' });
+        NS.versus.CPUS.forEach((c, k) => {
+          const beat = G.profile.stats.vsBest > k;
+          W.button('vs-' + c.id, c.name, x + 10 + (k % 2) * 132, y + 174 + Math.floor(k / 2) * 28, 126, 25,
+            { px: 12, accent: c.color, sub: '', action: () => NS.play.start('versus', { cpu: c.id }) });
+          if (beat) kit.icon('star', x + 128 + (k % 2) * 132, y + 186 + Math.floor(k / 2) * 28, 12, UI.gold);
+        });
+        continue;
+      }
       kit.wrap(m.desc, x + 20, y + 162, 240, 13, UI.textDim);
       kit.fitText(modeBest(m), x + 140, y + 214, 250, 13, { align: 'center', color: open ? UI.gold : UI.textMute, weight: 'bold' });
       if (!open) kit.lock(x + 250, y + 30, 22);

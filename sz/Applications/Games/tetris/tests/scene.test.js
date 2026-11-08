@@ -97,7 +97,7 @@ check('every cinematic shot draws', errs.length === 0, errs.join(' | '));
 /* every guardian fight and mode draws, busy frames stay in budget */
 let worst = 0;
 errs = [];
-for (const mode of ['story', 'marathon', 'sprint', 'ultra', 'zen', 'daily', 'rush', 'master']) {
+for (const mode of ['story', 'marathon', 'sprint', 'ultra', 'zen', 'daily', 'rush', 'master', 'versus']) {
   const opts = mode === 'story' ? { stage: 'void-6' } : {};
   try {
     NS.play.start(mode, opts);
@@ -111,6 +111,20 @@ for (const mode of ['story', 'marathon', 'sprint', 'ultra', 'zen', 'daily', 'rus
 }
 check('every mode starts and draws', errs.length === 0, errs.join(' | '));
 check('a busy frame stays under 3,000 draw calls', worst < 3000, worst);
+/* Versus from the modes screen: pick the Rookie, play until someone tops out */
+NS.screens.setScreen('modes');
+frames(2);
+NS.widgets.activate(G.hitAreas.find(a => a.id === 'vs-rookie'));
+check('the Versus card starts a match against the chosen CPU', G.screen === 'game' && G.run.vs && G.run.vs.cpu === 'rookie');
+NS.cine.end();
+NS.play.start('versus', { cpu: 'rookie', seed: 2024 });
+NS.cine.end();
+for (let i = 0; i < 6000 && G.screen === 'game'; ++i) {
+  if (G.run.game.piece && !G.run.game.clearing && i % 3 === 0) NS.bot.playPiece(G.run.game, { deep: true });
+  frames(1, 1 / 20);
+}
+check('a quick player beats the Rookie and the win is counted', G.screen === 'results' && G.result.cpu === 'rookie' && G.result.won && G.profile.stats.vsWins === 1 && G.profile.stats.vsBest === 1);
+frames(5);
 for (let w = 0; w < 5; ++w) { NS.play.start('story', { stage: W.WORLDS[w].id + '-6' }); NS.cine.end(); frames(2); }
 check('every realm and guardian draws', G.run.bossState && G.run.bossState.w === 4);
 check('no shadowBlur anywhere', ctx.shadowBlurUsed === 0);

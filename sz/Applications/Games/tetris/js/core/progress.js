@@ -19,7 +19,7 @@
       cosmetics: { skin: 'gloss', frame: 'steel', effect: 'sparks', owned: {} },
       stats: { lines: 0, quads: 0, tspins: 0, tst: 0, perfects: 0, maxCombo: 0, bestB2B: 0, pieces: 0, games: 0, powers: 0, zenSeconds: 0,
         dailies: 0, rushWins: 0, masterBest: 0, marathonLines: 0, sprintBest: 0, ultraBest: 0, noHoldLines: 0, playSeconds: 0, bosses: 0, stages: 0,
-        quests: 0, festivalDone: 0, score: 0 },
+        quests: 0, festivalDone: 0, score: 0, vsWins: 0, vsBest: 0, vsSent: 0 },
       scores: { marathon: [], sprint: [], ultra: [], master: [], zen: [], daily: {} },
       quests: null, streak: { last: '', count: 0, best: 0 },
       festival: { event: '', tokens: 0, claimed: 0 },
