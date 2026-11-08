@@ -99,9 +99,10 @@ function tools(page, base, game, ns) {
       await page.screenshot(file);
       return file;
     },
-    /* the browser window at another size (none: back to its own), reloading so the desktop lays out again */
+    /* the browser window at another size (none: back to the normal one), reloading so the desktop
+       lays out again; the real window is resized, as emulated screens bigger than it repeat */
     async windowSize(w, h) {
-      if (w) await page.viewport(w, h); else await page.send('Emulation.clearDeviceMetricsOverride');
+      await page.windowBounds(w || 1280, h ? h + 40 : 800);
       await page.goto(base + '/sz/Applications/Games/' + game + '/index.html', ready);
       await D.sleep(900);
     },
