@@ -247,7 +247,7 @@
     const title = r.mode === 'versus' && r.reason !== 'quit' ? (r.won ? 'YOU WIN!' : 'DEFEATED') : r.won ? (story ? 'STAGE CLEAR!' : r.mode === 'sprint' ? 'FINISH!' : r.mode === 'rush' ? 'GAUNTLET WON!' : r.reason === 'time' ? 'TIME!' : 'WELL PLAYED')
       : r.reason === 'quit' ? 'GAME ENDED' : r.reason === 'time' ? 'OUT OF TIME' : 'TOPPED OUT';
     kit.text(title, 640, 82, 54, r.won ? UI.gold : '#ffffff', { align: 'center', weight: 'bold', shadow: 'rgba(0,0,0,0.8)' });
-    kit.text(st ? st.name : r.cpu ? 'Versus ' + NS.versus.CPU_BY_ID[r.cpu].name + '  -  sent ' + r.sent + ' rows' : M.MODE_BY_ID[r.mode].name, 640, 128, 20, UI.textDim, { align: 'center' });
+    kit.text(st ? st.name : r.cpu ? 'Versus ' + NS.versus.CPU_BY_ID[r.cpu].name + '  -  ' + M.RULE_BY_ID[r.rule].name + '  -  sent ' + r.sent : M.MODE_BY_ID[r.mode].name, 640, 128, 20, UI.textDim, { align: 'center' });
     if (story) {
       for (let k = 0; k < 3; ++k) {
         const pop = Math.min(1, Math.max(0, (G.time - (G.resultT || 0)) * 2 - k * 0.6));
@@ -263,7 +263,9 @@
     if (r.best) kit.text('NEW PERSONAL BEST!', 640, story ? 304 : 254, 22, UI.good, { align: 'center', weight: 'bold' });
     else if (r.rank >= 0) kit.text('Rank #' + (r.rank + 1) + ' in your top ten', 640, story ? 304 : 254, 18, UI.textDim, { align: 'center' });
     const s = r.stats;
-    const facts = [['Lines', r.lines], ['Quads', s.quads], ['T-spins', s.tspins], ['Best combo', s.maxCombo], ['Perfect', s.perfects], ['Time', NS.hud.clock(r.time)]];
+    const facts = r.bestChain != null ? [['Cleared', r.lines], ['Best chain', r.bestChain], ['Bursts', s.bursts], ['Stones broken', s.stones], ['Pieces', G.run ? G.run.game.pieces : 0], ['Time', NS.hud.clock(r.time)]]
+      : r.rule === 'blast' ? [['Lines', r.lines], ['Bombs', s.blasts], ['Blasted', s.blasted], ['Quads', s.quads], ['Best combo', s.maxCombo], ['Time', NS.hud.clock(r.time)]]
+      : [['Lines', r.lines], ['Quads', s.quads], ['T-spins', s.tspins], ['Best combo', s.maxCombo], ['Perfect', s.perfects], ['Time', NS.hud.clock(r.time)]];
     for (let i = 0; i < facts.length; ++i) {
       const x = 260 + i * 152;
       kit.text(String(facts[i][1]), x, 350, 22, '#ffffff', { align: 'center', weight: 'bold' });
@@ -285,7 +287,7 @@
     for (let i = 0; i < Math.min(3, notes.length); ++i) kit.fitText(notes[i], 640, y + 10 + i * 22, 900, 14, { align: 'center', color: UI.gold, weight: 'bold' });
     const bx = 260;
     const next = story && r.won ? nextStage(r.stage) : null;
-    W.button('r-again', story ? 'Retry' : 'Play again', bx, 640, 240, 52, { icon: 'play', action: () => NS.play.start(r.mode, { stage: r.stage, cpu: r.cpu }) });
+    W.button('r-again', story ? 'Retry' : 'Play again', bx, 640, 240, 52, { icon: 'play', action: () => NS.play.start(r.mode, { stage: r.stage, cpu: r.cpu, rule: r.rule }) });
     if (next) W.button('r-next', 'Next stage', bx + 260, 640, 240, 52, { icon: 'flag', accent: UI.gold, action: () => NS.play.start('story', { stage: next }) });
     else W.button('r-tree', 'Tech Tree', bx + 260, 640, 240, 52, { icon: 'tree', accent: UI.shard, action: () => NS.screens.open('tree', 'results') });
     W.button('r-map', story ? 'Map' : 'Modes', bx + 520, 640, 240, 52, { icon: story ? 'map' : 'flag', action: () => { G.run = null; NS.screens.setScreen(story ? 'map' : 'modes', 'title'); } });
@@ -333,17 +335,19 @@
     ['Spins and chains', 'Turn a T piece into a tight slot for a T-spin. Clear with every piece for a combo; Quads and T-spins in a row are back-to-back.'],
     ['Powers', 'Some pieces carry a glowing orb. Clear its row to earn a power, then press E: Sweep, Slow Time, I-Storm and more from the tech tree.'],
     ['Guardians', 'Each realm ends with a guardian. Clear lines to hurt it; a warning shows incoming garbage - clear lines quickly to cancel it.'],
-    ['Versus CPU', 'Race a CPU rival dealt the same pieces. Doubles, quads, T-spins and combos send garbage; clears cancel what comes at you.'],
+    ['Blast', 'Some pieces carry a bomb. Clear its row and it blows away every block within two cells - the stack collapses and may clear again.'],
+    ['Pairs and Jewels', 'Pairs: link four blobs of a colour. Jewels: line up three in any direction, Up cycles the colours. A fall that bursts again is a chain.'],
+    ['Versus CPU', 'Race a CPU rival with any rule set. Clears, bombs, bursts and chains send garbage or stones; your own clears cancel what comes at you.'],
     ['Grow stronger', 'Stages give up to three stars. Every game pays shards for the tech tree and XP; quests and festivals add more each day.'],
   ];
 
   function drawHelp() {
     kit.text('HOW TO PLAY', 640, 50, 38, '#ffffff', { align: 'center', weight: 'bold', shadow: true });
     for (let i = 0; i < HELP.length; ++i) {
-      const x = 60 + (i % 2) * 590, y = 92 + Math.floor(i / 2) * 134;
-      kit.panel(x, y, 570, 122, { accent: UI.accent });
-      kit.text(HELP[i][0], x + 20, y + 26, 19, UI.gold, { weight: 'bold' });
-      kit.wrap(HELP[i][1], x + 20, y + 58, 530, 15, '#ffffff');
+      const x = 60 + (i % 2) * 590, y = 84 + Math.floor(i / 2) * 108;
+      kit.panel(x, y, 570, 100, { accent: UI.accent });
+      kit.text(HELP[i][0], x + 20, y + 24, 18, UI.gold, { weight: 'bold' });
+      kit.wrap(HELP[i][1], x + 20, y + 52, 530, 14, '#ffffff');
     }
     kit.text('Esc/P pause  -  E power  -  touch: tap turns, swipe moves, swipe down drops, swipe up holds', 640, 636, 14, UI.textDim, { align: 'center' });
     backButton();

@@ -53,9 +53,9 @@
     const r = G.run;
     if (G.screen !== 'game' || !r || !r.game) return 0.3;
     if (r.mode === 'zen') return 0.2;
-    const h = NS.engine.stackHeight(r.game);
+    const h = NS.run.engineOf(r.game).stackHeight(r.game);
     let k = 0.4 + Math.min(0.4, h / 30);
-    if (r.boss || r.vs || r.game.combo >= 2) k = Math.max(k, 0.8);
+    if (r.boss || r.vs || r.game.combo >= 2 || r.game.popping) k = Math.max(k, 0.8);
     if (h >= 14) k = 1;
     return k;
   }

@@ -48,7 +48,7 @@
     });
   }
 
-  function drawPieceCells(t, r, x, y, s, ox, oy, alpha, orb) {
+  function drawPieceCells(t, r, x, y, s, ox, oy, alpha, orb, bomb) {
     const style = skinStyle();
     const sh = SHAPES[t][r];
     let k = 0;
@@ -62,6 +62,7 @@
           if (alpha != null) ctx.globalAlpha = alpha;
           ctx.drawImage(B.block(style, t, s), px, py);
           if (orb === k) ctx.drawImage(B.orb(s), px, py);
+          else if (bomb === k) ctx.drawImage(B.bombMark(s), px, py);
           if (alpha != null) ctx.globalAlpha = 1;
         }
         ++k;
@@ -70,6 +71,7 @@
 
   function drawBoard(game, opts) {
     opts = opts || {};
+    if (game.match) return NS.matchRender.draw(game, opts);
     const run = G.run;
     ctx.drawImage(well(), BOARD_X - 14, BOARD_Y - 14);
     const style = skinStyle();
@@ -100,6 +102,7 @@
         const tag = game.tags[y * COLS + x];
         if (tag === 1) ctx.drawImage(B.orb(CELL), px, py);
         else if (tag === 2) ctx.drawImage(B.gemMark(CELL), px, py);
+        else if (tag === 3) ctx.drawImage(B.bombMark(CELL), px, py);
         ctx.globalAlpha = 1;
       }
     }
@@ -119,7 +122,7 @@
           ctx.fillRect(BOARD_X + (p.x + minX) * CELL, BOARD_Y, (maxX - minX + 1) * CELL, Math.max(0, (gy - HIDDEN) * CELL));
         }
       }
-      drawPieceCells(p.t, p.r, p.x, p.y, CELL, null, null, null, p.orb);
+      drawPieceCells(p.t, p.r, p.x, p.y, CELL, null, null, null, p.orb, p.bomb);
       if (E.grounded(game)) {
         const f = Math.min(1, game.lock.t / game.lockDelay);
         ctx.globalAlpha = f * 0.45;

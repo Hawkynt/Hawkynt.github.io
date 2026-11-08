@@ -29,16 +29,31 @@
     if (!run) return;
     const g = run.game;
     const fog = run.bossState ? run.bossState.fogT : 0;
-    BR.drawHold(g, 300, BOARD_Y);
-    powers(run, 300, BOARD_Y + 132);
-    objective(run, 300, BOARD_Y + 132 + 26 + run.slots * 58 + 10);
-    const nh = BR.drawNext(g, 810, BOARD_Y, fog);
+    let nh;
+    if (g.match) {
+      chainPanel(g, 300, BOARD_Y);
+      objective(run, 300, BOARD_Y + 132);
+      nh = NS.matchRender.drawNext(g, 810, BOARD_Y);
+    } else {
+      BR.drawHold(g, 300, BOARD_Y);
+      powers(run, 300, BOARD_Y + 132);
+      objective(run, 300, BOARD_Y + 132 + 26 + run.slots * 58 + 10);
+      nh = BR.drawNext(g, 810, BOARD_Y, fog);
+    }
     stats(run, 810, BOARD_Y + nh + 12);
     side(run);
     combo(g);
     calloutBubble();
     W.button('g-pause', 'Pause', 1140, 660, 110, 44, { icon: 'pause', px: 15, action: () => NS.screens.pause() });
     if (G.input.touch) touchButtons(run);
+  }
+
+  /* Pairs and Jewels: the chain in progress and the best one */
+  function chainPanel(g, x, y) {
+    kit.panel(x, y, 170, 120, { accent: UI.gold, glow: g.chain > 1 && !!g.popping });
+    kit.text('CHAIN', x + 14, y + 18, 13, UI.textDim, { weight: 'bold' });
+    kit.text(g.popping ? 'x' + g.chain : '-', x + 85, y + 62, g.popping && g.chain > 1 ? 40 : 28, g.chain > 1 ? UI.gold : '#ffffff', { align: 'center', weight: 'bold' });
+    kit.text('best x' + g.stats.bestChain, x + 85, y + 102, 12, UI.textDim, { align: 'center' });
   }
 
   function powers(run, x, y) {
@@ -79,7 +94,7 @@
       const label = run.kind === 'survive' || run.kind === 'ultra' || run.kind === 'daily' ? clock(Math.max(0, o.need - o.have)) + ' left'
         : run.kind === 'boss' || run.kind === 'rush' ? Math.max(0, run.bossState.hp) + ' HP left' : Math.floor(o.have) + ' / ' + o.need;
       kit.text(label, x + 85, y + 96, 12, UI.textDim, { align: 'center' });
-    } else kit.text(run.mode === 'zen' ? 'Breathe. Stack. Relax.' : run.vs ? 'Doubles and up send garbage' : 'Survive as long as you can', x + 85, y + 82, 12, UI.textDim, { align: 'center' });
+    } else kit.text(run.mode === 'zen' ? 'Breathe. Stack. Relax.' : run.vs ? (run.game.match ? 'Bursts and chains send stones' : 'Doubles and up send garbage') : 'Survive as long as you can', x + 85, y + 82, 12, UI.textDim, { align: 'center' });
     if (st) {
       const b = st.bonus;
       const met = NS.run.bonusMet(run, b);
@@ -97,7 +112,8 @@
     const g = run.game;
     const h = Math.max(150, BOARD_Y + 600 - y);
     kit.panel(x, y, 170, h, { accent: UI.accent });
-    const rows = [['SCORE', g.score.toLocaleString('en-US')], ['LEVEL', String(g.level)], ['LINES', String(g.lines)], ['TIME', clock(run.t)]];
+    const rows = [['SCORE', g.score.toLocaleString('en-US')], ['LEVEL', String(g.level)], [g.match ? 'CLEARED' : run.rule === 'blast' ? 'BLASTS' : 'LINES',
+      String(run.rule === 'blast' ? g.stats.blasts : g.lines)], ['TIME', clock(run.t)]];
     const step = Math.min(56, (h - 16) / rows.length);
     for (let i = 0; i < rows.length; ++i) {
       const ry = y + 18 + i * step;
@@ -127,7 +143,8 @@
     kit.text('YOU', 1016, y + 18, 12, UI.textDim, { weight: 'bold' });
     kit.fitText('sent ' + vs.you.sent + '  -  cancelled ' + vs.you.cancelled + '  -  took ' + vs.you.received, 1016, y + 40, 210, 12, { color: '#ffffff' });
     const n = NS.versus.pending(run, 'you');
-    if (n > 0) kit.text('INCOMING ' + n + ' ROW' + (n > 1 ? 'S' : ''), 1120, y + 66, 15, UI.bad, { align: 'center', weight: 'bold' });
+    const unit = run.game.match ? ' STONE' : ' ROW';
+    if (n > 0) kit.text('INCOMING ' + n + unit + (n > 1 ? 'S' : ''), 1120, y + 66, 15, UI.bad, { align: 'center', weight: 'bold' });
     else kit.text('speed ' + vs.level + '  -  faster every ' + NS.versus.SPEEDUP + 's', 1120, y + 66, 11, UI.textDim, { align: 'center' });
   }
 
@@ -182,7 +199,7 @@
   }
 
   function combo(g) {
-    if (g.combo < 1) return;
+    if (g.combo < 1 || g.match) return;
     const x = BOARD_X + 150, y = BOARD_Y - 30;
     const k = Math.min(1, g.combo / 10);
     kit.text(g.combo + ' COMBO', x, y, 18 + k * 10, K.mix('#ffd25a', '#ff5a8a', k), { align: 'center', weight: 'bold', shadow: true });

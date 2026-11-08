@@ -27,13 +27,13 @@
     const g = game();
     if (!g) return false;
     switch (name) {
-      case 'left': return E.move(g, -1);
-      case 'right': return E.move(g, 1);
-      case 'cw': return E.rotate(g, 1);
-      case 'ccw': return E.rotate(g, -1);
-      case '180': return E.rotate(g, 2);
-      case 'hold': return E.holdPiece(g);
-      case 'drop': return E.hardDrop(g);
+      case 'left': return NS.run.engineOf(g).move(g, -1);
+      case 'right': return NS.run.engineOf(g).move(g, 1);
+      case 'cw': return NS.run.engineOf(g).rotate(g, 1);
+      case 'ccw': return NS.run.engineOf(g).rotate(g, -1);
+      case '180': return NS.run.engineOf(g).rotate(g, 2);
+      case 'hold': return NS.run.engineOf(g).holdPiece(g);
+      case 'drop': return NS.run.engineOf(g).hardDrop(g);
     }
     return false;
   }

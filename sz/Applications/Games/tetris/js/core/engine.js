@@ -6,6 +6,8 @@
    detection (three-corner rule, the fifth kick upgrades a mini), line clears with a short pause,
    guideline scoring with back-to-back, combos and perfect clears, power orbs and gems carried
    by cells, garbage, crystals, mirroring and the cascade, sweep, laser and bomb used by powers.
+   Blast rules: some pieces carry a bomb cell; when its row clears the bomb blows away every
+   block within two cells, then the columns collapse and any rows that fill clear as well.
    Every step leaves events (lock, clear, levelup, spawn, topout, ...) for sound and effects. */
 ;(function() {
   'use strict';
@@ -17,7 +19,7 @@
   const { makeRng } = NS.rng;
 
   /* opts: seed, level, levelMode ('lines' | 'fixed'), gravity (rows/s override), gravityMul,
-     lockDelay, preview, hold (false disables), orbChance, zen, ghost */
+     lockDelay, preview, hold (false disables), orbChance, bombChance, zen, ghost */
   function create(opts) {
     opts = opts || {};
     const g = {
@@ -27,12 +29,12 @@
       level: opts.level || 1, startLevel: opts.level || 1, levelMode: opts.levelMode || 'lines',
       gravity: opts.gravity || 0, gravityMul: opts.gravityMul || 1,
       lockDelay: opts.lockDelay || C.LOCK_DELAY, preview: opts.preview || 5,
-      orbChance: opts.orbChance || 0, zen: !!opts.zen,
+      orbChance: opts.orbChance || 0, bombChance: opts.bombChance || 0, zen: !!opts.zen,
       lines: 0, score: 0, combo: -1, b2b: false, time: 0, pieces: 0,
       lock: { t: 0, resets: 0, low: 0 }, fall: 0, soft: 0, last: { rotate: false, kick: 0 },
       clearing: null, spawnT: 0, over: false, reason: '', scoreMul: 1, slowT: 0,
       stats: { singles: 0, doubles: 0, triples: 0, quads: 0, tspins: 0, minis: 0, perfects: 0, maxCombo: 0, b2bs: 0, softRows: 0, hardRows: 0,
-        orbs: 0, gems: 0, garbage: 0, holds: 0, zenClears: 0 },
+        orbs: 0, gems: 0, garbage: 0, holds: 0, zenClears: 0, blasts: 0, blasted: 0 },
       events: [],
     };
     fillQueue(g);
@@ -94,8 +96,9 @@
     fillQueue(g);
     const t = type || g.queue.shift();
     fillQueue(g);
-    const p = { t: t, r: 0, x: spawnX(t), y: t === 'I' ? -1 : 0, orb: -1 };
+    const p = { t: t, r: 0, x: spawnX(t), y: t === 'I' ? -1 : 0, orb: -1, bomb: -1 };
     if (!type && g.orbChance && rand(g) < g.orbChance) p.orb = Math.floor(rand(g) * 4);
+    else if (!type && g.bombChance && rand(g) < g.bombChance) p.bomb = Math.floor(rand(g) * 4);
     /* drop one row straight away when there is room, as the guideline does */
     if (fits(g, p.t, p.r, p.x, p.y + 1)) ++p.y;
     g.piece = p;
@@ -260,6 +263,7 @@
       if (y < 0) continue;
       g.board[y * COLS + x] = CODE[p.t];
       if (i === p.orb) g.tags[y * COLS + x] = 1;
+      else if (i === p.bomb) g.tags[y * COLS + x] = 3;
       if (y >= HIDDEN) above = false;
     }
     ++g.pieces;
@@ -277,12 +281,13 @@
   /* scores a lock (or a power clear) and records the clear event */
   function score(g, rows, kind, source) {
     const n = rows.length;
-    let orbs = 0, gems = 0, garbage = 0;
+    let orbs = 0, gems = 0, garbage = 0, bombs = 0;
     for (let i = 0; i < n; ++i)
       for (let x = 0; x < COLS; ++x) {
         const k = rows[i] * COLS + x;
         if (g.tags[k] === 1) ++orbs;
         else if (g.tags[k] === 2) ++gems;
+        else if (g.tags[k] === 3) ++bombs;
         if (g.board[k] >= 8) ++garbage;
       }
     if (source !== 'piece') {
@@ -333,7 +338,7 @@
     g.stats.gems += gems;
     g.stats.garbage += garbage;
     g.events.push({ type: 'clear', lines: n, rows: rows.slice(), tspin: kind, b2b: b2b, combo: Math.max(0, g.combo), perfect: perfect, points: pts,
-      orbs: orbs, gems: gems, garbage: garbage, source: source });
+      orbs: orbs, gems: gems, garbage: garbage, bombs: bombs, source: source });
     levelUp(g);
   }
 
@@ -355,6 +360,28 @@
     }
   }
 
+  /* bombs in the clearing rows blow away the blocks around them; -> blocks destroyed */
+  function blast(g, rows) {
+    let total = 0;
+    for (const y of rows)
+      for (let x = 0; x < COLS; ++x) {
+        if (g.tags[y * COLS + x] !== 3) continue;
+        let n = 0;
+        for (let yy = Math.max(0, y - 2); yy <= Math.min(ROWS - 1, y + 2); ++yy) {
+          if (rows.indexOf(yy) >= 0) continue;
+          for (let xx = Math.max(0, x - 2); xx <= Math.min(COLS - 1, x + 2); ++xx)
+            if (g.board[yy * COLS + xx]) { g.board[yy * COLS + xx] = 0; g.tags[yy * COLS + xx] = 0; ++n; }
+        }
+        total += n;
+        ++g.stats.blasts;
+        g.stats.blasted += n;
+        const pts = Math.round(n * 25 * g.level * g.scoreMul);
+        g.score += pts;
+        g.events.push({ type: 'blast', x: x, y: y, cells: n, points: pts });
+      }
+    return total;
+  }
+
   /* one fixed step; input: { soft } */
   function step(g, dt, input) {
     if (g.over) return;
@@ -363,8 +390,10 @@
     if (g.clearing) {
       g.clearing.t -= dt;
       if (g.clearing.t <= 0) {
+        const blasted = blast(g, g.clearing.rows);
         removeRows(g, g.clearing.rows);
         g.clearing = null;
+        if (blasted) cascade(g);
         g.spawnT = C.SPAWN_DELAY;
       }
       return;
@@ -573,7 +602,7 @@
 
   Object.assign(NS.engine, {
     create, fillQueue, shape, cells, at, fits, spawn, gravity, grounded, active, move, rotate, holdPiece, ghostY, hardDrop,
-    tspinKind, fullRows, lock, score, removeRows, step, addGarbage, dropCrystals, mirror, powerClear, columnTop, stackHeight,
+    tspinKind, fullRows, lock, score, removeRows, blast, step, addGarbage, dropCrystals, mirror, powerClear, columnTop, stackHeight,
     cascade, sweep, laser, bomb, garbageLeft, gemsLeft, placeAt, takeEvents, rand,
   });
 })();
