@@ -31,6 +31,7 @@ Legend: ✅ in place · ◐ partial / thin · ❌ missing · — does not fit th
 | Tetris | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Spire of Lumen; Master mode; Blast, Pairs, Jewels; Versus CPU; soundtrack |
 | Breakout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Prism Run; Duo and Arena co-op with CPU partners; soundtrack |
 | Bubble Bobble | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Fizz and the Dry Lagoon; generated rooms; co-op with Pop; soundtrack |
+| Minesweeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Bloomfield Expedition; solver-proven fields; faithful Classic; Versus CPU; soundtrack; browser test |
 
 Remaining for Tier A: the November games before Cookie Clicker have no **music** layer yet (wire
 `shared/game-music.js`); late-game prestige / endless scaling exists only in Cookie Clicker.
@@ -57,12 +58,11 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 
 ### Tier C — never overhauled (small, ~2–3k lines; only module split, sound, touch and digest tests)
 
-Full overhaul needed (Tetris, Breakout and Bubble Bobble are done, see Tier A). Suggested order:
+Full overhaul needed (Tetris, Breakout, Bubble Bobble and Minesweeper are done, see Tier A). Suggested order:
 
 | # | Game | Today | Overhaul hook |
 |---|---|---|---|
 | 4 | Rhythm Game | procedural music, combo | song campaign, note skins, lane FX, Daily song, difficulty mastery |
-| 5 | Minesweeper | classic + effects | adventure board with special tiles, puzzle-proven boards, themes |
 | 6 | Fantasy Cards | deck building, AI | campaign of duels, card collection/rarities, pack openings, card backs |
 | 7 | Space Puzzle | gravity shots | solver-verified level worlds, ship skins |
 | 8 | Mind Puzzle | shift puzzles | solver-verified worlds, narrative frame |
@@ -81,7 +81,7 @@ Full overhaul needed (Tetris, Breakout and Bubble Bobble are done, see Tier A). 
 - **CPU players**: a game whose bots are proven over the real engine can also seat them as CPU
   rivals or partners - Tetris Versus (step-by-step steering at four strengths), Breakout's partner
   paddles and Bubble Bobble's Pop show the pattern; candidates are the other games with bots.
-- **Browser tests**: only Tetris, Breakout, Bubble Bobble and the start menu have an
+- **Browser tests**: only Tetris, Breakout, Bubble Bobble, Minesweeper and the start menu have an
   `e2e/<game>.e2e.js` scenario; every game needs one (real clicks and keys, screenshots looked at).
 - **Keyboard**: every action game should steer with the arrows and WASD alike (Tetris got WASD in
   November 2026); the desktop now hands the keyboard to a game's window when it opens.

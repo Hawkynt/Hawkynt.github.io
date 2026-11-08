@@ -10,6 +10,7 @@ by Hawkynt 08.11.2026
 + Tetris: Blast, Pairs and Jewels rule sets as modes of their own and in Versus, with bombs, colour chains and stones
 + Breakout: Duo and Arena co-op with CPU partner paddles on the top edge or on the top, left and right edges
 + Bubble Bobble: co-op with Pop as a CPU partner in every mode and story room
+* Minesweeper: The Bloomfield Expedition - a five-land story of logic-proven fields with guardians and cinematics, faithful Classic with best times and streaks, Daily Field, Zen, Rush, Gauntlet and Versus CPU, powers, tech tree, tile sets, festivals and quests; old best times carry over
 
 Main: 6.31
 by Hawkynt 04.10.2026

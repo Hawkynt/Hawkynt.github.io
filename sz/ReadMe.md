@@ -201,7 +201,7 @@ sz/
     explorer/                   File manager with VFS operations + object tree browser
     image-viewer/               Image viewer with zoom/rotate/navigate (Accessories)
     media-player/               Audio/video player with visualization (Entertainment)
-    minesweeper/                Classic Minesweeper game (Games)
+    minesweeper/                Minesweeper: The Bloomfield Expedition - story of logic-proven fields, guardians, faithful Classic, Daily, Zen, Rush, Gauntlet, Versus CPU, tech tree (Games)
     notepad/                    Plain text editor with VFS integration (Accessories)
     paint/                      Paint.NET-class bitmap editor with layers, effects, ribbon UI (Accessories)
     solitaire/                  Klondike solitaire card game (Games)
@@ -1769,7 +1769,7 @@ The overhauled canvas games also have browser tests in `Applications/Games/e2e/`
 node Applications/Games/e2e/run.js [game ...] [--out dir]
 ```
 
-The runner serves the repository over local HTTP and opens each game's page in a headless browser. The page moves into the desktop, so the game runs inside a maximized window there, as players see it. Each `<game>.e2e.js` scenario plays like a player: real clicks on the game's own hit areas and real key presses. The bot only stands in for the player's hands during long stretches. Scenarios check what is on screen by measuring regions of the game canvas, require no uncaught exceptions or console errors, and write screenshots and zoomed close-ups for a human look (default: `<tmp>/sz-e2e`). `SZ_E2E_TRACE=1` logs every DevTools Protocol call. Scenarios so far: Tetris, Breakout, Bubble Bobble, and the desktop's start menu (mouse on a normal and a short screen, finger on a small phone). For touch, the page's window is shrunk to the phone size and fingers go through `Input.emulateTouchFromMouseEvent`, because headless Vivaldi maps `Input.dispatchTouchEvent` coordinates through its own window panels. Emulated fingers make no scroll gestures, so scenarios scroll lists in script where a swipe would.
+The runner serves the repository over local HTTP and opens each game's page in a headless browser. The page moves into the desktop, so the game runs inside a maximized window there, as players see it. Each `<game>.e2e.js` scenario plays like a player: real clicks on the game's own hit areas and real key presses. The bot only stands in for the player's hands during long stretches. Scenarios check what is on screen by measuring regions of the game canvas, require no uncaught exceptions or console errors, and write screenshots and zoomed close-ups for a human look (default: `<tmp>/sz-e2e`). `SZ_E2E_TRACE=1` logs every DevTools Protocol call. Scenarios so far: Tetris, Breakout, Bubble Bobble, Minesweeper, and the desktop's start menu (mouse on a normal and a short screen, finger on a small phone). For touch, the page's window is shrunk to the phone size and fingers go through `Input.emulateTouchFromMouseEvent`, because headless Vivaldi maps `Input.dispatchTouchEvent` coordinates through its own window panels. Emulated fingers make no scroll gestures, so scenarios scroll lists in script where a swipe would.
 
 ### Lint
 
