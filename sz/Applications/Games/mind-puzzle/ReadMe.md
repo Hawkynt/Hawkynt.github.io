@@ -87,6 +87,10 @@ A surreal spatial manipulation and reality-warping puzzle game inspired by Antic
 - No sound effects
 - No room map or navigation guide
 
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: three themes take turns from room to room (a dreamy ambient drift, a warped synthwave and a hypnotic trance) and every room plays a song of its own made from its theme; the ready screen has a calm menu theme. Each song is arranged by the shared engine into an endless one (intro, groove, build-up, drop, breakdown, every pass a little different). Exploring stays calm; a shift of perspective lifts it for a moment. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## SEO Keywords
 
 mind-bending puzzle, spatial manipulation game, non-Euclidean geometry puzzle, reality-warping browser game, Antichamber-style puzzle, perspective shifting game, surreal puzzle rooms, brain teaser web game, SynthelicZ Desktop game, hidden rules puzzle

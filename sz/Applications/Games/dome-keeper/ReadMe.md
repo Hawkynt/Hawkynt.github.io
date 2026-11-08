@@ -1400,6 +1400,10 @@ These decisions have been resolved and implemented:
 
 ---
 
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per biome (a dusty funk on the rocky badlands, a hot electro drive over the dunes, glassy trance on the frozen shelf, a humid synthwave in the alien jungle, a dubstep grind in the ashen caldera, an epic swell over the crystal fields) and a menu theme. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every site plays a song of its own made from its biome's theme. Digging by day stays calm, dusk lifts it, and a night attack or a cracking dome pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## 20. SEO / Metadata Requirements
 
 Only keep this if the game is being published on a web-facing page. Otherwise it does not belong in the gameplay PRD.

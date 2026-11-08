@@ -234,3 +234,7 @@ The page also uses the shared desktop libraries `../../shared/game-effects.js` (
 - Course, hazards, bosses and seasons are pure, seeded and testable; story and Daily courses are seeded (stage id / date)
 - localStorage keys: `sz-flappy-bird-save-v3` (the save), `sz-flappy-bird-run-v1` (the run in flight), `sz-flappy-bird-highscores` (the Classic table); `sz-flappy-bird-save-v2` is read once for migration and left as a backup
 - OS integration via SZ.Dlls.User32 (SetWindowText, RegisterWindowProc, DestroyWindow)
+
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per biome (a bright house groove over the meadow, a dusty electro drive across the desert, glassy trance through the frost, a funky bounce in the forest, synthwave over the city, a dubstep rumble at the volcano), a heavier theme for every boss, a menu theme, calm Zen and a fast theme for Time Attack, Boss Rush and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every adventure stage plays a song of its own made from its biome's theme, and endless flights change song with the biome. Bosses, combos, fever and the last heart raise the intensity: layers come in and the music pushes into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

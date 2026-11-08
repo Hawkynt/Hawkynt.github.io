@@ -124,6 +124,7 @@ Plain browser scripts, no build step. Every game module is an IIFE that adds one
 | `js/systems/items.js` | Item boxes, item use by player and AI, missiles, mines, EMP, shields, hits |
 | `js/systems/race.js` | Laps and splits, live place, wrong way, race finish |
 | `js/systems/race-audio.js` | Engine hum, drift hiss and barrier scrape |
+| `js/core/music.js` | Soundtrack through the shared `SZ.GameMusic`: a theme per track look (trance through the nebula, a dubstep storm on the Ion Storm Speedway, a pulsing electro drift at the pulsar, drum & bass down Asteroid Alley, house around the solar flare, synthwave through the comet canyon, trance at the quasar ring, a hard electro run along the Void Serpent), a menu theme and a garage theme. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every track and its reverse play a song of their own. The race start, a boost, leading the field and the final lap raise the intensity: layers come in and the music pushes into the drop. |
 | `js/systems/effects.js` | Particles, speed streaks, trails, skids, themed ambience, lap flashes, confetti |
 | `js/render/view.js` | Canvas sizing and letterbox, camera follow and zoom, world/screen transforms |
 | `js/render/world.js` | Drawing of the race world: road, features, items, ships, trails and effects |

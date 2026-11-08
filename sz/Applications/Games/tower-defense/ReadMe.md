@@ -144,6 +144,10 @@ Plain browser scripts without a build step. Every file is one IIFE that adds its
 | `tests/harness.js` | Node test harness: a fake canvas, DOM and storage, loading the scripts in `index.html` order. |
 | `tests/towers.test.js` | Tower behaviour over time (a battered tower's hurt flash fades out). Run with `node tests/towers.test.js`. |
 
+## 🎵 Soundtrack
+
+the soundtrack through the shared SZ.GameMusic: a theme per biome (a marching house groove in the meadows, a dusty electro drive in the desert, glassy trance on the tundra, a murky dubstep in the swamp, a deep synthwave in the caverns, an epic stand at the volcano), a menu theme and a battle theme while a boss walks the path. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every map plays a song of its own made from its biome's theme. Building between waves stays calm, a running wave lifts the music and a boss or a thin line of lives pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## SEO Keywords
 
 tower defense, pixel art, strategy game, browser game, campaign, tech tree, research, tower upgrades, specializations, boss battles, airstrike, canvas game, SynthelicZ Desktop, web application game

@@ -80,6 +80,10 @@ A gravity-manipulation puzzle game set in deep space. Launch a probe through gra
 - `styles.css` -- Layout and theming
 - `icon.svg` -- Desktop icon
 
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: three themes take turns every five levels (a floating synthwave, an orbiting trance and a slow electro pulse) and every level plays a song of its own made from its theme; the ready screen has a calm menu theme. Each song is arranged by the shared engine into an endless one (intro, groove, build-up, drop, breakdown, every pass a little different). Aiming stays calm, a launched shot lifts the music and a solved level pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## SEO Keywords
 
 space puzzle game, gravity puzzle, physics puzzle, browser game, online puzzle game, gravity wells, asteroid field, spacecraft repair, drag and launch, orbital mechanics, free puzzle game, space navigation, gravity manipulation, web game, HTML5 canvas game

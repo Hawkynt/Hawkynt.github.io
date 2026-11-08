@@ -148,6 +148,10 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | Mouse | Hold to walk toward the pointer, right click for dynamite |
 | Touch | On-screen pad or swipe and hold; BOMB, GRAB and pause buttons |
 
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per chapter (a funky dig through the amber caves, trance in the frost caves, a deep synthwave in the grotto, a dubstep rumble in the magma caves, electro in the crystal caves), a menu theme, calm Zen and a fast theme for Time Attack and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every story cave plays a song of its own made from its world's theme. Gem combos and a running-out clock raise the intensity: layers come in and the music pushes into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## SEO Keywords
 
 boulder dash, browser game, free online game, cave game, gem collector, puzzle game, digging game, boulder physics, story mode, boss fights, daily challenge, zen mode, tech tree, seasonal events, SynthelicZ, WebOS game, HTML5 game, canvas game

@@ -164,6 +164,10 @@ Tests (`tests/`, run each with `node tests/<name>.test.js`):
 | Mouse | Click a tile to walk there, click Pip or right-click to drop a bomb |
 | Touch | Thumb pad on the left, BOMB / BOOM buttons on the right |
 
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per world (a funky romp through the gardens, glittering trance in the frost caverns, a pounding house groove in the foundry, electro on the neon circuit, an epic march in the Shadow Keep), a heavier theme for every boss, a menu theme, calm Zen and a fast theme for Rush and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every story level plays a song of its own made from its world's theme. Bosses, hurry-up time and chain blasts raise the intensity: layers come in and the music pushes into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## SEO Keywords
 
 bomberman, bomb game, browser game, free online game, arcade game, boss fights, tech tree, zen mode, daily challenge, seasonal events, SynthelicZ, HTML5 game, canvas game

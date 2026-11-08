@@ -231,6 +231,10 @@ Plain browser JavaScript, IIFE modules on `SZ.CardEngine`, `SZ.CardThemes` and `
 - Doppelkopf plays the normal game only: no announcements, no Hochzeit and no chosen solos
 - Some complex variants (Bridge bidding, Pinochle melds) use simplified rule sets compared to tournament play
 
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per family of games (a calm ambient for patience games, a smooth house groove at the casino tables, a bouncy chiptune for shedding games, a thoughtful synthwave for trick-taking, an easy funk for rummy, a quick electro for snap and speed games, an epic dance for the European classics) and a cosy menu theme in the lobby. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every game in a family plays a song of its own made from the family's theme. A finished round lifts the music for a moment. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).
+
 ## SEO Keywords
 
 card games, poker, blackjack, baccarat, texas holdem, three card poker, faro, red dog, acey deucey, uno, uno flip, uno all wild, liars uno, uno extreme, uno party, dos, ono 99, 8-color duo, skip-bo, skat, canasta, doppelkopf, solitaire, freecell, spider solitaire, yukon, pyramid, golf solitaire, tripeaks, forty thieves, canfield, clock patience, bakers dozen, accordion solitaire, hearts, spades, euchre, pinochle, bridge, oh hell, whist, pitch, all fours, sixty-six, schnapsen, gin rummy, rummy 500, phase 10, tonk, rummy, kalooki, kaluki, yaniv, war, memory, go fish, old maid, snap, speed, cheat, egyptian rat screw, sevens, fan tan, spite and malice, beggar my neighbor, schwimmen, durak, briscola, scopa, cribbage, piquet, bezique, cassino, pishti, belote, president, browser card game, classic card games, AI card game, card game collection, hint mode, card themes, SynthelicZ, WebOS game, card animations

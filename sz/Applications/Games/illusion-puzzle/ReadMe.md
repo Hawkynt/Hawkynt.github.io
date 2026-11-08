@@ -125,3 +125,7 @@ Each level is a 5x5 isometric grid with tiles at different elevations: floor, ra
 - No undo/redo mechanic for moves
 - Grid is always 5x5; no variable grid sizes across levels
 - No hint system or move suggestion
+
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: three themes take turns every few levels (a weightless ambient, a looping trance and a gentle synthwave) and every level plays a song of its own made from its theme; the ready screen has a calm menu theme. Each song is arranged by the shared engine into an endless one (intro, groove, build-up, drop, breakdown, every pass a little different). Walking the paths stays calm, a turn of perspective lifts it and a finished level pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

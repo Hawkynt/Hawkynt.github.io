@@ -126,3 +126,7 @@ Each match pits the player against an AI opponent. Both sides start with 50 HP, 
 - No card rarity system or progression unlocks
 - AI always uses a default deck; cannot customize AI decks
 - No status effect duration tracking (poison ticks down by 1 each turn)
+
+## 🎵 Soundtrack
+
+The soundtrack comes from the shared `SZ.GameMusic` engine: an epic menu theme, a deck-building theme and a duel theme per AI difficulty (a stately epic march, a darker electro duel and a dubstep clash for the hardest opponent); every duel plays a song of its own made from its theme. Each song is arranged by the shared engine into an endless one (intro, groove, build-up, drop, breakdown, every pass a little different). Low health on either side raises the intensity and a victory pushes the music into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

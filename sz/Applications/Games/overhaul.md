@@ -33,8 +33,8 @@ Legend: ✅ in place · ◐ partial / thin · ❌ missing · — does not fit th
 | Bubble Bobble | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Fizz and the Dry Lagoon; generated rooms; co-op with Pop; soundtrack |
 | Minesweeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Bloomfield Expedition; solver-proven fields; faithful Classic; Versus CPU; soundtrack; browser test |
 
-Remaining for Tier A: the November games before Cookie Clicker have no **music** layer yet (wire
-`shared/game-music.js`); late-game prestige / endless scaling exists only in Cookie Clicker.
+Remaining for Tier A: late-game prestige / endless scaling exists only in Cookie Clicker. Every
+Tier A game now has a soundtrack (see Shared gaps - Music).
 
 ### Tier B — first-wave overhaul (October 2026), the "keep coming back" layer is missing
 
@@ -43,7 +43,7 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 
 | Game | Story | Tech tree | Seasons | Goals | Cosmetics | Modes | Autosave | Gap to close |
 |---|---|---|---|---|---|---|---|---|
-| Space Mining | ✅ | ✅ | ◐ | ✅ | ◐ | ✅ | ✅ | festivals, ship/colony skins |
+| Space Mining | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | colony skins; Hangar (liveries, beams, plumes), festivals and soundtrack done; docking banks and the trip goes on |
 | Card Games | ◐ | ❌ | ◐ | ◐ | ✅ | ✅ | ◐ | perk tree, festivals, quests/streak, per-variant mastery |
 | Tower Defense | ◐ | ✅ | ❌ | ❌ | ◐ | ◐ | ✅ | festivals, achievements, quests, Daily/Endless, tower skins |
 | Dome Keeper | ◐ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | story arc, modes, keepers/dome skins, goals, festivals |
@@ -75,9 +75,13 @@ Full overhaul needed (Tetris, Breakout, Bubble Bobble and Minesweeper are done, 
 
 ### Shared gaps (all tiers)
 
-- **Music**: `shared/game-music.js` composes soundtracks from data (themes, intensity layers,
-  stingers, its own switch); Cookie Clicker, Tetris, Breakout and Bubble Bobble use it - wire the
-  rest the same way (a `js/core/music.js` with themes per world/mode).
+- **Music** (done, November 2026): `shared/game-music.js` arranges themes in ten styles (house,
+  trance, electro, dnb, dubstep, chip, synthwave, funk, epic, ambient) into endless songs - intro,
+  groove, build-up, drop, breakdown, every pass changing melody, harmony, form or key - and
+  `variant(theme, key)` gives every level a song of its own. Every game except the Rhythm Game
+  (whose songs are the gameplay) has a `music.js` with themes per world/mode, a song per level,
+  intensity from its own danger cues and Music On/Off in its menu; `e2e/run.js soundtracks` checks
+  them all in a browser, `e2e/run.js music` renders every style and saves WAVs to listen to.
 - **CPU players**: a game whose bots are proven over the real engine can also seat them as CPU
   rivals or partners - Tetris Versus (step-by-step steering at four strengths), Breakout's partner
   paddles and Bubble Bobble's Pop show the pattern; candidates are the other games with bots.

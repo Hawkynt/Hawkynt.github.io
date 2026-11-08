@@ -1130,7 +1130,7 @@ Procedural background music for the games, no sound files. A song is data - `{ i
 
 Tests: `node sz/Applications/shared/tests/game-music.test.js` (arranger, sections, variants, every style scheduled on a stand-in audio context); `node sz/Applications/Games/e2e/run.js music` renders every style in a real browser, checks clipping and loudness and writes WAVs.
 
-Used by: Cookie Clicker, Tetris, Breakout, Bubble Bobble, Minesweeper, Space Mining.
+Used by every game but the Rhythm Game: Tetris, Breakout, Bubble Bobble, Minesweeper, Cookie Clicker, Space Mining, Endless Runner, Snake, Pac-Man, Asteroids, Bomberman, Boulder Dash, Flappy Bird, Tower Defense, Dome Keeper, Space Combat, Space Invaders, Platformer, Physics Puzzle, Fantasy Puzzle, Cooking Game, Space Racing, Space Farming, Card Games, Fantasy Cards, Space Puzzle, Mind Puzzle, Illusion Puzzle and Tactical Realms.
 
 **Spell Check Core** (`spell-check-core.js`):
 

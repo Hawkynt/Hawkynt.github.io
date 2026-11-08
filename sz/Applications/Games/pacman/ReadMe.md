@@ -37,6 +37,7 @@ Core (`js/core/`):
 - **`state.js`** -- The shared state object
 - **`save.js`** -- The only module touching `localStorage`: profile load, migration and write, the run autosave, day roll-over
 - **`audio.js`** -- Sound effects through `SZ.GameAudio`, the alternating chomp, Zen's soft chimes
+- **`music.js`** -- Soundtrack through the shared `SZ.GameMusic`: a theme per world (electro downtown, a sugary chiptune in the gardens, trance across the glacier grid, a dark synthwave in the hollow woods, a dubstep rumble in the ember core), a heavier theme for every boss, a menu theme, calm Zen and a fast theme for Boss Rush and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every story maze plays a song of its own made from its world's theme. Bosses, power pellets and the last life raise the intensity: layers come in and the music pushes into the drop.
 
 Systems (`js/systems/`), one simulation concern each:
 
