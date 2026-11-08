@@ -1,58 +1,22 @@
-/* The one shared mutable state object every module reads and writes. */
+/* G, the one shared mutable state object: the screen and where panels return to, the profile,
+   the running game (run) with its engine state, the demo game behind the title, the date context
+   (day, festival, daily recipe), UI bookkeeping (selection, scroll, toasts, hover), the input,
+   the per-frame hit areas, the cinematic and the screen juice. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.Minesweeper || (SZ.Minesweeper = {});
-  const S = NS.state = NS.state || {};
 
-  /* ---- State ---- */
-  S.difficulty = 'beginner';
-  S.cols = undefined;
-  S.rows = undefined;
-  S.mineCount = undefined;
-  S.grid = undefined;          // 2D: { mine, revealed, flagged, question, adjacent }
-  S.gameOver = undefined;
-  S.gameWon = undefined;
-  S.firstClick = undefined;
-  S.gameStarted = undefined;
-  S.flagCount = undefined;
-  S.revealedCount = undefined;
-  S.timerValue = undefined;
-  S.timerInterval = undefined;
-  S.marksEnabled = true;
-  S.customConfig = null;
-  S.mineRevealTimeouts = [];
-  S.flashAnimId = null;
-  S.currentTheme = 'neutral';
-
-  /* ---- Canvas Effects State ---- */
-  S.effectsCanvas = null;
-  S.effectsCtx = null;
-  S.particles = null;
-  S.shake = null;
-  S.effectsRunning = false;
-
-  S.bestTimes = {
-    beginner:     { time: 999, name: 'Anonymous' },
-    intermediate: { time: 999, name: 'Anonymous' },
-    expert:       { time: 999, name: 'Anonymous' }
-  };
-
-  S.defaultStats = () => ({ played: 0, won: 0, streak: 0, bestStreak: 0 });
-  S.stats = {
-    beginner:     S.defaultStats(),
-    intermediate: S.defaultStats(),
-    expert:       S.defaultStats()
-  };
-
-  /* ---- Reveal origin (staggered reveal animation) ---- */
-  S.revealOriginR = -1;
-  S.revealOriginC = -1;
-
-  /* ---- Pointer state ---- */
-  S.leftDown = false;
-  S.rightDown = false;
-  S.bothDown = false;
-  S.touchPress = null;
+  const G = NS.state = NS.state || {};
+  Object.assign(G, {
+    screen: 'title', back: 'title', time: 0, frame: 0,
+    profile: NS.progress.newProfile(),
+    run: null, demo: null, result: null,
+    today: '', season: null, daily: null, weekly: null,
+    ui: { world: 0, stage: 0, treeSel: 'scanstart', wardTab: 0, journalTab: 0, scroll: 0, toasts: [], hover: null, confirm: null, mode: 'story', callout: null },
+    input: { mx: -1, my: -1, moved: 0, touch: false, hoverCell: -1, cursor: -1, down: false, downCell: -1, chordPress: false, flagMode: false },
+    hitAreas: [], menuCursor: -1,
+    cine: null, shake: 0, flash: 0, flashColor: '#fff', hitStop: 0, autoSaveT: 0, checkT: 0,
+  });
 })();
