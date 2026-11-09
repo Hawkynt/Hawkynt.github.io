@@ -91,6 +91,7 @@
       /* the tip coin rides the size of the shower: more coins, higher chirp */
       sfx('coin', { pitch: 1 + (nCoins - 3) * 0.12, volume: 0.6 });
       c.hop = 0.4;
+      NS.meta.onServe(f.quality, G.combo);
       if (f.quality === 'perfect') {
         G.chefPose = 'cheer';
         G.chefTimer = 0.9;

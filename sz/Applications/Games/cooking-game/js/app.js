@@ -112,7 +112,7 @@
     lastTimestamp = timestamp;
     G.animT += dt;
 
-    if (G.state === STATE_PLAYING) updatePlaying(dt);
+    if (G.state === STATE_PLAYING && !G.hold) updatePlaying(dt);
 
     if (G.state === STATE_DAY_OVER) updateDayOver(dt);
 
@@ -145,6 +145,9 @@
         break;
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
+      case 'goals':
+        NS.meta.open();
         break;
       case 'exit':
         if (window.parent !== window)

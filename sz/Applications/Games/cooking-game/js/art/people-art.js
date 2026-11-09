@@ -779,8 +779,8 @@
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    /* apron */
-    ctx.fillStyle = '#dcd2bc';
+    /* apron (its colour comes from the equipped apron) */
+    ctx.fillStyle = apronColor;
     ctx.beginPath();
     ctx.moveTo(-hw * 0.6, yTop + 6);
     ctx.lineTo(hw * 0.6, yTop + 6);
@@ -903,9 +903,13 @@
   const CHEF_FPS = { idle: [2, 2], chop: [10, 4], flip: [7, 4], cheer: [4, 2], run: [10, 4] };
 
   const chefCache = {};
+  let apronColor = '#dcd2bc';
+  function setApron(c) {
+    apronColor = c || '#dcd2bc';
+  }
 
   function getChefSprite(pose, frame) {
-    const key = pose + ':' + frame;
+    const key = pose + ':' + frame + ':' + apronColor;
     const hit = chefCache[key];
     if (hit) return hit;
     const canvas = document.createElement('canvas');
@@ -1050,6 +1054,6 @@
   }
 
   SZ.PeopleArt = Object.freeze({
-    randomLook, drawCustomer, drawChef, drawMood
+    randomLook, drawCustomer, drawChef, drawMood, setApron
   });
 })();

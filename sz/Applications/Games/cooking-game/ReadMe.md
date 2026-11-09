@@ -186,6 +186,15 @@ The career runs thirty days across five venues, six days each: every day is busi
 - [x] As a player, I can open the top 10 high scores by tips from the Game menu so that personal records are reviewable
 - [x] As a player, I can have the save — coins, stars, upgrades, bests and stats — kept in localStorage so that the empire survives a reload
 
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-cooking-game` and `sz-story-cooking-game`):
+
+- [x] As a player, I earn 18 achievements (guests served, perfect dishes, days, career stars, combos, tips, Daily Specials, the streak, quests, festivals), each paying coins
+- [x] As a player, I get three daily quests, a day streak and festival menus during the six real-date festivals, paying coins and festival aprons
+- [x] As a player, I can unlock and wear 12 aprons on my chef
+- [x] As a player, I follow Chef Sunny, Nonna Rosa, the critic Margot Vane and the rival Gaston Grille: a prologue, an opening scene at every venue and a finale at the Grand Hotel; the kitchen holds while they talk, and every scene can be watched again under Game > Goals and Story
+
 ## 🎵 Soundtrack
 
 The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per location (a sunny funk at the food truck, a bouncy chiptune in the corner diner, a smooth synthwave in the bistro, a quick house groove at the sushi bar, an epic swing in the Grand Hotel), a menu theme and a driving theme for Endless and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every career day plays a song of its own made from its location's theme. A busy, impatient room and the Rush Hour Bell raise the intensity: layers come in and the music pushes into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

@@ -52,7 +52,7 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 | Platformer | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 19 achievements, quests and streak, festivals, 12 hero auras (shared goals/story layer) |
 | Physics Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 ball trails (shared goals/story layer); level-pack collection still open |
 | Fantasy Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 robes (shared goals/story layer) |
-| Cooking Game | ◐ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics, goals, festival menus, kitchen themes |
+| Cooking Game | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 18 achievements, quests and streak, festival menus, 12 aprons (shared goals/story layer) |
 | Space Racing | ❌ | ✅ | ❌ | ❌ | ❌ | ◐ | ❌ | story/rivals, ship liveries, goals, festivals, Daily/Time Trial ghosts |
 | Space Farming | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | story/goals, festivals (in-game seasons ≠ events), decor, modes |
 
