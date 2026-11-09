@@ -112,6 +112,7 @@
       if (trophy && (!held || TROPHY_RANK[trophy] > TROPHY_RANK[held]))
         G.save.trophies[cup.id] = trophy;
       G.lastCupResult = { cup: cup.id, standings: table, trophy: trophy };
+      NS.meta.onCup(progress.cup, trophy === 'gold');
       G.save.cupProgress = null;
       G.raceCup = null;
       if (trophy === 'gold')

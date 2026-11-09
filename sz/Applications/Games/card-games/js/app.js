@@ -30,7 +30,7 @@
     CE.motion.beginFrame(dt);
     SC.update(dt);
     NS.outcomes.update(dt);
-    if ((S.state === K.STATE_PLAYING || S.state === K.STATE_ROUND_OVER) && !SC.freezesGame()) {
+    if ((S.state === K.STATE_PLAYING || S.state === K.STATE_ROUND_OVER) && !SC.freezesGame() && !S.hold) {
       A.updateAnimations(dt);
       G.tickAi(dt);
       if (S.autoSortHand && S.activeVariantModule?.sortPlayerHand)

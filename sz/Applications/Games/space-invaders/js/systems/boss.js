@@ -194,6 +194,7 @@
     G.boss = null;
     G.bossActive = false;
     G.bossVictoryTimer = 2500;
+    NS.meta.deed('bosses', 1);
     G.gameState = 'bossVictory';
     updateStatusBar();
   }

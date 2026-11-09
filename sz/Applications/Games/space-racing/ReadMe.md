@@ -141,3 +141,14 @@ Plain browser scripts, no build step. Every game module is an IIFE that adds one
 ## SEO Keywords
 
 space racing game, browser racing game, top-down racing, spaceship racing, HTML5 racing game, canvas racing game, drifting, mini-turbo, boost, slipstream, item combat, career mode, cups, tech tree, reverse tracks, AI opponents, space race, SynthelicZ Desktop game, web OS game, online racing game
+
+## 🏆 Goals, Daily Race and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-space-racing` and `sz-story-space-racing`):
+
+- [x] As a player, I earn 17 achievements (races, wins, podiums, cups, laps, boosts, Daily Races, the streak, quests, festivals), each paying credits
+- [x] As a player, I get three daily quests, a day streak and festival tracks during the six real-date festivals, paying credits and festival liveries
+- [x] As a player, I can unlock and equip 12 liveries that repaint my ship
+- [x] As a player, I can drive the Daily Race: the same track and direction for everyone each day, my best time kept
+- [x] As a player, I follow the rookie Nova, her mechanic Gus, the commentator Max Volume and the champion Vex: a prologue, words before every cup, a rival's taunt after a lost cup race and a championship finale; the race holds while they talk, and every scene can be watched again under Game > Goals, Daily Race and Story
+

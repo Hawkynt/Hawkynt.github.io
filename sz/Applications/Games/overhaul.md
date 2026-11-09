@@ -44,17 +44,17 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 | Game | Story | Tech tree | Seasons | Goals | Cosmetics | Modes | Autosave | Gap to close |
 |---|---|---|---|---|---|---|---|---|
 | Space Mining | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | colony skins; Hangar (liveries, beams, plumes), festivals and soundtrack done; docking banks and the trip goes on |
-| Card Games | ◐ | ❌ | ◐ | ◐ | ✅ | ✅ | ◐ | perk tree, festivals, quests/streak, per-variant mastery |
+| Card Games | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ◐ | November 2026: story scenes with a cast, family and collection mastery, 19 achievements, quests and streak, festivals, 11 felts (shared goals/story layer); perk tree still open |
 | Tower Defense | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes with a cast, 36 achievements, daily quests and streak, six festivals with token track, 14 tower skins, Daily Siege with twists, Goals panel |
 | Dome Keeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes, 25 achievements, quests and streak, festivals, 13 dome skins, Daily Run with twists (shared goals/story layer) |
 | Space Combat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 liveries (shared goals/story layer); mid-mission autosave still open |
-| Space Invaders | ❌ | ✅ | ❌ | ❌ | ◐ | ◐ | ❌ | cinematics, goals, festivals, Zen/Daily, autosave |
-| Platformer | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics + cast, goals, festivals |
-| Physics Puzzle | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics, goals, festivals, level-pack collection |
-| Fantasy Puzzle | ◐ | ✅ | ❌ | ❌ | ❌ | ✅ | ◐ | cinematics, goals, festivals, mage robes/staves |
-| Cooking Game | ◐ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics, goals, festival menus, kitchen themes |
-| Space Racing | ❌ | ✅ | ❌ | ❌ | ❌ | ◐ | ❌ | story/rivals, ship liveries, goals, festivals, Daily/Time Trial ghosts |
-| Space Farming | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | story/goals, festivals (in-game seasons ≠ events), decor, modes |
+| Space Invaders | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ❌ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 ship auras (shared goals/story layer); Zen mode and autosave still open |
+| Platformer | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 19 achievements, quests and streak, festivals, 12 hero auras (shared goals/story layer) |
+| Physics Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 ball trails (shared goals/story layer); level-pack collection still open |
+| Fantasy Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 robes (shared goals/story layer) |
+| Cooking Game | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 18 achievements, quests and streak, festival menus, 12 aprons (shared goals/story layer) |
+| Space Racing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | done (November 2026): rivals and story scenes, 17 achievements, quests and streak, festivals, 12 liveries, Daily Race (shared goals/story layer); ghosts and autosave still open |
+| Space Farming | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 fence paints (shared goals/story layer); extra modes still open |
 
 ### Tier C — never overhauled (small, ~2–3k lines; only module split, sound, touch and digest tests)
 

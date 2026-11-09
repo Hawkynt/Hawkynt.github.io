@@ -33,6 +33,9 @@
       case 'back-to-menu':
         G.initGame();
         break;
+      case 'goals':
+        if (NS.meta) NS.meta.open();
+        break;
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;

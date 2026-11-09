@@ -204,6 +204,7 @@
 
   function stompEnemy(e) {
     const r = G.run, p = r.player;
+    NS.meta.deed('stomps', 1);
     p.vy = -(inp.jump ? Ph.P.jumpV * 0.95 : Ph.P.stompBounce);
     p.jumping = inp.jump;
     p.airJumps = G.stats.doubleJump ? 1 : 0;

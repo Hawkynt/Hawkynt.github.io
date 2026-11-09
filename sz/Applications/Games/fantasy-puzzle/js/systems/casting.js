@@ -116,6 +116,7 @@
     const next = SZ.PuzzleCore.applyAction(G.puzzle, action);
     if (!next)
       return;
+    NS.meta.onCast();
     /* Focus: the first cast of each puzzle does not drink mana */
     const cost = G.casts === 0 && treeLevel('a_focus') > 0 ? 0 : 1;
     G.history.push(prev);

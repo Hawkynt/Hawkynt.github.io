@@ -25,6 +25,7 @@
     const lapsDone = Math.floor(G.ship.ts.dist / L);
     if (lapsDone > G.playerLap && lapsDone >= 1) {
       G.playerLap = Math.min(G.raceLaps, lapsDone);
+      NS.meta.onLap();
       const lapTime = G.raceTime - G.lastLapStamp;
       recordBestLap(lapTime);
       G.lapSplitNumber = G.playerLap;
@@ -86,6 +87,7 @@
     }
 
     G.playerPlace = finalPlace;
+    NS.meta.onFinish(G, finalPlace);
     SZ.GameAudio.play(finalPlace === 1 ? 'win' : finalPlace <= 3 ? 'levelup' : 'lose');
 
     // Everything the results screen shows, captured before the cup bookkeeping
@@ -119,6 +121,6 @@
   }
 
   Object.assign(NS.module('race'), {
-    updateRace
+    updateRace, finishRace
   });
 })();

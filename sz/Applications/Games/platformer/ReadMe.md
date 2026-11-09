@@ -152,3 +152,13 @@ The page also uses the shared desktop libraries `../../shared/game-audio.js` (sy
 ## SEO Keywords
 
 platformer, jump and run, browser game, free online game, side-scrolling, wall jump, dash, boss fight, time trial, ghost race, endless runner, daily challenge, tech tree, SynthelicZ, WebOS game, HTML5 game, canvas game
+
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-platformer` and `sz-story-platformer`):
+
+- [x] As a player, I earn 19 achievements (levels, stomps, bosses, coins, endless stage, flawless clears, Daily levels, the streak, quests, festivals), each paying coins
+- [x] As a player, I get three daily quests, a day streak and festival tracks during the six real-date festivals, paying coins and festival hero auras
+- [x] As a player, I can unlock and equip 12 hero auras: a coloured glow with circling sparks behind my hero
+- [x] As a player, I follow the adventure with Pip, the owl Hootsworth, the tinker fox Rusty and the Storm Regent: a prologue, an arrival in every world, a word from every boss as it wakes and a finale; play holds while they talk, and every scene can be watched again under Game > Goals and Story
+

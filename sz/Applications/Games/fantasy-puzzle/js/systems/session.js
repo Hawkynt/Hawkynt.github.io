@@ -126,6 +126,7 @@
     G.manaTotal = G.level.mana + treeLevel('a_well') + treeLevel('a_deep');
     G.mana = G.manaTotal;
     G.casts = 0;
+    NS.meta.onLevel(G);
     G.hintsLeft = 1 + treeLevel('i_hint');
     G.undosLeft = treeLevel('c_free') ? Infinity : 5 + 5 * treeLevel('c_undo');
     G.lastShardGain = 0;

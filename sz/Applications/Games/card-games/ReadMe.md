@@ -231,6 +231,15 @@ Plain browser JavaScript, IIFE modules on `SZ.CardEngine`, `SZ.CardThemes` and `
 - Doppelkopf plays the normal game only: no announcements, no Hochzeit and no chosen solos
 - Some complex variants (Bridge bidding, Pinochle melds) use simplified rule sets compared to tournament play
 
+## 🏆 Goals, mastery and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-card-games` and `sz-story-card-games`), on top of the profile's levels and unlocks:
+
+- [x] As a player, I master each of the seven families of games by winning every game in it once, and the collection by winning all 72; 19 achievements (wins, rounds, games won, family mastery, the streak, quests, festivals) pay XP
+- [x] As a player, I get three daily quests (including winning a game I have never won) and festival tracks during the six real-date festivals, paying XP and festival felts
+- [x] As a player, I can earn 11 felt tables that join the Table & Cards panel (locked there until earned) and lay them on the table from the Goals panel
+- [x] As a player, I meet the regulars of the Gilded Ace card room - Madame Lune, Old Pete, Lucky Lou and Countess Sable - in a welcome on the first deal, a word at the first game of every family and a finale once every family is mastered; every scene can be watched again under Game > Goals, Mastery and Story
+
 ## 🎵 Soundtrack
 
 The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per family of games (a calm ambient for patience games, a smooth house groove at the casino tables, a bouncy chiptune for shedding games, a thoughtful synthwave for trick-taking, an easy funk for rummy, a quick electro for snap and speed games, an epic dance for the European classics) and a cosy menu theme in the lobby. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every game in a family plays a song of its own made from the family's theme. A finished round lifts the music for a moment. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

@@ -499,6 +499,7 @@
     G.lastCredits = null;
     G.creditsShown = G.credits;
     G.state = STATE_PLAYING;
+    NS.meta.onStart();
     SZ.GameAudio.play('select');
     updateWindowTitle();
   }

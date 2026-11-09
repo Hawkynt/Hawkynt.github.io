@@ -55,7 +55,7 @@
     const v = visibleRect();
 
     if (G.screen === 'play' && G.run) {
-      Step.updatePlay(dt);
+      if (!G.hold) Step.updatePlay(dt);
       if (G.screen === 'play' && G.run) {
         Camera.updateCamera(dt);
         fxWorld.update(dt);
@@ -144,6 +144,10 @@
         break;
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
+      case 'goals':
+        if (G.screen === 'play') Pause.pauseGame();
+        NS.meta.open();
         break;
       case 'controls':
         if (G.screen === 'play') Pause.pauseGame();

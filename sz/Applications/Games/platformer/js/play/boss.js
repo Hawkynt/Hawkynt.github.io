@@ -37,10 +37,12 @@
       shake.add(0.4);
       sfx('thud', { pitch: 0.5 });
       Session.showToast(b.name, '#ff8a6a');
+      NS.meta.onBoss(r);
     }
     if (!b.alive) {
       if (!r.bossDone) {
         r.bossDone = true;
+        NS.meta.onBossDown(r);
         Fx.explosion(fxWorld, b.x + b.w / 2, b.y + b.h / 2, '#ffd75a', 1.6);
         for (let k = 0; k < 12; ++k)
           r.coins.push({ x: b.x + b.w / 2, y: b.y + b.h / 2, taken: false, vx: (k - 5.5) * 45, vy: -600 - (k % 3) * 120, pull: false, pop: 0.7, t: 0 });

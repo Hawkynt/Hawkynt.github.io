@@ -23,6 +23,7 @@
     if (NS.outcomes) NS.outcomes.reset();
     if (NS.fx) NS.fx.clear();
     if (NS.profile && (fresh || !prev)) NS.profile.onGameStarted(S.currentVariant.id);
+    if (NS.meta && (fresh || !prev)) setTimeout(() => NS.meta.onGame(S.currentVariant.id), 0);
     const CE = SZ.CardEngine;
     if (NS.scenes && fresh && !S.skipTitles && (!prev || prev.id !== S.currentVariant.id)) {
       NS.scenes.clear();

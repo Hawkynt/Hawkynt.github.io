@@ -42,6 +42,7 @@
         S.state = K.STATE_ROUND_OVER;
       }
       if (NS.outcomes) NS.outcomes.report(outcome, isGameOver);
+      if (NS.meta && S.currentVariant) NS.meta.onOutcome(S.currentVariant.id, outcome);
       if (delta > 0) {
         NS.fx.coins(K.CANVAS_W / 2, K.CANVAS_H / 2, 18);
         E.floatingText.add(K.CANVAS_W / 2, K.CANVAS_H / 2 - 40, '+' + delta, { color: '#ffd54f', size: 20 });

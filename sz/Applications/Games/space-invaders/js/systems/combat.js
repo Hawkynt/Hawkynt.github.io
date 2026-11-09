@@ -53,6 +53,7 @@
   function destroyAlien(a) {
     a.alive = false;
     ++G.save.stats.kills;
+    NS.meta.deed('kills', 1);
     const gained = addComboKill(a.points);
     playSfx('smallExplode', { pitch: SPECIES_DEATH_PITCH[a.species] || 1, volume: 0.45 });
 

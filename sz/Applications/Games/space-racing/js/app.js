@@ -56,7 +56,7 @@
     } else if (G.state === STATE_STANDINGS) {
       G.standingsTime += dt;
     }
-    if (G.state === STATE_PAUSED || G.state === STATE_TREE || isMenuState(G.state)) return;
+    if (G.state === STATE_PAUSED || G.state === STATE_TREE || isMenuState(G.state) || G.hold) return;
 
     updateRaceStart(dt);
     updateShip(dt);
@@ -129,7 +129,8 @@
 
     // Draw player ship
     const pd = getPlayerShipDef();
-    drawShip(G.ship.x, G.ship.y, G.ship.angle, pd.color, pd.accentColor, pd.exhaustColor, pd.shape, true, isThrottleHeld(), G.ship.bank, G.ship.shieldTime > 0);
+    const lv = NS.meta.livery();
+    drawShip(G.ship.x, G.ship.y, G.ship.angle, lv ? lv[0] : pd.color, lv ? lv[1] : pd.accentColor, lv ? lv[2] : pd.exhaustColor, pd.shape, true, isThrottleHeld(), G.ship.bank, G.ship.shieldTime > 0);
     drawShockwaves();
     particles.draw(ctx);
     floatingText.draw(ctx);
@@ -239,6 +240,9 @@
         break;
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
+      case 'goals':
+        NS.meta.open();
         break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');

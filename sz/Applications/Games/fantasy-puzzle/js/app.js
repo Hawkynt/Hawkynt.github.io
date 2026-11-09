@@ -67,7 +67,7 @@
       return;
     }
 
-    if (G.state !== STATE_PAUSED)
+    if (G.state !== STATE_PAUSED && !G.hold)
       updateGame(dt);
 
     particles.update();

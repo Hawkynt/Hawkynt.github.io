@@ -160,6 +160,15 @@ The page also uses the shared desktop libraries `../../shared/game-effects.js` (
 - [x] As a user, my ten best completions persist as high scores
 - [x] As a user, a corrupt or partial save falls back cleanly to defaults, so my game never breaks on load
 
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-fantasy-puzzle` and `sz-story-fantasy-puzzle`):
+
+- [x] As a player, I earn 16 achievements (puzzles, perfect solves, par beaten, stars, spells cast, Daily puzzles, the streak, quests, festivals), each paying arcane shards
+- [x] As a player, I get three daily quests, a day streak and festival tracks during the six real-date festivals, paying shards and festival robes
+- [x] As a player, I can unlock and wear 12 robes over the one chosen in the wardrobe
+- [x] As a player, I follow the young mage Elian, Archmage Seraphine, the familiar Ember and the Hollow Wraith: a prologue, an arrival in every realm and a finale; the puzzle holds while they talk, and every scene can be watched again under Game > Goals and Story
+
 ## 🎵 Soundtrack
 
 The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per realm (a crackling electro in the Ember Grove, flowing trance in the Tide Caverns, an earthy funk on the Stone Peaks, an airy synthwave over the Sky Ruins, an epic choir-like swell in the Elemental Sanctum), a menu theme and a theme for the bonus trials. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every level plays a song of its own made from its realm's theme. Thinking stays calm, running low on mana lifts the music and a solved puzzle pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

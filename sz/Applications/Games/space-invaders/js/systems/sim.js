@@ -112,6 +112,7 @@
         } else {
           G.gameState = 'levelComplete';
           G.levelCompleteTimer = 1500;
+          NS.meta.deed('waves', 1);
           G.sweep = 0.6;
           particles.confetti(GAME_W / 2, GAME_H / 2, 30);
         }

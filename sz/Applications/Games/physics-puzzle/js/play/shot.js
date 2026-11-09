@@ -28,6 +28,7 @@
     const shot = Sim.fire(run.att, run.aimAngle, launchSpeed(run.aimPower), extra, 4);
     run.phase = 'flight';
     run.selected = -1;
+    NS.meta.onShot();
     run.recoil = 1;
     run.bulletLeft = G.stats.bulletTime;
     run.nearMiss = {};

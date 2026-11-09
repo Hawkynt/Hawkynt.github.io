@@ -238,7 +238,7 @@
     ctx.lineCap = 'round';
     for (let i = from + 1; i < n; ++i) {
       const k = (i - from) / (n - from);
-      ctx.strokeStyle = 'rgba(255,240,210,' + (0.35 * k).toFixed(3) + ')';
+      ctx.strokeStyle = 'rgba(' + NS.meta.trailRgb() + ',' + (0.35 * k).toFixed(3) + ')';
       ctx.lineWidth = 2 + 9 * k;
       ctx.beginPath();
       ctx.moveTo(tr[(i - 1) * 2], tr[(i - 1) * 2 + 1]);

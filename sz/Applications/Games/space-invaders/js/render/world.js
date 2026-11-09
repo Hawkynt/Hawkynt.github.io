@@ -107,6 +107,7 @@
       let thrust = (moving ? 3 : 1) + (Math.floor(G.gameTime / 60) % 2);
       thrust = Math.max(0, Math.min(3, thrust));
       const phaseOn = G.specialActive > 0 && G.specialKind === 'phase';
+      NS.meta.drawAura(ctx, G.player.x + PLAYER_W / 2, G.player.y, PLAYER_W, PLAYER_H, G.gameTime);
       SZ.InvaderArt.drawShip(ctx, currentShipId(), G.player.x + PLAYER_W / 2, G.player.y, thrust, G.player.tilt, phaseOn ? 0.45 : 1);
 
       if (phaseOn) {

@@ -106,6 +106,7 @@
       G.inventory[crop.name] = 0;
     G.inventory[crop.name] += harvestCount;
     G.stats.harvested += harvestCount;
+    NS.meta.onHarvest();
 
     flyProduce(crop.sprite, tx, ty, harvestCount, auto);
     if (harvestCount > 1)

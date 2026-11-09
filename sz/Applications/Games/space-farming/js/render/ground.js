@@ -127,17 +127,18 @@
     ctx.fillRect(x0 - 4, y1, x1 - x0 + 8, 6);
     ctx.fillRect(x0 - 4, y0, 4, y1 - y0);
     ctx.fillRect(x1, y0, 4, y1 - y0);
+    const paint = NS.fencePaint || ['#5e3820', '#9a5b34'];
     const rail = (ax, ay, bx, by) => {
-      ctx.fillStyle = '#5e3820';
+      ctx.fillStyle = paint[0];
       if (ay === by) {
         ctx.fillRect(ax, ay - 7, bx - ax, 3);
         ctx.fillRect(ax, ay - 2, bx - ax, 3);
-        ctx.fillStyle = '#9a5b34';
+        ctx.fillStyle = paint[1];
         ctx.fillRect(ax, ay - 7, bx - ax, 1);
         ctx.fillRect(ax, ay - 2, bx - ax, 1);
       } else {
         ctx.fillRect(ax - 2, ay, 3, by - ay);
-        ctx.fillStyle = '#9a5b34';
+        ctx.fillStyle = paint[1];
         ctx.fillRect(ax - 2, ay, 1, by - ay);
       }
     };
@@ -146,9 +147,9 @@
     rail(x0, y0, x0, y1);
     rail(x1, y0, x1, y1);
     const post = (px, py) => {
-      ctx.fillStyle = '#4a2a16';
+      ctx.fillStyle = paint[0];
       ctx.fillRect(px - 3, py - 10, 6, 12);
-      ctx.fillStyle = '#b07a4a';
+      ctx.fillStyle = paint[1];
       ctx.fillRect(px - 3, py - 10, 2, 12);
       if (winter) {
         ctx.fillStyle = '#f4f8ff';

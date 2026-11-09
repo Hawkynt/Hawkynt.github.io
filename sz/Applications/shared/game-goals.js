@@ -286,7 +286,8 @@
     const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
     function render() {
-      const tabs = [['today', 'Today'], ['ach', 'Achievements'], ['cos', cfg.cosmeticLabel ? cfg.cosmeticLabel + 's' : 'Cosmetics']];
+      const plural = cfg.cosmeticPlural || (cfg.cosmeticLabel ? cfg.cosmeticLabel.replace(/([^aeiou])y$/, '$1ie') + 's' : 'Cosmetics');
+      const tabs = [['today', 'Today'], ['ach', 'Achievements'], ['cos', plural]];
       if (cfg.daily) tabs.push(['daily', cfg.daily.label || 'Daily']);
       if (cfg.story) tabs.push(['story', 'Story']);
       const n = Object.keys(s.ach).length;

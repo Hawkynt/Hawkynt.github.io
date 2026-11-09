@@ -50,6 +50,7 @@
     G.dayIndex = index;
     G.dayInfo = dayObj;
     G.location = SZ.KitchenData.locationById(G.dayInfo.location);
+    setTimeout(() => NS.meta.onDay(G), 0);
     G.scene = SZ.KitchenScene.create(G.location.theme);
     G.stations = {};
     for (const id of SZ.KitchenData.STATION_ORDER) {
@@ -148,6 +149,7 @@
     };
     G.state = STATE_DAY_OVER;
     G.dayOverT = 0;
+    NS.meta.onDayEnd(G);
     G.starPopped = 0;
     G.fade = 1;
     if (G.coach) {
@@ -242,6 +244,6 @@
     }
   }
 
-  NS.day = { startDay, updatePlaying, updateDayOver, pauseDay, resumeDay, togglePause };
+  NS.day = { startDay, endDay, updatePlaying, updateDayOver, pauseDay, resumeDay, togglePause };
 
 })();

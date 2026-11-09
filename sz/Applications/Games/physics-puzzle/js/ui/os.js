@@ -82,6 +82,10 @@
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
+      case 'goals':
+        if (G.state === 'play') flow.pauseGame();
+        NS.meta.open();
+        break;
       case 'controls':
         if (G.state === 'play') flow.pauseGame();
         SZ.Dialog.show('controlsBackdrop');

@@ -39,6 +39,7 @@
     // Collect produce (happy herds sometimes give two)
     const amount = techOwned('husb_happy') && Math.random() < 0.2 ? 2 : 1;
     G.inventory[def.produce] = (G.inventory[def.produce] || 0) + amount;
+    NS.meta.onProduce(amount);
 
     const scr = penCenter(pen);
     flyProduce(def.produceSprite, scr.x, scr.y, amount, false);
