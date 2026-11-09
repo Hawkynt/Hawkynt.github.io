@@ -44,6 +44,7 @@
     G.maxMultiplier = 1;
     G.stageResult = null;
     newGame('campaign', true);
+    NS.meta.onStage(G.stageInfo);
     setBackdrop(G.stageInfo.theme);
 
     if (G.stageInfo.boss) {
@@ -89,6 +90,7 @@
     G.stageResult = { stars, credits, score: G.score, livesLost: G.livesLost, maxMultiplier: G.maxMultiplier };
     writeSave();
     G.gameState = 'stageClear';
+    NS.meta.onStageClear(G.stageInfo);
     G.menuCursor = 0;
     G.sweep = 0.6;
     particles.confetti(GAME_W / 2, GAME_H * 0.4, 30);
@@ -99,6 +101,7 @@
 
   /* Run end: credits from the score, per-mode best, stats — written once */
   function endRun() {
+    NS.meta.onRunEnd();
     const credits = SZ.InvaderCampaign.creditsFor(G.score, null, 0);
     G.save.credits += credits;
     ++G.save.stats.runs;

@@ -182,3 +182,13 @@ The game code lives in `js/` as small modules on the `SZ.SpaceInvaders` namespac
 - [ ] As a player, I can create custom wave layouts with a wave editor so that I can design my own challenges
 - [ ] As a player, I can see an online leaderboard so that I can compete globally
 - [ ] As a player, I can earn achievements for milestones so that I have secondary objectives
+
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/systems/meta.js`, saved under `sz-goals-space-invaders` and `sz-story-space-invaders`):
+
+- [x] As a player, I earn 20 achievements (aliens, waves, bosses, campaign stages, best level and score, Daily runs, runs, the streak, quests, festivals), each paying credits
+- [x] As a player, I get three daily quests, a day streak and festival tracks during the six real-date festivals, paying credits and festival ship auras
+- [x] As a player, I can unlock and equip 12 ship auras: a coloured glow and spark trail behind my ship
+- [x] As a player, I follow the campaign with Captain Rhea, the gunner Kip, the ship's mind LUMEN and the Overmind: a prologue, an arrival in every sector, a word before every boss and a finale; play holds while they talk, and every scene seen can be watched again under Game > Goals and Story
+

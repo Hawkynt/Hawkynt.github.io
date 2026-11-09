@@ -32,7 +32,7 @@
     simAccumulator = Math.min(simAccumulator + elapsed, SIM_STEP * SIM_MAX_STEPS);
     while (simAccumulator >= SIM_STEP) {
       simAccumulator -= SIM_STEP;
-      update(SIM_STEP);
+      if (!NS.state.hold) update(SIM_STEP);
     }
     NS.music.update(elapsed / 1000);
     draw();
@@ -64,6 +64,9 @@
           break;
         case 'music':
           if (SZ.GameMusic) SZ.GameMusic.toggle();
+          break;
+        case 'goals':
+          NS.meta.open();
           break;
         case 'about':
           SZ.Dialog.show('dlg-about');
