@@ -194,3 +194,13 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | Tab | Switch hangar tab |
 | F2 | Title screen |
 | Touch | Drag to fly with auto-fire; buttons for dash, secondary, special and focus |
+
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/systems/meta.js`, saved under `sz-goals-space-combat` and `sz-story-space-combat`):
+
+- [x] As a player, I earn 20 achievements (enemies, bosses, missions, stars, endless waves, best score, Dailies, the streak, quests, festivals, runs), each paying credits
+- [x] As a player, I get three daily quests, a day streak and festival tracks during the six real-date festivals, paying credits and festival liveries
+- [x] As a player, I can unlock and equip 12 liveries that repaint my ship over its hangar skin
+- [x] As a player, I follow the campaign with Commander Vega, the pilot Wren, Doc Okafor and the Overmind: a prologue, an arrival in every sector, a word from every boss as it arrives and a finale; the battle holds while they talk, and every scene seen can be watched again under Game > Goals and Story
+

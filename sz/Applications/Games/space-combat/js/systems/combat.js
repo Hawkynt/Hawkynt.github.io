@@ -85,6 +85,7 @@
   function kill(e, cause) {
     if (!e.alive) return;
     e.alive = false;
+    NS.meta.onKill(e);
     const big = e.r >= 40;
     const ramp = e.type === 'cloaker' ? fx.VIOLET : e.type === 'drone' ? fx.TOXIC : fx.FIRE;
     fx.explode(e.x, e.y, e.r * (big ? 1.5 : 1.1), ramp, { debrisColor: '#6a5050' });

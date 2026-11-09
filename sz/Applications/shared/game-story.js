@@ -11,7 +11,7 @@
   //
   //   const story = SZ.GameStory.create({ id, cast: { key: { name, skin, hair,
   //     cloth, trim, eyes, head, foe, draw(g) } }, scenes: { key: { title,
-  //     lines: [{ who, text }] } }, pause(), resume() })
+  //     lines: [{ who, text, name? }] } }, pause(), resume() })   name: a speaker name for this line
   //   story.play(key)  story.replay(key)  story.active()  story.list()
   //   head: helm | goggles | hood | crown | cap | visor | chef | wizard | none
 
@@ -164,7 +164,7 @@
         const c = face(line.who);
         if (c) { const img = document.createElement('canvas'); img.width = 32; img.height = 34; img.getContext('2d').drawImage(c, 0, 0); f.appendChild(img); }
       }
-      el.querySelector('.szs-text b').textContent = p.name || line.who;
+      el.querySelector('.szs-text b').textContent = line.name || p.name || line.who;
       el.querySelector('.szs-text span').textContent = line.text.slice(0, Math.floor(cur.t * CPS));
       el.querySelector('.szs-text i').textContent = lineDone() && Math.floor(performance.now() / 400) % 2 === 0 ? (cur.i + 1 < cur.lines.length ? '▼' : '■') : '';
     }

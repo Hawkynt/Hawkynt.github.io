@@ -70,6 +70,7 @@
   function startStage(st) {
     const carry = G.player && G.player.alive && G.run && G.run.idx > 0 ? G.player : null;
     G.stage = st;
+    NS.meta.onStage(st, G.run);
     G.sector = st.sector;
     G.world.w = PF_W;
     G.world.h = PF_H;
@@ -512,6 +513,7 @@
     save.credits += res.total;
     save.stats.scrap += res.total;
     NS.save.writeSave();
+    NS.meta.onFinish(res);
     G.ui.results = res;
     NS.screens.setScreen('results');
   }

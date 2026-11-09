@@ -20,6 +20,8 @@
   const UP = -Math.PI / 2;
 
   function shipColors(save, ship) {
+    const lv = NS.meta && NS.meta.livery();
+    if (lv) return lv;
     const skin = SKINS[save.style.skin];
     return (skin && skin.colors) || ship.colors;
   }
@@ -60,7 +62,7 @@
     p.engineColor = (eng && eng.color) || p.colors.glow;
     const tr = TRAILS[G.save.style.trail];
     p.trail = (tr && tr.colors) || null;
-    p.skinKey = G.save.style.skin;
+    p.skinKey = NS.meta && NS.meta.livery() ? 'livery-' + NS.meta.livery().key : G.save.style.skin;
   }
 
   /* The tree or hangar changed mid-run: new maxima apply at once, the gain is granted now */
