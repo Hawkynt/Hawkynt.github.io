@@ -16,7 +16,7 @@
   const { UI, roundRectPath, drawPanel, drawScrim, uiButton } = NS.widgets;
   const Q = NS.goals;
 
-  const TABS = [['today', 'Today'], ['ach', 'Achievements'], ['skins', 'Tower skins'], ['daily', 'Daily Siege']];
+  const TABS = [['today', 'Today'], ['ach', 'Achievements'], ['skins', 'Tower skins'], ['daily', 'Daily Siege'], ['story', 'Story']];
   G.goalsTab = 'today';
 
   function openGoals(tab) {
@@ -59,7 +59,7 @@
     const nAch = Object.keys(m.ach).length;
     drawPanel(px, py, pw, ph, { title: 'Goals', titleRight: `${nAch} / ${Q.ACHIEVEMENTS.length} achievements  ·  research ${m.rp}`, titleRightPad: 28, accent: UI.gold, radius: 12, headerH: 34 });
     uiButton('goals-close', px + pw - 30, py + 7, 22, 20, '×', { px: 14, onClick: close, tip: () => ['Close', 'Esc'] });
-    const tw = (pw - 28 - 3 * 6) / 4;
+    const tw = (pw - 28 - (TABS.length - 1) * 6) / TABS.length;
     TABS.forEach(([id, label], i) => {
       uiButton('goals-tab-' + id, px + 14 + i * (tw + 6), py + 42, tw, 26, label, { px: 12, style: G.goalsTab === id ? 'gold' : 'dark',
         onClick: () => { G.goalsTab = id; audio.play('click'); } });
@@ -69,6 +69,7 @@
     if (G.goalsTab === 'today') drawToday(area, m);
     else if (G.goalsTab === 'ach') drawAchievements(area, m);
     else if (G.goalsTab === 'skins') drawSkins(area, m);
+    else if (G.goalsTab === 'story') drawStory(area, m);
     else drawDaily(area, m);
   }
 
@@ -161,6 +162,35 @@
     y += 56;
     ctx.textAlign = 'center';
     fitText('Holding a wave counts it as played; the furthest wave of the day is kept. Stars and research work as on any map.', a.x + a.w / 2, y, a.w - 20, 11, { color: UI.textDim });
+  }
+
+  /* the story so far: every scene seen can be watched again */
+  function storyScenes() {
+    const S = NS.story, out = [['prologue', 'Prologue', S.PROLOGUE, null]];
+    for (const R of NS.maps.REGIONS) {
+      const b = BIOMES[R.biome].name;
+      out.push(['in-' + R.biome, b + ': arrival', S.REGION_IN[R.biome], null]);
+      out.push(['out-' + R.biome, b + ': farewell', S.REGION_OUT[R.biome], null]);
+    }
+    for (const id in S.BOSS) out.push(['boss-' + id, (NS.enemyTypes.ENEMY_TYPES[id] || { name: id }).name, S.BOSS[id], id]);
+    out.push(['epilogue', 'Epilogue', S.EPILOGUE, null]);
+    return out;
+  }
+
+  function drawStory(a, m) {
+    const seen = (m.story && m.story.seen) || {};
+    const list = storyScenes();
+    const cols = 3, gap = 6, rows = Math.ceil(list.length / cols);
+    const cw = (a.w - (cols - 1) * gap) / cols, ch = Math.min(34, (a.h - (rows - 1) * 4) / rows);
+    list.forEach(([key, title, lines, boss], i) => {
+      const x = a.x + (i % cols) * (cw + gap), y = a.y + Math.floor(i / cols) * (ch + 4);
+      const on = !!seen[key];
+      card(x, y, cw, ch, on, '#9be7ff');
+      ctx.textAlign = 'left';
+      fitText(on ? title : '???', x + 8, y + ch / 2, cw - 70, 12, { weight: 'bold', color: on ? '#e4eaf6' : '#6a7388' });
+      if (on) uiButton('goals-story-' + key, x + cw - 58, y + 5, 50, ch - 10, 'Watch', { px: 11,
+        onClick: () => { G.overlay = null; NS.cinematics.startCine('story', { key: key, lines: lines, boss: boss }); } });
+    });
   }
 
   /* unlock toasts: a short stack in the top-right corner */

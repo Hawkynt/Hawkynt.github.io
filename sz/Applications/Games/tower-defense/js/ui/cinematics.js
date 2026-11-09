@@ -1,4 +1,7 @@
-/* ui/cinematics.js -- world-map travel, map fly-over intros, outros and reward reveals.
+/* ui/cinematics.js -- world-map travel, map fly-over intros, outros, reward reveals and the story
+   scenes: letterboxed dialogue with pixel portraits of the cast (and the bosses), typed out line by
+   line; a click or key shows the whole line or the next one, Esc skips the scene. Each scene plays
+   once (G.meta.story.seen).
    Owns state: G.cine
    Reads: constants, towerTypes, enemyTypes, maps, env, pixelArt, artKit, layout, text, widgets, bossRewards,
       terrain, towerArt, enemyArt, paths, waves and the shared state G. */
@@ -14,7 +17,7 @@
   const { BIOMES, BIOME_ORDER, MAPS, CAMPAIGN, MAP_RANK, REGIONS, nextMapOf, regionOf } = NS.maps;
   const { ctx, audio } = NS.env;
   const { makeCanvas, drawIcon } = NS.pixelArt;
-  const { RAMPS, fbm, rampPick, drawGlow } = NS.artKit;
+  const { RAMPS, fbm, rampPick, drawGlow, px, ellipseFill, poly, rampOf } = NS.artKit;
   const { view } = NS.layout;
   const { fitText, drawTextBlock } = NS.text;
   const { UI, drawPanel, drawKeyHints, drawHeadline, drawScrim } = NS.widgets;
@@ -28,12 +31,41 @@
   const cineQueue = [];
 
   function startCine(kind, data, done) {
-    const durs = { travel: 4.6, intro: 4.2, outro: 3.0, reward: 4.0 };
+    const durs = { travel: 4.6, intro: 4.2, outro: 3.0, reward: 4.0, story: Infinity };
     const c = { kind, t: 0, dur: durs[kind] || 3, data: data || {}, done };
     if (G.cine) cineQueue.push(c);
     else G.cine = c;
     if (kind === 'travel') audio.play('whoosh', { pitch: 0.6, volume: 0.6 });
     if (kind === 'intro') audio.play('select', { pitch: 0.6 });
+    if (kind === 'story') { c.data.i = 0; c.data.lineT = 0; }
+  }
+
+  /* ── story scenes ── */
+  function playStory(key, lines, opts) {
+    if (!lines || !lines.length || !G.meta) return false;
+    const st = G.meta.story || (G.meta.story = { seen: {} });
+    if (st.seen[key]) return false;
+    st.seen[key] = 1;
+    NS.progress.saveMeta();
+    startCine('story', Object.assign({ key, lines }, opts || {}));
+    return true;
+  }
+
+  const CHARS_PER_S = 48;
+  function storyLineDone(c) {
+    return c.data.lineT * CHARS_PER_S >= c.data.lines[c.data.i].text.length;
+  }
+
+  function storyNext() {
+    const c = G.cine;
+    if (!c || c.kind !== 'story') return;
+    if (!storyLineDone(c)) {
+      c.data.lineT = 99;
+      return;
+    }
+    audio.play('click', { pitch: 1.1, volume: 0.5 });
+    if (++c.data.i >= c.data.lines.length) finishCine(false);
+    else c.data.lineT = 0;
   }
 
   function finishCine(skipped) {
@@ -43,7 +75,7 @@
     // Skipping one moment skips the chained ones too (travel -> intro), but not rewards
     while (cineQueue.length) {
       const n = cineQueue.shift();
-      if (!skipped || n.kind === 'reward') {
+      if (!skipped || n.kind === 'reward' || n.kind === 'story') {
         G.cine = n;
         break;
       }
@@ -51,8 +83,13 @@
     }
   }
 
-  function skipCine() {
+  // hard: Esc skips a whole story scene; anything else turns its page
+  function skipCine(hard) {
     if (!G.cine) return;
+    if (G.cine.kind === 'story' && !hard) {
+      storyNext();
+      return;
+    }
     audio.play('click', { pitch: 0.7 });
     finishCine(true);
   }
@@ -61,6 +98,12 @@
     if (!G.cine) return;
     const prev = G.cine.t;
     G.cine.t += dt;
+    if (G.cine.kind === 'story') {
+      const was = G.cine.data.lineT;
+      G.cine.data.lineT += dt;
+      if (Math.floor(was * 14) !== Math.floor(G.cine.data.lineT * 14) && !storyLineDone(G.cine)) audio.play('blip', { pitch: 1.6 + Math.random() * 0.3, volume: 0.12 });
+      return;
+    }
     if (G.cine.kind === 'reward' && prev < 0.55 && G.cine.t >= 0.55)
       audio.play(G.cine.data.kind === 'tower' ? 'levelup' : 'powerup', { pitch: G.cine.data.kind === 'tower' ? 1 : 1.2 });
     if (G.cine.kind === 'outro' && prev < 0.4 && G.cine.t >= 0.4)
@@ -445,6 +488,96 @@
     drawSkipHint();
   }
 
+  /* a pixel bust per cast member: shoulders in the outfit, the face, hair and a headpiece */
+  const portraits = {};
+  function portrait(who) {
+    if (portraits[who]) return portraits[who];
+    const p = NS.story.CAST[who];
+    const cloth = rampOf(p.cloth), skin = rampOf(p.skin), hair = rampOf(p.hair), trim = rampOf(p.trim);
+    const cv = NS.pixelArt.pixelArt(32, 34, (g) => {
+      // shoulders and collar
+      ellipseFill(g, 16, 33, 15, 9, cloth[2]);
+      ellipseFill(g, 16, 32, 13, 7, cloth[3]);
+      poly(g, [12, 24, 16, 30, 20, 24], trim[3]);
+      // neck and face
+      px(g, 13, 20, 6, 5, skin[2]);
+      ellipseFill(g, 16, 15, 7, 8, skin[3]);
+      ellipseFill(g, 14, 13, 3, 3, skin[4]);
+      // eyes, brows, mouth
+      px(g, 12, 15, 2, 2, p.eyes); px(g, 18, 15, 2, 2, p.eyes);
+      px(g, 12, 13, 3, 1, hair[1]); px(g, 17, 13, 3, 1, hair[1]);
+      px(g, 14, 19, 4, 1, skin[1]);
+      // hair and headpiece
+      if (p.head === 'hood') {
+        poly(g, [6, 22, 8, 8, 16, 3, 24, 8, 26, 22, 22, 12, 10, 12], cloth[2]);
+        poly(g, [9, 12, 16, 5, 23, 12], cloth[4]);
+      } else {
+        ellipseFill(g, 16, 9, 8, 5, hair[3]);
+        px(g, 8, 9, 2, 8, hair[2]); px(g, 22, 9, 2, 8, hair[2]);
+      }
+      if (p.head === 'helm') {
+        ellipseFill(g, 16, 8, 9, 5, trim[2]);
+        px(g, 7, 9, 18, 2, trim[1]);
+        poly(g, [15, 2, 16, 0, 17, 2, 17, 6, 15, 6], cloth[4]);
+      } else if (p.head === 'goggles') {
+        px(g, 9, 9, 14, 2, '#3a2a1a');
+        ellipseFill(g, 12, 10, 2.5, 2, trim[4]); ellipseFill(g, 20, 10, 2.5, 2, trim[4]);
+        px(g, 11, 20, 10, 3, hair[3]);
+      } else if (p.head === 'crown') {
+        poly(g, [8, 9, 9, 2, 12, 6, 16, 0, 20, 6, 23, 2, 24, 9], trim[3]);
+        px(g, 15, 4, 2, 2, '#ff5a3a');
+        px(g, 12, 15, 2, 2, '#ffb07a'); px(g, 18, 15, 2, 2, '#ffb07a');
+      }
+    });
+    portraits[who] = cv;
+    return cv;
+  }
+
+  function drawStoryOverlay() {
+    const c = G.cine, d = c.data, line = d.lines[d.i];
+    const W = G.UW, H = G.UH;
+    const inT = Math.min(1, c.t / 0.35);
+    ctx.save();
+    ctx.fillStyle = `rgba(4,6,14,${0.5 * inT})`;
+    ctx.fillRect(0, 0, W, H);
+    const bar = Math.round(H * 0.1 * inT);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, bar);
+    ctx.fillRect(0, H - bar, W, bar);
+    const foe = line.who === 'sovereign' || line.who === 'boss';
+    const pw = Math.min(170, W * 0.24), boxH = Math.min(150, H * 0.28);
+    const boxY = H - bar - boxH - 14;
+    const boxX = foe ? 20 : 20 + pw + 12, boxW = W - 40 - pw - 12;
+    const color = line.who === 'boss' ? '#ff5a5a' : NS.story.CAST[line.who].trim;
+    // portrait frame
+    const fx = foe ? W - 20 - pw : 20, fy = boxY + boxH - pw;
+    drawPanel(fx, fy, pw, pw, { accent: color, radius: 10 });
+    if (line.who === 'boss' && d.boss) drawEnemyIcon(d.boss, fx + pw / 2, fy + pw / 2, pw * 0.8);
+    else {
+      const cv = portrait(line.who);
+      ctx.imageSmoothingEnabled = false;
+      const s = Math.floor((pw - 16) / cv.height);
+      ctx.drawImage(cv, fx + pw / 2 - cv.width * s / 2, fy + pw - 8 - cv.height * s, cv.width * s, cv.height * s);
+    }
+    // dialogue box
+    drawPanel(boxX, boxY, boxW, boxH, { accent: color, radius: 10 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const name = line.who === 'boss' ? (ENEMY_TYPES[d.boss] ? ENEMY_TYPES[d.boss].name : 'Boss') : NS.story.CAST[line.who].name;
+    fitText(name, boxX + 18, boxY + 22, boxW - 36, 16, { weight: 'bold', color });
+    const shown = line.text.slice(0, Math.floor(d.lineT * CHARS_PER_S));
+    drawTextBlock(shown, boxX + 18, boxY + 40, boxW - 36, boxH - 60, 15, { color: '#eef2fa' });
+    if (storyLineDone(c) && Math.floor(c.t * 2.5) % 2 === 0) {
+      ctx.textAlign = 'right';
+      fitText(d.i + 1 < d.lines.length ? '▼' : '■', boxX + boxW - 16, boxY + boxH - 16, 20, 13, { color });
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    drawKeyHints([{ key: 'Click', label: 'Next' }, { key: 'Esc', label: 'Skip' }], G.UW - 120, 20, 220);
+    ctx.restore();
+  }
+
   function drawSkipHint() {
     ctx.save();
     ctx.globalAlpha = 0.75;
@@ -458,6 +591,7 @@
     else if (G.cine.kind === 'intro') drawIntroOverlay();
     else if (G.cine.kind === 'outro') drawOutroOverlay();
     else if (G.cine.kind === 'reward') drawRewardReveal();
+    else if (G.cine.kind === 'story') drawStoryOverlay();
     return true;
   }
 
@@ -465,6 +599,6 @@
      SCREEN SHAKE
      ══════════════════════════════════════════════════════════════════ */
 
-  NS.cinematics = { cineQueue, startCine, skipCine, updateCine, queueReward, withCineView, drawCineOverlay };
+  NS.cinematics = { cineQueue, startCine, skipCine, updateCine, queueReward, withCineView, drawCineOverlay, playStory, storyNext };
 
 })();
