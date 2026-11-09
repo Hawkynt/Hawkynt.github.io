@@ -1400,6 +1400,17 @@ These decisions have been resolved and implemented:
 
 ---
 
+## 🏆 Goals, Daily Run and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/systems/meta.js`, saved under `sz-goals-dome-keeper` and `sz-story-dome-keeper`, so the run save is untouched):
+
+- [x] As a player, I earn 25 achievements from my lifetime statistics (monsters, nights, best nights in one dig, tiles mined, relocations, the furthest site, upgrades, secret chests, digs, Daily Runs, the streak, quests, festivals, best score), each paying iron
+- [x] As a player, I get three daily quests and a day streak; quest and achievement iron goes into the running dig or is banked for the next one
+- [x] As a player, I collect festival tokens during the six real-date festivals; each track pays iron and a festival dome skin
+- [x] As a player, I can unlock and equip 13 dome skins that recolour the glass and its rim
+- [x] As a player, I can play the Daily Run: the same first site and twist (Swarm Nights, Thin Glass, Rich Veins, Lean Rock) for everyone each day, my most nights kept
+- [x] As a player, I meet Keeper Ada, her drone PIP and the Swarm Mother in story scenes at the landing, the first night, every new biome, the first time the glass cracks and the first fall, and can watch them again under Goals > Story (Game > Goals and Daily Run)
+
 ## 🎵 Soundtrack
 
 The soundtrack comes from the shared `SZ.GameMusic` engine: a theme per biome (a dusty funk on the rocky badlands, a hot electro drive over the dunes, glassy trance on the frozen shelf, a humid synthwave in the alien jungle, a dubstep grind in the ashen caldera, an epic swell over the crystal fields) and a menu theme. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every site plays a song of its own made from its biome's theme. Digging by day stays calm, dusk lifts it, and a night attack or a cracking dome pushes it into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

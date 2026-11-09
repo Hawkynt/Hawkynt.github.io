@@ -23,7 +23,7 @@
     acc = Math.min(acc + elapsed, STEP_MS * MAX_STEPS);
     while (acc >= STEP_MS) {
       acc -= STEP_MS;
-      NS.sim.update(STEP);
+      if (!G.hold) NS.sim.update(STEP);
     }
     NS.music.update(elapsed / 1000);
     NS.frame.draw();
@@ -65,6 +65,7 @@
             break;
           case 'controls': SZ.Dialog.show('controlsBackdrop'); break;
           case 'music': if (SZ.GameMusic) SZ.GameMusic.toggle(); break;
+          case 'goals': NS.meta.open(); break;
           case 'about': SZ.Dialog.show('dlg-about'); break;
         }
       },

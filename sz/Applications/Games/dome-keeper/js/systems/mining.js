@@ -132,6 +132,7 @@
 
   function completeMining() {
     if (!G.miningTarget) return;
+    NS.meta.deed('tiles', 1);
 
     const nx = G.miningTarget.col;
     const ny = G.miningTarget.row;
@@ -177,7 +178,7 @@
 
     if (RESOURCE_TILES.includes(tile)) {
       const label = TILE_LABELS[tile];
-      let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(ny));
+      let value = Math.round(TILE_VALUES[tile] * NS.meta.twist().ore * getDepthValueMultiplier(ny));
 
       if (G.unlockedTools.silkTouch)
         value = Math.round(value * 1.25);
@@ -381,9 +382,10 @@
   function breakTileInstant(r, c) {
     const tile = G.undergroundGrid[r][c];
     if (tile === TILE_CHEST || tile === TILE_CORE || tile === TILE_GADGET || tile === TILE_EMPTY) return;
+    NS.meta.deed('tiles', 1);
     const tx = c * TILE_SIZE + TILE_SIZE / 2 - G.cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - G.cameraY;
     if (RESOURCE_TILES.includes(tile)) {
-      let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
+      let value = Math.round(TILE_VALUES[tile] * NS.meta.twist().ore * getDepthValueMultiplier(r));
       if (G.unlockedTools.silkTouch)
         value = Math.round(value * 1.25);
       const fits = NS.cargo.bagAdd(TILE_LABELS[tile], value);
@@ -508,7 +510,7 @@
           collectRelocationCore(tx, ty);
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
-          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
+          const value = Math.round(TILE_VALUES[tile] * NS.meta.twist().ore * getDepthValueMultiplier(r));
           const fitsInInventory = NS.cargo.bagAdd(label, value);
           const excess = value - fitsInInventory;
           if (fitsInInventory > 0)

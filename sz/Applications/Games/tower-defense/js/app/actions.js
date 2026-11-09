@@ -9,7 +9,7 @@
   const NS = SZ.TowerDefense || (SZ.TowerDefense = {});
   const G = NS.state;
   const { CELL, STATE_READY, STATE_PLAYING, STATE_PAUSED, STATE_BUILD, AUTO_WAVE_DELAY } = NS.constants;
-  const { BIOMES, MAPS, nextMapOf } = NS.maps;
+  const { BIOMES, MAPS, MAP_RANK, REGIONS, nextMapOf, regionOf } = NS.maps;
   const { audio, updateWindowTitle } = NS.env;
   const { particles, floatingText, decals, uiCoins, showBanner } = NS.effects;
   const { useAbility } = NS.abilities;
@@ -86,6 +86,16 @@
       G.introNext = false;
       startCine('intro');
     }
+    storyForMap(G.currentMap);
+  }
+
+  /* the prologue before the first map, a region's arrival before its first map (not in the Daily Siege) */
+  function storyForMap(i) {
+    if (G.daily) return;
+    const S = NS.story, C = NS.cinematics;
+    if (MAP_RANK[i] === 0) C.playStory('prologue', S.PROLOGUE);
+    const r = REGIONS[regionOf(i)];
+    if (r && r.maps[0] === i) C.playStory('in-' + r.biome, S.REGION_IN[r.biome]);
   }
 
   function quitToTitle() {

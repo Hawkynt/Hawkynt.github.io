@@ -184,8 +184,12 @@
     // A new run lands on a fresh site
     G.cinematic = null;
     G.landingPending = false;
-    G.site = NS.biomes.newSite(0, (Math.random() * 0x7fffffff) | 0);
+    G.site = NS.biomes.newSite(0, G.dailyRun ? G.dailyRun.seed : (Math.random() * 0x7fffffff) | 0);
     generateUnderground(makeRng(G.site.seed));
+    /* the Daily Run's twist on the glass; achievements, the banked iron and the landing story */
+    const tw = NS.meta.twist();
+    G.domeHP = G.maxDomeHP = Math.round(G.maxDomeHP * tw.dome);
+    NS.meta.onRunStart();
     NS.app.updateWindowTitle();
   }
 
@@ -196,6 +200,7 @@
     // Every run begins with the dome landing on its first site
     G.landingPending = true;
     NS.relocation.startCinematic('arrive');
+    NS.meta.onPlayStart();
   }
 
   function initPrimaryGadgetState() {

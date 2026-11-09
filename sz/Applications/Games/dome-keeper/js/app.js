@@ -92,6 +92,9 @@
           }
         });
         break;
+      case 'goals':
+        NS.meta.open();
+        break;
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;

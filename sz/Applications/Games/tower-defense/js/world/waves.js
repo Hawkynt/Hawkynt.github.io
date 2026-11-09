@@ -123,6 +123,14 @@
     screenShake.trigger(6, 300);
     audio.play('win');
     NS.cinematics.startCine('outro', { rp });
+    /* a region's farewell after its last map, the epilogue after the very last */
+    if (!G.daily) {
+      const R = NS.maps.REGIONS, ri = NS.maps.regionOf(G.currentMap), reg = R[ri];
+      if (reg && reg.maps[reg.maps.length - 1] === G.currentMap) {
+        NS.cinematics.playStory('out-' + reg.biome, NS.story.REGION_OUT[reg.biome]);
+        if (ri === R.length - 1) NS.cinematics.playStory('epilogue', NS.story.EPILOGUE);
+      }
+    }
     updateWindowTitle();
   }
 
@@ -271,6 +279,7 @@
 
   function onBossSpawn(e) {
     G.bossIntro = { e, t: 0 };
+    if (NS.story.BOSS[e.type]) NS.cinematics.playStory('boss-' + e.type, NS.story.BOSS[e.type].map(l => ({ who: l.who, text: l.text })), { boss: e.type });
     screenShake.trigger(5, 500);
     bossHorn();
   }

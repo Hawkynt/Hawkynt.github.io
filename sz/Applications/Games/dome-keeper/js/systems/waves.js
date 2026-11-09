@@ -158,6 +158,7 @@
     if (!reinforcement) {
       ++G.waveNumber;
       ++G.siteNights;
+      NS.meta.onNight();
     }
     G.waveActive = true;
 
@@ -178,7 +179,7 @@
       speed: (15 + Math.min(34, threat * 2.1)) * season.speed
     };
     // The night's budget: grows with the threat, the moon and the season
-    let budget = Math.min(40, 2 + threat * 0.85 + 0.012 * threat * threat) * moonStrength(G.world.day) * season.count * (reinforcement ? 0.5 : 1);
+    let budget = Math.min(40, 2 + threat * 0.85 + 0.012 * threat * threat) * moonStrength(G.world.day) * season.count * (reinforcement ? 0.5 : 1) * NS.meta.twist().swarm;
     const firstNew = G.enemies.length;
     const bias = SEASON_ENEMY_BIAS[season.key] || {};
     const wb = { blizzard: { burrower: 1.6, flyer: 0.5, diver: 0.5 }, storm: { flyer: 0.6, diver: 0.6 } }[G.weather.kind] || {};
@@ -254,6 +255,7 @@
     const pts = Math.round((10 + G.waveNumber * 5) * T.score * (e.elite ? 3 : 1));
     G.score += pts;
     G.enemies.splice(i, 1);
+    NS.meta.deed('kills', 1);
     const pitch = { swarmer: 1.6, flyer: 1.2, diver: 1.3, crawler: 0.7, burrower: 0.8, spitter: 1, splitter: 0.9, mender: 1.1, behemoth: 0.5, queen: 0.6 }[e.type] || 1;
     SZ.GameAudio.play(e.boss || e.type === 'crawler' ? 'explode' : 'smallExplode', { pitch: pitch * (0.9 + Math.random() * 0.2), volume: e.type === 'swarmer' ? 0.5 : 1 });
     if (e.type === 'mender')
@@ -632,6 +634,7 @@
     if (attacker && G.unlockedTools.damageReflect && G.enemies.includes(attacker))
       applyDamageToEnemy(attacker, Math.ceil(effectiveDmg * 0.15 * getEffectiveLevel('damageReflect')));
     G.domeHP -= effectiveDmg;
+    NS.meta.onDomeHit();
     if (G.domeHP <= 0 && G.unlockedTools.lastStand && !G.lastStandUsed) {
       G.domeHP = 1;
       G.lastStandUsed = true;
@@ -690,6 +693,7 @@
       SZ.GameAudio.play('explode');
       SZ.GameAudio.play('lose');
       addHighScore(G.waveNumber, G.score);
+      NS.meta.onGameOver();
       clearSave();
       NS.app.updateWindowTitle();
       return true;

@@ -95,6 +95,8 @@
   let touchPending = null;   // first tap of a touch placement: { col, row }
 
   canvas.addEventListener('pointerdown', (e) => {
+    // the keyboard follows the pointer into the game's window inside the desktop
+    if (window.focus) window.focus();
     readPointer(e);
     kbCursor.active = false;
     if (G.cine) {
@@ -184,10 +186,10 @@
       return;
     }
 
-    // Any key skips a cinematic
+    // Any key skips a cinematic (in a story scene it turns the page; Esc skips the scene)
     if (G.cine) {
       e.preventDefault();
-      skipCine();
+      skipCine(code === 'Escape');
       return;
     }
 

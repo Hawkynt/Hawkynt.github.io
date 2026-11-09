@@ -103,6 +103,7 @@
 
   // What a chest holds: rare ore of its depth plus points
   function grantChestTreasure(ch) {
+    NS.meta.deed('chests', 1);
     const pools = [['silver', 'gold', 'quartz', 'cobalt'], ['redstone', 'emerald', 'diamond', 'ruby'], ['titanium', 'sapphire', 'uranium', 'amethyst', 'opal']];
     const pool = pools[ch.band];
     const rng = makeRng(chestSeed() ^ (ch.r * 977 + ch.c));

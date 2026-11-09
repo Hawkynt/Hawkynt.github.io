@@ -45,9 +45,9 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 |---|---|---|---|---|---|---|---|---|
 | Space Mining | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | colony skins; Hangar (liveries, beams, plumes), festivals and soundtrack done; docking banks and the trip goes on |
 | Card Games | ◐ | ❌ | ◐ | ◐ | ✅ | ✅ | ◐ | perk tree, festivals, quests/streak, per-variant mastery |
-| Tower Defense | ◐ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): 36 achievements, daily quests and streak, six festivals with token track, 14 tower skins, Daily Siege with twists, Goals panel; story cinematics still thin |
-| Dome Keeper | ◐ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | story arc, modes, keepers/dome skins, goals, festivals |
-| Space Combat | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics + cast, goals, festivals, autosave |
+| Tower Defense | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes with a cast, 36 achievements, daily quests and streak, six festivals with token track, 14 tower skins, Daily Siege with twists, Goals panel |
+| Dome Keeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes, 25 achievements, quests and streak, festivals, 13 dome skins, Daily Run with twists (shared goals/story layer) |
+| Space Combat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 liveries (shared goals/story layer); mid-mission autosave still open |
 | Space Invaders | ❌ | ✅ | ❌ | ❌ | ◐ | ◐ | ❌ | cinematics, goals, festivals, Zen/Daily, autosave |
 | Platformer | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics + cast, goals, festivals |
 | Physics Puzzle | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics, goals, festivals, level-pack collection |

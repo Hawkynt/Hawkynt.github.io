@@ -134,6 +134,7 @@
       seed = (seed * 48271 + 11) & 0x7fffffff;
     G.site = NS.biomes.newSite(oldSite.index + 1, seed);
     generateUnderground(makeRng(G.site.seed));
+    NS.meta.onSite();
 
     // Everything that belonged to the old site stays behind
     NS.mining.cancelMining();

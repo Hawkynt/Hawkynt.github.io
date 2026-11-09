@@ -52,6 +52,10 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twenty-four campaign ma
 - [x] As a player, I can hear building, upgrades, sales, each tower family firing, impacts, shield breaks, crits, deaths, leaks, wave starts and clears, bosses and abilities, all throttled so a full board stays pleasant
 - [x] As a player, I can mute all games with the shared sound button
 
+### Story
+- [x] As a player, I meet a cast in letterboxed story scenes with pixel portraits - Warden Maren, Tinker Bram, Lio the Scout and the Ashen Sovereign who sends the hordes - typed out line by line: a prologue before the first map, an arrival and a farewell for each of the six regions, a line from each of the seven bosses as it first marches in (with its own portrait) and an epilogue after the last map
+- [x] As a player, I can turn a scene's pages with a click or a key, skip a scene with Esc, see each scene once and watch every scene seen again from the Goals panel's Story tab
+
 ### Goals, festivals, skins and the Daily Siege
 - [x] As a player, I can earn 36 achievements from my lifetime statistics (monsters, bosses, waves held, maps cleared, three-star clears, stars, towers built and upgraded, specializations, gold, best wave, Daily Sieges, the day streak, quests, festivals), each paying research
 - [x] As a player, I get three daily quests (the same for everyone each day, each a different kind) that pay research, and a day streak for playing on consecutive days
@@ -137,7 +141,8 @@ Plain browser scripts without a build step. Every file is one IIFE that adds its
 | `js/ui/research-screen.js` | The zoomable research screen with its camera, cards and keyboard control. |
 | `js/ui/ability-bar.js` | Airstrike planes, aiming overlays and the ability buttons. |
 | `js/ui/relics-panel.js` | The relics overlay. |
-| `js/ui/goals-panel.js` | The Goals overlay (today's quests and festival track, achievements, tower skins, the Daily Siege) and the unlock toasts. |
+| `js/ui/goals-panel.js` | The Goals overlay (today's quests and festival track, achievements, tower skins, the Daily Siege, the story so far) and the unlock toasts. |
+| `js/data/story.js` | The cast and the story scenes: prologue, region arrivals and farewells, boss lines, epilogue. |
 | `js/ui/cinematics.js` | World-map travel, map fly-over intros, outros and reward reveals. |
 | `js/ui/hud.js` | Top bar (lives, gold, wave, next wave, speeds), next-level button and boss bar. |
 | `js/ui/build-bar.js` | The build bar with one card per tower family. |
