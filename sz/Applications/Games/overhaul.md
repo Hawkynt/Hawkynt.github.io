@@ -44,7 +44,7 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 | Game | Story | Tech tree | Seasons | Goals | Cosmetics | Modes | Autosave | Gap to close |
 |---|---|---|---|---|---|---|---|---|
 | Space Mining | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | colony skins; Hangar (liveries, beams, plumes), festivals and soundtrack done; docking banks and the trip goes on |
-| Card Games | ◐ | ❌ | ◐ | ◐ | ✅ | ✅ | ◐ | perk tree, festivals, quests/streak, per-variant mastery |
+| Card Games | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ◐ | November 2026: story scenes with a cast, family and collection mastery, 19 achievements, quests and streak, festivals, 11 felts (shared goals/story layer); perk tree still open |
 | Tower Defense | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes with a cast, 36 achievements, daily quests and streak, six festivals with token track, 14 tower skins, Daily Siege with twists, Goals panel |
 | Dome Keeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes, 25 achievements, quests and streak, festivals, 13 dome skins, Daily Run with twists (shared goals/story layer) |
 | Space Combat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 liveries (shared goals/story layer); mid-mission autosave still open |

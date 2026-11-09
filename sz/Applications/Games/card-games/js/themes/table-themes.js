@@ -231,7 +231,13 @@
   }
 
   CT.TABLE_THEMES = {};
-  for (const id of Object.keys(PAINTERS)) {
+  /* a felt table added later (the goals layer's festival and deed felts) */
+  CT.addFeltTable = function(id, name, colors, unlock) {
+    PAINTERS[id] = { name, preview: colors[1], unlock, paint: felt({ light: colors[0], base: colors[1], dark: colors[2] }) };
+    register(id);
+  };
+  for (const id of Object.keys(PAINTERS)) register(id);
+  function register(id) {
     const p = PAINTERS[id];
     CT.TABLE_THEMES[id] = {
       name: p.name,

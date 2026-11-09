@@ -35,6 +35,9 @@
     return SZ.CardGames && SZ.CardGames.profile;
   }
   function unlocked(kind, id) {
+    /* felts from the goals layer unlock there */
+    const T = kind === 'table' && CT.TABLE_THEMES[id];
+    if (T && T.unlock && T.unlock.goal) return !!(SZ.CardGames.meta && SZ.CardGames.meta.goals && SZ.CardGames.meta.goals.owns(T.unlock.goal));
     const P = profile();
     return !P || P.isUnlocked(kind, id);
   }
@@ -138,7 +141,7 @@
       selectFrame(cx, r, CT.activeTheme.table === id, hov);
       if (!unlocked('table', id)) lockOverlay(cx, r, th);
       label(cx, th.name, r.x + r.w / 2, r.y + r.h + 9, '#d8c8a0', 9);
-      if (hov) hoverHint = th.name + (unlocked('table', id) ? '' : '  —  ' + profile().unlockHint(th));
+      if (hov) hoverHint = th.name + (unlocked('table', id) ? '' : '  —  ' + (th.unlock && th.unlock.goal ? SZ.CardGames.meta.goals.unlockText(th.unlock.goal) : profile().unlockHint(th)));
     });
 
     /* card backs */
