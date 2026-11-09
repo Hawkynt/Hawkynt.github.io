@@ -85,6 +85,7 @@
     ++G.save.stats.levels;
     G.lastShardGain = gained;
     writeSave();
+    NS.meta.onSolved(G, stars, gained, SZ.PuzzleCore.isPerfect(G.puzzle));
     addHighScore(G.level.name, stars);
     G.panelAnim = { at: G.time, starPlayed: [false, false, false] };
     screenShake.trigger(5, 250);

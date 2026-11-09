@@ -35,7 +35,7 @@
       ctx.translate(-G.hero.x, -(G.hero.y + 16));
     }
     const bob = G.hero.pose === 'idle' && !G.winSeq ? Math.sin(G.time * 2.2) * 1.5 : 0;
-    SZ.PuzzleArt.drawHero(ctx, G.hero.x, G.hero.y + bob, G.hero.dir, G.hero.pose, G.hero.t, ROBES[G.save.robe] || ROBES.violet);
+    SZ.PuzzleArt.drawHero(ctx, G.hero.x, G.hero.y + bob, G.hero.dir, G.hero.pose, G.hero.t, NS.meta.robe() || ROBES[G.save.robe] || ROBES.violet);
     ctx.restore();
   }
 

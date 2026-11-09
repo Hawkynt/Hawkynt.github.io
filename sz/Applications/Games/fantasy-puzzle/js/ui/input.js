@@ -341,6 +341,9 @@
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
         break;
+      case 'goals':
+        NS.meta.open();
+        break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');
         break;
