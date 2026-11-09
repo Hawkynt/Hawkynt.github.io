@@ -43,6 +43,7 @@
       audio.play('error');
       return;
     }
+    G.daily = null;
     G.currentMap = G.mapSelectIndex;
     G.introNext = true;
     requestNewGame();
@@ -153,7 +154,9 @@
     ctx.textBaseline = 'middle';
     fitText('Campaign', pad + 16, 8 + hh / 2 + 1, 220, 22, { weight: 'bold', color: UI.gold });
     ctx.textAlign = 'right';
-    fitText(`[[star]] ${totalStars()} / ${MAPS.length * 3}`, G.UW - pad - 410, 8 + hh / 2 + 1, Math.max(40, G.UW - pad - 410 - 150), 16, { weight: 'bold', color: '#ffffff' });
+    fitText(`[[star]] ${totalStars()} / ${MAPS.length * 3}`, G.UW - pad - 634, 8 + hh / 2 + 1, Math.max(40, G.UW - pad - 634 - 150), 16, { weight: 'bold', color: '#ffffff' });
+    uiButton('ms-daily', G.UW - pad - 624, 16, 110, hh - 16, 'Daily Siege', { px: 12, style: 'gold', onClick: () => NS.goalsPanel.openGoals('daily'), tip: () => ['Daily Siege', 'One map and one twist for everyone today'] });
+    uiButton('ms-goals', G.UW - pad - 508, 16, 102, hh - 16, `Goals ${Object.keys(G.meta.ach || {}).length}/${NS.goals.ACHIEVEMENTS.length}`, { px: 12, onClick: () => NS.goalsPanel.openGoals(), tip: () => ['Goals', 'Quests, festival, achievements and tower skins'] });
     uiButton('ms-relics', G.UW - pad - 400, 16, 120, hh - 16, `Relics ${(G.meta.relics || []).length}/${RELICS.length}`, { px: 12, icon: 'r_seal', key: 'K', onClick: openRelics });
     uiButton('ms-research', G.UW - pad - 274, 16, 156, hh - 16, `Research · ${G.meta.rp}`, { px: 12, icon: 'flask', key: 'R', onClick: () => openResearch() });
     uiButton('ms-back', G.UW - pad - 108, 16, 96, hh - 16, 'Back', { px: 13, key: 'Esc', onClick: () => NS.actions.quitToTitle() });

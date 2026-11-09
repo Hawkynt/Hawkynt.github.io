@@ -157,6 +157,7 @@
     addShake(1.5, 80);
     audio.play(def.trap ? 'click' : 'drop', def.trap ? { pitch: 0.8 } : undefined);
     floatingText.add(tower.x, tower.y - 22, `-${def.cost}`, { color: '#ffd75a', font: 'bold 11px sans-serif' });
+    NS.deeds.onBuild();
     return true;
   }
 
@@ -195,6 +196,7 @@
     floatingText.add(tower.x, tower.y - 30, tower.tier === BRANCH_TIER ? towerName(tower) + '!' : tower.tier === MAX_TIER ? 'Mastered!' : `Tier ${toRoman(tower.tier)}!`, { color: '#ffd75a', font: 'bold 13px sans-serif' });
     screenShake.trigger(2, 80);
     audio.play('powerup', { pitch: 0.85 + tower.tier * 0.08 });
+    NS.deeds.onUpgrade(tower.tier === BRANCH_TIER);
     return true;
   }
 

@@ -27,6 +27,16 @@
     return rampOf(def.color);
   }
 
+  /* the equipped tower skin tints the stone and wood and recolours the trim; the art cache keys
+     on it, so a change repaints the towers once */
+  let skin = null;
+  function setSkin(s) {
+    skin = s && s.mat ? s : null;
+  }
+  function skinMat(ramp) {
+    return skin ? mixRamp(ramp, skin.mat, skin.t) : ramp;
+  }
+
   function mixRamp(ramp, hex, t) {
     const [r2, g2, b2] = parseHex(hex);
     return ramp.map(c => {
@@ -49,8 +59,8 @@
       const top = 4 + (tier >= 4 && branch === 0 ? 3 : 0);
       const bodyY = top + 8;
       const bodyH = Ht - 4 - bodyY + 1;
-      const mat = tier === 1 ? RAMPS.wood : tier <= 3 ? RAMPS.stone : mixRamp(branch === 1 ? RAMPS.metal : RAMPS.stone, def.color, 0.32);
-      const gold = RAMPS.gold;
+      const mat = skinMat(tier === 1 ? RAMPS.wood : tier <= 3 ? RAMPS.stone : mixRamp(branch === 1 ? RAMPS.metal : RAMPS.stone, def.color, 0.32));
+      const gold = skin && skin.trim ? rampOf(skin.trim) : RAMPS.gold;
       // Foundation shadow / foot
       ellipseFill(g, 10, Ht - 4, 9, 3.5, mat[1]);
       if (tier === 1) {
@@ -366,7 +376,7 @@
   const towerArtCache = {};
 
   function towerArt(typeIndex, tier, branch) {
-    const key = typeIndex + ':' + tier + ':' + branch;
+    const key = typeIndex + ':' + tier + ':' + branch + ':' + (skin ? skin.id : '');
     let a = towerArtCache[key];
     if (a) return a;
     const def = TOWER_TYPES[typeIndex];
@@ -569,6 +579,6 @@
     drawTowerSprite({ type: typeIndex, tier, branch: -1, angle: -Math.PI / 2, col: 0, row: 0, recoil: 0, hp: 1, maxHp: 1 }, x, y);
   }
 
-  NS.towerArt = { drawTowerSprite, muzzleOf, drawTowerIcon, drawTowerIconWorld };
+  NS.towerArt = { drawTowerSprite, muzzleOf, drawTowerIcon, drawTowerIconWorld, setSkin };
 
 })();

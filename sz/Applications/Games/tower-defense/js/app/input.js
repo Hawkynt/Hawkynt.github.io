@@ -191,6 +191,12 @@
       return;
     }
 
+    if (G.overlay === 'goals') {
+      if (code === 'Escape' || code === 'Enter' || code === 'Space') NS.goalsPanel.close();
+      e.preventDefault();
+      return;
+    }
+
     if (G.overlay === 'relics') {
       if (code === 'Escape' || code === 'Enter' || code === 'Space') G.overlay = null;
       e.preventDefault();

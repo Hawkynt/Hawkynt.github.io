@@ -1,6 +1,6 @@
 /* core/progress.js -- high scores and campaign progress (meta): stars, best waves, research, relics.
    Owns state: G.meta, G.lastResult
-   Reads: constants, enemyTypes, maps, env, research, bossRewards and the shared state G. */
+   Reads: goals, deeds, constants, enemyTypes, maps, env, research, bossRewards and the shared state G. */
 ;(function() {
   'use strict';
 
@@ -107,6 +107,12 @@
       }
       saveMeta();
     }
+    // the keep-coming-back layer (statistics, achievements, quests, festival, skins, Daily Siege)
+    if (d && typeof d === 'object')
+      for (const k of ['stats', 'ach', 'quests', 'streak', 'festival', 'skins', 'daily'])
+        if (d[k] && typeof d[k] === 'object') G.meta[k] = d[k];
+    if (NS.deeds && NS.deeds.init) NS.deeds.init();
+    else if (NS.goals) NS.goals.repair(G.meta);
   }
 
   function saveMeta() {
