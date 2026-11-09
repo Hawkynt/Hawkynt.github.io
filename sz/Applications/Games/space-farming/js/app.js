@@ -56,7 +56,7 @@
     G.frameDt = Math.max(0.001, dt);
     G.uiTime += dt;
 
-    if (!G.dialog)
+    if (!G.dialog && !G.hold)
       updateGame(dt);
     if (G.state === STATE_PLAYING && !G.dialog) {
       G.animT += dt;
@@ -149,6 +149,9 @@
         break;
       case 'music':
         if (SZ.GameMusic) SZ.GameMusic.toggle();
+        break;
+      case 'goals':
+        NS.meta.open();
         break;
       case 'controls':
         SZ.Dialog.show('controlsBackdrop');

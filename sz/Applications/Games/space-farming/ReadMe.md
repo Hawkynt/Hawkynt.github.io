@@ -228,6 +228,15 @@ All buildings can be upgraded from L1 to L6 (5 upgrades). Each upgrade costs 50%
 | Grow Lamp | +15% night growth, range 1 | +40% night growth, range 6 |
 | Pest Zapper | Range 2 | Range 7 |
 
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-space-farming` and `sz-story-space-farming`):
+
+- [x] As a player, I earn 16 achievements (harvests, animal products, days, expansions, research, credits earned, the streak, quests, festivals), each paying credits
+- [x] As a player, I get three daily quests, a day streak and real-date festival tracks (separate from the farm's own seasons), paying credits and festival fence paints
+- [x] As a player, I can unlock and apply 12 fence paints to the fence around my field
+- [x] As a player, I follow the settler Juno, Dr. Reyes, the farm robot SPUD and Baron Krell: an arrival scene and scenes at the first harvest, the first expansion, the first storm, week four and the first million credits; the farm holds while they talk, and every scene can be watched again under Game > Goals and Story
+
 ## 🎵 Soundtrack
 
 The soundtrack comes from the shared `SZ.GameMusic` engine: the farm's weeks take turns with four themes (a sunny funk, a warm synthwave, an easy house groove and a bright chiptune) and every week of the farm plays a song of its own made from its theme; the title has a calm menu theme. Each song is arranged by the shared engine into an endless one (intro, groove, build-up, drop, breakdown, every pass a little different). Nights quieten it, rain and snow keep it soft, dust storms and thunderstorms raise the intensity: layers come in and the music pushes into the drop. The theme logic lives in `js/core/music.js`; Game > Music On/Off switches it (shared by every game).

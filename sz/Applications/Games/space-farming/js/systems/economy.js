@@ -31,6 +31,7 @@
         const earned = Math.round(count * getEffectiveSellPrice(crop) * bulk);
         G.credits += earned;
         totalEarned += earned;
+        NS.meta.onEarn(earned);
         delete G.inventory[crop.name];
       }
     }

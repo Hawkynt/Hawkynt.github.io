@@ -191,6 +191,7 @@
       const dir = G.expansionDirection;
       const tiles = expansionTiles();
       if (NS.tryPurchaseTreeNode(n)) {
+        NS.meta.onExpand();
         // the strip is now part of the grid: west and north strips shifted the indices
         const at = (tl) => tileCenter(tl.c + (dir === 0 ? 1 : 0), tl.r + (dir === 2 ? 1 : 0));
         for (const tl of tiles) {

@@ -97,6 +97,7 @@
   function triggerWeather(kind) {
     G.weatherType = kind || forecastWeather();
     G.nextWeather = null;
+    if (G.weatherType === 'thunderstorm' || G.weatherType === 'dust') NS.meta.onStorm();
     G.weatherTimer = G.weatherType === WEATHER_SNOW || G.weatherType === WEATHER_DUST ? 12 : WEATHER_DURATION;
     switch (G.weatherType) {
       case WEATHER_SOLAR_FLARE:

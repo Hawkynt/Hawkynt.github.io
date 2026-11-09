@@ -229,6 +229,7 @@
     }
     ++G.techBoughtTotal;
     NS.saveGame();
+    NS.meta.onTech();
     return true;
   }
 

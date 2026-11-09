@@ -25,6 +25,7 @@
     if (curDay > prevDay) {
       ++G.dayCount;
       updateWindowTitle();
+      NS.meta.onDay(G.dayCount);
     }
 
     // Day/night phase: 0..1 within each game day

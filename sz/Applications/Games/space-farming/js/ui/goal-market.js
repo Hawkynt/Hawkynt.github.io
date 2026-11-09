@@ -107,6 +107,7 @@
     const earned = Math.round(count * price * bulk);
     G.credits += earned;
     G.stats.earned += earned;
+    NS.meta.onEarn(earned);
     delete G.inventory[name];
     SZ.GameAudio.play('coin');
     flyCoins(Math.min(8, 2 + Math.ceil(earned / 60)), G.pointerUX, G.pointerUY);
