@@ -107,6 +107,8 @@
     if (mode === 'trial' && rec && rec.ghost)
       r.ghost = Prog.decodeGhost(rec.ghost);
     G.run = r;
+    NS.meta.onLevel(r);
+    if (mode === 'endless') NS.meta.onEndless(r.stage);
     const vz = visibleRect();
     r.zoom = Math.max(ZOOM, (vz.y1 - vz.y0) / (level.rows * TS - 96));
     Camera.snapCamera();

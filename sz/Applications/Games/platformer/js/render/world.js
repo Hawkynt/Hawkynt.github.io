@@ -324,6 +324,7 @@
     const frame = heroFrame(r, pose, dt);
     const s = Spr.hero(Session.currentSkin(), pose, frame);
     const x = p.x + p.w / 2, y = p.y + p.h;
+    NS.meta.drawAura(ctx, x, y, G.time);
     /* squash and stretch */
     r.squash = Math.max(0, r.squash - dt * 5);
     r.stretch = Math.max(0, r.stretch - dt * 5);

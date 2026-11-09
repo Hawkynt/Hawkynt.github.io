@@ -36,6 +36,7 @@
   function finishLevel() {
     const r = G.run;
     const coins = Math.floor(r.coinsRun);
+    NS.meta.onFinish(r);
     if (r.mode === 'endless') {
       /* straight into the next stage, keeping hearts and coins */
       const carry = { seed: r.seed, stage: r.stage + 1, hearts: r.hearts, coins: r.coinsRun, gemBank: r.gemBank };

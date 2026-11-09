@@ -49,7 +49,7 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 | Dome Keeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes, 25 achievements, quests and streak, festivals, 13 dome skins, Daily Run with twists (shared goals/story layer) |
 | Space Combat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 liveries (shared goals/story layer); mid-mission autosave still open |
 | Space Invaders | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ❌ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 ship auras (shared goals/story layer); Zen mode and autosave still open |
-| Platformer | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics + cast, goals, festivals |
+| Platformer | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 19 achievements, quests and streak, festivals, 12 hero auras (shared goals/story layer) |
 | Physics Puzzle | ❌ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics, goals, festivals, level-pack collection |
 | Fantasy Puzzle | ◐ | ✅ | ❌ | ❌ | ❌ | ✅ | ◐ | cinematics, goals, festivals, mage robes/staves |
 | Cooking Game | ◐ | ✅ | ❌ | ❌ | ◐ | ✅ | ◐ | cinematics, goals, festival menus, kitchen themes |
