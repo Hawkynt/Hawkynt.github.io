@@ -178,6 +178,7 @@
     if (item === 'turbo') {
       if (isPlayer) {
         G.boostActive = true;
+        NS.meta.onBoost();
         G.boostTimer = 1.2;
         SZ.GameAudio.play('powerup');
       } else {

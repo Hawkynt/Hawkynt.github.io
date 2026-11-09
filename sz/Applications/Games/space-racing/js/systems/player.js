@@ -37,6 +37,7 @@
       G.launchWindow -= dt;
       if (throttleHeld && G.stallTimer <= 0) {
         G.boostActive = true;
+        NS.meta.onBoost();
         G.boostTimer = 1.0 + (treeLevel('b_launch') > 0 ? 0.5 : 0);
         G.bonusPerfectStart = true;
         floatingText.add(G.ship.x, G.ship.y - 40, 'PERFECT START!', { color: '#ffd75a', font: 'bold 20px sans-serif' });
@@ -83,12 +84,14 @@
     } else if (G.drifting) {
       if (G.driftTime >= DRIFT_TIER2) {
         G.boostActive = true;
+        NS.meta.onBoost();
         G.boostTimer = 1.1;
         ++G.bonusMegaTurbos;
         floatingText.add(G.ship.x, G.ship.y - 40, 'MEGA TURBO!', { color: '#ffaa3a', font: 'bold 20px sans-serif' });
         SZ.GameAudio.play('powerup', { pitch: 1.2 });
       } else if (G.driftTime >= DRIFT_TIER1) {
         G.boostActive = true;
+        NS.meta.onBoost();
         G.boostTimer = 0.6;
         floatingText.add(G.ship.x, G.ship.y - 40, 'TURBO!', { color: '#5ab8ff', font: 'bold 18px sans-serif' });
         SZ.GameAudio.play('whoosh', { pitch: 1.4 });
@@ -103,6 +106,7 @@
       if (!G.boostActive && G.boostMeter >= boostCost) {
         G.boostMeter -= boostCost;
         G.boostActive = true;
+        NS.meta.onBoost();
         G.boostTimer = 1.0 * stats.boost;
         SZ.GameAudio.play('whoosh', { pitch: 1.6 });
         screenShake.trigger(4, 150);
