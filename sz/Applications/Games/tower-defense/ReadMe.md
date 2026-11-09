@@ -52,6 +52,14 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twenty-four campaign ma
 - [x] As a player, I can hear building, upgrades, sales, each tower family firing, impacts, shield breaks, crits, deaths, leaks, wave starts and clears, bosses and abilities, all throttled so a full board stays pleasant
 - [x] As a player, I can mute all games with the shared sound button
 
+### Goals, festivals, skins and the Daily Siege
+- [x] As a player, I can earn 36 achievements from my lifetime statistics (monsters, bosses, waves held, maps cleared, three-star clears, stars, towers built and upgraded, specializations, gold, best wave, Daily Sieges, the day streak, quests, festivals), each paying research
+- [x] As a player, I get three daily quests (the same for everyone each day, each a different kind) that pay research, and a day streak for playing on consecutive days
+- [x] As a player, I collect festival tokens from waves, kills, bosses, cleared maps and the Daily Siege during the six real-date festivals (Frostfall, Bloom Festival, Sunfest, Harvest Moon, Hollow Night, Starfall Eve); each festival's six-tier track pays research and a festival tower skin
+- [x] As a player, I can unlock 13 tower skins by deeds and festivals and equip one in the Goals panel; it tints the stone and wood of every tower and recolours its trim
+- [x] As a player, I can play the Daily Siege: one map and one twist (Swift Horde, Iron Tide, Gold Rush, Thin Walls, Empty Coffers, Storm March) for everyone each day; holding a wave counts it as played and my furthest wave of the day is kept
+- [x] As a player, I see a small toast for every achievement, quest, festival reward and skin I unlock
+
 ### Controls
 - [x] As a player, I can play with the mouse, with touch (tap to preview a tower, tap again to build) or entirely with the keyboard
 - [x] As a player, I can read help pages about the basics, towers, enemies and controls
@@ -86,7 +94,7 @@ Research screen: mouse wheel or +/- zooms, drag pans, arrow keys select, Enter b
 
 ## Saves
 
-The game in progress is stored under `sz-tower-defense-save-v2` (older `-save-v1` games are converted on first load; towers that no longer fit a redesigned map are refunded). Stars, best waves, research, relics and boss trophies live separately under `sz-tower-defense-meta-v1`, so starting a new game never touches them. Maps are stored by their index; maps added later are appended and placed into the campaign by its play order, so older progress and saved games keep pointing at the same maps.
+The game in progress is stored under `sz-tower-defense-save-v2` (older `-save-v1` games are converted on first load; towers that no longer fit a redesigned map are refunded). Stars, best waves, research, relics, boss trophies, lifetime statistics, achievements, today's quests, the streak, the festival track, owned and equipped skins and the Daily Siege best live separately under `sz-tower-defense-meta-v1` (older meta saves gain the new fields with defaults), so starting a new game never touches them. Maps are stored by their index; maps added later are appended and placed into the campaign by its play order, so older progress and saved games keep pointing at the same maps.
 
 ## Architecture
 
@@ -109,6 +117,8 @@ Plain browser scripts without a build step. Every file is one IIFE that adds its
 | `js/world/research.js` | The persistent research tree: nodes, levels, buying and research points. |
 | `js/world/boss-rewards.js` | Boss tower unlocks and relics with their icons. |
 | `js/world/abilities.js` | Airstrike, deep freeze and gold rush: research nodes, cooldowns and effects. |
+| `js/core/goals.js` | Pure rules for the keep-coming-back layer: statistics, 36 achievements, daily quests and the streak, the six festivals and their token track, 14 tower skins, the Daily Siege recipe and twists, save repair. |
+| `js/world/deeds.js` | Turns kills, bosses, waves, towers, upgrades, cleared maps and Daily Sieges into statistics, quest progress, tokens and unlocks; queues unlock toasts; starts the Daily Siege and applies its twist; writes the meta save after changes. |
 | `js/core/progress.js` | High scores and campaign progress (meta): stars, best waves, research, relics. |
 | `js/render/terrain.js` | Biome terrain baked once per map, props, gates and animated liquids. |
 | `js/render/tower-art.js` | Tower bases, rotating heads, traps and mines, cached per tier and branch, and tower icons for the UI. |
@@ -127,6 +137,7 @@ Plain browser scripts without a build step. Every file is one IIFE that adds its
 | `js/ui/research-screen.js` | The zoomable research screen with its camera, cards and keyboard control. |
 | `js/ui/ability-bar.js` | Airstrike planes, aiming overlays and the ability buttons. |
 | `js/ui/relics-panel.js` | The relics overlay. |
+| `js/ui/goals-panel.js` | The Goals overlay (today's quests and festival track, achievements, tower skins, the Daily Siege) and the unlock toasts. |
 | `js/ui/cinematics.js` | World-map travel, map fly-over intros, outros and reward reveals. |
 | `js/ui/hud.js` | Top bar (lives, gold, wave, next wave, speeds), next-level button and boss bar. |
 | `js/ui/build-bar.js` | The build bar with one card per tower family. |
@@ -142,6 +153,7 @@ Plain browser scripts without a build step. Every file is one IIFE that adds its
 | `js/app/menu.js` | Menu-bar actions, resizing and desktop window messages. |
 | `js/app/main.js` | Start-up: dialogs, menu bar, first layout, loading scores, progress and the saved game, and the first frame. |
 | `tests/harness.js` | Node test harness: a fake canvas, DOM and storage, loading the scripts in `index.html` order. |
+| `tests/goals.test.js` | The goals rules: save repair, achievements, quests and the streak, festivals and their track, skins, the Daily Siege. Run with `node tests/goals.test.js`. |
 | `tests/towers.test.js` | Tower behaviour over time (a battered tower's hurt flash fades out). Run with `node tests/towers.test.js`. |
 
 ## 🎵 Soundtrack

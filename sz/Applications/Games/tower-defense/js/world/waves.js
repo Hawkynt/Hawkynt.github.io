@@ -115,6 +115,7 @@
   function mapCleared() {
     G.cleared = true;
     recordResult(true, G.currentWave);
+    NS.deeds.onMapCleared(G.lastResult.stars);
     const newStars = Math.max(0, G.lastResult.stars - G.lastResult.prevStars);
     const rp = awardResearch(true, newStars);
     for (let i = 0; i < 5; ++i)
@@ -239,12 +240,12 @@
     const def = ENEMY_TYPES[type];
     const scale = waveHpScale(Math.max(1, G.currentWave));
     const pi = pathIndex === undefined ? (spawnCounter++ % G.paths.length) : pathIndex;
-    const hp = Math.floor(def.hp * scale * (p.elite ? ELITE_HP : 1));
+    const hp = Math.floor(def.hp * scale * (p.elite ? ELITE_HP : 1) * NS.deeds.twist().hp);
     const shield = def.shielded ? Math.floor(hp * def.shielded) : 0;
     const e = {
       type, elite: p.elite,
       hp, maxHp: hp,
-      speed: def.speed * (p.elite ? 1.1 : 1),
+      speed: def.speed * (p.elite ? 1.1 : 1) * NS.deeds.twist().speed,
       bounty: Math.round(def.bounty * (1 + G.currentWave * 0.02) * (p.elite ? 2 : 1)),
       radius: def.radius * (p.elite ? 1.15 : 1),
       armor: (def.armor || 0) + (p.elite && def.armor ? 2 : 0),
@@ -293,6 +294,7 @@
     }
     if (G.waveEnemies.length === 0 && G.enemies.length === 0 && !G.waveComplete && G.state === STATE_PLAYING) {
       G.waveComplete = true;
+      NS.deeds.onWaveHeld();
       G.waveCountdown = 3;
       G.state = STATE_BUILD;
       G.warningActive = false;

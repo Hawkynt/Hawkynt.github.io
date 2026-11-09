@@ -56,6 +56,7 @@
     NS.input.updateHover();
 
     NS.music.update(dt);
+    NS.deeds.update(dt);
     drawFrame();
     updateStatusBar();
   }

@@ -173,8 +173,9 @@
     G.currentMap = index;
     const mapDef = MAPS[G.currentMap];
     G.cleared = false;
-    G.gold = mapDef.startGold + techLevel('chest') * 25 + (carry || 0);
-    G.lives = G.runStartLives = NS.combat.startLives();
+    const tw = NS.deeds.twist();
+    G.gold = Math.round(mapDef.startGold * tw.startGold) + techLevel('chest') * 25 + (carry || 0);
+    G.lives = G.runStartLives = Math.max(1, NS.combat.startLives() + tw.lives);
     G.totalWaves = mapDef.waves;
     G.currentWave = 0;
     G.gameSpeed = 1;

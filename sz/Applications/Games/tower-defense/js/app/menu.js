@@ -53,6 +53,9 @@
       case 'relics':
         openRelics();
         break;
+      case 'goals':
+        NS.goalsPanel.openGoals();
+        break;
       case 'high-scores':
         renderHighScores();
         SZ.Dialog.show('highScoresBackdrop').then((result) => {

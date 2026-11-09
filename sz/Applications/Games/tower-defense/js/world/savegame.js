@@ -41,7 +41,7 @@
       version: SAVE_VERSION,
       map: G.currentMap,
       cleared: G.cleared,
-      gold: G.gold, lives: G.lives, runStartLives: G.runStartLives,
+      gold: G.gold, lives: G.lives, runStartLives: G.runStartLives, daily: G.daily,
       wave: G.currentWave,
       phase: st === STATE_BUILD || (st === STATE_PAUSED && G.pausedFrom === STATE_BUILD) ? 'build' : 'wave',
       gameSpeed: G.gameSpeed, autoWaveMode: G.autoWaveMode, autoWaveTimer: G.autoWaveTimer,
@@ -192,6 +192,8 @@
     G.gold = Math.max(0, Math.floor(d.gold));
     G.lives = d.lives;
     G.runStartLives = Number.isInteger(d.runStartLives) && d.runStartLives > 0 ? d.runStartLives : startLives();
+    G.daily = d.daily && d.daily.map === d.map && d.daily.twist && NS.goals.TWISTS.find(x => x.id === d.daily.twist.id)
+      ? { day: String(d.daily.day), map: d.map, twist: NS.goals.TWISTS.find(x => x.id === d.daily.twist.id), counted: !!d.daily.counted } : null;
     G.currentWave = d.wave;
     G.gameSpeed = GAME_SPEEDS.indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : 1;
     G.autoWaveMode = !!d.autoWaveMode;

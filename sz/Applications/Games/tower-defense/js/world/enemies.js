@@ -130,9 +130,11 @@
       if (s.bounty && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx)
         bounty += s.bounty;
     }
+    bounty = Math.round(bounty * NS.deeds.twist().gold);
     G.gold += bounty;
     G.goldPulse = Math.max(G.goldPulse, 0.5);
     ++G.runStats.kills;
+    NS.deeds.onKill(bounty);
     G.runStats.gold += bounty;
     if (e.lastHitBy)
       ++e.lastHitBy.kills;
@@ -182,6 +184,7 @@
       NS.savegame.clearSavedGame();
       addHighScore(MAPS[G.currentMap].name, Math.max(0, G.currentWave - 1));
       recordResult(false, Math.max(0, G.currentWave - 1));
+      NS.deeds.onRunEnd(Math.max(0, G.currentWave - 1));
       if (!G.cleared) awardResearch(false, 0);
       else G.lastRp = G.runStats.rp || 0;
       screenShake.trigger(8, 500);

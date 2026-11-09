@@ -43,6 +43,7 @@
     G.meta.bossKills = G.meta.bossKills || {};
     const first = !G.meta.bossKills[type];
     G.meta.bossKills[type] = (G.meta.bossKills[type] || 0) + 1;
+    if (NS.deeds) NS.deeds.onBoss();
     const fam = BOSS_UNLOCKS[type];
     if (fam && techLevel('unlock_' + fam) <= 0) {
       G.meta.tree['unlock_' + fam] = 1;

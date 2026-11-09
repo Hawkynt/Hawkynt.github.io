@@ -78,7 +78,11 @@
     } else if (G.overlay === 'relics') {
       G.regions = [];
       drawRelics();
+    } else if (G.overlay === 'goals') {
+      G.regions = [];
+      NS.goalsPanel.drawGoals();
     }
+    NS.goalsPanel.drawGoalToasts();
     if (G.cine) {
       G.regions = [];
       drawCineOverlay();
