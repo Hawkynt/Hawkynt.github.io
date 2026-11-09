@@ -34,7 +34,7 @@
     const v = view.visibleRect();
 
     if (G.state === 'play' && G.run) {
-      NS.shot.updatePlay(dt);
+      if (!G.hold) NS.shot.updatePlay(dt);
       if (G.state === 'play' && G.run) {
         const run = G.run;
         G.fxWorld.update(dt * (run.phase === 'flight' || run.phase === 'won' ? G.timeScale.scale : 1));

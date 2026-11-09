@@ -154,3 +154,13 @@ The page also uses the shared desktop libraries `../../shared/game-audio.js` (sy
 ## SEO Keywords
 
 physics puzzle, physics game, build and launch, slingshot game, projectile puzzle, rube goldberg, contraption game, springs and ramps, portals, TNT, glass, browser game, HTML5 game, canvas game, daily challenge, tech tree, SynthelicZ, WebOS game
+
+## 🏆 Goals and story
+
+Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-physics-puzzle` and `sz-story-physics-puzzle`):
+
+- [x] As a player, I earn 16 achievements (levels solved, one-shot solves, stars, trick shots, shots fired, Daily levels, the streak, quests, festivals), each paying coins
+- [x] As a player, I get three daily quests, a day streak and festival tracks during the six real-date festivals, paying coins and festival ball trails
+- [x] As a player, I can unlock and equip 12 ball trails that colour the trail behind every shot
+- [x] As a player, I follow Professor Cogsworth, his apprentice Mina, the robot Bolt and the Chaos Gremlin: a prologue, an arrival in every world and a finale; play holds while they talk, and every scene can be watched again under Game > Goals and Story
+

@@ -52,6 +52,7 @@
       oneShot: !!rule.oneShot, minBounces: rule.minBounces || 0
     };
     rebuildAttempt();
+    NS.meta.onLevel(G.run);
     NS.field.warmCaches();
     G.fxWorld.clear();
     G.texts.clear();
@@ -137,6 +138,7 @@
     };
     G.state = 'results';
     G.menuCursor = 0;
+    NS.meta.onSolved(run, G.results);
     NS.os.updateWindowTitle();
   }
 
