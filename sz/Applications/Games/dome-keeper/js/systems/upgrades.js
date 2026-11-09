@@ -117,6 +117,7 @@
       NS.drones.syncDrones(true);
 
     SZ.GameAudio.play('levelup');
+    NS.meta.deed('upgrades', 1);
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 12, { color: '#ffd700', speed: 2.5 });
     screenShake.trigger(4, 120);

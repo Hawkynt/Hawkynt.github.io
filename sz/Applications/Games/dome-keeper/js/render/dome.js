@@ -88,7 +88,7 @@
     ctx.globalAlpha = 0.55;
     ctx.drawImage(G.daylight > 0.5 ? sky.skyDay : sky.skyNight, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(20,60,120,0.25)';
+    ctx.fillStyle = NS.domeSkin ? NS.domeSkin.glass + '40' : 'rgba(20,60,120,0.25)';
     ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
 
     // Console and keeper silhouette inside
@@ -163,12 +163,13 @@
     ctx.strokeStyle = '#0a1830';
     ctx.stroke();
     const rg = ctx.createLinearGradient(DOME_X - R, DOME_Y - R, DOME_X + R, DOME_Y);
-    rg.addColorStop(0, '#9adcff');
-    rg.addColorStop(0.5, '#3a8ae8');
-    rg.addColorStop(1, '#1a4aa0');
+    const rim = NS.domeSkin ? NS.domeSkin.rim : ['#9adcff', '#3a8ae8', '#1a4aa0'];
+    rg.addColorStop(0, rim[0]);
+    rg.addColorStop(0.5, rim[1]);
+    rg.addColorStop(1, rim[2]);
     ctx.strokeStyle = rg;
     ctx.lineWidth = rimW;
-    ctx.shadowColor = '#4af';
+    ctx.shadowColor = rim[1];
     ctx.shadowBlur = 14 + pulse * 8 + shieldLevel * 2;
     ctx.stroke();
     ctx.shadowBlur = 0;
