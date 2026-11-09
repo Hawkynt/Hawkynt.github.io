@@ -189,6 +189,8 @@ sz/
       syntax-highlighter.css    Token color classes for syntax highlighting (26 token types)
       syntax-highlighter.js     SZ.SyntaxHighlighter (tokenizer for 19 languages, highlightBlock/highlightLine)
       game-effects.js           SZ.GameEffects (ParticleSystem, ScreenShake, FloatingText, drawGlow)
+      game-goals.js             SZ.GameGoals (achievements, daily quests, streak, festivals, cosmetics, Daily recipe, Goals panel)
+      game-story.js             SZ.GameStory (letterboxed dialogue scenes with pixel portraits)
       game-music.js             SZ.GameMusic (procedural soundtrack: styles, an endless arranger, level variants, crossfades, intensity, stingers)
     libs/                       Vendored third-party libraries (offline-capable)
       mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
@@ -1131,6 +1133,23 @@ Procedural background music for the games, no sound files. A song is data - `{ i
 Tests: `node sz/Applications/shared/tests/game-music.test.js` (arranger, sections, variants, every style scheduled on a stand-in audio context); `node sz/Applications/Games/e2e/run.js music` renders every style in a real browser, checks clipping and loudness and writes WAVs.
 
 Used by every game but the Rhythm Game: Tetris, Breakout, Bubble Bobble, Minesweeper, Cookie Clicker, Space Mining, Endless Runner, Snake, Pac-Man, Asteroids, Bomberman, Boulder Dash, Flappy Bird, Tower Defense, Dome Keeper, Space Combat, Space Invaders, Platformer, Physics Puzzle, Fantasy Puzzle, Cooking Game, Space Racing, Space Farming, Card Games, Fantasy Cards, Space Puzzle, Mind Puzzle, Illusion Puzzle and Tactical Realms.
+
+**Game Goals** (`game-goals.js`):
+
+The keep-coming-back layer, configured per game and saved under the game's own key (`sz-goals-<id>`), so no game's save format changes. `SZ.GameGoals.create({ id, title, accent, currency, pay(n), achievements, quests, tokens, cosmetics, cosmeticLabel, onEquip(id), twists, daily: { describe, start }, story, pause, resume })`:
+
+- deeds grow lifetime statistics (`deed(kind, n)`, `record(stat, value)`); achievements unlock once and pay the game's own currency through `pay`
+- three daily quests of different kinds, the same for everyone each day, and a day streak
+- the six real-date festivals (Frostfall, Bloom Festival, Sunfest, Harvest Moon, Hollow Night, Starfall Eve) with a six-tier token track paying currency and a festival cosmetic
+- cosmetics unlocked by deeds or festivals; `equip(id)` tells the game, which paints them
+- a Daily recipe (seed and twist from the date) with today's best result (`dailyRecipe()`, `dailyResult(score)`)
+- small unlock toasts and a Goals panel (Today, Achievements, cosmetics, Daily, Story) in plain DOM over the game's canvas; it pauses the game and keeps the keyboard while open
+
+**Game Story** (`game-story.js`):
+
+Story scenes over the paused game: letterboxed dialogue, a pixel portrait per speaker drawn from a few colours and a headpiece (or by the game), the lines typed out; a click, Space or Enter turns the page, Esc skips the scene. `SZ.GameStory.create({ id, cast, scenes, pause, resume })` - `play(key)` shows a scene once per save (`sz-story-<id>`), `replay(key)` from the Goals panel's Story tab.
+
+Used by: Dome Keeper, Space Combat, Space Invaders, Platformer, Physics Puzzle, Fantasy Puzzle, Cooking Game, Space Racing, Space Farming and Card Games. Tests: `node sz/Applications/shared/tests/game-goals.test.js`; every game has an `e2e/<game>.e2e.js` scenario.
 
 **Spell Check Core** (`spell-check-core.js`):
 
