@@ -50,7 +50,7 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 | Space Combat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 liveries, mission autosave with Continue |
 | Space Invaders | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes with a cast, 20 achievements, quests and streak, festivals, 12 ship auras, Zen mode, wave autosave with Continue |
 | Platformer | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 19 achievements, quests and streak, festivals, 12 hero auras (shared goals/story layer) |
-| Physics Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 ball trails (shared goals/story layer); level-pack collection still open |
+| Physics Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 ball trails, five Looking-Glass level packs (39 proven remixes) |
 | Fantasy Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 robes (shared goals/story layer) |
 | Cooking Game | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 18 achievements, quests and streak, festival menus, 12 aprons (shared goals/story layer) |
 | Space Racing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): rivals and story scenes, 17 achievements, quests and streak, festivals, 12 liveries, Daily Race, ghost replays, Time Trial, race autosave with Continue |

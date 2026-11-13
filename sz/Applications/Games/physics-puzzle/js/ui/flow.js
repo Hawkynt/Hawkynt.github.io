@@ -22,7 +22,7 @@
   }
 
   G.actions = {
-    startCampaign: NS.run.startCampaign, startTrick: NS.run.startTrick, startDaily: NS.run.startDaily, startSandbox: NS.run.startSandbox,
+    startCampaign: NS.run.startCampaign, startTrick: NS.run.startTrick, startPack: NS.run.startPack, openPacks: () => openPacks(), startDaily: NS.run.startDaily, startSandbox: NS.run.startSandbox,
     openMap: (w) => openMap(w), openTricks: () => openTricks(), openTree: (from) => openTree(from), openHelp: (from) => openHelp(from),
     title: () => { G.run = null; setScreen('title'); }, resume: () => resumeGame(), restart: () => NS.run.restartLevel(), quit: () => NS.run.quitToMenu(),
     next: () => NS.run.nextLevel(), retry: () => NS.run.retry(),
@@ -37,6 +37,10 @@
 
   function openTricks() {
     setScreen('tricks');
+  }
+
+  function openPacks() {
+    setScreen('packs');
   }
 
   let treeFrom = 'title', helpFrom = 'title';
@@ -113,6 +117,7 @@
       case 'pause': resumeGame(); break;
       case 'map': setScreen('title'); break;
       case 'tricks': setScreen('title'); break;
+      case 'packs': setScreen('title'); break;
       case 'tree': closeTree(); break;
       case 'help': closeHelp(); break;
       case 'results': NS.run.quitToMenu(); break;
@@ -120,7 +125,7 @@
   }
 
   NS.flow = {
-    screens: Screens, setScreen: setScreen, openMap: openMap, openTricks: openTricks, openTree: openTree, closeTree: closeTree,
+    screens: Screens, setScreen: setScreen, openMap: openMap, openTricks: openTricks, openPacks: openPacks, openTree: openTree, closeTree: closeTree,
     openHelp: openHelp, closeHelp: closeHelp, pauseGame: pauseGame, resumeGame: resumeGame, back: back
   };
 })();
