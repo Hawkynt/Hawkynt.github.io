@@ -26,6 +26,7 @@
       if (!G.hold) NS.sim.update(STEP);
     }
     NS.music.update(elapsed / 1000);
+    NS.checkpoint.update(elapsed / 1000);
     NS.frame.draw();
     NS.statusBar.tick(elapsed / 1000);
     prewarm();

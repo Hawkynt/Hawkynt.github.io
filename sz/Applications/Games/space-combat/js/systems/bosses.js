@@ -53,6 +53,7 @@
     G.boss = b;
     updateParts(b, 0);
     NS.meta.onBoss(b);
+    NS.checkpoint.onBoss(b);
     G.banner = { title: 'WARNING', sub: def.name + ' - ' + def.title + ' approaching', t: 0, life: 3.2, color: '#ff5c6c' };
     sfx('lose', { pitch: 0.5, volume: 0.6 });
     fx.shake(0.4);

@@ -195,6 +195,11 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | F2 | Title screen |
 | Touch | Drag to fly with auto-fire; buttons for dash, secondary, special and focus |
 
+## 💾 Mission autosave
+
+- [x] As a player, a mission in progress is autosaved every few seconds and whenever the window is hidden (`js/systems/checkpoint.js`, `sz-space-combat-mission`): the mission (campaign mission, endless wave, Daily or Boss Rush stage), its clock and objective counters, the outposts and data cores still to come, the convoy's or station's health, the boss's health, and my ship's position, hull, shield and ammunition with the score, kills and scrap
+- [x] As a player, Continue mission on the title rebuilds the mission and puts all of that back; a finished or abandoned mission clears it
+
 ## 🏆 Goals and story
 
 Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/systems/meta.js`, saved under `sz-goals-space-combat` and `sz-story-space-combat`):
