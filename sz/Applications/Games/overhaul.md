@@ -54,7 +54,7 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 | Fantasy Puzzle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 robes (shared goals/story layer) |
 | Cooking Game | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | done (November 2026): story scenes with a cast, 18 achievements, quests and streak, festival menus, 12 aprons (shared goals/story layer) |
 | Space Racing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): rivals and story scenes, 17 achievements, quests and streak, festivals, 12 liveries, Daily Race, ghost replays, Time Trial, race autosave with Continue |
-| Space Farming | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 fence paints (shared goals/story layer); extra modes still open |
+| Space Farming | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | done (November 2026): story scenes with a cast, 16 achievements, quests and streak, festivals, 12 fence paints, Relaxed, Harvest Rush and Daily Farm modes |
 
 ### Tier C — never overhauled (small, ~2–3k lines; only module split, sound, touch and digest tests)
 

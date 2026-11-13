@@ -26,6 +26,7 @@
       ++G.dayCount;
       updateWindowTitle();
       NS.meta.onDay(G.dayCount);
+      if (NS.modes.progressText()) NS.toast(NS.modes.progressText(), '#7ae08a', 'sun');
     }
 
     // Day/night phase: 0..1 within each game day
