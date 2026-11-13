@@ -23,12 +23,14 @@
     const frame = canvas.parentElement;
     const fw = Math.max(1, frame.clientWidth || K.CANVAS_W);
     const fh = Math.max(1, frame.clientHeight || K.CANVAS_H);
-    const scale = Math.min(fw / K.CANVAS_W, fh / K.CANVAS_H);
+    /* the board plus the toolbar band above it must fit; the board starts below the band */
+    const band = K.TOOLBAR_H || 0;
+    const scale = Math.min(fw / K.CANVAS_W, fh / (K.CANVAS_H + band));
     view.scale = scale;
     view.cssW = fw;
     view.cssH = fh;
     view.ox = (fw - K.CANVAS_W * scale) / 2;
-    view.oy = (fh - K.CANVAS_H * scale) / 2;
+    view.oy = (fh - (K.CANVAS_H + band) * scale) / 2 + band * scale;
     view.dpr = dpr;
     canvas.style.width = fw + 'px';
     canvas.style.height = fh + 'px';
