@@ -57,6 +57,8 @@
       Screens.drawMap();
     } else if (state === 'tricks') {
       Screens.drawTricks();
+    } else if (state === 'packs') {
+      Screens.drawPacks();
     } else if (state === 'tree') {
       Screens.drawTree();
     } else if (state === 'help') {
@@ -84,7 +86,7 @@
     G.fade = Math.max(0, G.fade - dt * FADE_RATE);
   }
 
-  const STATE_NAMES = { title: 'Title', map: 'World Map', tricks: 'Trick Shots', tree: 'Tech Tree', help: 'How to Play', play: 'Playing', pause: 'Paused', results: 'Results' };
+  const STATE_NAMES = { title: 'Title', map: 'World Map', tricks: 'Trick Shots', packs: 'Level Packs', tree: 'Tech Tree', help: 'How to Play', play: 'Playing', pause: 'Paused', results: 'Results' };
   let statusCache = '';
 
   function updateStatusBar() {

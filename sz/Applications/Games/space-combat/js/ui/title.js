@@ -82,7 +82,9 @@
     ctx.globalAlpha = 1;
 
     /* menu */
+    const saved = NS.checkpoint.load();
     const items = [
+      saved ? { id: 'continue', label: 'Continue mission', sub: saved.mode === 'campaign' ? 'Sector ' + (saved.sector + 1) + ', mission ' + (saved.index + 1) : saved.mode === 'endless' ? 'Endless wave ' + saved.wave : MODES[saved.mode].name, icon: 'target', accent: '#5cff9a', action: () => NS.checkpoint.resume() } : null,
       { id: 'campaign', label: MODES.campaign.name, sub: MODES.campaign.desc, icon: 'target', accent: MODES.campaign.color, action: () => { G.ui.mapSector = firstOpenSector(); scr.setScreen('map'); } },
       { id: 'endless', label: MODES.endless.name, sub: MODES.endless.desc, icon: 'infinity', accent: MODES.endless.color, action: () => NS.missions.startRun('endless') },
       { id: 'daily', label: MODES.daily.name, sub: MODES.daily.desc, icon: 'clock', accent: MODES.daily.color, action: () => NS.missions.startRun('daily') },
@@ -90,8 +92,8 @@
       { id: 'hangar', label: 'Hangar', sub: 'Ships and loadouts', icon: 'engine', action: () => scr.openHangar('title') },
       { id: 'tree', label: 'Tech Tree', sub: 'Permanent upgrades', icon: 'radar', action: () => scr.openTree('title') },
       { id: 'help', label: 'How to Play', sub: 'Controls, enemies, hazards', icon: 'star', action: () => scr.openHelp('title') },
-    ];
-    const bw = 340, bh = 48, gap = 8, x = 640 - bw / 2;
+    ].filter(Boolean);
+    const bw = 340, bh = saved ? 43 : 48, gap = saved ? 6 : 8, x = 640 - bw / 2;
     let y = 222;
     let hotItem = items[0];
     for (let i = 0; i < items.length; ++i) {
@@ -151,7 +153,8 @@
       hangar: 'Buy new ships, each with its own special ability, and choose your primary and secondary weapons.',
       tree: 'Spend scrap on permanent upgrades across five branches: Weapons, Defense, Engines, Systems and Style.',
       help: 'Controls, every enemy and hazard, power-ups and how progression works.',
-    }[item.id];
+      continue: 'Pick up the mission you left: the clock, the objectives, the boss, your ship, score and kills are all where they were.',
+    }[item.id] || '';
     kit.wrap(desc, x + 22, y + 80, w - 44, 15, 22, UI.text);
     if (item.id === 'daily') {
       const plan = NS.waves.dailyPlan(NS.rng.dayKey());

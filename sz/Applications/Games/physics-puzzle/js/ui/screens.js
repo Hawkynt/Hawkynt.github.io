@@ -164,7 +164,7 @@
       ctx.textBaseline = 'middle';
       ui.fitText('Build it.  Aim it.  Bank it in.', 400, 168, 560, 20, { weight: 'bold', color: '#ffe9c0', outline: 'rgba(0,0,0,0.7)' });
       /* menu */
-      const x = 110, w = 380, h = 58, gap = 10;
+      const x = 110, w = 380, h = 50, gap = 8;
       let y = 214;
       const stars = Prog.totalStars(G.save, Lv.LEVELS);
       const tricksDone = Lv.TRICKS.filter(t => G.save.tricks[t.id]).length;
@@ -173,6 +173,7 @@
       const items = [
         ['campaign', 'Campaign', stars + ' / ' + Lv.LEVELS.length * 3 + ' stars in five worlds', () => G.actions.openMap(), '1'],
         ['tricks', 'Trick Shots', tricksDone + ' / ' + Lv.TRICKS.length + ' challenges', () => G.actions.openTricks(), '2'],
+        ['packs', 'Level Packs', G.PACKS.packs.reduce((a, p) => a + Prog.packProgress(G.save, p).done, 0) + ' / ' + Object.keys(G.PACKS.byId).length + ' looking-glass remixes', () => G.actions.openPacks(), '5'],
         ['daily', 'Daily Challenge', (dailyDone ? 'Cleared today  -  ' : 'Today: ') + daily.name.replace('Daily: ', ''), () => G.actions.startDaily(), '3'],
         ['sandbox', 'Sandbox', 'Free building with every part you own', () => G.actions.startSandbox(Math.max(0, highestWorld())), '4'],
         ['tree', 'Tech Tree', Prog.treeProgress(G.save).have + ' / ' + Prog.treeProgress(G.save).total + ' upgrades', () => G.actions.openTree('title'), 'T'],
@@ -343,6 +344,45 @@
        ══════════════════════════════════════════════════════════════════ */
 
     let trickSel = 0;
+
+    /* the collection of Looking-Glass packs: one row per pack, a button per remix */
+    function drawPacks() {
+      backdrop(2, 0.5);
+      ui.drawHeadline('Level Packs', VIEW_W / 2, 64, 600, 56, '#ffffff', '#7ad8ff');
+      ctx.textAlign = 'center';
+      ui.fitText('Looking-glass remixes: every level of a world turned around. Clear the world to open its pack.', VIEW_W / 2, 112, 900, 15, { color: '#d8f0ff', weight: 'bold' });
+      const rowH = 92, x0 = 90, y0 = 140, bh = 56, gap = 8;
+      const most = Math.max(...G.PACKS.packs.map(p => p.levels.length));
+      const bw = Math.floor((VIEW_W - 2 * (x0 - 20) - 290 - 12 - (most - 1) * gap) / most);
+      G.PACKS.packs.forEach((pack, pi) => {
+        const W = WORLDS[pack.world], y = y0 + pi * rowH;
+        const open = Prog.packUnlocked(G.save, pack, Lv.LEVELS), pr = Prog.packProgress(G.save, pack);
+        ui.drawPanel(x0 - 20, y - 8, VIEW_W - 2 * (x0 - 20), rowH - 10, { accent: pr.done === pr.total ? ui.UI.good : W.color });
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ui.fitText(pack.name, x0, y + 16, 260, 18, { weight: 'bold', color: '#ffffff', font: ui.TITLE_FONT });
+        ui.fitText(open ? pr.done + ' / ' + pr.total + ' solved  -  ' + pr.stars + ' / ' + pr.total * 3 + ' stars' : 'Clear ' + W.name + ' to open', x0, y + 44, 260, 13, { color: open ? W.accent : ui.UI.textDim });
+        pack.levels.forEach((l, li) => {
+          const bx = x0 + 280 + li * (bw + gap);
+          const st = G.save.packs[l.id] || 0;
+          const idx = G.registerHit('pack-' + l.id, bx, y + 4, bw, bh, ((id, ok, wn) => () => {
+            if (!ok) { G.sfx('error'); G.showToast('Clear ' + wn + ' first', '#ffe9a0'); return; }
+            G.actions.startPack(id);
+          })(l.id, open, W.name));
+          const hot = G.isHot(idx, bx, y + 4, bw, bh);
+          ctx.save();
+          if (!open) ctx.globalAlpha = 0.45;
+          ui.drawPanel(bx, y + 4, bw, bh, { accent: st ? ui.UI.good : W.color, glow: hot });
+          ctx.textAlign = 'center';
+          ui.fitText((pack.world + 1) + '-' + (li + 1), bx + bw / 2, y + 20, bw - 12, 15, { weight: 'bold', color: '#ffffff' });
+          if (open) for (let k = 0; k < 3; ++k) starIcon(bx + bw / 2 + (k - 1) * 22, y + 44, 16, k < st);
+          else lockIcon(bx + bw / 2, y + 44, 16);
+          ctx.restore();
+        });
+      });
+      G.drawButton('back', 'Back', VIEW_W / 2 - 110, 650, 220, 50, { action: () => G.actions.title(), key: 'Esc' });
+      coinChip(VIEW_W - 24, 20);
+    }
 
     function drawTricks() {
       backdrop(3, 0.5);
@@ -931,16 +971,16 @@
       r.coinShown = Math.min(r.coins, Math.round(r.coins * Math.min(1, tc / 0.8)));
       if (tc > 0 && tc < 0.85 && Math.floor(tc * 20) !== Math.floor((tc - dt) * 20) && r.coins)
         G.sfx('blip', { volume: 0.3, pitch: 1.5 });
-      ui.fitText('Shots: ' + r.shots + (r.mode === 'campaign' || r.mode === 'daily' ? '   (par ' + r.par + ')' : ''), VIEW_W / 2, y + 304, w - 60, 18, { weight: 'bold', color: '#ffffff' });
+ ui.fitText('Shots: ' + r.shots + (r.mode === 'campaign' || r.mode === 'daily' || r.mode === 'pack' ? '   (par ' + r.par + ')' : ''), VIEW_W / 2, y + 304, w - 60, 18, { weight: 'bold', color: '#ffffff' });
       drawCoin(VIEW_W / 2 - 70, y + 342, 14);
       ctx.textAlign = 'left';
       ui.fitText('+' + r.coinShown + ' coins', VIEW_W / 2 - 50, y + 343, 240, 22, { weight: 'bold', color: '#ffe066', font: ui.TITLE_FONT });
       ctx.textAlign = 'center';
       if (r.first && tc > 0.9)
-        ui.drawChip(r.mode === 'campaign' ? 'FIRST CLEAR' : r.mode === 'daily' ? 'DAILY CLEARED' : 'NEW TRICK', VIEW_W / 2, y + 368, 24, { align: 'center', px: 12, color: '#8affb0' });
+        ui.drawChip(r.mode === 'campaign' ? 'FIRST CLEAR' : r.mode === 'daily' ? 'DAILY CLEARED' : r.mode === 'pack' ? 'NEW REMIX' : 'NEW TRICK', VIEW_W / 2, y + 368, 24, { align: 'center', px: 12, color: '#8affb0' });
       ctx.restore();
       const by = y + h - 80;
-      const nextLabel = r.mode === 'campaign' ? 'Next Level' : r.mode === 'trick' ? 'Trick Board' : 'Title';
+      const nextLabel = r.mode === 'campaign' || r.mode === 'pack' ? 'Next Level' : r.mode === 'trick' ? 'Trick Board' : 'Title';
       G.drawButton('next', nextLabel, x + 30, by, 220, 56, { action: G.actions.next, accent: W.color, key: 'N' });
       G.drawButton('retry', 'Retry', x + 262, by, 150, 56, { action: G.actions.retry, key: 'R' });
       G.drawButton('tree', 'Tech Tree', x + 424, by, 206, 56, { action: () => G.actions.openTree('results'), key: 'T' });
@@ -1012,7 +1052,7 @@
     }
 
     return {
-      drawTitle: drawTitle, drawMap: drawMap, drawTricks: drawTricks, drawTree: drawTree, drawHelp: drawHelp,
+      drawTitle: drawTitle, drawMap: drawMap, drawTricks: drawTricks, drawPacks: drawPacks, drawTree: drawTree, drawHelp: drawHelp,
       drawPause: drawPause, drawResults: drawResults, openMap: openMap, openTree: openTree, openHelp: openHelp,
       key: key, pointerDown: pointerDown, setTreeFromPause: setTreeFromPause, get mapWorld() { return mapWorld; }
     };

@@ -40,13 +40,17 @@
   const ui = SZ.PhysicsPuzzleUI.create(ctx);
   const save = Prog.defaultSave();
 
+  const PACKS = SZ.PhysicsPuzzlePacks ? SZ.PhysicsPuzzlePacks.build(Lv, SZ.PhysicsPuzzleSolutions || {}) : { packs: [], byId: {} };
   NS.G = {
     /* the canvas, the drawing kit and the pure modules */
     canvas: canvas, ctx: ctx, ui: ui,
     Art: SZ.PhysicsPuzzleArt, Scene: SZ.PhysicsPuzzleScene, Fx: Fx, Lv: Lv, Prog: Prog,
     Ph: SZ.PhysicsPuzzlePhysics, Parts: SZ.PhysicsPuzzleParts, Sim: SZ.PhysicsPuzzleSim,
-    SOLUTIONS: SZ.PhysicsPuzzleSolutions || {},
+    PACKS: PACKS,
+    /* the campaign's solutions and the packs' mirrored ones, for the Blueprint hint */
+    SOLUTIONS: Object.assign({}, SZ.PhysicsPuzzleSolutions || {}, ...PACKS.packs.map(p => p.solutions)),
     VIEW_W: NS.C.VIEW_W, VIEW_H: NS.C.VIEW_H,
+
 
     /* effect systems: field particles, view-space particles, menu particles */
     fxWorld: Fx.create(420),

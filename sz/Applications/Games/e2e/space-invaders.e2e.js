@@ -34,4 +34,25 @@ exports.run = async (t) => {
   await t.wait(800);
   t.check('an aura is equipped and a destroyed alien unlocks an achievement', await M.run('return NS.meta.goals.equipped() === "plasma" && !!NS.meta.goals.state.ach.k1;'));
   await t.shot('03-aura');
+
+  /* Zen: no ship is lost and a landing fleet is pushed back */
+  await M.run('NS.waves.newGame("zen");');
+  await t.wait(400);
+  const lives = await M.run('return G.lives;');
+  await M.run('NS.combat.killPlayer();');
+  t.check('Zen never loses a ship', await M.run('return G.lives === ' + lives + ';'));
+  await t.wait(2500);
+  await M.run('G.gameState = "playing"; G.player.alive = true; for (const a of G.aliens) a.y = G.player.y; NS.collisions.resolveCollisions();');
+  await t.wait(300);
+  t.check('Zen pushes a landing fleet back', await M.run('return G.gameState !== "gameover" && G.aliens.every(a => a.y < G.player.y);'));
+
+  /* autosave: a new wave is stored and Continue resumes it with score and lives */
+  await M.run('NS.waves.newGame("classic"); G.score = 4321; G.lives = 2; NS.waves.startNextLevel();');
+  t.check('a new wave is autosaved', await M.run('const s = NS.autosave.load(); return !!s && s.score === 4321 && s.level === 2 && s.lives === 2;'));
+  await M.run('NS.screens.setScreen("title");');
+  await t.wait(500);
+  t.check('the title offers Continue', await M.run('return G.hitAreas.some(h => h.id === "t-continue");'));
+  await t.shot('04-title-continue');
+  await M.run('G.score = 0; NS.autosave.resume();');
+  t.check('Continue resumes the wave with score and lives', await M.run('return G.gameMode === "classic" && G.level === 2 && G.score === 4321 && G.lives === 2 && G.gameState === "playing";'));
 };

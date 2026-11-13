@@ -7,6 +7,9 @@ Top-down spaceship racing with drifting, boost, item combat, a four-cup career a
 ### Tracks & Art
 - [x] As a player, I can race on 8 themed tracks (Nebula Circuit, Ion Storm Speedway, Pulsar Drift, Asteroid Alley, Solar Flare Loop, Comet Canyon, Quasar Ring, Void Serpent) so that courses have variety
 - [x] As a player, I can drive every track as a mirrored reverse variant so that familiar layouts get a second life
+- [x] As a player, I race against the ghost of my fastest run on each track and direction - a translucent ship marked BEST, recorded ten times a second and replaced whenever I finish faster - and the Quick Race cards show the ghost's time
+- [x] As a player, I can switch on Time Trial on the Quick Race screen to race alone against my ghost (it pays like fourth place)
+- [x] As a player, a race in progress is autosaved every few seconds and whenever the window is hidden, and Continue race on the title puts every ship back with the laps, the clock and the boost meter
 - [x] As a player, I can see per-track road and background art in its own theme colors so that each circuit reads differently
 - [x] As a player, I can hit boost pads, dodge asteroid, barrier and flare hazards, ride gravity wells and take wormhole shortcuts so that every lap has features to work with
 
@@ -123,6 +126,7 @@ Plain browser scripts, no build step. Every game module is an IIFE that adds one
 | `js/systems/features.js` | Boost pads, hazards, gravity wells and wormholes |
 | `js/systems/items.js` | Item boxes, item use by player and AI, missiles, mines, EMP, shields, hits |
 | `js/systems/race.js` | Laps and splits, live place, wrong way, race finish |
+| `js/systems/replay.js` | Ghost recording and playback per track variant (`sz-space-racing-ghosts`), Time Trial, the race autosave and Continue (`sz-space-racing-race`) |
 | `js/systems/race-audio.js` | Engine hum, drift hiss and barrier scrape |
 | `js/core/music.js` | Soundtrack through the shared `SZ.GameMusic`: a theme per track look (trance through the nebula, a dubstep storm on the Ion Storm Speedway, a pulsing electro drift at the pulsar, drum & bass down Asteroid Alley, house around the solar flare, synthwave through the comet canyon, trance at the quasar ring, a hard electro run along the Void Serpent), a menu theme and a garage theme. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every track and its reverse play a song of their own. The race start, a boost, leading the field and the final lap raise the intensity: layers come in and the music pushes into the drop. |
 | `js/systems/effects.js` | Particles, speed streaks, trails, skids, themed ambience, lap flashes, confetti |

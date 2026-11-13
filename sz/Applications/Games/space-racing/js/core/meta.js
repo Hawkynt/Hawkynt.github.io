@@ -101,6 +101,7 @@
         const D = NS.defs, G = NS.state, idx = r.seed % D.TRACKS.length, rev = (r.seed >> 8) % 2 === 1;
         G.dailyRace = { day: r.day };
         G.raceCup = null;
+        G.timeTrial = false;
         G.currentTrackIndex = idx;
         G.currentVariant = D.trackVariant(idx, rev);
         NS.raceSetup.resetGame();
@@ -122,8 +123,8 @@
   function onLap() { deed('laps', 1); }
   function onFinish(G, place) {
     deed('races', 1);
-    if (place === 1) deed('wins', 1);
-    if (place <= 3) deed('podiums', 1);
+    if (place === 1 && !G.timeTrial) deed('wins', 1);
+    if (place <= 3 && !G.timeTrial) deed('podiums', 1);
     if (G.dailyRace && goals) {
       goals.dailyResult(Math.max(1, Math.round(100000 - G.raceTime * 100)));
       G.dailyRace = null;

@@ -213,7 +213,7 @@
     const w = 640, h = 170, x = VIEW_W / 2 - w / 2, y = 200 - slide;
     ui.drawPanel(x, y, w, h, { accent: run.theme.color, glow: true });
     const label = run.mode === 'campaign' ? WORLDS[run.world].name + '  -  Level ' + (Lv.worldLevels(run.world).indexOf(run.level) + 1) :
-      run.mode === 'trick' ? 'Trick Shot' : run.mode === 'daily' ? 'Daily Challenge  ' + G.localDate() : 'Sandbox';
+      run.mode === 'trick' ? 'Trick Shot' : run.mode === 'daily' ? 'Daily Challenge  ' + G.localDate() : run.mode === 'pack' ? 'Looking-Glass remix' : 'Sandbox';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ui.fitText(label, VIEW_W / 2, y + 28, w - 40, 14, { weight: 'bold', color: run.theme.accent });

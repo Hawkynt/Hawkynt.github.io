@@ -78,10 +78,11 @@
     const x = G.UW / 2 - w / 2, y = Math.max(8, G.UH / 2 - h / 2 + (1 - e) * 24);
     addRegion({ id: 'over-panel', x, y, w, h, modal: true });
     drawPanel(x, y, w, h, { accent: '#ff9a5a', radius: 14 });
-    drawHeadline('Season Over', G.UW / 2, y + 42, w - 40, 36, '#ffb070', '#e0503a');
+    const head = NS.modes.headline(R);
+    drawHeadline(head[0], G.UW / 2, y + 42, w - 40, 36, R.won ? UI.gold : '#ffb070', R.won ? '#ff9a3a' : '#e0503a');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    fitText('No credits for seeds, nothing growing and nothing left to sell.', G.UW / 2, y + 78, w - 40, 13, { color: UI.textDim });
+    fitText(head[1], G.UW / 2, y + 78, w - 40, 13, { color: UI.textDim });
 
     const stats = [
       [SEASON_SPRITES[R.season], 'Reached', `${SEASONS[R.season]}, year ${R.year}`],
@@ -191,8 +192,14 @@
       drawButton({ id: 'title-continue', x: cx - bw / 2, y, w: bw, h: bh }, { label: 'Continue', icon: 'seedbag', key: 'Enter', primary: true, color: UI.leaf, px: 17, onClick: continueSavedGame });
       y += bh + 12;
     }
-    drawButton({ id: 'title-new', x: cx - bw / 2, y, w: bw, h: bh }, { label: G.savedGameAvailable ? 'New farm' : 'Start farming', icon: 'hammer', key: 'F2', primary: !G.savedGameAvailable, color: UI.leaf, px: 17, onClick: requestNewGame });
+    drawButton({ id: 'title-new', x: cx - bw / 2, y, w: bw, h: bh }, { label: G.savedGameAvailable ? 'New farm' : 'Start farming', icon: 'hammer', key: 'F2', primary: !G.savedGameAvailable, color: UI.leaf, px: 17, onClick: () => NS.modes.start('classic') });
     y += bh + 12;
+    /* the other farm modes, side by side */
+    const mw = (bw * 1.5 - 16) / 3, mx = cx - bw * 0.75;
+    [['relaxed', 'Relaxed', 'sun'], ['rush', 'Harvest Rush', 'coin'], ['daily', 'Daily Farm', 'star']].forEach(([id, label, icon], i) => {
+      drawButton({ id: 'title-mode-' + id, x: mx + i * (mw + 8), y, w: mw, h: 40 }, { label, icon, px: 13, color: UI.leaf, onClick: () => NS.modes.start(id) });
+    });
+    y += 52;
     drawButton({ id: 'title-help', x: cx - bw / 2, y, w: bw, h: 40 }, { label: 'How to play', icon: 'book', key: 'H', px: 15, onClick: () => openHelp(0) });
     y += 52;
     if (G.saveNotice)

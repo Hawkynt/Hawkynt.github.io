@@ -57,7 +57,7 @@
   function updateWindowTitle() {
     const title = G.state === STATE_GAME_OVER
       ? `Space Farming — Season Over — ${G.credits}cr`
-      : `Space Farming — Day ${G.dayCount} — ${SEASONS[G.currentSeason]} — ${G.credits}cr`;
+      : NS.modes && NS.modes.progressText() ? `Space Farming — ${NS.modes.progressText()}` : `Space Farming — Day ${G.dayCount} — ${SEASONS[G.currentSeason]} — ${G.credits}cr`;
     // called every frame: only a changed title goes to the desktop
     if (title === shownTitle)
       return;

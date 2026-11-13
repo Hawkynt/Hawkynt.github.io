@@ -228,6 +228,15 @@ All buildings can be upgraded from L1 to L6 (5 upgrades). Each upgrade costs 50%
 | Grow Lamp | +15% night growth, range 1 | +40% night growth, range 6 |
 | Pest Zapper | Range 2 | Range 7 |
 
+## 🌾 Farm modes
+
+Chosen on the title (`js/core/modes.js`, the mode is kept in the farm's save):
+
+- [x] As a player, I can start a Classic farm that ends when it can no longer earn anything
+- [x] As a player, I can start a Relaxed farm with triple starting credits that never ends
+- [x] As a player, I can play Harvest Rush: earn 5,000 credits within 14 days, with the progress in the window title and a toast every new day, won or lost on the results panel
+- [x] As a player, I can play the Daily Farm: the same seeded field for everyone today, seven days, my most credits earned kept as today's best
+
 ## 🏆 Goals and story
 
 Through the shared `SZ.GameGoals` and `SZ.GameStory` (wired in `js/core/meta.js`, saved under `sz-goals-space-farming` and `sz-story-space-farming`):

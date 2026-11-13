@@ -22,6 +22,7 @@
 
   /* ── runs ── */
   function startRun(mode, opts) {
+    NS.checkpoint.onRunStart();
     G.mode = mode;
     /* the keys steer until the mouse moves again */
     G.input.steer = 'keys';
@@ -458,6 +459,7 @@
 
   /* ── end of stage ── */
   function finishStage(won, abandoned) {
+    NS.checkpoint.onFinish();
     const st = G.stage;
     const run = G.run;
     const p = G.player;

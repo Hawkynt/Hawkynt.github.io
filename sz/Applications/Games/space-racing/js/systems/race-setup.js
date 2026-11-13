@@ -214,6 +214,7 @@
     G.hitAreas.length = 0;
     SZ.GameAudio.play('powerup', { pitch: 0.7 });
     Flow.updateWindowTitle();
+    NS.replay.onRaceStart();
     NS.meta.onRaceStart(G);
   }
 

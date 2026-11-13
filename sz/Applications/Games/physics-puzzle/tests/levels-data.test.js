@@ -131,4 +131,21 @@ for (const t of Lv.TRICKS) {
 }
 
 console.log(failures ? failures + ' FAILED' : 'ALL PASSED');
+/* level packs: every Looking-Glass remix listed is mirrored geometry and replays its mirrored solution */
+require('../js/data/packs.js');
+const PK = SZ.PhysicsPuzzlePacks.build(Lv, SOL);
+check('five Looking-Glass packs', PK.packs.length === 5, PK.packs.length);
+check('at least 35 remixed levels', Object.keys(PK.byId).length >= 35, Object.keys(PK.byId).length);
+let packOk = 0, packAll = 0;
+for (const pack of PK.packs)
+  for (const l of pack.levels) {
+    ++packAll;
+    const r = Sim.playSolution(l, pack.solutions[l.id], { theme: Lv.WORLDS[l.world] });
+    if (r.win && r.shots <= l.par) ++packOk;
+  }
+check('every pack level replays its mirrored solution within par', packOk === packAll, packOk + '/' + packAll);
+const orig = Lv.LEVELS[2], mir = SZ.PhysicsPuzzlePacks.mirrorLevel(orig, 'x', 'x');
+check('a mirrored level is the original turned around', mir.launcher[0] === 1280 - orig.launcher[0] && mir.targets[0][0] === 1280 - orig.targets[0][0] && JSON.stringify(SZ.PhysicsPuzzlePacks.mirrorLevel(mir, 'y', 'y').items) === JSON.stringify(orig.items));
+check('the mirrored solution does not solve the original', !Sim.playSolution(orig, SZ.PhysicsPuzzlePacks.mirrorSolution(SOL[orig.id]), { theme: Lv.WORLDS[orig.world] }).win);
+
 process.exit(failures ? 1 : 0);

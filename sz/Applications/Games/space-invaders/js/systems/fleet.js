@@ -28,6 +28,8 @@
     const interval = Math.max(MIN_MOVE_INTERVAL, BASE_MOVE_INTERVAL * ratio - speedBoost);
     if (G.gameMode === 'campaign' && G.stageInfo)
       return interval / G.stageInfo.speed;
+    if (G.gameMode === 'zen')
+      return interval * 1.35;
     return interval;
   }
 

@@ -46,7 +46,7 @@
     G.run = {
       mode: mode, level: level, world: level.world, theme: theme,
       inv: inventoryFor(level, mode), placed: opts.placed ? opts.placed.slice() : [],
-      att: null, phase: 'intro', introT: 0, aimAngle: 35, aimPower: 0.6, aiming: null,
+      att: null, phase: 'intro', introT: 0, aimAngle: level.mirror ? 145 : 35, aimPower: 0.6, aiming: null,
       selected: -1, drag: null, wonT: 0, lastPaths: [], trails: [], bulletLeft: G.stats.bulletTime,
       blueprint: 0, nearMiss: {}, recoil: 0, readyT: 0, shotsTotal: 0, starsBest: 0,
       oneShot: !!rule.oneShot, minBounces: rule.minBounces || 0
@@ -83,6 +83,12 @@
 
   function startCampaign(id) {
     startLevel('campaign', Lv.BY_ID[id]);
+  }
+
+  /* a level from a Looking-Glass pack */
+  function startPack(id) {
+    const l = G.PACKS.byId[id];
+    if (l) startLevel('pack', l);
   }
 
   function startTrick(t) {
@@ -125,6 +131,8 @@
     } else if (run.mode === 'trick') {
       const r = Prog.applyTrickResult(G.save, run.level.trick, true, G.stats);
       reward = { coins: r.coins, first: r.first, stars: [true, true, true], newStars: 0 };
+    } else if (run.mode === 'pack') {
+      reward = Prog.applyPackResult(G.save, run.level, result, G.stats);
     } else if (run.mode === 'daily') {
       const r = Prog.applyDailyResult(G.save, G.localDate(), result, run.level, G.stats);
       reward = { coins: r.coins, first: r.first, stars: Prog.runStars(run.level, result), newStars: 0 };
@@ -162,6 +170,13 @@
       NS.flow.openTricks();
       return;
     }
+    if (G.results.mode === 'pack') {
+      const pack = G.PACKS.packs.find(p => p.levels.indexOf(lvl) >= 0);
+      const i = pack ? pack.levels.indexOf(lvl) : -1;
+      if (pack && pack.levels[i + 1]) { startPack(pack.levels[i + 1].id); return; }
+      NS.flow.openPacks();
+      return;
+    }
     NS.flow.setScreen('title');
   }
 
@@ -179,13 +194,15 @@
       NS.flow.openMap(world);
     else if (mode === 'trick')
       NS.flow.openTricks();
+    else if (mode === 'pack')
+      NS.flow.openPacks();
     else
       NS.flow.setScreen('title');
   }
 
   G.dailyLevel = dailyLevel;
 
-  NS.run = {
+  NS.run = { startPack: startPack,
     inventoryFor: inventoryFor, startLevel: startLevel, rebuildAttempt: rebuildAttempt, restartLevel: restartLevel,
     startCampaign: startCampaign, startTrick: startTrick, dailyLevel: dailyLevel, startDaily: startDaily, startSandbox: startSandbox,
     partsLeft: partsLeft, finishLevel: finishLevel, nextLevel: nextLevel, retry: retry, quitToMenu: quitToMenu

@@ -1,6 +1,6 @@
 # Physics Puzzle
 
-A build-and-launch physics puzzle game for the »SynthelicZ« Desktop. Drag planks, steel blocks, spring pads, bumpers, fans, conveyors and magnets out of the tray, pull back the launcher like a slingshot and light every target. Forty levels in five worlds — Tinker Workshop, Greenhouse Garden, Cryo Lab, Volcano Forge and the low-gravity Orbit Station — bring glass that shatters, TNT that chain-reacts, portals, water, lava, ice, spinning gears, swinging hammers, pendulums, crates and boulders. Every level pays coins into a five-branch Tech Tree; Trick Shots, a seeded Daily Challenge and a free-building Sandbox round it off.
+A build-and-launch physics puzzle game for the »SynthelicZ« Desktop. Drag planks, steel blocks, spring pads, bumpers, fans, conveyors and magnets out of the tray, pull back the launcher like a slingshot and light every target. Forty levels in five worlds — Tinker Workshop, Greenhouse Garden, Cryo Lab, Volcano Forge and the low-gravity Orbit Station — bring glass that shatters, TNT that chain-reacts, portals, water, lava, ice, spinning gears, swinging hammers, pendulums, crates and boulders. Every level pays coins into a five-branch Tech Tree; Trick Shots, five collectible Looking-Glass level packs, a seeded Daily Challenge and a free-building Sandbox round it off.
 
 ## How It Works
 
@@ -9,6 +9,8 @@ The game runs on its own rigid-body engine: circles and convex polygons with mas
 A level is plain data: the launcher (optionally with a limited barrel arc), fixtures, targets, stars floating in the air, the tray's inventory and a par. A try is one live world that persists from shot to shot — knocked crates stay down, broken glass stays broken, lit targets stay lit and taken stars stay taken — and nothing moves between shots (machines only run while a ball is in flight), so a replay is exact. A shot ends when every target is lit, or when the balls are gone, stuck or out of time and the rest of the world has come to rest. Reset puts the world back and keeps the parts.
 
 Three stars per level: solve it, solve it within par, and pick up every star. Every campaign level, every Trick Shot and the Daily Challenge are proven solvable: `tools/solve-levels.js` sweeps part layouts and shots (angle and launch speed) with the game's own physics in parallel workers, keeps the shot with the most alike neighbours so nothing balances on a knife edge, hangs the stars along the winning flight path and writes `solutions.js`; the tests replay every stored solution. The Daily Challenge picks a level by the date, hangs fresh stars on its known solution path and adds a spare part, so it is solvable by construction.
+
+Level packs (the Level Packs screen) collect Looking-Glass remixes: every level of a world mirrored left to right - walls, ramps, belts, fans, portals, paddles and swings turned around, the launcher on the other side - opening once that world is cleared, with three stars and coins per remix. `tools/build-packs.js` mirrors every campaign level and its stored solution and replays it in the game's physics; only the remixes that still win within par are listed (39 of 40), the tests replay every one of them, and the mirrored solutions also drive the Blueprint hint.
 
 The game draws into a 1280 x 720 logical view, letterboxed with the backdrop bleeding into the bars, devicePixelRatio aware. The backdrop and every fixture that never changes are baked once per window size into one layer; moving bodies are cached sprites blitted at an angle, and only fan blades, belt treads, portal swirls, water and lava surfaces and glows animate per frame. No shadow blur, capped particle pools.
 
@@ -25,6 +27,7 @@ Plain scripts loaded in dependency order by `index.html`, no build step. The pur
 `js/data/`:
 
 - `levels-data.js` — the five worlds (gravity, materials, colours), the forty levels and the ten Trick Shots.
+- `packs.js` — the Looking-Glass packs: mirroring of fixtures, parts, levels and solutions, and the table of proven remixes written by `tools/build-packs.js`.
 - `solutions.js` — a known solution for every level and Trick Shot (parts and shots), written by the solver tool; also used for the Blueprint hint and the Daily stars.
 
 `js/core/`:
@@ -55,7 +58,7 @@ Plain scripts loaded in dependency order by `index.html`, no build step. The pur
 
 `js/ui/`:
 
-- `screens.js` — the menu screens: the title with a live physics contraption, the world map, the Trick Shot board, the Tech Tree, five illustrated How to Play pages, the pause menu and the results with the star reveal.
+- `screens.js` — the menu screens: the title with a live physics contraption, the world map, the Trick Shot board, the Level Packs collection, the Tech Tree, five illustrated How to Play pages, the pause menu and the results with the star reveal.
 - `menu-kit.js` — hit areas registered while drawing, the hover and keyboard cursor, animated buttons, activation and the dimming veil.
 - `flow.js` — switching screens, the screens instance with the actions it may call, opening and closing the map, Trick Shots, Tech Tree and How to Play, pause and resume, and the Escape chain.
 - `input.js` — keyboard, mouse and touch: aiming, firing, building, toggles and Bullet Time in a level, cursor and activation in menus.

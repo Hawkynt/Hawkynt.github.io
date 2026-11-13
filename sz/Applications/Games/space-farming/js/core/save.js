@@ -112,7 +112,7 @@
     G.autosaveTimer = 0;
     const data = {
       version: SAVE_VERSION,
-      credits: G.credits, selectedCropIndex: G.selectedCropIndex, gameTime: G.gameTime, dayCount: G.dayCount,
+      credits: G.credits, selectedCropIndex: G.selectedCropIndex, gameTime: G.gameTime, dayCount: G.dayCount, farmMode: G.farmMode,
       gridRows: G.gridRows, gridCols: G.gridCols, gridColOffset: G.gridColOffset, expansionDirection: G.expansionDirection,
       soilQuality: G.soilQuality, tileTypes: G.tileTypes, tileFertility: G.tileFertility, hoedTiles: G.hoedTiles,
       farmGrid: G.farmGrid.map(row => row.map(cell => cell ? { cropIndex: cell.cropIndex, growthProgress: cell.growthProgress, growthStage: cell.growthStage } : null)),
@@ -213,6 +213,7 @@
     };
 
     G.credits = d.credits;
+    G.farmMode = NS.modes.MODES[d.farmMode] ? d.farmMode : 'classic';
     G.selectedCropIndex = isIndex(d.selectedCropIndex, CROPS.length) ? d.selectedCropIndex : 0;
     G.selectedTool = TOOL_PLANT;
     G.selectedBuildingIndex = -1;
@@ -366,6 +367,7 @@
   }
 
   function resetGame() {
+    const savedRandom = NS.modes.beginReset();
     G.credits = 100;
     G.selectedCropIndex = 0;
     G.selectedTool = TOOL_PLANT;
@@ -499,6 +501,7 @@
     G.lastCredits = null;
     G.creditsShown = G.credits;
     G.state = STATE_PLAYING;
+    NS.modes.endReset(savedRandom);
     NS.meta.onStart();
     SZ.GameAudio.play('select');
     updateWindowTitle();
@@ -555,6 +558,10 @@
     endCheckTimer += dt;
     if (endCheckTimer < END_CHECK_INTERVAL) return;
     endCheckTimer = 0;
+    /* Harvest Rush and the Daily Farm end on their goal or their last day; Relaxed never ends */
+    const v = NS.modes.verdict();
+    if (v) { endFarm(v === 'won'); return; }
+    if (NS.modes.mode().endless) return;
     if (!isFarmDead()) {
       deadChecks = 0;
       const low = G.credits < cheapestSeedCost() && !hasStock();
@@ -567,7 +574,7 @@
       endFarm();
   }
 
-  function endFarm() {
+  function endFarm(won) {
     const rank = addHighScore(G.stats.earned, G.dayCount);
     G.farmResult = {
       days: G.dayCount,
@@ -582,6 +589,7 @@
       rank,
       t0: G.uiTime
     };
+    NS.modes.onEnd(won);
     G.state = STATE_GAME_OVER;
     // a finished farm is not offered again on the title screen
     clearSavedGame();

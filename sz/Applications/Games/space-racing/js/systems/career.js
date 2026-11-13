@@ -36,6 +36,7 @@
   function setCupRace(cupIndex, raceIndex) {
     const race = CUPS[cupIndex].races[raceIndex];
     G.raceCup = cupIndex;
+    G.timeTrial = false;
     G.currentTrackIndex = race[0];
     G.currentVariant = trackVariant(race[0], race[1]);
   }

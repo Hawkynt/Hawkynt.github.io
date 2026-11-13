@@ -104,6 +104,7 @@
       coins: 0,
       levels: {},
       tricks: {},
+      packs: {},
       tree: {},
       skin: 'steel', trail: 'none', multiOn: true,
       daily: { date: '', cleared: false, best: 0, stars: 0 },
@@ -132,6 +133,10 @@
         s.levels[id] = { stars: [!!st[0], !!st[1], !!st[2]], best: int(l.best, 0, 999), plays: int(l.plays, 0, 1e6) };
       }
     }
+    if (raw.packs && typeof raw.packs === 'object')
+      for (const id of Object.keys(raw.packs))
+        if (/^m\d-\d+$/.test(id))
+          s.packs[id] = int(raw.packs[id], 0, 3);
     if (raw.tricks && typeof raw.tricks === 'object')
       for (const id of Object.keys(raw.tricks))
         if (raw.tricks[id])
@@ -312,6 +317,27 @@
     return { coins: coins, first: first };
   }
 
+  /* level packs: a pack opens once its world is cleared; each level keeps its best star count */
+  function packUnlocked(save, pack, levels) {
+    return levels.filter(l => l.world === pack.world).every(l => cleared(save, l.id));
+  }
+  function packProgress(save, pack) {
+    let done = 0, stars = 0;
+    for (const l of pack.levels) { if (save.packs[l.id]) ++done; stars += save.packs[l.id] || 0; }
+    return { done: done, stars: stars, total: pack.levels.length };
+  }
+  function applyPackResult(save, level, result, stats) {
+    if (!result.win)
+      return { coins: 0, first: false, stars: [false, false, false], newStars: 0 };
+    const st = runStars(level, result), n = st.filter(Boolean).length;
+    const prev = save.packs[level.id] || 0, first = !prev;
+    save.packs[level.id] = Math.max(prev, n);
+    const coins = Math.round((first ? 40 : 6) * (stats.coinMul || 1)) + Math.max(0, n - prev) * 10;
+    save.coins += coins;
+    save.stats.coins += coins;
+    return { coins: coins, first: first, stars: st, newStars: Math.max(0, n - prev) };
+  }
+
   function applyDailyResult(save, dateKey, result, level, stats) {
     if (!result.win)
       return { coins: 0, first: false };
@@ -364,6 +390,7 @@
     computeStats: computeStats, skinOwned: skinOwned, trailOwned: trailOwned,
     runStars: runStars, levelRecord: levelRecord, starCount: starCount, totalStars: totalStars, cleared: cleared,
     applyLevelResult: applyLevelResult, applyTrickResult: applyTrickResult, applyDailyResult: applyDailyResult,
-    worldUnlocked: worldUnlocked, levelUnlocked: levelUnlocked, trickUnlocked: trickUnlocked
+    worldUnlocked: worldUnlocked, levelUnlocked: levelUnlocked, trickUnlocked: trickUnlocked,
+    packUnlocked: packUnlocked, packProgress: packProgress, applyPackResult: applyPackResult
   });
 })();
