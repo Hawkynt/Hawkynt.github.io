@@ -88,9 +88,14 @@
     }
     ui.drawChip(`${G.save.credits} CR`, CANVAS_W - 24, 24, 30, { align: 'right', color: '#ffd75a' });
 
-    const bw = 320, bh = 52, gap = 14;
+    const saved = NS.replay.savedRace();
+    const bw = 320, bh = saved ? 46 : 52, gap = saved ? 10 : 14;
     const bx = (CANVAS_W - bw) / 2;
     let by = 300;
+    if (saved) {
+      drawButton('continue-race', 'Continue race -- ' + NS.defs.TRACKS[saved.track].name + ', lap ' + Math.min(G.raceLaps || 3, (saved.playerLap | 0) + 1), bx - 80, by, bw + 160, bh, { accent: ui.UI.good || '#5cff9a', action: () => NS.replay.resumeRace() });
+      by += bh + gap;
+    }
     drawButton('career', 'Career', bx, by, bw, bh, { accent: ui.UI.gold, action: enterCareer });
     by += bh + gap;
     drawButton('quick', 'Quick Race', bx, by, bw, bh, { action: enterTracks });
@@ -222,6 +227,10 @@
     ui.drawHeadline('Quick Race', 640, 56, 500, 44, ui.UI.accent);
 
     const canReverse = !!G.save.trophies.gold;
+    drawButton('trial', `Time Trial: ${G.timeTrial ? 'On' : 'Off'}`, 700, 36, 264, 44, {
+      sub: G.timeTrial ? 'Alone against your ghost' : undefined,
+      action: () => { G.timeTrial = !G.timeTrial; }
+    });
     drawButton('reverse', `Reverse: ${quickReverse ? 'On' : 'Off'}`, 980, 36, 264, 44, {
       disabled: !canReverse,
       sub: canReverse ? undefined : 'Win the Gold Cup',
@@ -252,7 +261,8 @@
       ctx.fillStyle = theme;
       ctx.fillRect(x + 16, y + ch - 40, cw - 32, 4);
       const best = G.save.bestLaps[variant.key];
-      ui.fitText('BEST ' + (best !== undefined ? formatTime(best) : '--'), x + cw / 2, y + ch - 18, cw - 32, 13, { color: ui.UI.textDim });
+      const gh = NS.replay.ghostFor(variant.key);
+      ui.fitText('BEST LAP ' + (best !== undefined ? formatTime(best) : '--') + '   GHOST ' + (gh ? formatTime(gh.time) : '--'), x + cw / 2, y + ch - 18, cw - 32, 13, { color: ui.UI.textDim });
     }
 
     ui.drawKeyHints([

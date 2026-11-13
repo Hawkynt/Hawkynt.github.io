@@ -69,6 +69,7 @@
     updateItems(dt);
     emitThrustParticles(dt);
     updateRace(dt);
+    NS.replay.update(dt);
     updateRaceAudio(dt);
     updateCamera(dt);
     updateSpeedLines(dt);
@@ -120,6 +121,20 @@
     drawMines();
     drawMissiles();
     drawTrails();
+
+    // The ghost of the best run on this track
+    const gp = NS.replay.ghostPose();
+    if (gp) {
+      ctx.save();
+      ctx.globalAlpha = 0.38;
+      drawShip(gp.x, gp.y, gp.angle, '#bfe8ff', '#5aa0d8', '#bfe8ff', getPlayerShipDef().shape, false, false, 0, false);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = '#bfe8ff';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('BEST', gp.x, gp.y - 26);
+      ctx.restore();
+    }
 
     // Draw AI opponents
     for (let i = 0; i < G.opponents.length; ++i) {

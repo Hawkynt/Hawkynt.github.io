@@ -87,6 +87,7 @@
     }
 
     G.playerPlace = finalPlace;
+    G.newGhost = NS.replay.onFinish();
     NS.meta.onFinish(G, finalPlace);
     SZ.GameAudio.play(finalPlace === 1 ? 'win' : finalPlace <= 3 ? 'levelup' : 'lose');
 
@@ -107,7 +108,8 @@
     G.confetti = [];
 
     // Award credits: placement plus the bonuses earned during the race
-    awardRaceReward(finalPlace);
+    /* a Time Trial has no field to beat: it pays like fourth place */
+    awardRaceReward(G.timeTrial ? 4 : finalPlace);
     if (G.raceCup !== null)
       awardCupPoints(finalPlace);
     writeSave();
