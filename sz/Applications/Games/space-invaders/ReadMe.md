@@ -1,6 +1,6 @@
 # Space Invaders -- Enhanced Edition
 
-Arcade game where the player defends Earth across six sectors of space: a 30-stage campaign with six named bosses, plus Classic, Survival, Boss Rush and Daily modes. Features five ships with unique special abilities, a 16-upgrade armory tech tree bought with run credits, 8 power-up types, six alien species, combo scoring with multipliers up to x5, hand-painted sprites and six painterly sector backdrops. Part of the SynthelicZ Desktop game collection.
+Arcade game where the player defends Earth across six sectors of space: a 30-stage campaign with six named bosses, plus Classic, Survival, Boss Rush, Zen and Daily modes, with every run autosaved at each wave. Features five ships with unique special abilities, a 16-upgrade armory tech tree bought with run credits, 8 power-up types, six alien species, combo scoring with multipliers up to x5, hand-painted sprites and six painterly sector backdrops. Part of the SynthelicZ Desktop game collection.
 
 ## How It Works
 
@@ -17,6 +17,7 @@ The game code lives in `js/` as small modules on the `SZ.SpaceInvaders` namespac
 - **`js/core/state.js`** -- The shared game state object: screen and run, campaign run, fleet, player, specials, power-ups, combo, boss, effects, menu cursor, input
 - **`js/core/save.js`** -- The v2 save (credits, stars, bests, armory, ships, stats, carried charges), high-score list, local day key
 - **`js/core/audio.js`** -- Sound effects through the shared audio module, one per name every 40 ms
+- **`js/systems/autosave.js`** -- The run stored at every wave (mode, score, lives, level, wave, special charge), checked on load, resumed by Continue, cleared when the run ends
 - **`js/core/music.js`** -- Soundtrack through the shared `SZ.GameMusic`: a theme per sector (a cold synthwave in lunar orbit, an electro march on the Mars front, a drum & bass scramble through the asteroid belt, a dubstep storm at Jupiter, trance over Saturn's rings, an epic last stand at the Mothership), a heavier theme for every boss, a classic-mode chiptune, a menu theme and fast themes for Survival, Boss Rush and the Daily. Each theme is arranged by the shared engine into an endless song (intro, groove, build-up, drop, breakdown, every pass a little different); every campaign stage plays a song of its own made from its world's theme. Bosses, a low, fast fleet and the last ship raise the intensity: layers come in and the music pushes into the drop.
 - **`js/core/progress.js`** -- Rules on the save: owning, unlocking and buying ships and armory levels, the flown ship, star and upgrade counts, upgrade-derived values
 - **`js/render/view.js`** -- Canvas, context and UI kit; fits the 1280 x 720 game plane into the window, the visible rectangle, pointer mapping
@@ -62,6 +63,8 @@ The game code lives in `js/` as small modules on the `SZ.SpaceInvaders` namespac
 - [x] As a player, I can play Survival mode with endless waves, no bosses and a 1.5x power-up drop rate so that the action never stops
 - [x] As a player, I can play Boss Rush mode with a boss every level and a 2x power-up drop rate so that I face constant epic fights
 - [x] As a player, I can play a Daily mode where the whole day shares one seeded random run so that everyone fights the same fleet
+- [x] As a player, I can play Zen mode: endless waves at a calmer pace (a slower fleet that fires half as often), no ship ever lost, a landing fleet pushed back up instead of a game over, my furthest wave kept as the record
+- [x] As a player, my Classic, Survival, Boss Rush and Zen runs are autosaved whenever a wave begins (`sz-space-invaders-run`), and Continue on the title starts that wave again with my score, lives and special charge; a finished run clears it
 - [x] As a player, I can see my best score per mode (and today's Daily score) on the title screen so that I know what to beat
 
 ### Campaign

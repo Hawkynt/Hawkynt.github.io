@@ -38,7 +38,7 @@
       v: 2,
       credits: 0,
       stars: {},
-      best: { classic: 0, survival: 0, bossRush: 0, daily: { date: '', score: 0 } },
+      best: { classic: 0, survival: 0, bossRush: 0, zen: 0, daily: { date: '', score: 0 } },
       tree: {},
       ships: ['interceptor'],
       ship: 'interceptor',
@@ -50,9 +50,9 @@
       if (stored && typeof stored === 'object') {
         Object.assign(def, stored);
         if (def.best && typeof def.best === 'object')
-          def.best = Object.assign({ classic: 0, survival: 0, bossRush: 0, daily: { date: '', score: 0 } }, def.best);
+          def.best = Object.assign({ classic: 0, survival: 0, bossRush: 0, zen: 0, daily: { date: '', score: 0 } }, def.best);
         else
-          def.best = { classic: 0, survival: 0, bossRush: 0, daily: { date: '', score: 0 } };
+          def.best = { classic: 0, survival: 0, bossRush: 0, zen: 0, daily: { date: '', score: 0 } };
         if (!def.best.daily || typeof def.best.daily !== 'object')
           def.best.daily = { date: '', score: 0 };
         if (def.stats && typeof def.stats === 'object')

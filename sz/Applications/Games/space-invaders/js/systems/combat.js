@@ -98,7 +98,8 @@
     }
 
     G.player.alive = false;
-    --G.lives;
+    /* Zen never runs out of ships */
+    if (G.gameMode !== 'zen') --G.lives;
     ++G.livesLost;
     G.deathTimer = 2000;
     G.gameState = 'dying';

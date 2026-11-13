@@ -185,7 +185,9 @@
         G.waveNameTimer = 2000;
         G.gameState = 'playing';
       }
+      NS.autosave.save();
     }
+    if (G.gameMode === 'zen') G.alienShootInterval = 3200;
 
     updateStatusBar();
   }
@@ -209,6 +211,11 @@
     G.bossVictoryTimer = 0;
 
     G.alienShootInterval = Math.max(400, 2000 - (G.level - 1) * 200);
+    /* Zen: a calmer fleet that fires half as often, and the furthest wave is the record */
+    if (G.gameMode === 'zen') {
+      G.alienShootInterval = Math.max(1600, 3200 - (G.level - 1) * 80);
+      if (G.level > (G.save.best.zen || 0)) G.save.best.zen = G.level;
+    }
 
     G.player.x = GAME_W / 2 - PLAYER_W / 2;
     G.player.alive = true;
@@ -228,6 +235,7 @@
       G.waveNameTimer = 2000;
       G.gameState = 'playing';
     }
+    NS.autosave.save();
 
     updateStatusBar();
   }
@@ -249,6 +257,7 @@
     G.waveNameText = 'Wave ' + G.wave + ': ' + FORMATIONS[formIdx].name;
     G.waveNameTimer = 2000;
     G.gameState = 'playing';
+    NS.autosave.save();
     updateStatusBar();
   }
 

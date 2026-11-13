@@ -148,6 +148,7 @@
     bossRush: { name: 'Boss Rush', bossEvery: 1, powerupMult: 2.0 },
     campaign: { name: 'Campaign', bossEvery: 0, powerupMult: 1.0 },
     daily: { name: 'Daily', bossEvery: 5, powerupMult: 1.0 },
+    zen: { name: 'Zen', bossEvery: 0, powerupMult: 1.5, zen: true },
   };
 
   /* Hangar ships: stat factors, price or unlocking stage, special ability */

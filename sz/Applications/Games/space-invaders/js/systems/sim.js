@@ -149,6 +149,7 @@
         G.gameState = 'gameover';
         G.menuCursor = 0;
         playSfx('lose');
+        NS.autosave.clear();
         endRun();
         if (G.gameMode === 'classic' || G.gameMode === 'survival' || G.gameMode === 'bossRush')
           checkHighScore();

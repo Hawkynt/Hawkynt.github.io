@@ -6,7 +6,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceInvaders || (SZ.SpaceInvaders = {});
   const G = NS.state;
-  const { PLAYER_W, PLAYER_H, BULLET_W, BULLET_H, BOSS_W, BOSS_H } = NS.constants;
+  const { PLAYER_W, PLAYER_H, BULLET_W, BULLET_H, BOSS_W, BOSS_H, GAME_W, GAME_H } = NS.constants;
   const { rectsOverlap } = NS.data;
   const { playSfx } = NS.audio;
   const { bulletDamage } = NS.progress;
@@ -184,6 +184,12 @@
   function checkFleetLanded() {
     // Aliens reaching player row (instant game over, shield cannot save this)
     for (const a of G.aliens) {
+      if (a.alive && !a.diving && a.y + a.h >= G.player.y && G.gameMode === 'zen') {
+        /* Zen: the fleet is pushed back up instead of landing */
+        for (const b of G.aliens) b.y -= 180;
+        floatingText.add(GAME_W / 2, GAME_H / 2, 'PUSHED BACK', { color: '#7affd8', font: 'bold 24px sans-serif' });
+        break;
+      }
       if (a.alive && !a.diving && a.y + a.h >= G.player.y) {
         if (G.activePowerups.shield > 0)
           delete G.activePowerups.shield;

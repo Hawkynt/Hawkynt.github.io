@@ -39,16 +39,19 @@
 
     const ownedShips = SHIP_ORDER.filter(id => shipOwned(id)).length;
     const daily = G.save.best.daily;
+    const saved = NS.autosave.load();
     const items = [
+      saved ? { id: 't-continue', label: 'Continue', sub: NS.waves && saved.mode === 'survival' ? 'Survival wave ' + saved.wave : (saved.mode === 'zen' ? 'Zen' : saved.mode === 'bossRush' ? 'Boss Rush' : 'Classic') + ' level ' + saved.level, action: () => NS.autosave.resume() } : null,
       { id: 't-campaign', label: 'Campaign', sub: countStars() + ' / 90 stars', action: () => setScreen('campaignMap') },
       { id: 't-classic', label: 'Classic', sub: 'Best: ' + G.save.best.classic, action: () => newGame('classic') },
       { id: 't-survival', label: 'Survival', sub: 'Best: ' + G.save.best.survival, action: () => newGame('survival') },
       { id: 't-bossRush', label: 'Boss Rush', sub: 'Best: ' + G.save.best.bossRush, action: () => newGame('bossRush') },
+      { id: 't-zen', label: 'Zen', sub: 'Best wave: ' + (G.save.best.zen || 0), action: () => newGame('zen') },
       { id: 't-daily', label: 'Daily', sub: daily.date === todayKey() ? 'Today: ' + daily.score : 'New seed today', action: () => newGame('daily') },
       { id: 't-hangar', label: 'Hangar', sub: ownedShips + '/5 ships', action: () => { G.prevScreen = 'title'; setScreen('hangar'); } },
       { id: 't-armory', label: 'Armory', sub: countTreeMaxed() + '/16 upgrades', action: () => { G.prevScreen = 'title'; setScreen('armory'); } },
       { id: 't-help', label: 'Help', action: openHelp },
-    ];
+    ].filter(Boolean);
 
     for (let i = 0; i < items.length; ++i) {
       const x = 640 - 308 + (i % 2) * 316;
