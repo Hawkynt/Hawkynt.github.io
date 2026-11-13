@@ -26,4 +26,16 @@ exports.run = async (t) => {
   await t.wait(800);
   t.check('a felt is laid on the table', await M.run('return w.SZ.CardThemes.activeTheme.table === "goal-teal";'));
   await t.shot('02-felt');
+
+  /* the table buttons sit in their own band above the board, never over a card */
+  for (const v of ['solitaire', 'freecell', 'spider']) {
+    await M.run('NS.game.selectGame("' + v + '");');
+    await t.wait(900);
+    let k = 0;
+    while (await M.has('.szs-overlay') && k++ < 20) await M.click('.szs-overlay');
+    t.check(v + ': the table buttons are above the board', await M.run('const K = NS.constants; return [K.MENU_BTN, K.HINT_BTN, K.SORT_BTN, K.STYLE_BTN].every(b => b.y + b.h <= 0) && NS.dom.view.oy >= K.TOOLBAR_H * NS.dom.view.scale - 0.5;'));
+    t.check(v + ': a click at the top-right corner of the board reaches the game, not a button', await M.run('const K = NS.constants, x = K.CANVAS_W - 40, y = 20; return ![K.MENU_BTN, K.HINT_BTN, K.STYLE_BTN].some(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);'));
+    await t.wait(3500);
+    await t.shot('03-' + v);
+  }
 };

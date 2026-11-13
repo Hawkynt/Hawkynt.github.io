@@ -20,6 +20,7 @@ Each variant lives in its own folder, split by concern (state, rules, flow, AI, 
 - [x] As a player, I can star any game as a favourite
 - [x] As a player, I can play the featured game of the day for double experience
 - [x] As a player, I can return to the lobby via the table's Lobby button, the menu bar or F2
+- [x] As a player, the table buttons (Style, Sort, Hints, Lobby) sit in their own band above the board, so they never cover a card or pile in any game
 
 ### Progress and Rewards (local only)
 - [x] As a player, I earn experience for every finished round, more for wins, first wins, new games, win streaks and daily play, and level up with a medallion cinematic
@@ -177,7 +178,7 @@ Each variant lives in its own folder, split by concern (state, rules, flow, AI, 
 | Ctrl+Z | Undo (Solitaire, FreeCell, Spider, Forty Thieves, Canfield) |
 | F2 | New game / Return to menu |
 | Escape | Pause / Resume |
-| Lobby button | Return to the lobby (top-right corner) |
+| Lobby button | Return to the lobby (top-right, in the band above the board) |
 | Arrow Up / Down | Lobby: switch category tab |
 | Any click or key | Skip the intro, a title card or a result scene |
 | Sort button | Toggle auto-sort for player's hand (top-right, when supported) |

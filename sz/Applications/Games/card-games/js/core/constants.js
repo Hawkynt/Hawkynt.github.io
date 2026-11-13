@@ -136,18 +136,22 @@
         .sort((a, b) => a.variant.name.localeCompare(b.variant.name))
     }));
 
-    /* ── Menu / Hint / Sort / Style button regions ── */
-    const MENU_BTN = { x: CANVAS_W - 82, y: 8, w: 72, h: 28 };
-    const HINT_BTN = { x: CANVAS_W - 164, y: 8, w: 72, h: 28 };
-    const SORT_BTN = { x: CANVAS_W - 246, y: 8, w: 72, h: 28 };
-    const STYLE_BTN = { x: CANVAS_W - 328, y: 8, w: 72, h: 28 };
+    /* ── Menu / Hint / Sort / Style button regions ──
+       They live in a toolbar band above the board (board y -TOOLBAR_H..0) that the window
+       always keeps free, so they never cover a card of any game. */
+    const TOOLBAR_H = 40;
+    const BTN_Y = -TOOLBAR_H + 6;
+    const MENU_BTN = { x: CANVAS_W - 82, y: BTN_Y, w: 72, h: 28 };
+    const HINT_BTN = { x: CANVAS_W - 164, y: BTN_Y, w: 72, h: 28 };
+    const SORT_BTN = { x: CANVAS_W - 246, y: BTN_Y, w: 72, h: 28 };
+    const STYLE_BTN = { x: CANVAS_W - 328, y: BTN_Y, w: 72, h: 28 };
 
   Object.assign(K, {
     CANVAS_W, CANVAS_H, MAX_DT,
     STATE_MENU, STATE_PLAYING, STATE_PAUSED, STATE_ROUND_OVER, STATE_GAME_OVER,
     STORAGE_PREFIX, STORAGE_HIGHSCORES, STORAGE_HINTS, STORAGE_AUTOSORT, MAX_HIGH_SCORES,
     VARIANTS, CATEGORIES, SORTED_CATS,
-    MENU_BTN, HINT_BTN, SORT_BTN, STYLE_BTN
+    MENU_BTN, HINT_BTN, SORT_BTN, STYLE_BTN, TOOLBAR_H
   });
 
 })();
