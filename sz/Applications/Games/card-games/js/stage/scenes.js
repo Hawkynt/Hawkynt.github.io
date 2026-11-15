@@ -333,7 +333,7 @@
     });
   };
 
-  /* ════════════ podium (Siegertreppchen) after a shedding round ════════════ */
+  /* ════════════ winners' podium after a shedding round ════════════ */
   const MEDAL = [
     { top: '#fff3b0', mid: '#e0a526', low: '#8a6210', label: '1' },
     { top: '#ffffff', mid: '#b8c2cc', low: '#6b7682', label: '2' },
@@ -374,7 +374,7 @@
         cx.fillRect(ext.x, ext.y, ext.w, ext.h);
         if (t > 1.3) PA.rays(cx, W / 2, 260, 380, t, 'rgba(255,214,110,0.28)', 16);
         cx.globalAlpha = fade;
-        PA.goldText(cx, 'Siegertreppchen', W / 2, 62, 40, { shine: PA.clamp01((t - 0.2) / 1.2) });
+        PA.goldText(cx, 'Winners\' Podium', W / 2, 62, 40, { shine: PA.clamp01((t - 0.2) / 1.2) });
         for (const st of STEPS) {
           const e = top[st.place - 1];
           const rise = PA.ease.back(PA.clamp01((t - st.at) / 0.45));
