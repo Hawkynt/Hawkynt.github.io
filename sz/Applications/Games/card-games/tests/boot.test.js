@@ -26,15 +26,16 @@ async function main() {
   check('scripts load without errors', errors.length === 0, errors.join(' | '));
   /* the window frame is board-sized, so client = board / (9, 15) on the 100x40 fake canvas */
   const frame = game.SZ.CardGames.dom.canvas.parentElement;
+  /* the board plus the 40-unit button band above it, at scale 1 */
   frame.clientWidth = 900;
-  frame.clientHeight = 600;
+  frame.clientHeight = 640;
   game.SZ.CardGames.dom.setupCanvas();
 
-  /* the fake canvas is 100x40 for a 900x600 logical board: the controller maps
-     client coords to canvas coords with scaleX=9, scaleY=15 */
+  /* the fake canvas is 100x40 for the 900x640 frame: the controller maps client coords
+     to frame coords with scaleX=9, scaleY=16, and the board starts below the 40-unit band */
   function pev(type, mx, my) {
     return {
-      type, clientX: mx / 9, clientY: my / 15, pointerId: 1, button: 0,
+      type, clientX: mx / 9, clientY: (my + 40) / 16, pointerId: 1, button: 0,
       preventDefault() {}, stopPropagation() {}, target: game.document.body
     };
   }
@@ -51,7 +52,13 @@ async function main() {
   game.frames(5);
   const TAB = (i) => [105, 84 + i * 42 + 19];
   const TILE = (i) => [212 + (i % 4) * 170.5 + 80, 172 + Math.floor(i / 4) * 102 + 46];
-  const open = (tab, tile) => { click(...TAB(tab)); game.frames(5); click(...TILE(tile)); game.frames(130); };
+  /* a story scene greets the first game of each family; Esc skips it like a player would */
+  const story = game.SZ.CardGames.meta && game.SZ.CardGames.meta.story;
+  const open = (tab, tile) => {
+    click(...TAB(tab)); game.frames(5); click(...TILE(tile)); game.frames(10);
+    while (story && story.active()) { story.skip(); game.frames(2); }
+    game.frames(120);
+  };
 
   /* menu bar: high scores on an empty table */
   game.SZ.MenuBar.onAction('high-scores');
@@ -64,11 +71,11 @@ async function main() {
   click(195, 89); click(195, 89); game.frames(20);  /* double-click waste -> foundation */
   click(69, 263); game.frames(10);  /* tableau column 0 */
   click(821, 375); game.frames(30); /* tableau column 6 */
-  click(772, 22); game.frames(3);   /* hint toggle */
-  click(690, 22); game.frames(3);   /* auto-sort toggle */
+  click(772, -20); game.frames(3);   /* hint toggle */
+  click(690, -20); game.frames(3);   /* auto-sort toggle */
 
   /* card style settings panel: table, back, custom color, face, close */
-  click(608, 22); game.frames(3);   /* Style button */
+  click(608, -20); game.frames(3);   /* Style button */
   click(210, 129); game.frames(3);  /* table: Midnight Blue */
   click(356, 304); game.frames(3);  /* card back: Custom Color */
   click(369, 507); game.frames(3);  /* card face: German */
@@ -81,7 +88,7 @@ async function main() {
 
   /* F2 restarts the current variant, then back to the menu via the canvas button */
   game.key('F2'); game.frames(30);
-  click(854, 22); game.frames(5);
+  click(854, -20); game.frames(5);
 
   /* ---- Blackjack (casino family) ---- */
   open(1, 1);                /* Casino tab, Blackjack */
