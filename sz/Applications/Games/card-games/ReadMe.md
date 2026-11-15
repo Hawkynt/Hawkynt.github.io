@@ -98,7 +98,7 @@ Each variant lives in its own folder, split by concern (state, rules, flow, AI, 
 - [x] As a player, I can play Liar's Uno playing face-down cards and bluffing, with "Liar!" challenges (caught lying = pick up pile, wrong challenge = draw 4)
 - [x] As a player, I can play Uno Extreme with random card launcher replacing manual drawing (0-3 cards per press) and Extreme Hit cards
 - [x] As a player, I can play Uno Party (6 players, 224-card double deck) with special Party Wilds: Everyone Draw, Trade Hands, Discard All, Pick Color
-- [x] As a player, I can play every Uno-style round out for the places: finished players leave the turn order, the others play on (faster once I am out) until the top three are decided, and a Siegertreppchen cinematic shows gold, silver and bronze with podium experience for 2nd and 3rd
+- [x] As a player, I can play every Uno-style round out for the places: finished players leave the turn order, the others play on (faster once I am out) until the top three are decided, and a winners' podium cinematic shows gold, silver and bronze with podium experience for 2nd and 3rd
 - [x] As a player, I can play Dos with dual discard piles, single or two-card combo number matching, and color match bonuses
 - [x] As a player, I can play ONO 99 with a running total, busting at 99, and special cards (Hold, Reverse, Double Play, Minus-10)
 - [x] As a player, I can play 8-Color Duo with 8 colors (Red, Blue, Green, Yellow, Purple, Orange, Pink, Teal), 114 cards, and 8-color wild choice overlay
