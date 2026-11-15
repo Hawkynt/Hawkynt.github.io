@@ -141,7 +141,7 @@
       selectFrame(cx, r, CT.activeTheme.table === id, hov);
       if (!unlocked('table', id)) lockOverlay(cx, r, th);
       label(cx, th.name, r.x + r.w / 2, r.y + r.h + 9, '#d8c8a0', 9);
-      if (hov) hoverHint = th.name + (unlocked('table', id) ? '' : '  —  ' + (th.unlock && th.unlock.goal ? SZ.CardGames.meta.goals.unlockText(th.unlock.goal) : profile().unlockHint(th)));
+      if (hov) hoverHint = th.name + (unlocked('table', id) ? '' : '  —  ' + (th.unlock && th.unlock.goal && SZ.CardGames.meta && SZ.CardGames.meta.goals ? SZ.CardGames.meta.goals.unlockText(th.unlock.goal) : profile().unlockHint(th)));
     });
 
     /* card backs */
