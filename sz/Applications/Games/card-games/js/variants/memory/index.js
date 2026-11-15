@@ -93,7 +93,7 @@
     tick(dt) {
       // Handle flip-back timer for unmatched pairs
       if (S.flipLockTimer > 0) {
-        S.flipLockTimer -= dt;
+        S.flipLockTimer -= dt * 1000; /* dt is in seconds, the lock in ms */
         if (S.flipLockTimer <= 0) {
           S.flipLockTimer = 0;
           V.flipBackUnmatched();

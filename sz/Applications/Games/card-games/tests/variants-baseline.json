@@ -207,10 +207,6 @@
   "digest": "47568a7e1f4235429c8fb3920f7fb34c916cc7030f88921d4de2cf1765f112de",
   "entries": 94399
  },
- "memory": {
-  "digest": "831afe51295efce26f6d0fa7af6fde132461e6300f91ce4c4f48a1ef678eb18f",
-  "entries": 48759
- },
  "gofish": {
   "digest": "511edfa8bd1ff995fed8f9c7f0c1ed35d1c600cb3ab68be945397b0229f70a62",
   "entries": 86019
@@ -286,5 +282,9 @@
  "belote": {
   "digest": "58ada44ff70f0904186a59518a37a0754a0f4b956110b67e238a141175e35fd1",
   "entries": 125813
+ },
+ "memory": {
+  "digest": "fd3ece37c4d67e0bd16f96d568f892950c7c3fb17ee6bcc3f88fbb63cc51b4cd",
+  "entries": 52593
  }
 }
