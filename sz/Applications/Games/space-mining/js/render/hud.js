@@ -71,7 +71,7 @@
       const id = ORES[i].id;
       const n = run.cargo[id];
       if (!n) continue;
-      const seg = NS.rules.oreSpace(G.stats, id) * n / run.cargoMax * w;
+      const seg = NS.mining.cargoSpace(id, n) / run.cargoMax * w;
       const gr = ctx.createLinearGradient(0, y, 0, y + h);
       gr.addColorStop(0, ORES[i].glow);
       gr.addColorStop(0.5, ORES[i].color);

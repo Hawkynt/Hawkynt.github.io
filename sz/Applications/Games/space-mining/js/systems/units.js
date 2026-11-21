@@ -1,7 +1,7 @@
 /* Units in the field: spawning from factories and the saved roster, veterancy ranks, steering
    with arrival and separation (kept to the group's speed while in formation), following their
    order queue, auto-engaging invaders, the jobs of the support craft (mining drones drill and
-   haul ore to the hub, repair drones mend, purge tenders sterilise and purge, transports haul
+   deliver ore to nearby drop-offs, repair drones mend, purge tenders sterilise and purge, transports haul
    stock to the home dock), nanoprobe corruption that makes a unit desert, and rogue units
    hunting your fleet. Owns G.units and the player-unit grid. */
 ;(function() {
@@ -300,7 +300,7 @@
   function idleJob(u, dt) {
     const h = NS.base.hub();
     switch (u.type) {
-      case 'miner': if (h) mine(u, dt, h.x, h.y); else drift(u, dt); break;
+      case 'miner': if (h || u.load) mine(u, dt, h ? h.x : u.x, h ? h.y : u.y); else drift(u, dt); break;
       case 'mender': { const t = findRepair(u); if (t) support(u, t, dt); else drift(u, dt); break; }
       case 'purger': { const t = findPurge(u); if (t) support(u, t, dt); else drift(u, dt); break; }
       case 'transport': haul(u, dt); break;
@@ -316,29 +316,23 @@
     u.y += u.vy * dt;
   }
 
-  /* mining drones: drill rocks near an anchor, sweep nuggets, haul them to the hub */
+  /* Mining drones drill near an anchor and deliver through the same routes as ship drones. */
   function mine(u, dt, ax, ay) {
-    const h = NS.base.hub();
-    if (u.load >= u.def.haul || (u.job === 'haul' && u.load > 0)) {
+    const drones = NS.drones;
+    const limit = drones.capacity(u.def.haul);
+    if (u.load >= limit || (u.job === 'haul' && u.load > 0)) {
       u.job = 'haul';
-      if (!h) { drift(u, dt); return; }
-      if (steer(u, h.x, h.y, u.speed, dt, 0) < h.r + 10) {
-        const b = G.base;
-        const cap = C2().storageCap(b.data, G.stats);
-        if (C2().stockCount(b.data.stock) < cap) {
-          b.data.stock.ore[u.ore] = (b.data.stock.ore[u.ore] || 0) + u.load;
-          NS.base.pod(u.x, u.y, h.x, h.y, ORE_BY_ID[u.ore].color, 0);
-        }
-        u.load = 0;
-        u.ore = null;
-        u.job = 'idle';
+      const to = drones.destination(u);
+      if (steer(u, to.x, to.y, u.speed, dt, 0) < drones.deliveryRange(to)) {
+        drones.deliver(u, to);
+        if (!u.load) u.job = 'idle';
         u.rock = null;
       }
       return;
     }
     if (!u.rock || !u.rock.alive) {
       /* a half-full basket goes home rather than starting on another ore */
-      if (u.rock && u.load >= u.def.haul / 2) {
+      if (u.rock && u.load >= limit / 2) {
         u.rock = null;
         u.job = 'haul';
         return;
@@ -359,15 +353,7 @@
       NS.asteroids.damage(o, 14 * G.stats.unitDmg * dt * (1 + u.rank * 0.15), hx, hy, 'drone');
       if (R() < dt * 8) NS.fx.sparks(hx, hy, a, 1.6, 1, '#b4ffc8', 160, 0.25);
     }
-    /* sweep nuggets into the basket */
-    for (let i = 0; i < G.nuggets.length && u.load < u.def.haul; ++i) {
-      const n = G.nuggets[i];
-      if (!n.alive || n.credits || (u.ore && n.ore !== u.ore)) continue;
-      if ((n.x - u.x) * (n.x - u.x) + (n.y - u.y) * (n.y - u.y) > 80 * 80) continue;
-      n.alive = false;
-      u.ore = n.ore;
-      u.load += n.units;
-    }
+    drones.sweep(u, limit, 80, false);
   }
 
   function pickRock(u, ax, ay) {
@@ -375,7 +361,7 @@
     let best = null, bs = -Infinity;
     for (let i = 0; i < list.length; ++i) {
       const o = list[i];
-      if (!o.alive || !o.ore || o.kind !== 'rock' || o.volatile || o.bio) continue;
+      if (!o.alive || !o.ore || (u.ore && u.ore !== o.ore) || o.kind !== 'rock' || o.volatile || o.bio) continue;
       let taken = false;
       for (let k = 0; k < G.units.length; ++k) if (G.units[k] !== u && G.units[k].rock === o) { taken = true; break; }
       if (taken) continue;

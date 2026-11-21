@@ -52,8 +52,29 @@ exports.run = async (t) => {
   await t.wait(700);
   await t.shot('07-docked-banked');
   t.check('docking banks the hold and keeps the trip going', await t.state("G.screen === 'playing' && G.run && G.run.bankedUnits === 13 && G.hitAreas.some(a => a.id === 'dock-home')"));
+  await t.run((NS, G) => {
+    G.save.tree.l_blocks = 1;
+    NS.trip.refreshFlightStats();
+    const h = NS.base.grant('hub', G.base.site.hubX, G.base.site.hubY);
+    G.base.data.stock.ore = { copper: 40 };
+    G.ship.x = h.x; G.ship.y = h.y; G.ship.vx = G.ship.vy = 0;
+    NS.camera.snap(h.x, h.y);
+  });
+  await t.page.key('Tab', 'Tab', 9);
+  t.check('Tab pauses at the outpost', await t.state('G.cmd.on && G.cmd.plan'));
+  await t.hit('loadOre');
+  t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && G.run.cargoUsed === 10 && !G.base.data.stock.ore.copper'));
+  await t.shot('08-packed-ore');
+  await t.page.key('Tab', 'Tab', 9);
+  await t.run((NS, G) => {
+    G.ship.x = G.dock.x + 30; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;
+    G.run.leftDock = true;
+    NS.camera.snap(G.ship.x, G.ship.y);
+  });
+  await t.wait(500);
+  t.check('the station banks the full unpacked amount', await t.state('G.save.store.ore.copper === 40 && G.run.cargoUsed === 0 && !G.cmd.plan'));
   await t.hit('dock-home');
   await t.wait(4200);
-  await t.shot('08-report');
+  await t.shot('09-report');
   t.check('Return home ends the trip with the report', await t.state("G.screen === 'results' && G.ui.results.hold.iron === 10"));
 };

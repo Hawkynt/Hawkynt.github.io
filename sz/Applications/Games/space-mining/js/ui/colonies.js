@@ -94,7 +94,7 @@
       }
       kit.text(st, x + 190, ty + 16, 13, col, { weight: 'bold' });
       if (claimed) {
-        kit.text('value ' + kit.group(C.baseValue(b)) + '  -  stock ' + C.stockCount(b.stock), x + 190, ty + 33, 11, UI.textDim);
+        kit.text('value ' + kit.group(C.baseValue(b)) + '  -  stock ' + C.stockCount(b.stock, G.stats), x + 190, ty + 33, 11, UI.textDim);
         kit.text(String(b.buildings.length), x + 330, ty + 23, 13, UI.text);
         kit.text(b.crew + '/' + C.housing(b), x + 380, ty + 23, 13, UI.text);
         kit.text(String(b.wave), x + 432, ty + 23, 13, UI.text);

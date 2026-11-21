@@ -12,7 +12,7 @@
   const { ORES, ORE_BY_ID } = NS.ores;
   const { UNIT_BY_ID, ENEMY_BY_ID } = NS.fleetData;
 
-  const RUN_KEYS = ['t', 'cargoUsed', 'units', 'rd', 'rdAcc', 'salvage', 'fractures', 'kills', 'damage', 'charges', 'timeLeft', 'contam',
+  const RUN_KEYS = ['t', 'units', 'rd', 'rdAcc', 'salvage', 'fractures', 'kills', 'damage', 'charges', 'timeLeft', 'contam',
     'survivors', 'waves', 'invaders', 'credits', 'planAt', 'pirateT', 'leftDock', 'bosses', 'crownBroken'];
 
   const r1 = (v) => Math.round(v * 10) / 10;
@@ -83,6 +83,7 @@
     for (let i = 0; i < RUN_KEYS.length; ++i) if (snap.run[RUN_KEYS[i]] !== undefined) run[RUN_KEYS[i]] = snap.run[RUN_KEYS[i]];
     run.cargo = {};
     for (const id in snap.run.cargo) if (ORE_BY_ID[id] && snap.run.cargo[id] > 0) run.cargo[id] = snap.run.cargo[id];
+    NS.mining.refreshCargoSpace();
     run.plan = Array.isArray(snap.run.plan) ? snap.run.plan : [];
     run.banked = {};
     for (const id in snap.run.banked || {}) if (ORE_BY_ID[id] && snap.run.banked[id] > 0) run.banked[id] = snap.run.banked[id];
@@ -133,6 +134,7 @@
     }
     const b = G.base;
     if (b && snap.wave) {
+      b.hubVisit = !!snap.wave.hubVisit;
       b.waveT = snap.wave.waveT;
       b.empCd = snap.wave.empCd || 0;
       if (snap.wave.active) {

@@ -364,10 +364,15 @@
     return sumDone(base, 'supply') + (stats ? stats.supply || 0 : 0);
   }
 
-  function stockCount(stock) {
+  function stockCount(stock, stats) {
     let n = 0;
-    for (const kind in stock) for (const id in stock[kind]) n += stock[kind][id];
+    for (const kind in stock) for (const id in stock[kind]) n += NS.rules.packedSlots(stats, stock[kind][id]);
     return n;
+  }
+
+  function stockRoom(base, stats, kind, id) {
+    const stock = base.stock;
+    return NS.rules.packedRoom(stats, stock[kind][id] || 0, storageCap(base, stats) - stockCount(stock, stats));
   }
 
   /* ── power ── */
@@ -540,7 +545,7 @@
   Object.assign(NS.colony, {
     CELL, COLS, ROWS, site, deposits, newBase, repairBases, occupancy, centre, linkRange, links, inReach, canPlace,
     depositUnder, buildCost, upgradeCost, unitCost, missing, canAfford, pay, refund, levelMul, storageCap, housing,
-    supplyCap, stockCount, buildingPower, power, crewNeed, assignCrew, costValue, baseValue, upkeep, waveInterval,
+    supplyCap, stockCount, stockRoom, buildingPower, power, crewNeed, assignCrew, costValue, baseValue, upkeep, waveInterval,
     waveBudget, isBossWave, composeWave, bestCargo, takeCargo, ORES, ZONES
   });
 })();

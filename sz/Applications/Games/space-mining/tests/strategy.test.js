@@ -53,11 +53,16 @@ enter('career', 1);
 check('a career trip brings the belt\'s outpost site', !!G.base && !B.claimed() && G.base.site.w > 0);
 check('rocks keep clear of the site', G.rocks.every(r => !B.blocks(r.x, r.y, 0)));
 key('Tab');
-check('Tab opens the command view', G.cmd.on);
+const pausedAt = G.run.t;
+check('Tab opens the command view in pause-and-plan', G.cmd.on && G.cmd.plan);
+key('Tab', { repeat: true });
+steps(2);
+check('holding Tab keeps the command view and simulation paused', G.cmd.on && G.cmd.plan && G.run.t === pausedAt);
 steps(10, 2);
 check('the command view draws without errors', errors === 0 && G.hitAreas.some(a => a.id === 'b_hub'));
 
 /* found the outpost through the command layer */
+key('Space');
 P.startPlace('hub');
 const hw = cellWorld('hub', G.base.site.hubX, G.base.site.hubY);
 check('placing the hub founds the outpost', P.tryPlace(hw.x, hw.y) && B.claimed() && G.save.bases.amber && G.save.stats.bases === 1);
@@ -120,7 +125,7 @@ for (let t = 0; t < 90 && !hauled; ++t) {
   if (miner.load > 0) hauled = 'loaded';
   if (hauled && miner.load === 0 && miner.alive) hauled = true;
 }
-check('a mining drone drills rocks and hauls the ore to the hub', hauled === true || (hauled && miner.load > 0));
+check('a mining drone drills rocks and delivers its haul', hauled === true || (hauled && miner.load > 0));
 void oreBefore;
 
 /* formations */

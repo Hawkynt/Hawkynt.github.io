@@ -35,6 +35,7 @@
     if (G.run.mode === 'daily') return;
     G.stats = flightStats(G.run.mode);
     G.run.cargoMax = G.stats.cargo;
+    NS.mining.refreshCargoSpace();
     NS.ship.applyStats(G.stats);
   }
 

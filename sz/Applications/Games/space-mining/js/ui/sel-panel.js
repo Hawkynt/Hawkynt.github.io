@@ -166,7 +166,7 @@
     if (o.type === 'fabricator') return o._making ? 'Making ' + COMP_BY_ID[RECIPE_BY_ID[o._making].out].name : 'Idle - no bars for any recipe';
     if (o.type === 'fusion') return G.base.fuel[o.id] === false ? 'NO FUEL - needs hydrogen or helium-3' : 'Burning gas - ' + Math.round(C.buildingPower(o, b.zone, G.stats, true)) + ' power';
     if (o.type === 'shield') return 'Dome ' + Math.round(o._shield || 0) + ' / ' + Math.round(def.cap * C.levelMul(o.lvl) * G.stats.shieldMul);
-    if (o.type === 'hub') return 'Crew ' + b.data.crew + ' / ' + C.housing(b.data) + '  -  storage ' + C.stockCount(b.data.stock) + ' / ' + C.storageCap(b.data, G.stats) + '  -  value ' + NS.kit.group(b.value);
+    if (o.type === 'hub') return 'Crew ' + b.data.crew + ' / ' + C.housing(b.data) + '  -  storage ' + C.stockCount(b.data.stock, G.stats) + ' / ' + C.storageCap(b.data, G.stats) + '  -  value ' + NS.kit.group(b.value);
     if (def.makes) return 'Right-click the map to set a rally point';
     return def.desc;
   }

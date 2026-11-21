@@ -134,7 +134,11 @@
   function pilotKey(e) {
     if (!G.base) return false;
     const code = e.code;
-    if (code === 'Tab') return P.toggle(true);
+    if (code === 'Tab') {
+      if (!P.toggle(true)) return false;
+      P.plan(true);
+      return true;
+    }
     if (/^Digit[1-9]$/.test(code)) {
       const n = +code.charAt(5);
       if (e.ctrlKey || e.metaKey) P.setGroup(n);

@@ -164,9 +164,7 @@
       return;
     }
     const n = Math.min(G.run.cargo[id], 2 + Math.floor(R() * 3));
-    G.run.cargo[id] -= n;
-    G.run.cargoUsed -= NS.rules.oreSpace(G.stats, id) * n;
-    if (!G.run.cargo[id]) delete G.run.cargo[id];
+    NS.mining.changeCargo(id, -n);
     p.stolen = { ore: id, units: n };
     NS.fx.text(s.x, s.y - 50, '-' + n + ' ' + ORE_BY_ID[id].name + '!', '#ff5c6c', 18, 1.4);
     NS.fx.sparks(s.x, s.y, 0, TAU, 12, '#ff8a5a', 260, 0.3);

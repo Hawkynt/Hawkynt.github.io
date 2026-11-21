@@ -146,19 +146,23 @@
       const step = Math.max(10, rock.maxHp * 0.3);
       while (rock.chipAcc >= step) {
         rock.chipAcc -= step;
-        if (R() < 0.45 * G.stats.chip) NS.mining.spawnNugget(hx, hy, rock.ore, 1, rock);
+        if (R() < 0.45 * G.stats.chip) NS.mining.spawnNugget(hx, hy, rock.ore, fortune(1), rock);
       }
     }
     if (rock.volatile && rock.hp < rock.maxHp * 0.6 && rock.fuse <= 0) rock.fuse = 1.6;
     if (rock.hp <= 0) {
-      fracture(rock, hx, hy);
+      fracture(rock, hx, hy, source === 'laser' || source === 'drone' || source === 'blast');
       return true;
     }
     return false;
   }
 
+  function fortune(units) {
+    return G.stats.fortune > 0 && R() < G.stats.fortune ? units * 2 : units;
+  }
+
   /* Crack a rock: children one tier smaller, ore nuggets by richness, chunks, dust, shock */
-  function fracture(rock, hx, hy) {
+  function fracture(rock, hx, hy, mined) {
     if (!rock.alive) return;
     rock.alive = false;
     const ore = rock.ore ? ORE_BY_ID[rock.ore] : null;
@@ -196,7 +200,7 @@
       units = Math.max(1, units);
       while (units > 0) {
         const u = units >= 4 && rng() < 0.3 ? 2 : 1;
-        NS.mining.spawnNugget(rock.x, rock.y, rock.ore, u, rock, 70 + rock.r * 2);
+        NS.mining.spawnNugget(rock.x, rock.y, rock.ore, mined ? fortune(u) : u, rock, 70 + rock.r * 2);
         units -= u;
       }
     }

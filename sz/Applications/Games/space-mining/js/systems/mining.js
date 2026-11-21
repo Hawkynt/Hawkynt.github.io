@@ -30,15 +30,37 @@
     return G.run.cargoMax - G.run.cargoUsed;
   }
 
+  function cargoSpace(oreId, units) {
+    return rules.packedSlots(G.stats, units) * rules.oreSpace(G.stats, oreId);
+  }
+
+  function refreshCargoSpace() {
+    const run = G.run;
+    run.cargoUsed = 0;
+    for (const id in run.cargo) run.cargoUsed += cargoSpace(id, run.cargo[id]);
+  }
+
+  function roomFor(oreId) {
+    return rules.packedRoom(G.stats, G.run.cargo[oreId] || 0, spaceLeft() / rules.oreSpace(G.stats, oreId));
+  }
+
   function fits(oreId, units) {
-    return spaceLeft() + 1e-6 >= rules.oreSpace(G.stats, oreId) * units;
+    return roomFor(oreId) >= units;
+  }
+
+  function changeCargo(oreId, units) {
+    const run = G.run;
+    const before = run.cargo[oreId] || 0;
+    const after = before + units;
+    if (after) run.cargo[oreId] = after;
+    else delete run.cargo[oreId];
+    run.cargoUsed = Math.max(0, run.cargoUsed + cargoSpace(oreId, after) - cargoSpace(oreId, before));
   }
 
   function addCargo(oreId, units) {
     const run = G.run;
     const ore = ORE_BY_ID[oreId];
-    run.cargo[oreId] = (run.cargo[oreId] || 0) + units;
-    run.cargoUsed += rules.oreSpace(G.stats, oreId) * units;
+    changeCargo(oreId, units);
     run.units += units;
     run.rdAcc += ore.rd * units * G.stats.dataMul;
     while (run.rdAcc >= 1) {
@@ -370,6 +392,6 @@
   }
 
   Object.assign(NS.mining, {
-    AIM_CONE, AIM_TURN, spaceLeft, fits, addCargo, spawnNugget, spawnSalvage, raycast, update, updateLaser, coneTarget, beamAngle, pulse, dropCharge, clear
+    AIM_CONE, AIM_TURN, spaceLeft, cargoSpace, refreshCargoSpace, roomFor, fits, changeCargo, addCargo, spawnNugget, spawnSalvage, raycast, update, updateLaser, coneTarget, beamAngle, pulse, dropCharge, clear
   });
 })();

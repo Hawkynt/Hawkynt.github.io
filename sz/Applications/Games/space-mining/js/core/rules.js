@@ -165,6 +165,10 @@
 
   function nodeText(n, lvl) {
     const v = n.per * lvl;
+    if (n.stat === 'blockRank') {
+      const names = ['Block', 'Compressed Block', 'Double Compressed Block', 'Triple Compressed Block'];
+      return n.fmt.replace('{block}', names[lvl - 1]).replace('{size}', String(blockSize({ blockRank: lvl })));
+    }
     return n.fmt.replace('{p}', String(Math.round(v * 100))).replace('{v}', String(Math.round(v * 100) / 100));
   }
 
@@ -271,6 +275,7 @@
       smartDrones: t('smartDrones') > 0,
       crit: t('crit'), yieldMul: 1 + t('yieldMul'), chip: 1 + t('chip'), twin: t('twin'), seismic: t('seismic'),
       fuelEff: Math.max(0.4, 1 - t('fuelEff')), boost: t('boost'), grip: 1 + t('grip'), jump: t('jump') > 0,
+      blockRank: t('blockRank'), fortune: t('fortune'),
       compress: t('compress') > 0, priceMul: 1 + t('priceMul') + (save.modules.tradeHub || 0) * 0.04,
       contracts: 3 + t('contracts') + (save.modules.tradeHub || 0), contractMul: 1 + t('contracts') * 0.15,
       turret: t('turret'), radResist: Math.min(0.85, t('radResist')), impact: Math.min(0.8, t('impact')),
@@ -297,6 +302,23 @@
   /* hold space one unit of an ore takes */
   function oreSpace(stats, oreId) {
     return stats.compress && (oreId === 'iron' || oreId === 'ice' || oreId === 'copper') ? 0.5 : 1;
+  }
+
+  /* Stock keeps its existing unit counts. Apply the press independently to each material
+     stack, including partial blocks, so recipes, transfers and prices use exact units. */
+  function blockSize(stats) {
+    return Math.pow(4, stats && stats.blockRank || 0);
+  }
+
+  function packedSlots(stats, units) {
+    const size = blockSize(stats);
+    return size === 1 ? units : Math.ceil(units / size);
+  }
+
+  function packedRoom(stats, units, freeSlots) {
+    const size = blockSize(stats);
+    const slots = packedSlots(stats, units) + Math.floor(freeSlots + 1e-6);
+    return Math.max(0, slots * size - units);
   }
 
   /* Raise a counter; never lowers. Returns the new value */
@@ -337,6 +359,6 @@
   Object.assign(NS.rules, {
     START_CREDITS, START_RD, freshSave, migrateSave, nodeLevel, nodeCost, nodeState, buyNode, nodeText,
     upgradeCost, buyUpgrade, buyHull, moduleCost, buildModule, zoneState, buyLicense, computeStats, dailyLoadout,
-    oreSpace, bump, record, checkAchievements, achievementCount, addHighScore
+    oreSpace, blockSize, packedSlots, packedRoom, bump, record, checkAchievements, achievementCount, addHighScore
   });
 })();

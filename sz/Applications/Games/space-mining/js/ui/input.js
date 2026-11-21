@@ -38,6 +38,7 @@
       return;
     }
     if (G.screen === 'playing') {
+      if (e.repeat && e.code === 'Tab') { e.preventDefault(); return; }
       if (G.cmd.on) {
         if (NS.commandInput.key(e)) { e.preventDefault(); return; }
         if (FLIGHT_KEYS[e.code] || e.code === 'KeyA') e.preventDefault();

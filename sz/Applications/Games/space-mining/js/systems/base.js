@@ -367,6 +367,51 @@
     if (b.mode === 'siege') NS.trip.finish('fallen', 2.5);
   }
 
+  function cargoHub() {
+    const h = hub();
+    return h && h.prog >= 1 && !h.rogue && !G.base.data.abandoned ? h : null;
+  }
+
+  function oreRoom(id) {
+    return cargoHub() ? C.stockRoom(G.base.data, G.stats, 'ore', id) : 0;
+  }
+
+  function receiveOre(id, units, from) {
+    const n = Math.min(units, oreRoom(id));
+    if (n <= 0) return 0;
+    const ore = G.base.data.stock.ore;
+    ore[id] = (ore[id] || 0) + n;
+    const h = cargoHub();
+    for (let k = 0; k < Math.min(4, n); ++k) pod(from.x, from.y, h.x, h.y, ORE_BY_ID[id].color, 0.4 + k * 0.12);
+    return n;
+  }
+
+  function canLoadOre() {
+    const h = cargoHub(), s = G.ship;
+    return !!(G.stats.blockRank && h && s && s.alive && !G.cine &&
+      Math.hypot(s.x - h.x, s.y - h.y) <= 95 && Math.hypot(s.vx, s.vy) <= 200 &&
+      Object.keys(G.base.data.stock.ore).some(id => NS.mining.roomFor(id) > 0));
+  }
+
+  function loadOre() {
+    if (!canLoadOre()) return 0;
+    const h = cargoHub(), s = G.ship, ore = G.base.data.stock.ore;
+    let total = 0;
+    for (const id in ore) {
+      const n = Math.min(ore[id], NS.mining.roomFor(id));
+      if (n <= 0) continue;
+      NS.mining.changeCargo(id, n);
+      ore[id] -= n;
+      if (!ore[id]) delete ore[id];
+      total += n;
+      pod(h.x, h.y, s.x, s.y, ORE_BY_ID[id].color, 0);
+    }
+    G.base.hubVisit = true;
+    NS.command.say('Loaded ' + total + ' ore for transport', '#7cf0ff');
+    NS.resume.save();
+    return total;
+  }
+
   /* ── the ship at the hub: unload the hold, drop off survivors, quick repairs ── */
   function shipAtHub(dt) {
     const b = G.base, s = G.ship, h = hub();
@@ -388,23 +433,16 @@
     if (b.data.abandoned) return;
     let units = 0;
     const cap = C.storageCap(b.data, G.stats);
-    let used = C.stockCount(b.data.stock);
     for (const id in run.cargo) {
-      const n = Math.min(run.cargo[id], Math.max(0, cap - used));
-      if (n <= 0) continue;
-      b.data.stock.ore[id] = (b.data.stock.ore[id] || 0) + n;
-      run.cargo[id] -= n;
-      run.cargoUsed -= NS.rules.oreSpace(G.stats, id) * n;
-      if (!run.cargo[id]) delete run.cargo[id];
-      used += n;
+      const n = receiveOre(id, run.cargo[id], s);
+      if (!n) continue;
+      NS.mining.changeCargo(id, -n);
       units += n;
-      for (let k = 0; k < Math.min(4, n); ++k) pod(s.x, s.y, h.x, h.y, ORE_BY_ID[id].color, 0.4 + k * 0.12);
     }
-    run.cargoUsed = Math.max(0, run.cargoUsed);
     if (units) {
       NS.fx.text(h.x, h.y - 50, 'UNLOADED ' + units, '#7cf0ff', 20, 1.6);
       NS.audio.sfx('coin', { volume: 0.5, pitch: 0.8 });
-    } else if (used >= cap) NS.fx.text(h.x, h.y - 50, 'STORAGE FULL', '#ff6a5c', 18, 1.4);
+    } else if (C.stockCount(b.data.stock, G.stats) >= cap) NS.fx.text(h.x, h.y - 50, 'STORAGE FULL', '#ff6a5c', 18, 1.4);
     /* contaminated cargo: a scan catches it, else the spores get in */
     if (run.contam > 0 && units) {
       const scanned = G.stats.cargoScan || b.data.buildings.some(o => (o.type === 'radar' || o.type === 'medbay') && o.prog >= 1 && !o.rogue);
@@ -719,7 +757,7 @@
   }
 
   Object.assign(NS.base, {
-    wallet, prepare, blocks, claimed, hub, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
+    wallet, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
     setRecipe, queueUnit, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, ZONES
   });
 })();

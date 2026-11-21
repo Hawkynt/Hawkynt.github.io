@@ -185,7 +185,7 @@
   function outposts() {
     const A = NS.colonyArt;
     para([
-      'Every belt has an outpost site. Press Tab in flight for the command view, pick the Command Hub and click inside the site to found an outpost. Fly slowly over the hub to unload your hold into its stock - buildings are paid in credits and stock.',
+      'Every belt has an outpost site. Press Tab in flight to pause in command view, pick the Command Hub and click inside the site to found an outpost. Fly slowly over the hub to unload ore. With Block Press researched, dock at the hub and choose Load ore in command view to haul packed ore to the station.',
       'Buildings must be in link range of the hub or a power relay; links carry power - and infection and nanoprobes. Extractors stand on deposits. Everything that draws power or needs crew runs slower without them.',
     ], 90, 140, 1100);
     const items = [

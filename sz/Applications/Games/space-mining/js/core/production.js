@@ -62,8 +62,6 @@
      map building id -> fueled, kept between steps. Returns the events of this step. */
   function step(w) {
     const base = w.base, stock = base.stock, stats = w.stats, dt = w.dt;
-    const cap = C.storageCap(base, stats);
-    let used = C.stockCount(stock);
     const events = [];
     for (let i = 0; i < base.buildings.length; ++i) {
       const b = base.buildings[i];
@@ -81,7 +79,6 @@
           }
           if (fuelId && eff > 0) {
             take(stock, kind, fuelId, 1);
-            --used;
             b._fuelT = def.fuelEvery * (kind === 'bar' ? 3 : 1);
             w.fuel[b.id] = true;
             events.push({ type: 'use', b: b, kind: kind, id: fuelId, n: 1 });
@@ -99,10 +96,9 @@
         if (!d) continue;
         b._t = (b._t || 0) + dt * eff * lm * stats.extract * (w.mods && w.mods.yield || 1);
         if (b._t >= def.rate) {
-          if (used >= cap) { b._blocked = true; b._t = def.rate; continue; }
+          if (C.stockRoom(base, stats, 'ore', d.res) < 1) { b._blocked = true; b._t = def.rate; continue; }
           b._t -= def.rate;
           add(stock, 'ore', d.res, 1);
-          ++used;
           events.push({ type: 'make', b: b, kind: 'ore', id: d.res, n: 1 });
         }
       } else if (b.type === 'smelter' || b.type === 'refinery') {
@@ -114,7 +110,6 @@
           b._t -= def.rate;
           take(stock, 'ore', id, 3);
           add(stock, 'bar', id, 1);
-          used -= 2;
           events.push({ type: 'use', b: b, kind: 'ore', id: id, n: 3 });
           events.push({ type: 'make', b: b, kind: 'bar', id: id, n: 1, bar: true });
         }
@@ -126,10 +121,9 @@
         b._making = rec.id;
         if (b._t >= rec.time) {
           b._t -= rec.time;
-          for (const id in rec.bar) { take(stock, 'bar', id, rec.bar[id]); used -= rec.bar[id]; }
-          for (const id in rec.comp) { take(stock, 'comp', id, rec.comp[id]); used -= rec.comp[id]; }
+          for (const id in rec.bar) take(stock, 'bar', id, rec.bar[id]);
+          for (const id in rec.comp) take(stock, 'comp', id, rec.comp[id]);
           add(stock, 'comp', rec.out, 1);
-          ++used;
           events.push({ type: 'use', b: b, kind: 'bar', id: Object.keys(rec.bar)[0], n: 1 });
           events.push({ type: 'make', b: b, kind: 'comp', id: rec.out, n: 1, comp: true });
         }
@@ -140,7 +134,6 @@
           let n = 1;
           if (stock.comp.circuit) {
             take(stock, 'comp', 'circuit', 1);
-            --used;
             n = 2;
             events.push({ type: 'use', b: b, kind: 'comp', id: 'circuit', n: 1 });
           }

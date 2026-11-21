@@ -1,8 +1,5 @@
-/* Mining drones: launched from the ship, each picks an ore rock near the ship (the most
-   valuable one with Prospector AI), hovers and drills it with its own small laser, sweeps up the
-   nuggets it breaks loose, flies its basket home and unloads into the hold - or, when the hold
-   has no room, hauls it to the station, banks it there and flies straight back out. F recalls or
-   relaunches the swarm; destroyed drones are rebuilt aboard after a while. Owns G.drones. */
+/* Ship-launched mining drones drill rocks, collect nuggets and deliver to the ship, outpost
+   or station. F recalls or relaunches the swarm. Owns G.drones. */
 ;(function() {
   'use strict';
 
@@ -47,7 +44,7 @@
     let best = null, bs = -Infinity;
     for (let i = 0; i < list.length; ++i) {
       const o = list[i];
-      if (!o.alive || !o.ore || o.kind !== 'rock' || o.volatile || taken(o, d)) continue;
+      if (!o.alive || !o.ore || (d.ore && o.ore !== d.ore) || o.kind !== 'rock' || o.volatile || taken(o, d)) continue;
       const dist = Math.sqrt((o.x - d.x) * (o.x - d.x) + (o.y - d.y) * (o.y - d.y));
       const score = G.stats.smartDrones ? ORE_BY_ID[o.ore].value * o.rich / (o.maxHp + 20) * 100 - dist * 0.02 : -dist - o.tier * 60;
       if (score > bs) { bs = score; best = o; }
@@ -90,13 +87,14 @@
         d.vx = s.vx;
         d.vy = s.vy;
         d.angle = s.angle;
-        if (G.run.dronesOut) d.state = d.load > 0 ? 'haul' : 'seek';
+        if (G.run.dronesOut) d.state = d.load > 0 ? 'return' : 'seek';
         continue;
       }
       if (d.state === 'seek') {
         if (!d.target || !d.target.alive) d.target = pickTarget(d);
         if (!d.target) {
-          if (fly(d, s.x, s.y, dt, speed) < 60 && d.load > 0) d.state = 'return';
+          if (d.load > 0) d.state = 'return';
+          else fly(d, s.x, s.y, dt, speed);
         } else {
           const o = d.target;
           const a = Math.atan2(d.y - o.y, d.x - o.x);
@@ -106,7 +104,7 @@
         const o = d.target;
         if (!o || !o.alive) {
           d.target = null;
-          d.state = d.load >= st.droneHaul ? 'return' : 'seek';
+          d.state = d.load >= capacity(st.droneHaul) ? 'return' : 'seek';
         } else {
           const a = Math.atan2(d.y - o.y, d.x - o.x) + dt * 0.4;
           fly(d, o.x + Math.cos(a) * (o.r + 34), o.y + Math.sin(a) * (o.r + 34), dt, speed * 0.6);
@@ -116,12 +114,24 @@
           if (R() < dt * 10) NS.fx.sparks(hx, hy, a, 1.6, 1, '#b4ffc8', 160, 0.25);
           NS.asteroids.damage(o, 11 * st.droneLaser * dt, hx, hy, 'drone');
         }
-        sweep(d, st);
-      } else if (d.state === 'return') {
-        if (G.run.dronesOut && d.load > 0 && !roomFor(d)) d.state = 'haul';
-        else if (fly(d, s.x, s.y, dt, speed * 1.2) < s.r + 14) unload(d);
-      } else if (d.state === 'haul') {
-        if (fly(d, G.dock.x, G.dock.y, dt, speed * 1.2) < 70) haulIn(d);
+        const limit = capacity(st.droneHaul);
+        if (sweep(d, limit, 110, true)) NS.fx.glow(d.x, d.y, 14, ORE_BY_ID[d.ore].color, 0.2);
+        if (d.load >= limit) {
+          d.state = 'return';
+          d.target = null;
+        }
+      } else if (d.state === 'return' || d.state === 'haul') {
+        if (G.run.dronesOut && d.load > 0) {
+          const to = destination(d);
+          if (fly(d, to.x, to.y, dt, speed * 1.2) < deliveryRange(to)) {
+            deliver(d, to);
+            if (!d.load) d.state = 'seek';
+          }
+        } else if (fly(d, s.x, s.y, dt, speed * 1.2) < s.r + 14) {
+          unload(d);
+          d.state = G.run.dronesOut ? 'seek' : 'docked';
+          d.target = null;
+        }
       }
       const ta = Math.atan2(d.vy, d.vx);
       if (d.vx * d.vx + d.vy * d.vy > 400) d.angle += clamp(angleDiff(d.angle, ta), -8 * dt, 8 * dt);
@@ -133,54 +143,77 @@
     }
   }
 
-  /* drone tractor: free nuggets close by go into the basket */
-  function sweep(d, st) {
-    for (let i = 0; i < G.nuggets.length && d.load < st.droneHaul; ++i) {
+  function capacity(slots) {
+    return slots * NS.rules.blockSize(G.stats);
+  }
+
+  /* Take only what fits, leaving any remainder in the field. */
+  function sweep(d, limit, range, avoidPulled) {
+    const before = d.load;
+    for (let i = 0; i < G.nuggets.length && d.load < limit; ++i) {
       const n = G.nuggets[i];
-      if (!n.alive || n.credits || n.pulled) continue;
-      if ((n.x - d.x) * (n.x - d.x) + (n.y - d.y) * (n.y - d.y) > 110 * 110) continue;
-      if (d.ore && d.ore !== n.ore) continue;
-      n.alive = false;
+      if (!n.alive || n.credits || (avoidPulled && n.pulled) || (d.ore && d.ore !== n.ore)) continue;
+      if ((n.x - d.x) ** 2 + (n.y - d.y) ** 2 > range * range) continue;
+      const units = Math.min(n.units, limit - d.load);
       d.ore = n.ore;
-      d.load += n.units;
-      NS.fx.glow(n.x, n.y, 14, ORE_BY_ID[n.ore].color, 0.2);
+      d.load += units;
+      n.units -= units;
+      if (!n.units) n.alive = false;
     }
-    if (d.load >= st.droneHaul) {
-      d.state = 'return';
-      d.target = null;
-    }
+    return d.load - before;
   }
 
-  function roomFor(d) {
-    return d.ore && NS.mining.spaceLeft() >= NS.rules.oreSpace(G.stats, d.ore);
+  function distanceSquared(d, to) {
+    return (d.x - to.x) ** 2 + (d.y - to.y) ** 2;
   }
 
-  /* a basket banked at the station; the drone goes straight back to work */
-  function haulIn(d) {
-    if (d.load > 0 && d.ore) {
-      NS.trip.bank(d.ore, d.load);
-      NS.fx.text(G.dock.x, G.dock.y - 60, '+' + d.load + ' ' + ORE_BY_ID[d.ore].name + ' banked', '#b4ffc8', 14, 1.2);
-      NS.audio.sfxAt('pickup', G.dock.x, G.dock.y, { volume: 0.25, pitch: 1.3 });
+  function destination(d) {
+    const dock = G.dock;
+    if (d.stationFallback) return dock;
+    const ship = G.ship, hub = NS.base.cargoHub();
+    const stationDistance = distanceSquared(d, dock);
+    const shipDistance = ship && ship.alive && NS.mining.roomFor(d.ore) > 0 ? distanceSquared(d, ship) : Infinity;
+    if (hub && distanceSquared(d, hub) <= Math.min(stationDistance, shipDistance)) {
+      if (NS.base.oreRoom(d.ore) > 0) return hub;
+      d.stationFallback = true;
+      return dock;
     }
-    d.load = 0;
-    d.ore = null;
-    d.target = null;
-    d.state = G.run.dronesOut ? 'seek' : 'return';
+    return shipDistance < stationDistance ? ship : dock;
+  }
+
+  function deliveryRange(to) {
+    return to === G.dock ? 70 : to.r + 14;
   }
 
   function unload(d) {
-    if (d.load > 0 && d.ore) {
-      const room = Math.floor(NS.mining.spaceLeft() / NS.rules.oreSpace(G.stats, d.ore));
-      const n = Math.min(room, d.load);
-      if (n > 0) {
-        NS.mining.addCargo(d.ore, n);
-        NS.fx.text(G.ship.x, G.ship.y - 60, '+' + n + ' ' + ORE_BY_ID[d.ore].name, '#b4ffc8', 14, 1);
-        NS.audio.sfx('pickup', { volume: 0.25, pitch: 1.6 });
-      }
-      d.load -= n;
-      if (!d.load) d.ore = null;
+    if (!d.load || !d.ore) return 0;
+    const n = Math.min(NS.mining.roomFor(d.ore), d.load);
+    if (n > 0) NS.mining.addCargo(d.ore, n);
+    d.load -= n;
+    if (!d.load) {
+      d.ore = null;
+      d.stationFallback = false;
     }
-    d.state = d.load > 0 && G.run.dronesOut ? 'haul' : 'docked';
+    return n;
+  }
+
+  function deliver(d, to) {
+    const id = d.ore;
+    let n = d.load;
+    if (to === G.ship) n = unload(d);
+    else {
+      if (to === G.dock) NS.trip.bank(id, n);
+      else n = NS.base.receiveOre(id, n, d);
+      d.load -= n;
+      if (!d.load) {
+        d.ore = null;
+        d.stationFallback = false;
+      } else d.stationFallback = true;
+    }
+    if (n > 0) {
+      NS.fx.text(to.x, to.y - 60, '+' + n + ' ' + ORE_BY_ID[id].name + (to === G.dock ? ' banked' : ''), '#b4ffc8', 14, 1.2);
+      NS.audio.sfxAt('pickup', to.x, to.y, { volume: 0.25, pitch: 1.3 });
+    }
     d.target = null;
   }
 
@@ -189,6 +222,7 @@
     if (d.hp > 0) return;
     d.alive = false;
     d.rebuild = 25;
+    d.stationFallback = false;
     d.target = null;
     d.load = 0;
     d.ore = null;
@@ -209,6 +243,6 @@
   }
 
   Object.assign(NS.drones, {
-    setup, toggle, update, hurt, blast, flush
+    setup, toggle, update, hurt, blast, flush, capacity, sweep, destination, deliveryRange, deliver
   });
 })();
