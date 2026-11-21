@@ -308,8 +308,8 @@
     if (kind === 'rock') {
       if (obj.bio) NS.life.disturb(obj);
       NS.asteroids.damage(obj, dmg, hx, hy, 'laser');
-    } else if (kind === 'pirate') NS.pirates.damage(obj, dmg * 1.4, hx, hy);
-    else if (kind === 'enemy') NS.enemies.damage(obj, dmg * 1.4, null);
+    } else if (kind === 'pirate') NS.pirates.damage(obj, dmg * 1.4, hx, hy, 'energy');
+    else if (kind === 'enemy') NS.enemies.damage(obj, dmg * 1.4, null, 'energy');
     else if (kind === 'unit') NS.units.damage(obj, dmg * 1.4, null);
     else if (kind === 'building') NS.base.damage(obj, dmg);
     else NS.trip.cutWreck(obj, dmg, hx, hy);

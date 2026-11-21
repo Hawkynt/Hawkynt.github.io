@@ -1,7 +1,8 @@
 /* The station's Shipyard and Modules tabs: hull cards (buy once, then fly any you own) with
    their silhouettes and key stats, upgrade cards that level up to 10 with pips, the effect now
-   and next and a rising price, and the five station module cards whose builds appear on the
-   station art at once. Purchases flash, spark and save immediately. */
+   and next and a rising price; the Hardpoints page with the flown hull's hardpoints and the nine
+   weapon cards (type, levels, price or unlock, mounting); and the five station module cards
+   whose builds appear on the station art at once. Purchases flash, spark and save immediately. */
 ;(function() {
   'use strict';
 
@@ -44,6 +45,10 @@
 
   function drawShipyard(px, py, pw) {
     const save = G.save;
+    const hp = G.ui.yardPage === 'hp';
+    W.button('yard_hulls', 'Hulls & upgrades', px + pw - 330, py + 8, 160, 28, { px: 12, selected: !hp, action: () => { G.ui.yardPage = 'hulls'; } });
+    W.button('yard_hp', 'Hardpoints', px + pw - 164, py + 8, 148, 28, { px: 12, selected: hp, icon: 'turret', action: () => { G.ui.yardPage = 'hp'; } });
+    if (hp) { drawHardpoints(px, py, pw); return; }
     kit.text('HULLS', px + 20, py + 22, 13, UI.textMute, { weight: 'bold' });
     const cw = (pw - 50) / 4, ch = 150;
     for (let i = 0; i < HULLS.length; ++i) {
@@ -102,6 +107,75 @@
         if (rules.buyUpgrade(save, u.id)) celebrate('up_' + u.id, x + w / 2, y + h / 2, UI.gold);
       },
     });
+  }
+
+  /* ── hardpoints ── */
+  const TYPE_COLOR = { energy: '#7cf0ff', kinetic: '#e0e8ff', explosive: '#ff8a5a', flak: '#ffb44a', emp: '#3affd0', control: '#c88aff', stealth: '#a0b4d0' };
+
+  function unlockText(w) {
+    if (w.unlock.id) return 'From the Claim Jumpers operation';
+    return 'Licence the ' + NS.ores.ZONE_BY_ID[w.unlock.licence].name;
+  }
+
+  function drawHardpoints(px, py, pw) {
+    const save = G.save, CB = NS.combat;
+    const n = CB.slotCount(save.hull);
+    const hull = HULLS.filter(h => h.id === save.hull)[0];
+    kit.text('HARDPOINTS  -  the ' + hull.name + ' carries ' + n, px + 20, py + 22, 13, UI.textMute, { weight: 'bold' });
+    const sw = (pw - 48) / 3, sh = 44;
+    for (let i = 0; i < 3; ++i) {
+      const x = px + 16 + i * (sw + 8), y = py + 42;
+      const id = i < n ? save.weapons.slots[i] : null, w = id ? NS.weaponData.WEAPON_BY_ID[id] : null;
+      const hot = i < n && W.area('hp_slot_' + i, x, y, sw, sh, () => { if (id) { CB.mount(save, i, null); sfx('blip'); NS.save.writeSave(); } });
+      kit.panel(x, y, sw, sh, { radius: 8, brackets: false, alpha: i < n ? 0.95 : 0.4, accent: w ? w.color : hot ? UI.gold : UI.textMute });
+      kit.text(String(i + 1), x + 16, y + sh / 2, 16, i < n ? UI.gold : UI.textMute, { weight: 'bold' });
+      if (i >= n) kit.text('a bigger hull', x + 34, y + sh / 2, 12, UI.textMute);
+      else if (w) {
+        kit.icon(w.icon, x + 44, y + sh / 2, 18, w.color);
+        kit.fitText(w.name, x + 60, y + sh / 2, sw - 80, 13, { color: '#ffffff', weight: 'bold' });
+      } else kit.text('empty', x + 34, y + sh / 2, 12, UI.textDim);
+    }
+    const WS = NS.weaponData.WEAPONS;
+    const cw = (pw - 52) / 3, ch = 120;
+    for (let k = 0; k < WS.length; ++k) {
+      const w = WS[k];
+      const x = px + 16 + (k % 3) * (cw + 10), y = py + 98 + Math.floor(k / 3) * (ch + 8);
+      weaponCard(save, CB, w, n, x, y, cw, ch);
+    }
+  }
+
+  function weaponCard(save, CB, w, n, x, y, cw, ch) {
+    const lvl = CB.level(save, w.id), open = CB.open(save, w.id), cost = CB.nextCost(save, w.id);
+    kit.panel(x, y, cw, ch, { radius: 8, brackets: false, alpha: 0.95, accent: lvl ? w.color : open ? UI.accent : UI.textMute });
+    glowIf('wp_' + w.id, x, y, cw, ch);
+    ctx.globalAlpha = open || lvl ? 1 : 0.5;
+    kit.icon(w.icon, x + 20, y + 20, 22, lvl ? w.color : UI.textDim);
+    kit.fitText(w.name, x + 38, y + 16, cw - 90, 14, { color: '#ffffff', weight: 'bold' });
+    kit.text(w.type.toUpperCase(), x + 38, y + 32, 10, TYPE_COLOR[w.type] || UI.textDim, { weight: 'bold' });
+    for (let k = 0; k < 3; ++k) {
+      ctx.fillStyle = k < lvl ? w.color : 'rgba(255,255,255,0.14)';
+      ctx.fillRect(x + cw - 50 + k * 14, y + 12, 11, 5);
+    }
+    kit.wrap(w.desc, x + 12, y + 50, cw - 24, 11, 14, UI.textDim);
+    ctx.globalAlpha = 1;
+    const by = y + ch - 32;
+    if (!open && !lvl) {
+      kit.lock(x + 20, by + 14, 12);
+      kit.fitText(unlockText(w), x + 36, by + 14, cw - 48, 11, { color: UI.textMute });
+      return;
+    }
+    const label = cost < 0 ? 'MAXED' : cost === 0 ? 'Take it' : (lvl ? 'Lv ' + (lvl + 1) + '  ' : 'Buy  ') + kit.group(cost);
+    const bw = lvl ? cw - 24 - n * 30 : cw - 24;
+    W.button('wp_buy_' + w.id, label, x + 10, by, bw, 26, { px: 12, accent: UI.gold, disabled: cost < 0 || save.credits < cost, action: () => {
+      if (CB.buy(save, w.id)) celebrate('wp_' + w.id, x + cw / 2, y + ch / 2, w.color);
+      else sfx('error');
+    } });
+    if (lvl) for (let i = 0; i < n; ++i)
+      W.button('wp_m' + i + '_' + w.id, String(i + 1), x + cw - 12 - (n - i) * 30, by, 26, 26, { px: 12, selected: save.weapons.slots[i] === w.id, action: () => {
+        CB.mount(save, i, w.id);
+        sfx('blip');
+        NS.save.writeSave();
+      } });
   }
 
   function drawModules(px, py, pw) {

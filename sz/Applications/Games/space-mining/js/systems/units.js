@@ -208,7 +208,7 @@
       NS.enemies.fire(side, 'shell', mx, my, t, u.dmg, 640, { from: u });
       NS.audio.sfxAt('shoot', u.x, u.y, { volume: 0.25, pitch: 0.7 });
     } else if (u.type === 'escort') {
-      NS.enemies.hitTarget(t, u.dmg, side, u);
+      NS.enemies.hitTarget(t, u.dmg, side, u, u.def.dtype);
       G.tbeams.push({ x0: mx, y0: my, x1: t.x, y1: t.y, t: 0.06, color: side === 'enemy' ? '#3affd0' : '#9ac4ff' });
     } else {
       NS.enemies.fire(side, 'bolt', mx, my, t, u.dmg, 900, { from: u });
@@ -361,7 +361,7 @@
     let best = null, bs = -Infinity;
     for (let i = 0; i < list.length; ++i) {
       const o = list[i];
-      if (!o.alive || !o.ore || (u.ore && u.ore !== o.ore) || o.kind !== 'rock' || o.volatile || o.bio) continue;
+      if (!o.alive || !o.ore || (u.ore && u.ore !== o.ore) || o.kind !== 'rock' || o.volatile || o.bio || o.towed) continue;
       let taken = false;
       for (let k = 0; k < G.units.length; ++k) if (G.units[k] !== u && G.units[k].rock === o) { taken = true; break; }
       if (taken) continue;

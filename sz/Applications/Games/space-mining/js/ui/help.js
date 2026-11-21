@@ -167,12 +167,12 @@
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
     const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill the ore nearest the nose'], ['Enter (docked)', 'Return home, end the trip'],
-      ['Shift', 'Boost'], ['Q', 'Scanner pulse'], ['C', 'Seismic charge'], ['F', 'Recall / launch drones'], ['Esc / P', 'Pause'], ['Tab', 'Command view / station tabs'],
+      ['Shift', 'Boost'], ['Q', 'Scanner pulse'], ['C', 'Seismic charge'], ['F', 'Recall / launch drones'], ['1 / 2 / 3', 'Fire the weapon hardpoints'], ['Esc / P', 'Pause'], ['Tab', 'Command view / station tabs'],
       ['B', 'Research the selected node'], ['F2', 'Title screen']];
     kit.panel(680, 140, 500, 440, { alpha: 0.8, brackets: false });
     for (let i = 0; i < rows.length; ++i) {
-      kit.text(rows[i][0], 710, 166 + i * 30, 15, UI.gold, { weight: 'bold' });
-      kit.text(rows[i][1], 880, 166 + i * 30, 15, UI.text);
+      kit.text(rows[i][0], 710, 164 + i * 28, 15, UI.gold, { weight: 'bold' });
+      kit.text(rows[i][1], 880, 164 + i * 28, 15, UI.text);
     }
   }
 
@@ -204,7 +204,7 @@
     const FA = NS.fleetArt;
     para([
       'While you are in a belt with an outpost, attack waves come on a timer: pirate raids, alien swarms and the Lattice, bigger with every wave, the belt and what the outpost is worth. A Sensor Array shows the next wave early. Wave 8 brings a hive mothership.',
-      'Shipyard and drone factory build units. In the command view: left click or drag to select, double-click for a type, right click to move, attack, escort, mine or repair, Shift to queue waypoints, Ctrl+1-9 groups, Z X C V for line, wedge, box and circle. Space pauses to plan. In flight: G escort me, R return, E attack where I aim.',
+      'Shipyard and drone factory build units. In the command view: left click or drag to select, double-click for a type, right click to move, attack, escort, mine or repair, Shift to queue waypoints, Ctrl+1-9 groups, Z X C V for line, wedge, box and circle. Space pauses to plan. In flight: G escort me, R return, E attack where I aim, Shift+1-9 recall a group.',
     ], 90, 140, 1100);
     const units = ['fighter', 'gunboat', 'escort', 'transport', 'miner', 'mender', 'purger'];
     for (let i = 0; i < units.length; ++i) {

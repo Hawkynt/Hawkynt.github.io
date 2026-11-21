@@ -68,9 +68,9 @@
 
   /* pirates: hp, speed, fire interval, bolt damage, loot credits */
   const PIRATES = {
-    skimmer: { name: 'Skimmer', hp: 40, speed: 360, accel: 520, r: 15, fire: 0, dmg: 10, loot: 60, steal: true },
-    raider: { name: 'Raider', hp: 90, speed: 300, accel: 380, r: 20, fire: 1.4, dmg: 7, loot: 140 },
-    gunship: { name: 'Gunship', hp: 260, speed: 210, accel: 240, r: 30, fire: 0.55, dmg: 6, loot: 420 },
+    skimmer: { armour: 'light', name: 'Skimmer', hp: 40, speed: 360, accel: 520, r: 15, fire: 0, dmg: 10, loot: 60, steal: true },
+    raider: { armour: 'light', name: 'Raider', hp: 90, speed: 300, accel: 380, r: 20, fire: 1.4, dmg: 7, loot: 140 },
+    gunship: { armour: 'armoured', name: 'Gunship', hp: 260, speed: 210, accel: 240, r: 30, fire: 0.55, dmg: 6, loot: 420 },
   };
 
   Object.assign(NS.ships, {

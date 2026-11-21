@@ -111,6 +111,7 @@
     save.stats.earned = (save.stats.earned || 0) + (rw.cr || 0);
     save.rd += rw.rd || 0;
     if (rw.unlock) for (let i = 0; i < rw.unlock.length; ++i) if (save.unlocks.indexOf(rw.unlock[i]) < 0) save.unlocks.push(rw.unlock[i]);
+    if (save.weapons && NS.combat.grantUnlocked) NS.combat.grantUnlocked(save);
     return { first: true, reward: rw };
   }
 

@@ -92,7 +92,8 @@
   }
 
   /* ── damage ── */
-  function hitTarget(t, dmg, side, by) {
+  /* type: the damage type of the hit (combat model), counted against an invader's armour */
+  function hitTarget(t, dmg, side, by, type) {
     if (!t || !t.alive) return;
     if (t === G.ship) { NS.ship.hurt(dmg, 'bolt'); return; }
     if (t.cx !== undefined) {
@@ -101,12 +102,20 @@
       return;
     }
     if (t.side) { NS.units.damage(t, dmg, by); return; }
-    damage(t, dmg, by);
+    damage(t, dmg, by, side === 'player' ? type : '');
   }
 
-  function damage(e, amount, by) {
+  function damage(e, amount, by, type) {
     if (!e.alive || amount <= 0) return;
     if (e.dormant) wake(e);
+    if (type) {
+      /* EMP tears the shield down first and jolts the systems */
+      if (type === 'emp' && e.shield > 0) {
+        e.shield = Math.max(0, e.shield - amount * 3);
+        e.stun = Math.max(e.stun, 0.6);
+      }
+      amount *= NS.combat.mult(type, e.def.armour);
+    }
     e.flash = 0.08;
     e.shieldT = 3;
     if (e.shield > 0) {
@@ -195,7 +204,7 @@
       for (let i = 0; i < list.length; ++i) {
         const e = list[i];
         const d = Math.sqrt((e.x - s.x) * (e.x - s.x) + (e.y - s.y) * (e.y - s.y));
-        if (e.alive && d < r + e.r) hitTarget(e, s.dmg * (1 - 0.5 * d / (r + e.r)), 'player', s.from);
+        if (e.alive && d < r + e.r) hitTarget(e, s.dmg * (1 - 0.5 * d / (r + e.r)), 'player', s.from, NS.combat.typeOfKind(s.kind));
       }
       if (s.target && s.target.cx !== undefined && s.target.rogue) hitTarget(s.target, s.dmg, 'player');
     } else {
@@ -279,7 +288,7 @@
         s.alive = false;
         NS.fx.hitSpark(s.x, s.y, s.angle + Math.PI, s.side === 'enemy' ? (s.corrupt ? '#3affd0' : '#ff8a5a') : '#9ae0ff');
         if (s.splash) burst(s);
-        else hitTarget(hit, s.dmg, s.side, s.from);
+        else hitTarget(hit, s.dmg, s.side, s.from, NS.combat.typeOfKind(s.kind));
         if (s.corrupt && hit.side === 'player') NS.units.corrupt(hit, s.corrupt);
       }
     }
@@ -313,7 +322,7 @@
       const u = NS.units.nearestPlayer(e.x, e.y, d.target === 'units' ? 700 : 520, true);
       if (u && (!e.wave || nearOutpost(u, 900) || (u.x - e.x) * (u.x - e.x) + (u.y - e.y) * (u.y - e.y) < 320 * 320)) return u;
     }
-    return nearestBuilding(e.x, e.y, e.type === 'bomber') || (G.ship && G.ship.alive ? G.ship : null);
+    return nearestBuilding(e.x, e.y, e.type === 'bomber') || (G.ship && G.ship.alive && !(G.ship.cloak > 0) ? G.ship : null);
   }
 
   function nearOutpost(t, r) {
@@ -379,6 +388,8 @@
       e.target = e.guard ? NS.units.nearestPlayer(e.x, e.y, 460, true) : pickTarget(e);
       if (e.target && e.guard && (e.target.x - e.guard.x) * (e.target.x - e.guard.x) + (e.target.y - e.guard.y) * (e.target.y - e.guard.y) > 650 * 650) e.target = null;
     }
+    /* a cloaked ship slips away */
+    if (e.target === G.ship && G.ship.cloak > 0) e.target = null;
     if (e.guard && !e.target) {
       e.wob += dt * 0.6;
       steer(e, e.guard.x + Math.cos(e.wob) * 170, e.guard.y + Math.sin(e.wob) * 170, e.speed * 0.4, dt, 0);

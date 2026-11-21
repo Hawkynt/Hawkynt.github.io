@@ -1,6 +1,6 @@
 /* Touch controls for flight: a floating move stick on the left half, an aim-and-drill stick on
-   the right, and buttons for boost, scanner pulse, seismic charge and drones above the right
-   stick (only the unlocked ones). Shown once the screen has been touched. Owns the touch
+   the right, and buttons for boost, scanner pulse, seismic charge, drones and the mounted
+   weapon hardpoints around the right stick (only the unlocked ones). Shown once the screen has been touched. Owns the touch
    pointers; writes intents into G.input. */
 ;(function() {
   'use strict';
@@ -31,6 +31,9 @@
     if (st.scan) out.push({ id: 'pulse', icon: 'scan', x: bx - 70, y: by - 20, r: 32 });
     if (st.seismic) out.push({ id: 'charge', icon: 'blast', x: bx + 20, y: by - 60, r: 30 });
     if (G.drones.length) out.push({ id: 'drones', icon: 'drone', x: bx - 200, y: by - 40, r: 30 });
+    const hp = NS.hardpoints.slots();
+    for (let i = 0; i < hp.length; ++i)
+      if (hp[i]) out.push({ id: 'hp' + i, icon: NS.weaponData.WEAPON_BY_ID[hp[i]].icon, x: bx - 250 + i * 74, y: by + 130, r: 30 });
     return out;
   }
 
@@ -44,6 +47,7 @@
         if (b.id === 'pulse') NS.mining.pulse();
         if (b.id === 'charge') NS.mining.dropCharge();
         if (b.id === 'drones') NS.drones.toggle();
+        if (b.id.charAt(0) === 'h') NS.hardpoints.trigger(+b.id.charAt(2), true);
         return;
       }
     }
@@ -66,7 +70,10 @@
     if (left.id === id) left.id = -1;
     if (right.id === id) right.id = -1;
     for (const k in held)
-      if (held[k] === id) delete held[k];
+      if (held[k] === id) {
+        if (k.charAt(0) === 'h') NS.hardpoints.trigger(+k.charAt(2), false);
+        delete held[k];
+      }
   }
 
   function axis(s) {

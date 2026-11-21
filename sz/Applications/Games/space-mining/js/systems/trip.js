@@ -80,6 +80,7 @@
     NS.enemies.clear();
     NS.command.reset();
     NS.base.prepare(zone, mode);
+    G.wshots.length = 0;
     if (G.base) G.base.mods = mods;
     if (snap && snap.base && mode === 'siege') NS.base.adopt(snap.base);
     NS.hazards.setup(zone, r);
@@ -89,6 +90,7 @@
     NS.life.setup(zone, seed, mods);
     NS.ship.create(stats, G.dock.x, G.dock.y + 150);
     NS.drones.setup(stats);
+    NS.hardpoints.clear();
     if (mode === 'siege' && !snap) siegeStart();
     if (G.base && NS.base.claimed()) {
       NS.base.muster();

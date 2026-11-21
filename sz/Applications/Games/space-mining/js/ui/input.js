@@ -54,9 +54,11 @@
 
   document.addEventListener('keyup', (e) => {
     inp.keys[e.code] = false;
+    if (/^Digit[1-3]$/.test(e.code)) NS.hardpoints.trigger(+e.code.charAt(5) - 1, false);
   });
 
   window.addEventListener('blur', () => {
+    for (let i = 0; i < 3; ++i) NS.hardpoints.trigger(i, false);
     inp.keys = {};
     inp.mouseDown = false;
     inp.rightDown = false;

@@ -512,8 +512,19 @@
     if (boss) left = Math.max(6, Math.round(left * 0.4));
     let guard = 0, total = 0;
     const MAX = 60;
+    /* from wave 5 on the composer leans toward what resists the outpost's guns (one draw per pick
+       either way, so waves without an army compose exactly as before) */
+    const counter = opts.army && waveNo >= 5 ? pool.map(id => NS.combat.counterWeight(opts.army, ENEMY_BY_ID[id].armour)) : null;
+    let wsum = 0;
+    if (counter) for (let i = 0; i < counter.length; ++i) wsum += counter[i];
+    const pick = () => {
+      if (!counter) return pool[Math.floor(r() * pool.length)];
+      let x = r() * wsum;
+      for (let i = 0; i < pool.length; ++i) if ((x -= counter[i]) < 0) return pool[i];
+      return pool[pool.length - 1];
+    };
     while (left > 0 && total < MAX && guard++ < 400) {
-      const id = pool[Math.floor(r() * pool.length)];
+      const id = pick();
       const n = id === 'swarmer' ? Math.min(3, MAX - total) : 1;
       const pts = ENEMY_BY_ID[id].pts * n;
       if (pts > left && pts > 1) {

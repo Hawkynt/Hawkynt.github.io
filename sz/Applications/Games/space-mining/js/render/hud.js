@@ -251,6 +251,13 @@
       for (let i = 0; i < G.drones.length; ++i) if (G.drones[i].alive) ++alive;
       items.push(['drone', 'F', run.dronesOut, 0, alive + '/' + G.drones.length, UI.good]);
     }
+    /* the hardpoints: ready when the cooldown is over, the lance shows its charge */
+    for (let i = 0; i < 3; ++i) {
+      const h = NS.hardpoints.hud(i);
+      if (!h) continue;
+      const busy = h.charge > 0 ? 1 - h.charge : 1 - h.ready;
+      items.push([h.w.icon, String(i + 1), h.ready >= 1 && !h.towing, busy > 0 ? busy : 0, ['I', 'II', 'III'][h.level - 1], h.w.color]);
+    }
     let y = v.y0 + RADAR_R * 2 + 44;
     for (let i = 0; i < items.length; ++i) {
       const it = items[i];

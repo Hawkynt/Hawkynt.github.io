@@ -3,7 +3,7 @@
 /* The campaign played by bots in the running game. A bot flies the Kessler operations one after
    another with the mouse controls a player has (thrust toward the cursor, drill at it): it mines
    the nearest ore, chases loose nuggets, cracks marked geodes and wrecks, fights pirates and
-   banks at the dock when the hold is full, locks the laser on pirates with Space, limps home for repairs when the hull runs low; it flies carefully (slow through the rocks, braking
+   banks at the dock when the hold is full, locks the laser on pirates with Space and fires its weapons at them, limps home for repairs when the hull runs low; it flies carefully (slow through the rocks, braking
    for the one in the way), never drills a volatile rock (nor through one) and gets clear of a lit fuse. Between operations it sells the warehouse and spends like a player
    (drone research, shields, point defense, hull and laser upgrades). A competent bot fights and arms itself; a weak one only mines, never
    turns on the pirates and spends on mining alone. Each operation reports whether it was won, its time, hull lost, waves and the
@@ -92,8 +92,14 @@ function pilot(fights) {
   /* never drill through a volatile rock */
   const first = fire ? NS.mining.raycast(s.x, s.y, tx, ty, s) : null;
   inp.mouseDown = fire && d < stand + 260 && !(first && first.volatile);
-  /* pirates: Space locks the laser onto the one nearest the nose, as a player fights */
+  /* pirates: Space locks the laser onto the one nearest the nose, as a player fights; the
+     mounted weapons fire too once there are any */
   inp.keys.Space = lock && (hurt || d < 520);
+  const fireAll = lock && fights && d < 700;
+  for (let i = 0; i < NS.hardpoints.slots().length; ++i) {
+    const on = !!NS.hardpoints.state().held[i];
+    if (fireAll !== on) NS.hardpoints.trigger(i, fireAll);
+  }
 }
 
 /* between operations, like a player at the station: sell the warehouse, research drones for the

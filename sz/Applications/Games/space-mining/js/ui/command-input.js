@@ -132,8 +132,14 @@
 
   /* fleet keys while flying; returns true when used */
   function pilotKey(e) {
-    if (!G.base) return false;
     const code = e.code;
+    /* 1-3 fire the hardpoints anywhere; Shift recalls a group, Ctrl sets one */
+    if (/^Digit[1-9]$/.test(code) && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      const n = +code.charAt(5);
+      if (n <= 3) NS.hardpoints.trigger(n - 1, true);
+      return n <= 3 || !!G.base;
+    }
+    if (!G.base) return false;
     if (code === 'Tab') {
       if (!P.toggle(true)) return false;
       P.plan(true);

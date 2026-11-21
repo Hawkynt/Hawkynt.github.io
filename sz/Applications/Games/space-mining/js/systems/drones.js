@@ -44,7 +44,7 @@
     let best = null, bs = -Infinity;
     for (let i = 0; i < list.length; ++i) {
       const o = list[i];
-      if (!o.alive || !o.ore || (d.ore && o.ore !== d.ore) || o.kind !== 'rock' || o.volatile || taken(o, d)) continue;
+      if (!o.alive || !o.ore || (d.ore && o.ore !== d.ore) || o.kind !== 'rock' || o.volatile || o.towed || taken(o, d)) continue;
       const dist = Math.sqrt((o.x - d.x) * (o.x - d.x) + (o.y - d.y) * (o.y - d.y));
       const score = G.stats.smartDrones ? ORE_BY_ID[o.ore].value * o.rich / (o.maxHp + 20) * 100 - dist * 0.02 : -dist - o.tier * 60;
       if (score > bs) { bs = score; best = o; }
@@ -102,7 +102,7 @@
         }
       } else if (d.state === 'mine') {
         const o = d.target;
-        if (!o || !o.alive) {
+        if (!o || !o.alive || o.towed) {
           d.target = null;
           d.state = d.load >= capacity(st.droneHaul) ? 'return' : 'seek';
         } else {

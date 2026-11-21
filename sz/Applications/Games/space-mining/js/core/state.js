@@ -46,6 +46,7 @@
     units: [],
     enemies: [],
     shots: [],
+    wshots: [],
     pods: [],
     tbeams: [],
     clouds: [],
@@ -87,7 +88,7 @@
 
     /* per-screen UI state */
     ui: {
-      stationTab: 'market',
+      stationTab: 'market', yardPage: 'hulls',
       shipyardTab: 'upgrades',
       marketSel: 'iron',
       mapSel: 0, mapTab: 'ops', opSel: '',

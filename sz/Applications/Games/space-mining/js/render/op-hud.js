@@ -22,7 +22,8 @@
     const op = NS.operation.def();
     if (!o || !op) return;
     const prog = NS.operation.progress();
-    const x = v.x1 - W - 14, y = v.y0 + RADAR_R * 2 + 36;
+    /* left of the ability column under the radar */
+    const x = v.x1 - W - 112, y = v.y0 + RADAR_R * 2 + 36;
     const h = 40 + prog.length * 30 + (o.status !== 'active' ? 22 : 0);
     const mood = MOODS[op.mood];
     kit.panel(x, y, W, h, { alpha: 0.82, radius: 8, brackets: false, accent: mood.color });

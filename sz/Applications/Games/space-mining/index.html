@@ -109,7 +109,9 @@
         <tr><td>Right click</td><td>Move, attack, escort, mine, rally (Shift queues)</td></tr>
         <tr><td>Z / X / C / V</td><td>Line, wedge, box, circle formation</td></tr>
         <tr><td>F / Q / E / R / G</td><td>Attack-move, patrol, escort, return, hold</td></tr>
-        <tr><td>1-9 / Ctrl+1-9</td><td>Recall / set a control group</td></tr>
+        <tr><td>1 / 2 / 3</td><td>Fire weapon hardpoint 1, 2, 3 (in flight)</td></tr>
+        <tr><td>Shift+1-9</td><td>Recall a control group (in flight)</td></tr>
+        <tr><td>1-9 / Ctrl+1-9</td><td>Recall / set a control group (command view)</td></tr>
         <tr><td>Space</td><td>Pause and plan (command view)</td></tr>
         <tr><td>B / U / Delete</td><td>Build category / upgrade / demolish</td></tr>
         <tr><td>Wheel / + / -</td><td>Zoom the command view</td></tr>
@@ -185,10 +187,12 @@
 <script src="js/core/data-fleet.js?v=03eb60c5"></script>
 <script src="js/core/data-events.js?v=aa782fca"></script>
 <script src="js/core/data-ops.js?v=31598860"></script>
+<script src="js/core/data-weapons.js"></script>
 <script src="js/core/data-cosmetics.js?v=37f4642d"></script>
 <script src="js/core/cosmetics.js?v=0fcbadbf"></script>
 <script src="js/core/ops.js?v=0735d5ee"></script>
 <script src="js/core/pacing.js?v=9ce6da69"></script>
+<script src="js/core/combat.js"></script>
 <script src="js/core/rules.js?v=2b4001db"></script>
 <script src="js/core/economy.js?v=13757261"></script>
 <script src="js/core/supply.js?v=15fbc98c"></script>
@@ -213,6 +217,7 @@
 <script src="js/systems/orders.js?v=53ba4f39"></script>
 <script src="js/systems/base.js?v=0b473e03"></script>
 <script src="js/systems/supplies.js?v=52d1f3c9"></script>
+<script src="js/systems/hardpoints.js"></script>
 <script src="js/systems/units.js?v=1b8a3eb9"></script>
 <script src="js/systems/enemies.js?v=5d4653cb"></script>
 <script src="js/systems/waves.js?v=b055e8df"></script>
@@ -244,6 +249,7 @@
 <script src="js/ui/screens.js?v=ea769ccb"></script>
 <script src="js/ui/status-bar.js?v=0a1535e6"></script>
 <script src="js/ui/touch.js?v=d12227be"></script>
+<script src="js/render/weapon-render.js"></script>
 <script src="js/render/op-hud.js?v=c0a9f480"></script>
 <script src="js/render/hud.js?v=7ad91a61"></script>
 <script src="js/ui/title.js?v=7fd851c5"></script>

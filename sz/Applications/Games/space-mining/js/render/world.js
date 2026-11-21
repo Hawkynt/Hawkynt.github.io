@@ -2,9 +2,9 @@
    haze, gas and Bloom clouds, gravity wells, the dock, the outpost, dust, rocks (body, ore
    veins, cracks, then one additive pass for vein glow, living-rock spores and laser heat;
    cheaper when zoomed out), wrecks, nuggets with tractor beams, drones, charges, pirates,
-   units, invaders and shots, bolts, the ship with engine glow, shield and banking, laser beams,
-   shield domes, pods and placement, effects, the command overlay, the scanner pulse, and the
-   storm over everything. Reads only. */
+   units, invaders and shots, bolts, weapon shots, the ship with engine glow, shield and banking
+   (a ghost while cloaked), laser beams, shield domes, pods and placement, effects, the command
+   overlay, the scanner pulse, and the storm over everything. Reads only. */
 ;(function() {
   'use strict';
 
@@ -63,7 +63,9 @@
     drawPirates();
     NS.fleetRender.draw();
     drawBolts();
-    if (s && s.alive && !s.hidden) drawShip(s);
+    NS.weaponRender.draw();
+    if (s && s.alive && !s.hidden && !(s.cloak > 0)) drawShip(s);
+    else if (s && s.alive && !s.hidden) NS.weaponRender.drawCloaked(s);
     drawBeams();
     NS.baseRender.drawTop();
     NS.fxRender.draw(rect);

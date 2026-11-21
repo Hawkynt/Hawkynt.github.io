@@ -632,7 +632,7 @@
     const side = o.rogue ? 'enemy' : 'player';
     const mx = o.x + Math.cos(o._ang) * o.r * 0.7, my = o.y + Math.sin(o._ang) * o.r * 0.7;
     if (def.id === 'laser') {
-      NS.enemies.hitTarget(t, dmg, side);
+      NS.enemies.hitTarget(t, dmg, side, null, def.dtype);
       G.tbeams.push({ x0: mx, y0: my, x1: t.x, y1: t.y, t: 0.09, color: o.rogue ? '#3affd0' : '#ff6a3a' });
       NS.audio.sfxAt('laser', o.x, o.y, { volume: 0.12, pitch: 1.6 });
     } else if (def.id === 'flak') {

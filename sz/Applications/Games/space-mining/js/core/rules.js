@@ -34,7 +34,7 @@
       seenIntro: false, seenHelp: false, crownDone: false,
       bases: {}, log: [], logSeen: [], daily: { day: '', streak: 0, last: '', week: '' }, cine: {}, resume: null,
       cosmetics: NS.cosmetics.blank(), festival: { event: '', tokens: 0, claimed: 0 },
-      ops: {}, unlocks: [], notices: [], manifest: { ore: {}, bar: {}, comp: {} },
+      ops: {}, unlocks: [], notices: [], manifest: { ore: {}, bar: {}, comp: {} }, weapons: { owned: {}, slots: [] },
     };
   }
 
@@ -125,8 +125,10 @@
           .map(h => ({ score: Math.floor(h.score), mode: typeof h.mode === 'string' ? h.mode : 'career', detail: typeof h.detail === 'string' ? h.detail : '' }));
       s.ops = NS.ops.repair(src.ops);
       s.manifest = NS.supply.repair(src.manifest);
+      s.weapons = NS.combat.repair(src.weapons);
       if (Array.isArray(src.unlocks)) s.unlocks = src.unlocks.filter((u, i, a) => typeof u === 'string' && /^[a-z0-9_]{1,24}$/.test(u) && a.indexOf(u) === i);
       if (Array.isArray(src.notices)) s.notices = src.notices.filter(n => typeof n === 'string').map(n => n.slice(0, 240)).slice(0, 5);
+      NS.combat.grantUnlocked(s);
       if (!(src.v >= 3)) dismantle(s);
       s.seenIntro = !!src.seenIntro;
       s.seenHelp = !!src.seenHelp;

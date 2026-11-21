@@ -28,7 +28,12 @@ Each belt has an outpost site: a 20 x 16 grid of 48 px cells with seeded ore, ga
 
 The outer belts carry little or none of the iron, copper and ice that buildings need, so outposts there are supplied from home. The station's Supply tab sells iron, copper and ice as ore and as bars at a markup over the market price, straight into the warehouse, and holds the cargo manifest: a standing order of ore, bars and components loaded from the warehouse into the hold at every career launch, as far as the hold and the warehouse allow. Docked mid-trip, the Supplies button opens the same list to load or unload on the spot (the trip waits). Supplies ride apart from mined ore: they take hold space (ore packs as usual, a bar or component takes one slot), docking never banks them and they never count as a haul or toward an operation. Flying over a hub unloads them into the outpost stock with the ore, and a building, upgrade or unit takes what the stock lacks from the supplies first, then from mined ore. Whatever is still aboard when the trip ends goes back to the warehouse - half of it after a tow, none of it if the ship is lost.
 
-### Waves and the fleet
+### Weapons and the combat model
+
+Beside the mining laser every hull carries weapon hardpoints - one on the Prospector, two on the Wasp and the Hauler, three on the Leviathan - fired with 1, 2 and 3 in the pilot view (or their touch buttons). Nine weapons fill them, each with three levels (more damage, shorter cooldown): the Pulse Cannon (energy bolts, handed out by Claim Jumpers), and with the Amber Reach the Scatter Flak (a cone of pellets), the Missile Rack (homing salvos that burst) and the Tether Tow (grabs a rock behind the ship and flings it into the enemy); with the Verdant Shoals the Rail Lance (hold to charge, pierces everything in line) and the EMP Mine (strips shields, stuns, scrambles the Lattice); with the Crimson Maw the Gravity Net (holds enemies in place) and the Cloak Field (pirates and invaders lose you until you fire); with the Void Crown the Drone Swarm (four attack drones for a while). Pulse, flak and missiles fire while their key is held, the lance charges while held and fires on release, the rest act on a press. The Shipyard's Hardpoints page buys, levels and mounts them.
+
+Every hit the player's side lands - the laser, the hardpoints, units, turrets and the point defense - counts its damage type against the target's armour: energy, kinetic, explosive, flak and EMP against light, armoured, shielded, swarm, structure and bio. Flak shreds swarms and light hulls and bounces off armour, kinetic punches armour and splashes off shields, explosives crack structures, armour and swarms, energy burns shields and bio, EMP strips shields and does little else. From wave 5 on the wave composer leans toward the enemies that resist the outpost's current mix of units and turrets, so one kind of gun stops being enough.
+
 
 While you are in a belt with an outpost a wave timer runs; the next wave is composed ahead from a point budget that grows with the wave number, the belt's danger and what the outpost is worth, and the Sensor Array shows it early. Waves come from one bearing in clusters: swarmers that bite, raiders that strafe, bombers that dive on soft buildings, shielded frigates, siege ships that shell from beyond turret range, brood carriers, Lattice swarms that corrupt what they touch, and at wave 8 a hive mothership. Turrets (laser, flak, missiles) take targets by preference, shield domes soak damage for the buildings under them, repair bays and repair drones mend. Units are built in the shipyard and drone factory: fighters, gunboats, escort frigates, transports, mining drones, repair drones and purge tenders. Orders - move, attack-move, attack, escort, patrol, hold, mine, repair, purge, return - are shaped into a line, wedge, box or circle facing the way the group travels, units take the nearest slots, the group keeps its slowest member's speed, Shift queues waypoints, factories have rally points, idle units guard their post, and kills earn veterancy ranks. Units and invaders use their own spatial grids; target picking is throttled.
 
@@ -58,6 +63,7 @@ Core (`js/core/`):
 - **`data-ships.js`** -- Four hulls, six hangar upgrades, five station modules, three pirate types
 - **`data-tree.js`** -- The tech tree on two pages: eleven branches, 52 nodes with research costs, prerequisites, placement and per-level stats
 - **`data-goals.js`** -- The four modes, 29 achievements and the statistics they watch
+- **`data-weapons.js`** -- The nine hardpoint weapons (type, firing mode, cooldown, damage, range, unlock, price), their levels and the hardpoints of each hull
 - **`data-colony.js`** -- Seven components and their recipes, what the plants smelt, six build categories and the 23 buildings
 - **`data-fleet.js`** -- Seven unit types, ten hostile types with wave costs and unlocks, the boss wave, four formations, veterancy ranks
 - **`data-ops.js`** -- The operations of every belt: mood, objectives, time limit, threats, pacing beats and rewards, and the moods
@@ -70,6 +76,7 @@ Core (`js/core/`):
 - **`outbreak.js`** -- Pure crew, infection and corruption model: arrivals, growth, spread, quarantine, treatment, deaths, abandonment, hijacking, purge, EMP, reclaiming
 - **`ops.js`** -- Pure operation rules: the chain per belt, what opens, the capstone gate, the loops a belt allows, objective progress, recording a result and its reward, the mood rule
 - **`pacing.js`** -- Pure pacing director: beats on the timeline, the tension score, threat pace and size
+- **`combat.js`** -- Pure combat model: damage types against armour classes, the type of each shot kind, an army's damage mix and the counter-pick weight of an enemy against it
 - **`calendar.js`** -- Pure date rules: seasons, ISO weeks and the anomaly belt, trip modifiers, daily and weekly contracts, streaks, the seeded event schedule
 - **`data-cosmetics.js`** -- Liveries, beams, plumes with their unlocks, and the festival track tiers
 - **`cosmetics.js`** -- Collection rules: owning, buying, equipping, livery colours, the festival track and its rewards, repair of stored data
@@ -92,6 +99,7 @@ Systems (`js/systems/`), one simulation concern each:
 - **`formations.js`** -- Formation slots (line, wedge, box, circle), rotation, matching units to slots, group speed
 - **`orders.js`** -- Issuing orders in formation, queued waypoints, patrol legs, escort stations, when an order is done
 - **`base.js`** -- The outpost in a trip: founding, placing, upgrading, demolishing, quarantine, sterilise, purge, EMP, construction, the beat (network, crew, power, production, outbreak), turrets, shields, repair bays, factories, unloading at the hub, damage, alerts, cargo pods
+- **`hardpoints.js`** -- The ship's weapons in flight: triggers, cooldowns and charge, bolts, pellets, missiles and slugs, the tether, mines, nets, the cloak and the drone swarm, hits through the combat model
 - **`units.js`** -- Units: spawning, ranks, steering with separation and rock avoidance, orders, auto-engagement, mining, repair, purge and transport jobs, desertion, rogue units
 - **`enemies.js`** -- Invaders and every shot: behaviours per type, guards, migrations, the hostile grid and target picking, bolts, shells, flak, missiles, artillery, bombs, damage, loot, the EMP
 - **`waves.js`** -- The wave timer, preview, warning, arrival in clusters, the mothership, clearing, retreat of stragglers, Siege victory
@@ -121,6 +129,7 @@ Render (`js/render/`):
 - **`base-render.js`** -- The outpost: site, grid, deposits, energy links, buildings with moving parts, construction, dark, infected and hijacked looks, ranges, shield domes, cargo pods, beams, placement preview, the silent station
 - **`fleet-render.js`** -- Clouds, units, invaders, shots, team rings, selection, order paths, markers, the drag box
 - **`op-hud.js`** -- The operation tracker in flight: name, mood, objectives with progress, the clock and the outcome
+- **`weapon-render.js`** -- Weapon shots, mines, nets, the tether line, swarm drones and the cloak shimmer
 - **`hud.js`** -- Gauges, the ore hold, belt and clock, radar, ability slots, warnings, the dock arrow, hints, banners, reticle, letterbox, flash, toasts, achievement pop-ups
 - **`cine-render.js`** -- The intro, launch, new belt, ending and captain's log sequences; arrival, docking, discovery and outpost overlays
 - **`frame.js`** -- One frame: cinematic or belt and flight or command HUD or menu scenery, the active screen, flash and toasts, cursor and draw timing
@@ -159,6 +168,8 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - **`ops.test.js`** -- The operation chains and their moods, opening, the capstone gate, loops per belt, objective progress, results and rewards, the pacing director
 - **`campaign.test.js`** -- A bot plays the Kessler operations in the running game and prints the measured tension per operation
 - **`music.test.js`** -- The moods from what is happening, climbing at once and calming slowly, one theme across moods, switches on the bar line, the themes per screen and mode
+- **`combat.test.js`** -- The damage table, shot kinds, army mixes, the counter-pick and its waves, weapons in the save, buying, levelling, mounting and unlocks
+- **`weapons.test.js`** -- Every weapon in flight against pirates and invaders, the keys and their modes, the combat model on units and turrets
 - **`rules.test.js`** -- Tree, upgrades, hulls, modules, licences, derived stats, the Daily loadout, hold space, achievements
 - **`economy.test.js`** -- Prices, saturation and recovery, drift bounds, news, history, refining, contracts, service costs
 - **`logistics.test.js`** -- Block presses and packed ore, loading the hold at a hub; buying basics, the manifest at launch, supplies apart from the haul, unloading them at a hub and building from them, their return home
@@ -223,6 +234,12 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can buy iron, copper and ice (ore and bars) at the station to build outposts in belts that have none
 - [x] As a player, I can set a cargo manifest that loads ore, bars and components from the warehouse at every launch, and change the load while docked
 - [x] As a player, I can unload supplies at my hub, build straight from them, and get what I did not use back at the end of the trip
+
+### Weapons
+- [x] As a player, I can mount up to three weapons beside the mining laser and fire them with 1, 2 and 3: Pulse Cannon, Scatter Flak, Missile Rack, Tether Tow, Rail Lance, EMP Mine, Gravity Net, Cloak Field and Drone Swarm
+- [x] As a player, I can buy, level and mount weapons on the Shipyard's Hardpoints page as the belts open
+- [x] As a player, I can see damage types matter: flak for swarms, kinetic for armour, explosives for structures, energy and EMP for shields
+- [x] As a player, I can face later waves that counter the guns my outpost relies on
 
 ### Waves & Fleet
 - [x] As a player, I can defend an outpost against waves of pirates, alien swarms and the Lattice that grow with the outpost and the belt, with a warning and a preview
@@ -299,7 +316,9 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | Right click | Move, attack, escort, mine, repair, rally (Shift queues) |
 | Z / X / C / V | Line, wedge, box, circle formation |
 | F / Q / E / R / G | Attack-move, patrol, escort, return, hold (command view) |
-| 1-9 / Ctrl+1-9 | Recall / set a control group |
+| 1 / 2 / 3 | Fire hardpoint 1, 2, 3 (pilot view; hold for pulse, flak, missiles, hold and release for the lance) |
+| Shift+1-9 | Recall a control group (pilot view) |
+| 1-9 / Ctrl+1-9 | Recall / set a control group (command view) |
 | Ctrl+A | Select every combat unit |
 | Space | Pause and plan (command view) |
 | B / U / Delete | Build category / upgrade / demolish (command view) |

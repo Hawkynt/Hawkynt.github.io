@@ -1,6 +1,6 @@
 /* Attack waves on the outpost while you are in its belt: the wave timer, the next wave
-   composed ahead of time (the Sensor Array shows it early, everyone sees it in the last 25
-   seconds), the siren and banner, invaders arriving in clusters from one bearing, the boss
+   composed ahead of time against the outpost's damage mix (the Sensor Array shows it early,
+   everyone sees it in the last 25 seconds), the siren and banner, invaders arriving in clusters from one bearing, the boss
    mothership with its cinematic, clearing a wave (reward, counters, the first-wave
    cinematic), Siege victory after the last wave, and the mothership's fall. Reads and writes
    the wave fields of G.base. */
@@ -19,11 +19,26 @@
 
   const WARN = 25;
 
+  /* the damage mix of the outpost's guns: armed units and finished turrets by damage per second */
+  function army() {
+    const list = [];
+    for (let i = 0; i < G.units.length; ++i) {
+      const u = G.units[i];
+      if (u.alive && u.side === 'player' && u.def.dtype && u.def.rof) list.push({ type: u.def.dtype, w: u.def.dmg / u.def.rof });
+    }
+    const bs = G.base.data.buildings;
+    for (let i = 0; i < bs.length; ++i) {
+      const d = NS.colonyData.BUILDING_BY_ID[bs[i].type];
+      if (d.dtype && d.rof && bs[i].prog >= 1 && !bs[i].rogue) list.push({ type: d.dtype, w: d.dmg / d.rof * C.levelMul(bs[i].lvl) });
+    }
+    return list.length ? NS.combat.mix(list) : null;
+  }
+
   function compose() {
     const b = G.base;
     const no = b.data.wave + 1;
     const m = b.mods || NS.calendar.NEUTRAL;
-    b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: b.data.bossDone, mul: m.waves, nano: m.nano });
+    b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: b.data.bossDone, mul: m.waves, nano: m.nano, army: army() });
     b.warned = false;
   }
 

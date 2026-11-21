@@ -66,6 +66,7 @@
     NS.base.update(s);
     NS.units.update(s);
     NS.enemies.update(s);
+    NS.hardpoints.update(s);
     if (G.base) {
       NS.waves.update(s);
       NS.events.update(s);

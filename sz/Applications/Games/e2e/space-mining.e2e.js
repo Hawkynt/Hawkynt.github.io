@@ -8,7 +8,7 @@
    Verdant Shoals installs a press, packs ore and builds with ore from the hold; the Supply tab
    buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
    loads more; the soundtrack starts calm and switches to the battle arrangement when a raider
-   closes in. */
+   closes in; the Shipyard's Hardpoints page takes the Pulse Cannon and holding 1 fires it. */
 exports.ns = 'SpaceMining';
 
 exports.run = async (t) => {
@@ -102,6 +102,12 @@ exports.run = async (t) => {
   await t.hit('sup_more_ore_iron');
   t.check('a real click orders ten iron on the cargo manifest', await t.state('G.save.manifest.ore.iron === 10'));
   await t.shot('14-supply-tab');
+  /* the Shipyard's Hardpoints page: Claim Jumpers handed out the Pulse Cannon, a real click takes it */
+  await t.run((NS, G) => { G.save.unlocks.push('w_pulse'); G.ui.stationTab = 'shipyard'; G.ui.yardPage = 'hp'; });
+  await t.wait(300);
+  await t.hit('wp_buy_pulse');
+  t.check('a real click takes the Pulse Cannon into the first hardpoint', await t.state("G.save.weapons.owned.pulse === 1 && G.save.weapons.slots[0] === 'pulse'"));
+  await t.shot('16-hardpoints');
   /* an outpost in the Verdant Shoals */
   await t.run((NS) => { NS.trip.startTrip('career', 2); });
   for (let i = 0; i < 8 && await t.state('!!G.cine'); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
@@ -118,6 +124,13 @@ exports.run = async (t) => {
   await t.run((NS, G) => { NS.pirates.spawn('raider', G.ship.x + 500, G.ship.y); });
   await t.wait(900);
   t.check('a raider closing in switches to the battle arrangement', await t.state("NS.music.state().cur === 'combat' && /:war$/.test(W.SZ.GameMusic.current.id) && W.SZ.GameMusic.intensity > 0.9"));
+  /* holding the real 1 key fires the Pulse Cannon at it */
+  const shots0 = await t.state('NS.hardpoints.state().shots');
+  await t.page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: '1', code: 'Digit1', windowsVirtualKeyCode: 49 });
+  await t.wait(500);
+  await t.shot('17-pulse-cannon');
+  await t.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: '1', code: 'Digit1', windowsVirtualKeyCode: 49 });
+  t.check('holding the real 1 key fires the Pulse Cannon', await t.state('NS.hardpoints.state().shots > ' + shots0 + ' && !NS.hardpoints.state().held[0]'));
   await t.run((NS, G) => { for (const p of G.pirates) p.alive = false; });
   await t.page.key('Tab', 'Tab', 9);
   t.check('Tab pauses at the outpost', await t.state('G.cmd.on && G.cmd.plan'));

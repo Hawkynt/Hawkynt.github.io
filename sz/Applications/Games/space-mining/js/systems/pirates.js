@@ -111,8 +111,11 @@
       if (!p.alive) continue;
       const d = PIRATES[p.kind];
       if (p.hitFlash > 0) p.hitFlash -= dt;
-      /* target: the ship, or a drone that is closer */
-      let tgt = s;
+      /* target: the ship, or a drone that is closer; a cloaked ship leaves only a guess */
+      const hidden = s.cloak > 0;
+      if (!hidden) p.ghost = null;
+      else if (!p.ghost) p.ghost = { x: s.x + (R() - 0.5) * 700, y: s.y + (R() - 0.5) * 700, alive: false, vx: 0, vy: 0 };
+      let tgt = hidden ? p.ghost : s;
       for (let k = 0; k < G.drones.length; ++k) {
         const dr = G.drones[k];
         if (dr.alive && dr.state !== 'docked' && Math.abs(dr.x - p.x) + Math.abs(dr.y - p.y) < Math.abs(s.x - p.x) + Math.abs(s.y - p.y) - 200) tgt = dr;
@@ -124,9 +127,10 @@
         steer(p, p.x - (s.x - p.x) * 3, p.y - (s.y - p.y) * 3, d.speed * 1.15, d.accel, dt);
         if (dist > 1700) p.alive = false;
       } else if (p.kind === 'skimmer') {
-        steer(p, s.x + s.vx * 0.3, s.y + s.vy * 0.3, d.speed, d.accel, dt);
+        const prey = hidden ? p.ghost : s;
+        steer(p, prey.x + prey.vx * 0.3, prey.y + prey.vy * 0.3, d.speed, d.accel, dt);
         const sd = Math.sqrt((s.x - p.x) * (s.x - p.x) + (s.y - p.y) * (s.y - p.y));
-        if (sd < p.r + s.r + 6) grab(p, s, d);
+        if (!hidden && sd < p.r + s.r + 6) grab(p, s, d);
       } else {
         const want = p.kind === 'gunship' ? 380 : 270;
         const ox = -dy / dist * p.orbit, oy = dx / dist * p.orbit;
@@ -206,7 +210,7 @@
         for (let k = 0; k < foes.length; ++k) {
           const e = foes[k];
           if (e.alive && !e.dormant && (e.x - b.x) * (e.x - b.x) + (e.y - b.y) * (e.y - b.y) < e.r * e.r) {
-            NS.enemies.hitTarget(e, b.dmg, 'player');
+            NS.enemies.hitTarget(e, b.dmg, 'player', null, 'energy');
             b.alive = false;
             break;
           }
@@ -215,7 +219,7 @@
         for (let k = 0; k < G.pirates.length; ++k) {
           const p = G.pirates[k];
           if (p.alive && (p.x - b.x) * (p.x - b.x) + (p.y - b.y) * (p.y - b.y) < p.r * p.r) {
-            damage(p, b.dmg, b.x, b.y);
+            damage(p, b.dmg, b.x, b.y, 'energy');
             b.alive = false;
             break;
           }
@@ -250,8 +254,10 @@
     compact(G.bolts);
   }
 
-  function damage(p, amount, hx, hy) {
+  /* type: the damage type of the hit, counted against the pirate's armour */
+  function damage(p, amount, hx, hy, type) {
     if (!p.alive) return;
+    if (type) amount *= NS.combat.mult(type, PIRATES[p.kind].armour);
     p.hp -= amount;
     p.hitFlash = 0.08;
     if (p.hp > 0) return;
