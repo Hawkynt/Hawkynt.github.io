@@ -4,7 +4,9 @@
    groove, build-up, drop and breakdown, every pass a little different), the same music for the
    same song every time, gameplay pushing toward the drop, a unique song per level from one theme,
    the old plain songs still composing as before, and every instrument scheduled on a stand-in
-   Web Audio context without an error. Run: node sz/Applications/shared/tests/game-music.test.js */
+   Web Audio context without an error; the Mega Drive styles (FM voices, PSG arpeggios, march
+   drums), the older styles note for note, and switching songs on the bar line into a chosen
+   section. Run: node sz/Applications/shared/tests/game-music.test.js */
 const path = require('path');
 
 let passes = 0, failures = 0;
@@ -201,6 +203,50 @@ const before = audio.made.sources;
 M.stinger('win');
 check('stingers still play in the current key', audio.made.sources > before);
 M.play(null);
+
+/* ── the Mega Drive styles: FM voices, PSG arpeggios, march drums ── */
+check('three Mega Drive styles: calm, song and war', ['fm16calm', 'fm16', 'fm16war'].every(st => M.STYLES[st]), Object.keys(M.STYLES).join());
+const fmWaves = new Set();
+for (const st of ['fm16calm', 'fm16', 'fm16war']) for (const k in M.STYLES[st].layers) { const L = M.STYLES[st].layers[k]; if (L.wave) fmWaves.add(L.wave); if (L.dropWave) fmWaves.add(L.dropWave); }
+check('they play FM bass, brass, lead, pad and bells and PSG arpeggios', ['fmbass', 'fmbrass', 'fmlead', 'fmpad', 'fmbell', 'psg'].every(w => fmWaves.has(w)), [...fmWaves].join());
+const fmCalm = { id: 'fmcalm', style: 'fm16calm', root: 57, scale: 'dorian', prog: [0, 3, 4, 3], seed: 4 };
+const fmCalmNames = new Set();
+for (let b = 0; b < 96; ++b) fmCalmNames.add(M.sectionOf(fmCalm, M.locate(fmCalm, b)).name);
+check('the calm FM style never builds or drops', !fmCalmNames.has('build') && !fmCalmNames.has('drop'), [...fmCalmNames].join());
+const war = { id: 'fmwar', style: 'fm16war', root: 50, scale: 'minor', prog: [0, 5, 6, 4], seed: 8 };
+let toms = 0, brass = 0;
+for (let b = 0; b < 64; ++b) for (const n of M.compose(war, b, 1)) { if (n.inst === 'tom') ++toms; if (n.wave === 'fmbrass') ++brass; }
+check('the war style fills with toms and leads with brass', toms > 8 && brass > 20, toms + ' toms, ' + brass + ' brass');
+/* the other games keep their music note for note */
+const PIN = {"house":"04692fc4eaf3","trance":"03aa9033536c","electro":"5d9aeb6221ac","dnb":"37edc81b8b81","dubstep":"c81a73082901","chip":"2e7e45f9e641","synthwave":"4d16b74bb060","funk":"b73e1790db8a","epic":"db181f35a712","ambient":"134b67526b25"};
+const changed = [];
+for (const st in PIN) {
+  const s = { id: 'pin-' + st, style: st, root: 52, scale: 'minor', prog: [0, 3, 4, 5], seed: 5 };
+  let pos = M.start(s), sg = '';
+  for (let b = 0; b < 64; ++b) { sg += M.compose(s, b, 0.6, pos).map(n => n.t + ':' + n.dur + ':' + n.midi + ':' + n.inst + ':' + (n.wave || '') + ':' + n.vol).join(',') + '|'; pos = M.advance(s, pos, 0.6); }
+  if (require('crypto').createHash('md5').update(sg).digest('hex').slice(0, 12) !== PIN[st]) changed.push(st);
+}
+check('the older styles compose exactly as before', !changed.length, changed.join());
+/* switching on the bar and entering a song at a section */
+const songA = { id: 'sw-a', style: 'fm16', root: 52, scale: 'minor', prog: [0, 5, 6, 4], seed: 3 };
+const songB = { id: 'sw-b', style: 'fm16war', root: 52, scale: 'minor', prog: [0, 5, 6, 4], seed: 3 };
+M.play(songA);
+for (let k = 0; k < 10; ++k) { audio.ctx.currentTime += 0.2; ticker(); }
+const nextBar = M.schedule.nextAt;
+audio.ctx.currentTime += 0.05;
+M.play(songB, { onBar: true, from: 'build' });
+check('a switch on the bar starts the new song at the old one\'s next bar line', M.current === songB && Math.abs(M.schedule.startedAt - nextBar) < 1e-9,
+  M.schedule.startedAt + ' vs ' + nextBar);
+/* a bar is about two seconds long: tick past the bar line */
+for (let k = 0; k < 15; ++k) { audio.ctx.currentTime += 0.2; ticker(); }
+check('and can enter the new song at a chosen section', M.position && M.position.section === 'build', JSON.stringify(M.position));
+M.play(songA, { from: 'drop' });
+check('a plain switch still starts right away', Math.abs(M.schedule.startedAt - audio.ctx.currentTime - 0.08) < 1e-6);
+const beforeFm = audio.made.sources;
+M.stinger('win');
+check('over an FM song the stinger rings as FM bells', audio.made.sources >= beforeFm + 10, audio.made.sources - beforeFm);
+M.play(null);
+check('the FM voices schedule without a Web Audio error', audio.made.errors.length === 0, audio.made.errors.slice(0, 4).join(' | '));
 
 console.log(passes + ' passed, ' + failures + ' failed');
 if (failures) process.exitCode = 1;

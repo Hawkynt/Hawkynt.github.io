@@ -13,6 +13,8 @@
   // switch (remembered in the browser, shared by every game).
   //
   //   SZ.GameMusic.play(song)          start or crossfade to a song
+  //   SZ.GameMusic.play(song, { onBar: true, from: 'build' })  switch on the next bar line,
+  //                                    entering the song at a section
   //   SZ.GameMusic.play(null)          fade out
   //   SZ.GameMusic.setIntensity(0..1)  layers come in as it rises
   //   SZ.GameMusic.stinger('win')      a short phrase in the current key
@@ -174,6 +176,7 @@
     synth:  { kick: [0, 8, 10], snare: [4, 12], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14] },
     chip:   { kick: [0, 6, 8], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14] },
     funk:   { kick: [0, 7, 10], snare: [4, 12], hat: [0, 2, 3, 4, 6, 8, 10, 11, 12, 14], open: [14] },
+    genesis: { kick: [0, 3, 8, 10], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
   });
 
   const L = (o) => o;
@@ -214,6 +217,22 @@
       pad: L({ vol: 0.035, wave: 'supersaw' }), bass: L({ vol: 0.06, wave: 'triangle', pattern: 'fifths', drop: 'pulse', e: 0.25 }),
       arp: L({ vol: 0.017, wave: 'triangle', rate: 2, pattern: 'updown', oct: 1, e: 0.4 }), lead: L({ vol: 0.034, wave: 'triangle', dropWave: 'supersaw', density: 0.45, e: 0.45 }),
       bells: L({ vol: 0.025 }), drums: L({ vol: 0.06, style: 'march', drop: 'march', e: 0.3 }) } },
+    // the Mega Drive: two-operator FM bass, brass, leads, pads and bells (the YM2612 in
+    // miniature), PSG square arpeggios and punchy drums with tom fills - a calm, a song and a war
+    // arrangement, so one theme can follow a game from quiet work into battle
+    fm16calm: { bpm: 92, form: 'calm', duck: 0, layers: {
+      pad: L({ vol: 0.022, wave: 'fmpad' }), bass: L({ vol: 0.05, wave: 'fmbass', pattern: 'walk', e: 0.25 }),
+      arp: L({ vol: 0.013, wave: 'psg', rate: 4, pattern: 'updown', oct: 2, e: 0.35 }), lead: L({ vol: 0.022, wave: 'fmlead', density: 0.3, e: 0.42 }),
+      bells: L({ vol: 0.022, wave: 'fmbell' }), drums: L({ vol: 0.032, style: 'soft', e: 0.5 }) } },
+    fm16: { bpm: 116, form: 'song', duck: 0.1, layers: {
+      pad: L({ vol: 0.022, wave: 'fmpad' }), bass: L({ vol: 0.06, wave: 'fmbass', pattern: 'octave', drop: 'gallop', e: 0.2 }),
+      arp: L({ vol: 0.015, wave: 'psg', rate: 2, pattern: 'up', oct: 2, e: 0.4 }), lead: L({ vol: 0.03, wave: 'fmlead', dropWave: 'fmbrass', density: 0.55, e: 0.45 }),
+      bells: L({ vol: 0.02, wave: 'fmbell' }), drums: L({ vol: 0.055, style: 'chip', drop: 'genesis', e: 0.25 }) } },
+    fm16war: { bpm: 138, form: 'song', duck: 0.15, layers: {
+      pad: L({ vol: 0.02, wave: 'fmpad' }), bass: L({ vol: 0.064, wave: 'fmbass', pattern: 'gallop', drop: 'gallop', e: 0.15 }),
+      arp: L({ vol: 0.015, wave: 'psg', rate: 1, pattern: 'updown', oct: 2, e: 0.4 }), lead: L({ vol: 0.034, wave: 'fmbrass', dropWave: 'fmbrass', density: 0.6, e: 0.35 }),
+      stab: L({ vol: 0.016, pattern: 'sync', wave: 'fmbrass', e: 0.8 }), bells: L({ vol: 0.018, wave: 'fmbell' }),
+      drums: L({ vol: 0.062, style: 'march', drop: 'genesis', e: 0.2 }) } },
     ambient: { bpm: 74, form: 'calm', duck: 0, layers: {
       pad: L({ vol: 0.028, wave: 'sine' }), bass: L({ vol: 0.036, wave: 'sine', pattern: 'root', e: 0.25 }),
       arp: L({ vol: 0.015, wave: 'sine', rate: 4, pattern: 'random', oct: 2, e: 0.35 }), lead: L({ vol: 0.024, wave: 'sine', density: 0.3, e: 0.4 }),
@@ -298,9 +317,15 @@
     return out;
   }
 
-  function start(song) {
-    void resolve(song);
-    return { cycle: 0, si: 0, sb: 0, inject: null, bar: 0 };
+  // the first position of a song; `from` enters it at the first section of that name
+  function start(song, from) {
+    const R = resolve(song);
+    const pos = { cycle: 0, si: 0, sb: 0, inject: null, bar: 0 };
+    if (from) {
+      const i = planCycle(R, 0).findIndex(sec => sec.name === from);
+      if (i >= 0) pos.si = i;
+    }
+    return pos;
   }
 
   function sectionOf(song, pos) {
@@ -504,12 +529,12 @@
     // chord stabs in the drop
     if (Ls.stab && name === 'drop' && on(Ls.stab)) {
       const at = Ls.stab.pattern === 'sync' ? [0, 3, 6, 10] : [2, 6, 10, 14];
-      for (const t of at) for (let i = 0; i < 3; ++i) N(t, 1, noteOf(R, chord[i]) + 12, 'stab', Ls.stab.vol, { wave: 'supersaw' });
+      for (const t of at) for (let i = 0; i < 3; ++i) N(t, 1, noteOf(R, chord[i]) + 12, 'stab', Ls.stab.vol, { wave: Ls.stab.wave || 'supersaw' });
     }
     // bells: intros, breakdowns and calm songs
     if (Ls.bells && (name === 'intro' || name === 'break' || R.form === 'calm') && pos.sb % 2 === 1) {
       for (let i = 0; i < 3; ++i)
-        N(4 + i * 4 + (rr() < 0.5 ? 0 : 2), 6, noteOf(R, root + [4, 7, 9][Math.floor(rr() * 3)]) + 24, 'bell', Ls.bells.vol);
+        N(4 + i * 4 + (rr() < 0.5 ? 0 : 2), 6, noteOf(R, root + [4, 7, 9][Math.floor(rr() * 3)]) + 24, 'bell', Ls.bells.vol, Ls.bells.wave ? { wave: Ls.bells.wave } : null);
     }
     // drums
     const D = Ls.drums;
@@ -622,6 +647,7 @@
   const listeners = new Set();
   let current = null;        // { song, gain, bar, nextAt }
   let wanted = null;         // the song asked for (also while the context is not running)
+  let wantedOpts = {};       // { onBar, from } of that request
   let intensity = 0.6;
   let timer = null;
   let noise = null;
@@ -808,6 +834,17 @@
     }
   }
 
+  // two operators, the Mega Drive's YM2612 in miniature: a sine modulator at `ratio` times the
+  // pitch drives the carrier's frequency; `depth` (in Hz) is the modulation index times the pitch
+  function fmPair(ctx, f0, ratio, t, end) {
+    const car = osc(ctx, 'sine', f0, t, end);
+    const mod = osc(ctx, 'sine', f0 * ratio, t, end);
+    const depth = ctx.createGain();
+    depth.gain.value = 0;
+    mod.connect(depth).connect(car.frequency);
+    return { car: car, depth: depth.gain };
+  }
+
   function synth(ctx, c, n, t, dur, beat) {
     const inst = n.inst, wave = n.wave || 'square', vol = n.vol;
     const f0 = freq(n.midi);
@@ -816,6 +853,17 @@
     if ((inst === 'arp' || inst === 'bell') && c.pan) dest = (n.t / 2) % 2 ? c.pan[1] : c.pan[0];
     g.connect(dest);
     const end = t + Math.max(dur, 0.03) + 0.06;
+    if (inst === 'bell' && wave === 'fmbell') {
+      // a metallic bell: an off-ratio modulator whose brightness dies away with the ring
+      const p = fmPair(ctx, f0, 3.5, t, t + dur + 1);
+      p.depth.setValueAtTime(f0 * 4, t);
+      p.depth.exponentialRampToValueAtTime(Math.max(1, f0 * 0.2), t + dur * 0.9 + 0.3);
+      p.car.connect(g);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.9 + 0.3);
+      return;
+    }
     if (inst === 'bell') {
       const o = osc(ctx, 'sine', f0, t, t + dur + 1);
       const o2 = osc(ctx, 'sine', f0 * 2.01, t, t + dur + 1);
@@ -867,6 +915,53 @@
     } else if (wave === 'sub') {
       osc(ctx, 'sine', f0, t, end).connect(g);
       env(g, t, vol * 1.2, 0.02, dur - 0.05, 0.08);
+    } else if (wave === 'fmbass') {
+      // slap bass: a bright burst of modulation that falls away fast
+      const p = fmPair(ctx, f0, 1, t, end);
+      p.depth.setValueAtTime(f0 * 5, t);
+      p.depth.exponentialRampToValueAtTime(Math.max(1, f0 * 0.6), t + 0.12);
+      p.car.connect(lp);
+      lp.frequency.value = 2400;
+      env(g, t, vol * 1.1, 0.004, dur - 0.04, 0.06);
+    } else if (wave === 'fmbrass') {
+      // brass: the modulation swells in and settles
+      const p = fmPair(ctx, f0, 1, t, end);
+      p.depth.setValueAtTime(f0 * 0.3, t);
+      p.depth.linearRampToValueAtTime(f0 * 3.2, t + Math.min(0.09, dur * 0.5));
+      p.depth.linearRampToValueAtTime(f0 * 2.2, t + Math.min(0.3, dur));
+      p.car.connect(lp);
+      lp.frequency.value = 4200;
+      env(g, t, vol, 0.03, dur - release, release);
+    } else if (wave === 'fmlead') {
+      // lead: an octave modulator, a little brighter at the start, a vibrato that eases in
+      const p = fmPair(ctx, f0, 2, t, end);
+      p.depth.setValueAtTime(f0 * 1.6, t);
+      p.depth.exponentialRampToValueAtTime(Math.max(1, f0 * 0.8), t + Math.min(0.25, dur));
+      const vd = ctx.createGain();
+      vd.gain.setValueAtTime(0, t);
+      vd.gain.linearRampToValueAtTime(f0 * 0.006, t + Math.min(0.35, dur));
+      osc(ctx, 'sine', 5.5, t, end).connect(vd).connect(p.car.frequency);
+      p.car.connect(lp);
+      lp.frequency.value = 6000;
+      env(g, t, vol, attack, dur - release, release);
+    } else if (wave === 'fmpad') {
+      for (const d of [-7, 7]) {
+        const p = fmPair(ctx, f0, 1, t, end);
+        p.car.detune.setValueAtTime(d, t);
+        p.depth.setValueAtTime(f0 * 0.9, t);
+        p.car.connect(lp);
+      }
+      lp.frequency.value = 2200;
+      env(g, t, vol / 1.5, attack, dur - release, release);
+    } else if (wave === 'psg') {
+      // the PSG's thin square, its volume stepping down frame by frame
+      osc(ctx, 'square', f0, t, end).connect(lp);
+      lp.type = 'highpass';
+      lp.frequency.value = 180;
+      const steps = Math.max(2, Math.min(12, Math.round(dur * 60)));
+      g.gain.setValueAtTime(0.0001, t);
+      for (let i = 0; i < steps; ++i) g.gain.setValueAtTime(Math.max(0.0002, vol * (1 - i / steps * 0.7)), t + i / 60);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, steps / 60) + 0.02);
     } else {
       osc(ctx, wave, f0, t, end).connect(lp);
       if (pad) osc(ctx, wave, f0 * 1.006, t, end).connect(lp);
@@ -944,9 +1039,9 @@
     return at + 16 * sixteenth;
   }
 
-  function fade(gain, ctx, to, seconds) {
-    const t = ctx.currentTime;
-    gain.gain.cancelScheduledValues(t);
+  function fade(gain, ctx, to, seconds, at) {
+    const t = Math.max(ctx.currentTime, at || 0);
+    gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, to), t + seconds);
   }
@@ -960,21 +1055,25 @@
       return;
     }
     if (wanted && (!current || current.wanted !== wanted)) {
-      if (current) stopCurrent(ctx, 1.2);
+      /* on the bar: the new song takes over where the old one's next bar would begin */
+      const onBar = !!(wantedOpts.onBar && current);
+      const at = onBar ? Math.max(current.nextAt, ctx.currentTime + 0.02) : ctx.currentTime + 0.08;
+      const fadeIn = onBar ? 0.15 : 1.2;
+      if (current) stopCurrent(ctx, onBar ? 0.3 : 1.2, onBar ? at : 0);
       if (wanted.style) {
         const R = resolve(wanted);
         current = makeChain(ctx, SZ.GameAudio.bus('music'), R, wanted.volume);
         current.wanted = wanted;
         current.bar = 0;
-        current.pos = start(R);
-        current.nextAt = ctx.currentTime + 0.08;
-        fade(current.gain, ctx, current.level, 1.2);
+        current.pos = start(R, wantedOpts.from);
+        current.nextAt = current.startedAt = at;
+        fade(current.gain, ctx, current.level, fadeIn, at);
       } else {
         const gain = ctx.createGain();
         gain.gain.value = 0.0001;
         gain.connect(SZ.GameAudio.bus('music'));
-        fade(gain, ctx, 0.55 * (wanted.volume || 1), 1.2);
-        current = { song: wanted, wanted: wanted, gain: gain, bar: 0, nextAt: ctx.currentTime + 0.08 };
+        fade(gain, ctx, 0.55 * (wanted.volume || 1), fadeIn, at);
+        current = { song: wanted, wanted: wanted, gain: gain, bar: 0, nextAt: at, startedAt: at };
       }
     } else if (!wanted && current)
       stopCurrent(ctx, 1.2);
@@ -986,9 +1085,9 @@
       current.nextAt = scheduleBar(ctx, current, current.nextAt);
   }
 
-  function stopCurrent(ctx, seconds) {
+  function stopCurrent(ctx, seconds, at) {
     const g = current.gain;
-    fade(g, ctx, 0.0001, seconds);
+    fade(g, ctx, 0.0001, seconds, at);
     setTimeout(() => { try { g.disconnect(); } catch (_) {} }, seconds * 1000 + 2500);
     current = null;
     position = null;
@@ -1001,8 +1100,11 @@
     timer = setInterval(pump, 90);
   }
 
-  function play(song) {
+  /* opts: { onBar } switches on the next bar line instead of crossfading now, { from } enters
+     the song at the first section of that name (intro, groove, build, drop, break) */
+  function play(song, opts) {
     wanted = song || null;
+    wantedOpts = opts || {};
     ensureTimer();
     pump();
   }
@@ -1027,6 +1129,11 @@
     const song = (current && current.song) || resolve(wanted) || { root: 60, scale: 'major', bpm: 120, layers: {} };
     const step = 60 / (song.bpm || 120) / 4;
     const t0 = ctx.currentTime + 0.02;
+    /* over an FM song the phrase rings as FM bells through the song's own mix */
+    if (current && current.pos && current.song.layers.bells && current.song.layers.bells.wave === 'fmbell') {
+      for (const [st, at] of s) synth(ctx, current, { inst: 'bell', wave: 'fmbell', midi: noteOf(song, st) + 24, vol: 0.09, t: 0 }, t0 + at * step, step * 4, step * 4);
+      return;
+    }
     const out = SZ.GameAudio.bus('music');
     for (const [st, at] of s)
       voice(ctx, out, { inst: 'bell', midi: noteOf(song, st) + 24, vol: 0.12 }, t0 + at * step, step * 4, null);
@@ -1084,6 +1191,7 @@
     play, setIntensity, stinger, compose, noteOf, chordSteps, SCALES, DRUMS,
     STYLES, resolve, planCycle, start, advance, sectionOf, locate, chordOf, variant, render,
     get position() { return position; },
+    get schedule() { return current ? { startedAt: current.startedAt, nextAt: current.nextAt } : null; },
     get enabled() { return enabled; },
     set enabled(v) { setEnabled(v); },
     toggle() { setEnabled(!enabled); },

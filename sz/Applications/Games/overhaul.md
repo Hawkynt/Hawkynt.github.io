@@ -75,8 +75,9 @@ Full overhaul needed (Tetris, Breakout, Bubble Bobble and Minesweeper are done, 
 
 ### Shared gaps (all tiers)
 
-- **Music** (done, November 2026): `shared/game-music.js` arranges themes in ten styles (house,
-  trance, electro, dnb, dubstep, chip, synthwave, funk, epic, ambient) into endless songs - intro,
+- **Music** (done, November 2026): `shared/game-music.js` arranges themes in thirteen styles (house,
+  trance, electro, dnb, dubstep, chip, synthwave, funk, epic, ambient, and the 16-bit FM family
+  fm16calm, fm16, fm16war) into endless songs - intro,
   groove, build-up, drop, breakdown, every pass changing melody, harmony, form or key - and
   `variant(theme, key)` gives every level a song of its own. Every game except the Rhythm Game
   (whose songs are the gameplay) has a `music.js` with themes per world/mode, a song per level,
