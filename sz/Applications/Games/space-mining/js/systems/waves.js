@@ -138,6 +138,7 @@
     run.rd += 1;
     NS.trip.banner('WAVE ' + b.waveNo + ' REPELLED', '+' + NS.kit.group(reward) + ' credits', '#5cff9a');
     NS.audio.sfx('win', { volume: 0.6 });
+    NS.music.cue('level');
     const h = NS.base.hub();
     if (run.mode === 'career' && !G.save.cine.waveClear && h) {
       G.save.cine.waveClear = true;
@@ -158,6 +159,7 @@
     const run = G.run;
     if (b) b.data.bossDone = true;
     run.bosses = (run.bosses || 0) + 1;
+    NS.music.cue('rare');
     const reward = 2500 * (1 + (b ? b.zone.index : 0));
     if (run.mode !== 'rush' && run.mode !== 'daily') NS.base.wallet().credits += reward;
     if (run.mode === 'career') {

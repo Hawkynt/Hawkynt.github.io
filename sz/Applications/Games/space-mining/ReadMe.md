@@ -38,7 +38,7 @@ Gas pockets and Bloom clouds drift in the belts (fly through to scoop them); liv
 
 ### Hangar, festivals and soundtrack
 
-The station's Hangar tab collects 15 liveries (paint schemes laid over any hull), 11 mining-beam colours and 11 thruster plumes. Each opens from the start, with credits or research, with achievements, belt licences, by breaking the Crown, or on a festival track. Six seasons a year (Perihelion Lights, Frostbelt, Spring Bloom, Solar Solstice, Perseid Drift, Void Night) each run a six-tier track: every finished trip pays tokens by the value of its haul, and the track pays credits, research and that season's own livery, beam and plume. The shared `SZ.GameMusic` composes a theme per belt, a station theme, a menu theme, a driving theme for Gold Rush and the Daily Belt and a battle theme for Siege; pirates and invaders raise the intensity.
+The station's Hangar tab collects 15 liveries (paint schemes laid over any hull), 11 mining-beam colours and 11 thruster plumes. Each opens from the start, with credits or research, with achievements, belt licences, by breaking the Crown, or on a festival track. Six seasons a year (Perihelion Lights, Frostbelt, Spring Bloom, Solar Solstice, Perseid Drift, Void Night) each run a six-tier track: every finished trip pays tokens by the value of its haul, and the track pays credits, research and that season's own livery, beam and plume. The soundtrack is in the style of the 16-bit consoles - FM bass, brass, leads and bells, PSG square arpeggios, punchy drums with tom fills - composed live by the shared `SZ.GameMusic` (all themes are original). Every belt has one theme, a career trip a variant of its own, and the theme follows what the pilot is doing: calm while mining or docked, a walking groove while cruising, a tense march when a wave or an ambush is coming, a storm is warned or an operation's director is about to strike, the full battle arrangement while pirates or invaders are close or the outpost is under attack, and a heavier phrygian version when a mothership is in the belt. Changes land on the next bar line; the music climbs at once but calms down only after some quiet seconds, so one passing skimmer does not toss it around. Pause-and-plan thins the band. Won and failed operations and repelled waves play a short phrase over the music. The station, the menus, Gold Rush and the Daily Belt and Siege have their own themes in the same style.
 
 Progress lives in one versioned save (credits, research, hulls, upgrades, tree, modules, licences, warehouse with components, market, contracts, achievements, statistics, bests, high scores, outposts with their buildings, stock, crew and fleet, the log, the streak, and an autosave of the trip in flight so Continue resumes exactly where you left). The first version's high-score list and tutorial flag are migrated once into it; veterans start with half their best haul as credits (up to 5,000). Saves from before the outposts load with empty sites and keep their market prices. In a battle of 44 buildings and 180 ships the game spends about 0.3 ms of script on a simulation step and 1.5 ms on drawing calls per frame.
 
@@ -73,7 +73,7 @@ Core (`js/core/`):
 - **`calendar.js`** -- Pure date rules: seasons, ISO weeks and the anomaly belt, trip modifiers, daily and weekly contracts, streaks, the seeded event schedule
 - **`data-cosmetics.js`** -- Liveries, beams, plumes with their unlocks, and the festival track tiers
 - **`cosmetics.js`** -- Collection rules: owning, buying, equipping, livery colours, the festival track and its rewards, repair of stored data
-- **`music.js`** -- The soundtrack themes and their choice per belt, mode and screen
+- **`music.js`** -- The soundtrack: one theme per belt, mode and screen in the 16-bit FM style, the trip's variant, the mood the game is in (calm, explore, tension, combat, boss) with its hysteresis, and the arrangement, section and intensity each mood plays
 - **`state.js`** -- The shared state object: screens, save and stats, the trip, entity lists, ship, camera, effects, feel timers, cinematic, input, per-screen UI
 - **`save.js`** -- Loads and writes the v2 save (the only module touching `localStorage`) and refreshes the derived stats
 - **`audio.js`** -- Sound effects through the shared `SZ.GameAudio`, throttled per name and attenuated by distance
@@ -158,6 +158,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - **`harness.js`** -- A recording fake canvas, minimal DOM and storage, a loader that runs the game scripts in `index.html` order, a stepper
 - **`ops.test.js`** -- The operation chains and their moods, opening, the capstone gate, loops per belt, objective progress, results and rewards, the pacing director
 - **`campaign.test.js`** -- A bot plays the Kessler operations in the running game and prints the measured tension per operation
+- **`music.test.js`** -- The moods from what is happening, climbing at once and calming slowly, one theme across moods, switches on the bar line, the themes per screen and mode
 - **`rules.test.js`** -- Tree, upgrades, hulls, modules, licences, derived stats, the Daily loadout, hold space, achievements
 - **`economy.test.js`** -- Prices, saturation and recovery, drift bounds, news, history, refining, contracts, service costs
 - **`logistics.test.js`** -- Block presses and packed ore, loading the hold at a hub; buying basics, the manifest at launch, supplies apart from the haul, unloading them at a hub and building from them, their return home
@@ -245,6 +246,10 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can find and shatter the Crown Heart to complete the career
 - [x] As a player, I can play Gold Rush (five minutes, sell at the dock as often as I like) and the seeded Daily Belt with a standard rig
 - [x] As a player, I can play Siege: hold a starter outpost through 15 waves with two motherships for a score
+
+### Soundtrack
+- [x] As a player, I can hear a 16-bit style soundtrack that stays calm while I mine, grooves while I cruise, tenses up before a wave or an ambush and breaks into battle music when the fighting starts
+- [x] As a player, I can hear a heavier boss arrangement while a mothership is in the belt and a short phrase when I win or lose an operation or repel a wave
 
 ### Cinematics
 - [x] As a player, I can watch an intro of my first launch from Kessler Station

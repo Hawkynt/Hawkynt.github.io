@@ -49,7 +49,7 @@ check('stored cosmetics are repaired', fixed.cosmetics.livery === 'factory' && f
 const M = NS.music;
 G.run = { mode: 'career', zoneIndex: 2 };
 G.screen = 'playing';
-check('each belt has its theme', M.themeFor() === M.BELT[2]);
+check('each belt has its theme', M.themeFor() === M.BELTS[2]);
 G.run.mode = 'siege';
 check('Siege has a battle theme', M.themeFor() === M.SIEGE);
 G.run.mode = 'rush';

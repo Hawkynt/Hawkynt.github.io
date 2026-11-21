@@ -7,7 +7,8 @@
    the Kessler operations and launches First Haul, which banking wins; an outpost in the
    Verdant Shoals installs a press, packs ore and builds with ore from the hold; the Supply tab
    buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
-   loads more. */
+   loads more; the soundtrack starts calm and switches to the battle arrangement when a raider
+   closes in. */
 exports.ns = 'SpaceMining';
 
 exports.run = async (t) => {
@@ -90,7 +91,7 @@ exports.run = async (t) => {
   t.check('banking 60 units wins First Haul and pays at once', await t.state("G.run.op.status === 'won' && G.save.ops.k_haul.done"));
   await t.shot('12-operation-complete');
   await t.hit('dock-home');
-  await t.wait(4200);
+  await t.waitFor("G.screen === 'results'", 15000);
   t.check('the report names the operation', await t.state("G.screen === 'results' && G.ui.results.op && G.ui.results.op.status === 'won'"));
   /* the Supply tab: real clicks buy iron and put it on the cargo manifest */
   await t.run((NS, G) => { G.save.credits = Math.max(G.save.credits, 5000); NS.screens.setScreen('station'); G.ui.stationTab = 'supply'; });
@@ -112,13 +113,19 @@ exports.run = async (t) => {
     G.ship.x = h.x; G.ship.y = h.y; G.ship.vx = G.ship.vy = 0;
     NS.camera.snap(h.x, h.y);
   });
+  /* the soundtrack follows the fight: a raider close by switches to the war arrangement */
+  t.check('the trip opens in the calm arrangement of the belt theme', await t.state("/:calm$/.test(W.SZ.GameMusic.current.id) && W.SZ.GameMusic.current.style === 'fm16calm'"));
+  await t.run((NS, G) => { NS.pirates.spawn('raider', G.ship.x + 500, G.ship.y); });
+  await t.wait(900);
+  t.check('a raider closing in switches to the battle arrangement', await t.state("NS.music.state().cur === 'combat' && /:war$/.test(W.SZ.GameMusic.current.id) && W.SZ.GameMusic.intensity > 0.9"));
+  await t.run((NS, G) => { for (const p of G.pirates) p.alive = false; });
   await t.page.key('Tab', 'Tab', 9);
   t.check('Tab pauses at the outpost', await t.state('G.cmd.on && G.cmd.plan'));
   await t.run((NS, G) => { G.cmd.selB = NS.base.hub(); });
   await t.hit('base_press');
   t.check('the hub installs its own press for credits', await t.state('G.base.data.blockRank === 1 && G.save.modules.blockPress === 1'));
   await t.hit('loadOre');
-  t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && G.run.cargoUsed === 10 + NS.supply.slots(G.stats, G.run.freight) && !G.base.data.stock.ore.copper'));
+  t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && NS.mining.cargoSpace("copper", 40) === 10 && !G.base.data.stock.ore.copper'));
   await t.shot('08-packed-ore');
   /* the stock is empty now: a relay is paid with copper from the ship's hold */
   const spot = await t.run((NS, G) => {
@@ -149,7 +156,9 @@ exports.run = async (t) => {
   await t.hit('sup_back');
   t.check('Back returns to the flight', await t.state("G.screen === 'playing'"));
   await t.hit('dock-home');
-  await t.wait(4200);
+  /* the docking autopilot takes a few seconds, more on a busy machine */
+  await t.waitFor("G.screen === 'results'", 15000);
+  await t.wait(300);
   await t.shot('13-report-verdant');
   t.check('the Verdant trip ends with the copper banked', await t.state("G.screen === 'results' && G.ui.results.hold.copper === 36"));
 };

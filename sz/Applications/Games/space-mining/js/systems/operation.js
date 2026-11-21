@@ -125,7 +125,7 @@
     o.first = r.first;
     NS.trip.banner('OPERATION COMPLETE', op.name + (r.first ? ' - reward paid' : ''), MOODS.E.color);
     NS.audio.sfx('levelup', { volume: 0.7 });
-    if (SZ.GameMusic && SZ.GameMusic.stinger) SZ.GameMusic.stinger('win');
+    NS.music.cue('win');
     NS.save.writeSave();
   }
 
@@ -134,6 +134,7 @@
     o.status = 'failed';
     o.why = why;
     O.finish(G.save, op, false, o.t);
+    NS.music.cue('lose');
     if (why === 'time') NS.trip.banner('OPERATION FAILED', WHY.time, MOODS.W.color);
     NS.save.writeSave();
   }
