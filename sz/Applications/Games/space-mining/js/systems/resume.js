@@ -20,7 +20,7 @@
   function capture() {
     const run = G.run, s = G.ship;
     if (!run || !s || run.ending || (run.mode !== 'career' && run.mode !== 'siege') || !s.alive) return null;
-    const snap = { v: 1, mode: run.mode, zone: run.zoneIndex, seed: run.seed, day: NS.rng.dayKey(), run: {}, ship: null, rocks: [], units: [], enemies: [], clouds: [] };
+    const snap = { v: 1, mode: run.mode, zone: run.zoneIndex, seed: run.seed, day: NS.rng.dayKey(), run: {}, ship: null, rocks: [], nuggets: [], units: [], enemies: [], clouds: [] };
     for (let i = 0; i < RUN_KEYS.length; ++i) snap.run[RUN_KEYS[i]] = run[RUN_KEYS[i]];
     snap.run.cargo = Object.assign({}, run.cargo);
     snap.run.banked = Object.assign({}, run.banked);
@@ -34,6 +34,8 @@
       snap.rocks.push([o.kind, r1(o.x), r1(o.y), r1(o.vx), r1(o.vy), o.tier, o.ore ? ORE_BY_ID[o.ore].index : -1, Math.round(o.rich * 100) / 100,
         r1(o.hp), r1(o.maxHp), r1(o.r), r1(o.rot), o.variant, o.volatile ? 1 : 0, o.bio || 0, o.found ? 1 : 0, o.known ? 1 : 0]);
     }
+    for (const n of G.nuggets) if (n.alive)
+      snap.nuggets.push([n.ore, n.units, n.credits, n.x, n.y, n.vx, n.vy, n.rot, n.vr, n.age, n.variant]);
     for (let i = 0; i < G.units.length; ++i) {
       const u = G.units[i];
       if (u.alive) snap.units.push({ type: u.type, side: u.side, x: r1(u.x), y: r1(u.y), hp: r1(u.hp), kills: u.kills, cor: Math.round(u.cor * 100) / 100 });
@@ -50,7 +52,7 @@
     const b = G.base;
     if (b) {
       NS.base.sync();
-      snap.wave = { waveT: r1(b.waveT), active: b.active, waveNo: b.waveNo || 0, empCd: r1(b.empCd) };
+      snap.wave = { waveT: r1(b.waveT), active: b.active, waveNo: b.waveNo || 0, empCd: r1(b.empCd), hubVisit: b.hubVisit };
       if (b.mode === 'siege') snap.base = JSON.parse(JSON.stringify(b.data, (k, v) => k.charAt(0) === '_' ? undefined : v));
     }
     if (G.distress) {
@@ -106,6 +108,14 @@
       G.rocks.push(o);
     }
     NS.asteroids.rebuildGrid();
+    NS.mining.clear();
+    for (const a of Array.isArray(snap.nuggets) ? snap.nuggets : []) {
+      if (!Array.isArray(a) || a.length !== 11 || !a.slice(1).every(Number.isFinite)) continue;
+      const [ore, units, credits, x, y, vx, vy, rot, vr, age, variant] = a;
+      if (!(credits > 0 || (ORE_BY_ID[ore] && units > 0)) || x < 0 || x > G.world.w || y < 0 || y > G.world.h) continue;
+      const n = NS.mining.spawnNugget(x, y, ore, units);
+      Object.assign(n, { credits, vx, vy, rot, vr, age, variant: variant & 3 });
+    }
     G.clouds.length = 0;
     for (let i = 0; i < snap.clouds.length; ++i) {
       const c = snap.clouds[i];

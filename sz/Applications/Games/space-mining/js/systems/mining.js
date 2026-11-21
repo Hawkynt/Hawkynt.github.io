@@ -9,7 +9,7 @@
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
   const G = NS.state;
   const C = NS.constants;
-  const { TAU, LASER_RANGE, COLLECT_R, MAX_NUGGETS, NUGGET_LIFE } = C;
+  const { TAU, LASER_RANGE, COLLECT_R } = C;
   const { ORE_BY_ID } = NS.ores;
   const { compact, createPool } = NS.grid;
   const rules = NS.rules;
@@ -77,7 +77,6 @@
 
   /* ── nuggets ── */
   function spawnNugget(x, y, oreId, units, from, speed) {
-    if (G.nuggets.length >= MAX_NUGGETS) return null;
     const n = pool.get();
     const a = R() * TAU, sp = (speed || 90) * (0.4 + R() * 0.8);
     n.alive = true;
@@ -90,7 +89,6 @@
     n.units = units;
     n.rot = R() * TAU;
     n.vr = (R() - 0.5) * 6;
-    n.life = NUGGET_LIFE;
     n.pulled = false;
     n.age = 0;
     n.variant = Math.floor(R() * 3);
@@ -99,10 +97,9 @@
   }
 
   function spawnSalvage(x, y, credits, n) {
-    for (let i = 0; i < n; ++i) {
-      const g = spawnNugget(x, y, null, 0, null, 160);
-      if (g) g.credits = Math.round(credits / n);
-    }
+    const value = Math.round(credits / n);
+    if (value <= 0) return;
+    for (let i = 0; i < n; ++i) spawnNugget(x, y, null, 0, null, 160).credits = value;
   }
 
   function updateNuggets(dt) {
@@ -113,17 +110,21 @@
     G.run.pulled = 0;
     for (let i = 0; i < list.length; ++i) {
       const n = list[i];
+      if (!n.alive) continue;
       n.age += dt;
-      n.life -= dt;
-      if (n.life <= 0) { n.alive = false; continue; }
-      const k = Math.max(0, 1 - 1.1 * dt);
-      n.vx *= k;
-      n.vy *= k;
+      const speed = Math.hypot(n.vx, n.vy);
+      if (speed > 24) {
+        const drag = Math.max(24 / speed, 1 - 1.1 * dt);
+        n.vx *= drag;
+        n.vy *= drag;
+      }
       n.pulled = false;
       if (s && s.alive && n.age > 0.25) {
         const dx = s.x - n.x, dy = s.y - n.y;
         const d2 = dx * dx + dy * dy;
-        const room = n.credits || fits(n.ore, n.units);
+        const cr = COLLECT_R + s.r;
+        const take = n.credits || d2 >= Math.max(range2, cr * cr) ? 0 : Math.min(n.units, roomFor(n.ore));
+        const room = n.credits || take > 0;
         if (d2 < range2 && room) {
           const d = Math.sqrt(d2) || 1;
           const pull = st.tractorPull * (0.35 + 0.65 * (1 - d / range));
@@ -137,9 +138,8 @@
           n.pulled = true;
           ++G.run.pulled;
         }
-        const cr = COLLECT_R + s.r;
         if (d2 < cr * cr) {
-          if (room) collect(n);
+          if (room) collect(n, take);
           else if (fullT <= 0) {
             fullT = 1.5;
             NS.fx.text(s.x, s.y - 50, 'HOLD FULL', '#ff6a5c', 18, 1.2);
@@ -150,13 +150,15 @@
       n.x += n.vx * dt;
       n.y += n.vy * dt;
       n.rot += n.vr * dt;
+      if (n.x < 0 || n.x > G.world.w || n.y < 0 || n.y > G.world.h) n.alive = false;
     }
     if (fullT > 0) fullT -= dt;
     compact(list, (n) => pool.put(n));
   }
 
-  function collect(n) {
-    n.alive = false;
+  function collect(n, units) {
+    n.units -= units;
+    if (!n.units) n.alive = false;
     const s = G.ship;
     if (n.credits) {
       G.run.salvage += n.credits;
@@ -164,7 +166,7 @@
       NS.audio.sfx('coin', { volume: 0.5 });
       return;
     }
-    addCargo(n.ore, n.units);
+    addCargo(n.ore, units);
     const ore = ORE_BY_ID[n.ore];
     NS.fx.glow(s.x, s.y, 26, ore.color, 0.2);
     G.run.pickT = 0.25;
@@ -172,15 +174,15 @@
     /* merge rapid pickups of one ore into a single rising counter */
     const t = G.run.pickText;
     if (t && t.alive && t.ore === n.ore && t.t < 0.5) {
-      t.amount += n.units;
+      t.amount += units;
       t.str = '+' + t.amount + ' ' + ore.name;
       t.t = 0.05;
       t.y = Math.min(t.y, s.y - 40);
     } else {
-      NS.fx.text(s.x, s.y - 40, '+' + n.units + ' ' + ore.name, ore.glow, 15 + ore.rarity, 1.1);
+      NS.fx.text(s.x, s.y - 40, '+' + units + ' ' + ore.name, ore.glow, 15 + ore.rarity, 1.1);
       const last = G.texts[G.texts.length - 1];
       last.ore = n.ore;
-      last.amount = n.units;
+      last.amount = units;
       G.run.pickText = last;
     }
     NS.audio.sfx('pickup', { volume: 0.32, pitch: 0.9 + ore.rarity * 0.12 });

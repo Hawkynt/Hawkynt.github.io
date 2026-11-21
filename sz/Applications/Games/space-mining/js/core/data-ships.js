@@ -1,5 +1,5 @@
 /* Static equipment data: the four hulls (price, base stats, paint), the six hangar upgrades
-   that level up with rising costs, the five station modules, and the pirate types. Pure data. */
+   that level up with rising costs, the station modules, and the pirate types. Pure data. */
 ;(function() {
   'use strict';
 
@@ -46,7 +46,8 @@
   const UPGRADE_BY_ID = {};
   for (let i = 0; i < UPGRADES.length; ++i) UPGRADE_BY_ID[UPGRADES[i].id] = UPGRADES[i];
 
-  /* station modules, three levels each; costs per level */
+  /* Credit costs and effects per module tier. */
+  const BLOCK_PRESS_COSTS = [1200, 3000, 7500, 18000, 42000, 100000];
   const MODULES = [
     { id: 'refinery', name: 'Refinery', icon: 'refinery', costs: [3000, 11000, 32000],
       levels: ['Smelts 3 ore into 1 bar worth 30% more', 'Bars worth 45% more', 'Bars worth 60% more'] },
@@ -56,6 +57,8 @@
       levels: ['The radar shows each rock\'s ore', 'Market forecasts and rarer finds', 'Pinpoints geodes and derelicts'] },
     { id: 'tradeHub', name: 'Trade Hub', icon: 'trade', costs: [2500, 9000, 26000],
       levels: ['+1 contract, +4% prices', '+2 contracts, +8% prices', '+3 contracts, +12% prices'] },
+    { id: 'blockPress', name: 'Ship Block Press', icon: 'compress', research: 'l_blocks', costs: BLOCK_PRESS_COSTS,
+      levels: BLOCK_PRESS_COSTS.map((_, i) => 4 ** (i + 1) + ' units per slot in the ship and its drones') },
     { id: 'depot', name: 'Fuel Depot', icon: 'fuel', costs: [2000, 7000, 20000],
       levels: ['Service costs -35%', 'Service costs -65%', 'Free refuelling and repairs'] },
   ];

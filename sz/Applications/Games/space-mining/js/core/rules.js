@@ -99,6 +99,12 @@
         s.best.siege = Math.floor(num(src.best.siege, 0, 1e12, 0));
       }
       s.bases = NS.colony.repairBases(src.bases);
+      const legacyPress = src.modules && src.modules.blockPress !== undefined ? 0 :
+        Math.floor(num(src.tree && src.tree.l_blocks, 0, MODULE_BY_ID.blockPress.costs.length, 0));
+      if (legacyPress) {
+        s.modules.blockPress = legacyPress;
+        for (const id in s.bases) s.bases[id].blockRank = legacyPress;
+      }
       const known = (list) => Array.isArray(list) ? list.filter((id, i, a) => CHAPTER_BY_ID[id] && a.indexOf(id) === i) : [];
       s.log = known(src.log);
       s.logSeen = known(src.logSeen).filter(id => s.log.indexOf(id) >= 0);
@@ -108,6 +114,8 @@
       if (src.cine && typeof src.cine === 'object')
         for (const k in src.cine) if (src.cine[k] === true && /^[a-zA-Z]{1,20}$/.test(k)) s.cine[k] = true;
       s.resume = src.resume && typeof src.resume === 'object' && src.resume.v === 1 ? src.resume : null;
+      if (legacyPress && s.resume && s.resume.base)
+        s.resume = Object.assign({}, s.resume, { base: Object.assign({}, s.resume.base, { blockRank: legacyPress }) });
       s.cosmetics = NS.cosmetics.repair(src.cosmetics);
       s.festival = NS.cosmetics.repairFestival(src.festival);
       if (Array.isArray(src.highScores))
@@ -165,10 +173,7 @@
 
   function nodeText(n, lvl) {
     const v = n.per * lvl;
-    if (n.stat === 'blockRank') {
-      const names = ['Block', 'Compressed Block', 'Double Compressed Block', 'Triple Compressed Block', 'Quadruple Compressed Block', 'Quintuple Compressed Block'];
-      return n.fmt.replace('{block}', names[lvl - 1]).replace('{size}', String(blockSize({ blockRank: lvl })));
-    }
+    if (n.stat === 'fortune') return n.fmt.replace('{max}', String(fortuneMax(lvl)));
     return n.fmt.replace('{p}', String(Math.round(v * 100))).replace('{v}', String(Math.round(v * 100) / 100));
   }
 
@@ -209,13 +214,17 @@
     return lvl >= m.costs.length ? 0 : m.costs[lvl];
   }
 
+  function moduleUnlocked(save, module) {
+    return !module.research || nodeLevel(save, module.research) > 0;
+  }
+
   function buildModule(save, id) {
     const m = MODULE_BY_ID[id];
-    if (!m || save.modules[id] >= m.costs.length) return false;
+    if (!m || !moduleUnlocked(save, m) || (save.modules[id] || 0) >= m.costs.length) return false;
     const cost = moduleCost(save, id);
     if (save.credits < cost) return false;
     save.credits -= cost;
-    save.modules[id] += 1;
+    save.modules[id] = (save.modules[id] || 0) + 1;
     return true;
   }
 
@@ -275,7 +284,7 @@
       smartDrones: t('smartDrones') > 0,
       crit: t('crit'), yieldMul: 1 + t('yieldMul'), chip: 1 + t('chip'), twin: t('twin'), seismic: t('seismic'),
       fuelEff: Math.max(0.4, 1 - t('fuelEff')), boost: t('boost'), grip: 1 + t('grip'), jump: t('jump') > 0,
-      blockRank: t('blockRank'), fortune: t('fortune'),
+      blockPress: t('blockPress') > 0, blockRank: save.modules.blockPress || 0, fortune: t('fortune'),
       compress: t('compress') > 0, priceMul: 1 + t('priceMul') + (save.modules.tradeHub || 0) * 0.04,
       contracts: 3 + t('contracts') + (save.modules.tradeHub || 0), contractMul: 1 + t('contracts') * 0.15,
       turret: t('turret'), radResist: Math.min(0.85, t('radResist')), impact: Math.min(0.8, t('impact')),
@@ -321,6 +330,14 @@
     return Math.max(0, slots * size - units);
   }
 
+  function fortuneMax(rank) {
+    return rank === 1 ? 1.5 : 2 ** Math.max(0, rank - 1);
+  }
+
+  function fortuneYield(units, rank, roll) {
+    return units + Math.floor((Math.floor(units * fortuneMax(rank)) - units + 1) * roll);
+  }
+
   /* Raise a counter; never lowers. Returns the new value */
   function bump(save, stat, amount) {
     save.stats[stat] = (save.stats[stat] || 0) + amount;
@@ -358,7 +375,7 @@
 
   Object.assign(NS.rules, {
     START_CREDITS, START_RD, freshSave, migrateSave, nodeLevel, nodeCost, nodeState, buyNode, nodeText,
-    upgradeCost, buyUpgrade, buyHull, moduleCost, buildModule, zoneState, buyLicense, computeStats, dailyLoadout,
-    oreSpace, blockSize, packedSlots, packedRoom, bump, record, checkAchievements, achievementCount, addHighScore
+    upgradeCost, buyUpgrade, buyHull, moduleCost, moduleUnlocked, buildModule, zoneState, buyLicense, computeStats, dailyLoadout,
+    oreSpace, blockSize, packedSlots, packedRoom, fortuneYield, bump, record, checkAchievements, achievementCount, addHighScore
   });
 })();

@@ -25,6 +25,13 @@ exports.run = async (t) => {
   await t.wait(300);
   await t.shot('05-hangar-plumes');
   t.check('the music engine plays a theme', await t.state('!SZ.GameMusic || !!SZ.GameMusic.current'));
+  await t.run((NS, G) => {
+    G.save.tree.l_blocks = 1;
+    G.ui.stationTab = 'modules';
+  });
+  await t.hit('mod_blockPress');
+  t.check('the researched ship press can be bought in Modules', await t.state('G.save.modules.blockPress === 1'));
+  await t.shot('05b-ship-press');
   await t.run((NS) => { NS.trip.startTrip('career', 0); });
   for (let i = 0; i < 8 && await t.state('!!G.cine'); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
   await t.run((NS, G) => {
@@ -53,8 +60,6 @@ exports.run = async (t) => {
   await t.shot('07-docked-banked');
   t.check('docking banks the hold and keeps the trip going', await t.state("G.screen === 'playing' && G.run && G.run.bankedUnits === 13 && G.hitAreas.some(a => a.id === 'dock-home')"));
   await t.run((NS, G) => {
-    G.save.tree.l_blocks = 1;
-    NS.trip.refreshFlightStats();
     const h = NS.base.grant('hub', G.base.site.hubX, G.base.site.hubY);
     G.base.data.stock.ore = { copper: 40 };
     G.ship.x = h.x; G.ship.y = h.y; G.ship.vx = G.ship.vy = 0;
@@ -62,6 +67,9 @@ exports.run = async (t) => {
   });
   await t.page.key('Tab', 'Tab', 9);
   t.check('Tab pauses at the outpost', await t.state('G.cmd.on && G.cmd.plan'));
+  await t.run((NS, G) => { G.cmd.selB = NS.base.hub(); });
+  await t.hit('base_press');
+  t.check('the hub installs its own press for credits', await t.state('G.base.data.blockRank === 1 && G.save.modules.blockPress === 1'));
   await t.hit('loadOre');
   t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && G.run.cargoUsed === 10 && !G.base.data.stock.ore.copper'));
   await t.shot('08-packed-ore');

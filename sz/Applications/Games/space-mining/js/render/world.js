@@ -277,17 +277,16 @@
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < list.length; ++i) {
       const n = list[i];
-      if (!inRect(n.x, n.y, 20)) continue;
+      if (!n.alive || !inRect(n.x, n.y, 20)) continue;
       const col = n.credits ? '#ffd25a' : ORE_BY_ID[n.ore].color;
-      ctx.globalAlpha = (0.45 + Math.sin(G.time * 5 + i) * 0.2) * Math.min(1, n.life / 3);
+      ctx.globalAlpha = 0.45 + Math.sin(G.time * 5 + i) * 0.2;
       K.blit(ctx, K.glow(col), n.x, n.y, n.units > 1 ? 0.8 : 0.55);
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     for (let i = 0; i < list.length; ++i) {
       const n = list[i];
-      if (!inRect(n.x, n.y, 20)) continue;
-      ctx.globalAlpha = Math.min(1, n.life / 3);
+      if (!n.alive || !inRect(n.x, n.y, 20)) continue;
       K.blitRot(ctx, n.credits ? RA.salvage() : RA.nugget(n.ore, n.variant), n.x, n.y, n.rot, n.units > 1 ? 1.3 : 0.95);
     }
     ctx.globalAlpha = 1;

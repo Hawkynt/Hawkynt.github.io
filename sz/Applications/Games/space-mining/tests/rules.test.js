@@ -90,6 +90,6 @@ a.stats.fractures = 150;
 const rd0 = a.rd;
 const got = R.checkAchievements(a);
 check('reaching a goal earns it once, with research data', got.length === 2 && a.rd === rd0 + 1 + 3 && R.checkAchievements(a).length === 0);
-check('upgrade data is complete', UPGRADES.length === 6 && HULLS.length === 4 && MODULES.length === 5);
+check('upgrade data is complete', UPGRADES.length === 6 && HULLS.length === 4 && MODULES.length === 6);
 
 done();

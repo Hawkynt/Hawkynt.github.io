@@ -386,9 +386,20 @@
     return n;
   }
 
+  function upgradePress() {
+    if (!cargoHub() || !G.stats.blockPress) return false;
+    const base = G.base.data;
+    const cost = NS.ships.MODULE_BY_ID.blockPress.costs[base.blockRank];
+    if (!cost || wallet().credits < cost) return false;
+    wallet().credits -= cost;
+    ++base.blockRank;
+    NS.resume.save();
+    return true;
+  }
+
   function canLoadOre() {
     const h = cargoHub(), s = G.ship;
-    return !!(G.stats.blockRank && h && s && s.alive && !G.cine &&
+    return !!(h && (G.stats.blockRank || G.base.data.blockRank) && s && s.alive && !G.cine &&
       Math.hypot(s.x - h.x, s.y - h.y) <= 95 && Math.hypot(s.vx, s.vy) <= 200 &&
       Object.keys(G.base.data.stock.ore).some(id => NS.mining.roomFor(id) > 0));
   }
@@ -442,7 +453,7 @@
     if (units) {
       NS.fx.text(h.x, h.y - 50, 'UNLOADED ' + units, '#7cf0ff', 20, 1.6);
       NS.audio.sfx('coin', { volume: 0.5, pitch: 0.8 });
-    } else if (C.stockCount(b.data.stock, G.stats) >= cap) NS.fx.text(h.x, h.y - 50, 'STORAGE FULL', '#ff6a5c', 18, 1.4);
+    } else if (C.stockCount(b.data.stock, b.data) >= cap) NS.fx.text(h.x, h.y - 50, 'STORAGE FULL', '#ff6a5c', 18, 1.4);
     /* contaminated cargo: a scan catches it, else the spores get in */
     if (run.contam > 0 && units) {
       const scanned = G.stats.cargoScan || b.data.buildings.some(o => (o.type === 'radar' || o.type === 'medbay') && o.prog >= 1 && !o.rogue);
@@ -757,7 +768,7 @@
   }
 
   Object.assign(NS.base, {
-    wallet, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
+    wallet, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, upgradePress, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
     setRecipe, queueUnit, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, ZONES
   });
 })();

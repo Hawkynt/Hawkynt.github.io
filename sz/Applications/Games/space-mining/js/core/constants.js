@@ -23,7 +23,6 @@
     GRID_CELL: 192,
     MAX_PARTICLES: 2600,
     MAX_ROCKS: 460,
-    MAX_NUGGETS: 420,
     ROCK_RADII: [0, 16, 30, 52, 84],
 
     /* flight */
@@ -38,7 +37,6 @@
     LASER_RANGE: 300,
     TRACTOR_RANGE: 170,
     COLLECT_R: 26,
-    NUGGET_LIFE: 40,
     DOCK_R: 110,
     DOCK_SPEED: 260,
 

@@ -158,7 +158,7 @@
   }
 
   function fortune(units) {
-    return G.stats.fortune > 0 && R() < G.stats.fortune ? units * 2 : units;
+    return G.stats.fortune > 0 ? NS.rules.fortuneYield(units, G.stats.fortune, R()) : units;
   }
 
   /* Crack a rock: children one tier smaller, ore nuggets by richness, chunks, dust, shock */
@@ -198,9 +198,12 @@
       let units = Math.round((rock.tier === 1 ? 2.2 : rock.tier * 1.4) * (0.5 + rock.rich) * G.stats.yieldMul * (G.run.mods ? G.run.mods.yield : 1));
       if (rock.kind === 'geode') units = 26 + Math.round(rng() * 10);
       units = Math.max(1, units);
+      const total = mined ? fortune(units) : units;
+      const baseUnits = units;
       while (units > 0) {
         const u = units >= 4 && rng() < 0.3 ? 2 : 1;
-        NS.mining.spawnNugget(rock.x, rock.y, rock.ore, mined ? fortune(u) : u, rock, 70 + rock.r * 2);
+        const drop = Math.floor(total * units / baseUnits) - Math.floor(total * (units - u) / baseUnits);
+        NS.mining.spawnNugget(rock.x, rock.y, rock.ore, drop, rock, 70 + rock.r * 2);
         units -= u;
       }
     }

@@ -48,20 +48,36 @@ check('station fallback banks all overflow', G.save.store.ore.iron === 10 && !dr
 G.save.tree.l_hold = 2;
 G.save.tree.l_compress = 1;
 G.save.rd = 500;
+G.save.credits = 500000;
+check('ship and outpost purchases require research',
+  !NS.rules.buildModule(G.save, 'blockPress') && !B.upgradePress());
+check('one research unlocks both presses without installing them',
+  NS.rules.buyNode(G.save, 'l_blocks') && !NS.rules.buyNode(G.save, 'l_blocks') &&
+  !G.save.modules.blockPress && !G.base.data.blockRank);
+NS.trip.refreshFlightStats();
+const press = NS.ships.MODULE_BY_ID.blockPress;
 for (let rank = 1; rank <= 6; ++rank) {
-  check('Block Press rank ' + rank + ' can be researched', NS.rules.buyNode(G.save, 'l_blocks'));
-  NS.trip.refreshFlightStats();
+  const credits = G.save.credits;
   const units = 4 ** rank;
+  check('ship rank ' + rank + ' costs credits and does not upgrade the outpost',
+    NS.rules.buildModule(G.save, 'blockPress') && G.save.credits === credits - press.costs[rank - 1] &&
+    G.base.data.blockRank === rank - 1);
+  NS.trip.refreshFlightStats();
   stock.ore = { iron: units, copper: units + 1 };
   stock.bar = { iron: units };
-  check('rank ' + rank + ' packs by material and keeps partial blocks',
-    NS.colony.stockCount(stock, G.stats) === 4 &&
+  check('outpost rank ' + rank + ' is bought separately and packs by material',
+    B.upgradePress() && G.base.data.blockRank === rank && NS.colony.stockCount(stock, G.base.data) === 4);
+  check('rank ' + rank + ' increases ship and drone capacity',
     NS.mining.cargoSpace('iron', units) === 0.5 && NS.drones.capacity(4) === 4 * units);
-  const node = NS.treeData.TREE_BY_ID.l_blocks;
-  check('rank ' + rank + ' displays its capacity', NS.rules.nodeText(node, rank).includes(units + ' units'));
 }
+check('press upgrades stop at rank six', !NS.rules.buildModule(G.save, 'blockPress') && !B.upgradePress());
+const legacy = NS.rules.migrateSave({ tree: { l_blocks: 5 }, bases: { kessler: G.base.data } });
+check('old research ranks carry over into both presses',
+  legacy.tree.l_blocks === 1 && legacy.modules.blockPress === 5 && legacy.bases.kessler.blockRank === 5);
+const migrated = NS.rules.migrateSave(legacy);
+check('a second load preserves press levels', migrated.modules.blockPress === 5 && migrated.bases.kessler.blockRank === 5);
 
-G.save.tree.l_blocks = 1;
+G.save.modules.blockPress = 1;
 G.save.tree.l_compress = 0;
 NS.trip.refreshFlightStats();
 G.run.cargo = {};
@@ -80,13 +96,36 @@ check('loaded ore stays in the hold while the ship remains at the hub', G.run.ca
 NS.trip.deposit();
 check('banking restores the full raw count and clears the packed hold', G.save.store.ore.iron === 18 && G.run.cargoUsed === 0);
 
-function fractureYield(chance) {
-  G.stats.fortune = chance;
-  NS.mining.clear();
-  const rock = NS.asteroids.restoreRock('rock', 300, 300, 1, 'iron', 1);
-  NS.asteroids.damage(rock, rock.hp + 1, rock.x, rock.y, 'drone');
-  return G.nuggets.reduce((sum, n) => sum + n.units, 0);
+for (const [rank, max] of [1.5, 2, 4, 8, 16].entries()) {
+  check('Fortune rank ' + (rank + 1) + ' rolls from base yield to ' + max + 'x',
+    NS.rules.fortuneYield(20, rank + 1, 0) === 20 &&
+    NS.rules.fortuneYield(20, rank + 1, 0.99) > 20 &&
+    NS.rules.fortuneYield(20, rank + 1, 1 - Number.EPSILON) === 20 * max);
 }
-const normal = fractureYield(0);
-check('Fortune doubles ore when the bonus roll succeeds', normal > 0 && fractureYield(1) === normal * 2);
+
+NS.mining.clear();
+const n = NS.mining.spawnNugget(G.world.w / 2, 100, 'iron', 40);
+n.vx = 24;
+n.vy = 0;
+ship.x = 0;
+ship.y = G.world.h;
+for (let i = 0; i < 61; ++i) NS.mining.update(1);
+check('ore still drifts after the old expiry time', n.alive && n.x > G.world.w / 2 + 1400);
+const snap = NS.resume.capture();
+NS.mining.clear();
+NS.resume.restore(snap);
+const restored = G.nuggets[0];
+check('Continue retains loose ore and its drift', restored.units === 40 && restored.x === snap.nuggets[0][3] && restored.vx === 24);
+restored.x = G.world.w - 1;
+NS.mining.update(1);
+check('ore leaves the field when it crosses the map boundary', !G.nuggets.length);
+for (let i = 0; i < 425; ++i) NS.mining.spawnNugget(100, 100, 'iron', 1);
+check('a crowded field keeps new drops', G.nuggets.length === 425);
+NS.mining.clear();
+
+G.run.cargoMax = 2;
+const oversized = NS.mining.spawnNugget(ship.x + 1, ship.y - 1, 'iron', 40);
+oversized.age = 1;
+NS.mining.update(0);
+check('a large Fortune drop fills the hold and leaves the remainder', G.run.cargo.iron === 8 && oversized.alive && oversized.units === 32);
 done();

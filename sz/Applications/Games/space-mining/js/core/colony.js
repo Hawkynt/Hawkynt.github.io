@@ -64,7 +64,7 @@
   function newBase(zoneId) {
     return {
       v: 1, zone: zoneId, buildings: [], stock: { ore: {}, bar: {}, comp: {} }, units: [], crew: 0,
-      wave: 0, bossDone: false, abandoned: false, hive: false, idleCycles: 0, nextId: 1, infected: 0, recipe: 'alloy',
+      blockRank: 0, wave: 0, bossDone: false, abandoned: false, hive: false, idleCycles: 0, nextId: 1, infected: 0, recipe: 'alloy',
     };
   }
 
@@ -96,6 +96,7 @@
       if (!ZONE_BY_ID[zid] || !b || typeof b !== 'object') continue;
       const base = newBase(zid);
       base.stock = cleanStock(b.stock);
+      base.blockRank = Math.floor(num(b.blockRank, 0, NS.ships.MODULE_BY_ID.blockPress.costs.length, 0));
       base.crew = Math.floor(num(b.crew, 0, 999, 0));
       base.wave = Math.floor(num(b.wave, 0, 9999, 0));
       base.bossDone = !!b.bossDone;
@@ -364,15 +365,15 @@
     return sumDone(base, 'supply') + (stats ? stats.supply || 0 : 0);
   }
 
-  function stockCount(stock, stats) {
+  function stockCount(stock, press) {
     let n = 0;
-    for (const kind in stock) for (const id in stock[kind]) n += NS.rules.packedSlots(stats, stock[kind][id]);
+    for (const kind in stock) for (const id in stock[kind]) n += NS.rules.packedSlots(press, stock[kind][id]);
     return n;
   }
 
   function stockRoom(base, stats, kind, id) {
     const stock = base.stock;
-    return NS.rules.packedRoom(stats, stock[kind][id] || 0, storageCap(base, stats) - stockCount(stock, stats));
+    return NS.rules.packedRoom(base, stock[kind][id] || 0, storageCap(base, stats) - stockCount(stock, base));
   }
 
   /* ── power ── */

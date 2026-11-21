@@ -99,7 +99,7 @@
     const pw = b.pw;
     stat(x, y, 'bolt', Math.round(pw.make) + ' / ' + Math.round(pw.use), pw.ratio < 0.95 ? UI.bad : UI.cyan, pw.use ? Math.min(1, pw.make / Math.max(1, pw.use)) : 1, pw.ratio < 0.95 ? UI.bad : UI.cyan);
     x += 122;
-    const cap = C.storageCap(d, G.stats), used = C.stockCount(d.stock, G.stats);
+    const cap = C.storageCap(d, G.stats), used = C.stockCount(d.stock, d);
     stat(x, y, 'cargo', used + ' / ' + cap, used >= cap ? UI.warn : UI.text, cap ? used / cap : 0, used >= cap ? UI.warn : UI.accent);
     x += 122;
     let inf = 0;
@@ -141,10 +141,10 @@
     for (let i = 0; i < ORES.length && x < xm; ++i) if (st.bar[ORES[i].id]) { x += chip(x, y, 'bar', ORES[i].id, st.bar[ORES[i].id]); any = true; }
     for (let i = 0; i < COMPONENTS.length && x < xm; ++i) if (st.comp[COMPONENTS[i].id]) { x += chip(x, y, 'comp', COMPONENTS[i].id, st.comp[COMPONENTS[i].id]); any = true; }
     if (!any) kit.text(NS.base.claimed() ? 'Outpost stock empty - dock at the hub to unload your hold, or build rigs' : 'No outpost yet', x, y, 12, UI.textMute);
-    if (G.stats.blockRank && NS.base.cargoHub()) {
+    if ((G.stats.blockRank || b.data.blockRank) && NS.base.cargoHub()) {
       const size = NS.rules.blockSize(G.stats);
       btn('loadOre', v.x1 - 252, y - 12, 242, 24, {
-        icon: 'cargo', label: 'Load ore · ' + size + ' per block', px: 12,
+        icon: 'cargo', label: size > 1 ? 'Load ore · ' + size + ' per block' : 'Load ore', px: 12,
         disabled: !NS.base.canLoadOre(), action: () => NS.base.loadOre(),
         tip: { title: 'Load packed ore', text: 'Bring the ship to the hub, then load available ore into the hold. Fly to the station to bank it.' },
       });

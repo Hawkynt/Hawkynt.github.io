@@ -110,6 +110,16 @@
       let p = row(100);
       btn('recruit', p.x, p.y, 100, 32, { icon: 'crew', label: 'Crew +2', sub: '200 cr', px: 12, color: UI.gold, disabled: b.data.crew + 2 > C.housing(b.data),
         action: () => { if (!B.recruit()) NS.command.say('Needs 200 credits and free housing', '#ff6a5c'); }, tip: { title: 'Recruit crew', text: 'Hire two crew for 200 credits. Habitats raise the housing limit.' } });
+      if (G.stats.blockPress && B.cargoHub()) {
+        const lvl = b.data.blockRank;
+        const cost = NS.ships.MODULE_BY_ID.blockPress.costs[lvl];
+        p = row(133);
+        btn('base_press', p.x, p.y, 133, 32, { icon: 'compress', label: lvl ? 'Press Lv ' + lvl : 'Install press',
+          sub: cost ? NS.kit.group(cost) + ' cr' : 'Max rank', px: 11, color: UI.gold,
+          disabled: !cost || B.wallet().credits < cost, action: () => B.upgradePress(),
+          tip: { title: 'Outpost Block Press', text: (lvl ? NS.rules.blockSize(b.data) + ' units per storage slot. ' : '') +
+            (cost ? 'Next tier packs ' + 4 ** (lvl + 1) + ' units per slot and increases outpost drone capacity.' : '') } });
+      }
       if (G.stats.emp) {
         p = row(90);
         btn('emp', p.x, p.y, 90, 32, { icon: 'blast', label: 'EMP', sub: b.empCd > 0 ? Math.ceil(b.empCd) + 's' : 'ready', px: 12, color: '#3affd0', disabled: b.empCd > 0,
@@ -166,7 +176,7 @@
     if (o.type === 'fabricator') return o._making ? 'Making ' + COMP_BY_ID[RECIPE_BY_ID[o._making].out].name : 'Idle - no bars for any recipe';
     if (o.type === 'fusion') return G.base.fuel[o.id] === false ? 'NO FUEL - needs hydrogen or helium-3' : 'Burning gas - ' + Math.round(C.buildingPower(o, b.zone, G.stats, true)) + ' power';
     if (o.type === 'shield') return 'Dome ' + Math.round(o._shield || 0) + ' / ' + Math.round(def.cap * C.levelMul(o.lvl) * G.stats.shieldMul);
-    if (o.type === 'hub') return 'Crew ' + b.data.crew + ' / ' + C.housing(b.data) + '  -  storage ' + C.stockCount(b.data.stock, G.stats) + ' / ' + C.storageCap(b.data, G.stats) + '  -  value ' + NS.kit.group(b.value);
+    if (o.type === 'hub') return 'Crew ' + b.data.crew + ' / ' + C.housing(b.data) + '  -  storage ' + C.stockCount(b.data.stock, b.data) + ' / ' + C.storageCap(b.data, G.stats) + '  -  value ' + NS.kit.group(b.value);
     if (def.makes) return 'Right-click the map to set a rally point';
     return def.desc;
   }

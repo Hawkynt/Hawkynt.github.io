@@ -106,15 +106,16 @@
 
   function drawModules(px, py, pw) {
     const save = G.save;
-    kit.text('Station modules - built once per level, they show up on the station at once', px + 20, py + 22, 13, UI.textMute, { weight: 'bold' });
-    const cw = pw - 32, ch = 84;
+    kit.text('Modules apply as soon as you buy them', px + 20, py + 22, 13, UI.textMute, { weight: 'bold' });
+    const cw = pw - 32, ch = 64;
     for (let i = 0; i < MODULES.length; ++i) {
       const m = MODULES[i];
       const x = px + 16, y = py + 40 + i * (ch + 8);
       const lvl = save.modules[m.id];
       const max = lvl >= m.costs.length;
       const cost = rules.moduleCost(save, m.id);
-      const afford = !max && save.credits >= cost;
+      const unlocked = rules.moduleUnlocked(save, m);
+      const afford = unlocked && !max && save.credits >= cost;
       kit.panel(x, y, cw, ch, { radius: 8, accent: max ? UI.gold : lvl ? UI.accent : UI.textMute, brackets: false, alpha: 0.95 });
       glowIf('mod_' + m.id, x, y, cw, ch);
       kit.icon(m.icon, x + 34, y + ch / 2, 34, lvl ? UI.accent : UI.textMute);
@@ -125,9 +126,9 @@
         ctx.arc(x + 200 + k * 16, y + 22, 5, 0, TAU);
         ctx.fill();
       }
-      kit.fitText(lvl ? 'Now: ' + m.levels[lvl - 1] : 'Not built', x + 66, y + 46, cw - 330, 12, { color: lvl ? UI.text : UI.textMute });
-      if (!max) kit.fitText('Next: ' + m.levels[lvl], x + 66, y + 64, cw - 330, 12, { color: UI.good });
-      W.button('mod_' + m.id, max ? 'COMPLETE' : (lvl ? 'Expand  ' : 'Build  ') + kit.group(cost), x + cw - 220, y + ch / 2 - 18, 204, 36, {
+      kit.fitText(lvl ? 'Now: ' + m.levels[lvl - 1] : 'Not built', x + 66, y + 40, cw - 330, 12, { color: lvl ? UI.text : UI.textMute });
+      if (!max) kit.fitText(unlocked ? 'Next: ' + m.levels[lvl] : 'Requires Block Press research', x + 66, y + 54, cw - 330, 12, { color: UI.good });
+      W.button('mod_' + m.id, max ? 'COMPLETE' : !unlocked ? 'LOCKED' : (lvl ? 'Expand  ' : 'Build  ') + kit.group(cost), x + cw - 220, y + ch / 2 - 18, 204, 36, {
         disabled: !afford, accent: UI.gold, px: 14, action: () => {
           if (rules.buildModule(save, m.id)) {
             celebrate('mod_' + m.id, x + cw - 118, y + ch / 2, UI.gold);

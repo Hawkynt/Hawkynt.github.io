@@ -319,7 +319,7 @@
   /* Mining drones drill near an anchor and deliver through the same routes as ship drones. */
   function mine(u, dt, ax, ay) {
     const drones = NS.drones;
-    const limit = drones.capacity(u.def.haul);
+    const limit = drones.capacity(u.def.haul, G.base && G.base.data);
     if (u.load >= limit || (u.job === 'haul' && u.load > 0)) {
       u.job = 'haul';
       const to = drones.destination(u);

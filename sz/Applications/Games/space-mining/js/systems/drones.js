@@ -143,8 +143,8 @@
     }
   }
 
-  function capacity(slots) {
-    return slots * NS.rules.blockSize(G.stats);
+  function capacity(slots, press = G.stats) {
+    return slots * NS.rules.blockSize(press);
   }
 
   /* Take only what fits, leaving any remainder in the field. */

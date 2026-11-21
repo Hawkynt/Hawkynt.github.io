@@ -31,7 +31,7 @@
     { id: 'd_yield', branch: 'drilling', name: 'Thermal Fracture', icon: 'crack', row: 0, lane: 1, stat: 'yieldMul', per: 0.12, fmt: '+{p}% ore from every fracture', costs: [3, 5, 8, 12], req: [] },
     { id: 'd_crit', branch: 'drilling', name: 'Fault Finder', icon: 'crosshair', row: 1, lane: 0, stat: 'crit', per: 0.07, fmt: '+{p}% chance of a fault crack (triple damage)', costs: [4, 7, 11], req: [['d_focus', 2]] },
     { id: 'd_chip', branch: 'drilling', name: 'Chip Collectors', icon: 'nugget', row: 1, lane: 1, stat: 'chip', per: 0.35, fmt: '+{p}% ore chipped off while drilling', costs: [4, 7, 11], req: [['d_yield', 1]] },
-    { id: 'd_fortune', branch: 'drilling', name: 'Mining Fortune', icon: 'nugget', row: 3, lane: 1, stat: 'fortune', per: 0.15, fmt: '+{p}% chance per rank to double a mined ore drop', costs: [5, 9, 15], req: [['d_chip', 1]] },
+    { id: 'd_fortune', branch: 'drilling', name: 'Mining Fortune', icon: 'nugget', row: 3, lane: 1, stat: 'fortune', per: 1, fmt: 'Random ore yield from 1x to {max}x', costs: [5, 9, 15, 25, 40], req: [['d_chip', 1]] },
     { id: 'd_twin', branch: 'drilling', name: 'Split Beam', icon: 'split', row: 2, lane: 0, stat: 'twin', per: 0.35, fmt: 'A second beam drills a nearby rock at {p}% power', costs: [10, 16], req: [['d_crit', 1]] },
     { id: 'd_seismic', branch: 'drilling', name: 'Seismic Charge', icon: 'blast', row: 2, lane: 1, stat: 'seismic', per: 1, fmt: 'C drops a charge that shatters rocks ({v} per trip)', costs: [8, 12, 18], req: [['d_chip', 1]] },
 
@@ -47,7 +47,7 @@
     { id: 'l_tractor', branch: 'logistics', name: 'Graviton Coils', icon: 'tractor', row: 0, lane: 1, stat: 'tractorMul', per: 0.2, fmt: '+{p}% tractor reach', costs: [2, 4, 7, 10], req: [] },
     { id: 'l_compress', branch: 'logistics', name: 'Ore Compactor', icon: 'compress', row: 1, lane: 0, stat: 'compress', per: 1, fmt: 'Iron, ice and copper take half the space', costs: [9], req: [['l_hold', 2]] },
     { id: 'l_broker', branch: 'logistics', name: 'Broker Network', icon: 'trade', row: 1, lane: 1, stat: 'priceMul', per: 0.04, fmt: '+{p}% sale prices', costs: [3, 5, 8, 12], req: [['l_tractor', 1]] },
-    { id: 'l_blocks', branch: 'logistics', name: 'Block Press', icon: 'compress', row: 3, lane: 0, stat: 'blockRank', per: 1, fmt: '{block}: {size} units of one material per slot', costs: [8, 16, 28, 44, 64, 88], req: [['l_compress', 1]] },
+    { id: 'l_blocks', branch: 'logistics', name: 'Block Press', icon: 'compress', row: 3, lane: 0, stat: 'blockPress', per: 1, fmt: 'Unlocks credit-funded ship and outpost presses', costs: [8], req: [['l_compress', 1]] },
     { id: 'l_contract', branch: 'logistics', name: 'Contract Office', icon: 'contract', row: 2, lane: 0.5, stat: 'contracts', per: 1, fmt: '+{v} contract slot, +15% contract pay per level', costs: [6, 12], req: [['l_compress', 1], ['l_broker', 1]] },
 
     /* Automation */
