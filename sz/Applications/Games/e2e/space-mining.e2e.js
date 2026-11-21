@@ -5,7 +5,9 @@
    drills the ore nearest the nose with a bent beam, docking banks the hold and the flight goes
    on with the Return home button, which ends the trip only when pressed; the belt map lists
    the Kessler operations and launches First Haul, which banking wins; an outpost in the
-   Verdant Shoals installs a press, packs ore and builds with ore from the hold. */
+   Verdant Shoals installs a press, packs ore and builds with ore from the hold; the Supply tab
+   buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
+   loads more. */
 exports.ns = 'SpaceMining';
 
 exports.run = async (t) => {
@@ -90,9 +92,19 @@ exports.run = async (t) => {
   await t.hit('dock-home');
   await t.wait(4200);
   t.check('the report names the operation', await t.state("G.screen === 'results' && G.ui.results.op && G.ui.results.op.status === 'won'"));
+  /* the Supply tab: real clicks buy iron and put it on the cargo manifest */
+  await t.run((NS, G) => { G.save.credits = Math.max(G.save.credits, 5000); NS.screens.setScreen('station'); G.ui.stationTab = 'supply'; });
+  await t.wait(300);
+  const iron0 = await t.state('G.save.store.ore.iron || 0');
+  await t.hit('buy10_ore_iron');
+  t.check('a real click buys ten iron into the warehouse', await t.state('G.save.store.ore.iron === ' + (iron0 + 10)));
+  await t.hit('sup_more_ore_iron');
+  t.check('a real click orders ten iron on the cargo manifest', await t.state('G.save.manifest.ore.iron === 10'));
+  await t.shot('14-supply-tab');
   /* an outpost in the Verdant Shoals */
   await t.run((NS) => { NS.trip.startTrip('career', 2); });
   for (let i = 0; i < 8 && await t.state('!!G.cine'); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
+  t.check('the launch loads the manifest as supplies', await t.state('G.run.freight.ore.iron === 10 && G.run.cargoUsed === NS.supply.slots(G.stats, G.run.freight) && G.run.cargoUsed > 0'));
   await t.run((NS, G) => {
     G.ship.maxHull = G.ship.hull = 1e6;
     const h = NS.base.grant('hub', G.base.site.hubX, G.base.site.hubY);
@@ -106,7 +118,7 @@ exports.run = async (t) => {
   await t.hit('base_press');
   t.check('the hub installs its own press for credits', await t.state('G.base.data.blockRank === 1 && G.save.modules.blockPress === 1'));
   await t.hit('loadOre');
-  t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && G.run.cargoUsed === 10 && !G.base.data.stock.ore.copper'));
+  t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && G.run.cargoUsed === 10 + NS.supply.slots(G.stats, G.run.freight) && !G.base.data.stock.ore.copper'));
   await t.shot('08-packed-ore');
   /* the stock is empty now: a relay is paid with copper from the ship's hold */
   const spot = await t.run((NS, G) => {
@@ -126,7 +138,16 @@ exports.run = async (t) => {
     NS.camera.snap(G.ship.x, G.ship.y);
   });
   await t.wait(500);
-  t.check('the station banks the full unpacked amount', await t.state('G.save.store.ore.copper === 66 && G.run.cargoUsed === 0 && !G.cmd.plan'));
+  t.check('the station banks the full unpacked amount and keeps the supplies aboard', await t.state('G.save.store.ore.copper === 66 && G.run.cargoUsed === NS.supply.slots(G.stats, G.run.freight) && !G.cmd.plan'));
+  await t.hit('dock-supply');
+  await t.wait(300);
+  await t.shot('15-supplies-docked');
+  t.check('the docked Supplies button opens the list and the trip waits', await t.state("G.screen === 'supply' && G.hitAreas.some(a => a.id === 'sup_back')"));
+  const aboard = await t.state('G.run.freight.ore.iron || 0');
+  await t.hit('sup_more_ore_iron');
+  t.check('a real click loads ten iron aboard while docked', await t.state('G.run.freight.ore.iron === ' + (aboard + 10)));
+  await t.hit('sup_back');
+  t.check('Back returns to the flight', await t.state("G.screen === 'playing'"));
   await t.hit('dock-home');
   await t.wait(4200);
   await t.shot('13-report-verdant');

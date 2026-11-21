@@ -309,6 +309,7 @@
     const cx = (v.x0 + v.x1) / 2, y = v.y1 - 150;
     kit.text('DOCKED  -  hold banked, ship serviced', cx, y - 14, 14, UI.gold, { align: 'center', weight: 'bold' });
     NS.widgets.button('dock-home', NS.touch.active() ? 'Return home' : 'Return home  [Enter]', cx - 110, y, 220, 40, { action: () => NS.trip.returnHome(), accent: UI.gold });
+    NS.widgets.button('dock-supply', 'Supplies', cx + 120, y, 130, 40, { action: () => NS.supplyUi.open(), icon: 'cargo' });
   }
 
   function hints(v, run) {

@@ -2,7 +2,7 @@
    crystal deposits), the saved outpost shape and its repair, footprints and placement rules,
    the link network from the hub through relays, the power balance, crew assignment, storage,
    housing and fleet supply, building costs and upgrades, paying from credits and stock (the
-   ship's hold covering missing ore), the outpost's value, upkeep, and wave scaling and
+   ship's hold covering what is missing), the outpost's value, upkeep, and wave scaling and
    composition. No DOM, no state access. */
 ;(function() {
   'use strict';
@@ -302,12 +302,12 @@
   }
 
   /* wallet: { credits } (career save or siege run); stock: { ore, bar, comp };
-     hold (optional): the ship's hold by ore id, which covers ore the stock lacks */
+     hold (optional): what the ship carries, { ore, bar, comp }, covering what the stock lacks */
   function missing(wallet, stock, cost, hold) {
     if ((cost.cr || 0) > wallet.credits) return 'credits';
     for (const kind of ['ore', 'bar', 'comp'])
       if (cost[kind]) for (const id in cost[kind]) {
-        const have = (stock[kind][id] || 0) + (kind === 'ore' && hold ? hold[id] || 0 : 0);
+        const have = (stock[kind][id] || 0) + (hold && hold[kind] ? hold[kind][id] || 0 : 0);
         if (have < cost[kind][id]) return kind + ':' + id;
       }
     return '';
@@ -317,18 +317,19 @@
     return !missing(wallet, stock, cost, hold);
   }
 
-  /* The ore the hold has to give because the stock runs short, by ore id */
+  /* What the hold has to give because the stock runs short: { ore, bar, comp } by id */
   function fromHold(stock, cost, hold) {
-    const out = {};
-    if (!hold || !cost.ore) return out;
-    for (const id in cost.ore) {
-      const n = Math.min(hold[id] || 0, Math.max(0, cost.ore[id] - (stock.ore[id] || 0)));
-      if (n > 0) out[id] = n;
-    }
+    const out = { ore: {}, bar: {}, comp: {} };
+    if (!hold) return out;
+    for (const kind of ['ore', 'bar', 'comp'])
+      if (cost[kind] && hold[kind]) for (const id in cost[kind]) {
+        const n = Math.min(hold[kind][id] || 0, Math.max(0, cost[kind][id] - (stock[kind][id] || 0)));
+        if (n > 0) out[kind][id] = n;
+      }
     return out;
   }
 
-  /* Pays from the stock first; returns false, or the ore still owed from the hold (which the
+  /* Pays from the stock first; returns false, or what is still owed from the hold (which the
      caller takes out of the ship) */
   function pay(wallet, stock, cost, hold) {
     if (!canAfford(wallet, stock, cost, hold)) return false;
@@ -336,7 +337,7 @@
     wallet.credits -= cost.cr || 0;
     for (const kind of ['ore', 'bar', 'comp'])
       if (cost[kind]) for (const id in cost[kind]) {
-        stock[kind][id] = (stock[kind][id] || 0) - (cost[kind][id] - (kind === 'ore' ? took[id] || 0 : 0));
+        stock[kind][id] = (stock[kind][id] || 0) - (cost[kind][id] - (took[kind][id] || 0));
         if (!stock[kind][id]) delete stock[kind][id];
       }
     return took;

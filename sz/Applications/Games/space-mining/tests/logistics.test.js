@@ -170,4 +170,87 @@ G.drones.push(drone);
 NS.trip.update(0);
 check('Gold Rush sells the drone basket on landing without warehouse deposits',
   !drone.load && G.run.sold === NS.ores.ORE_BY_ID.gold.value * 6 && !G.save.store.ore.gold);
+
+/* ── supplies: basics from the station, the cargo manifest, supplies apart from the haul ── */
+{
+  const SP = NS.supply;
+  const R = NS.rules;
+  const sv = G.save;
+  const plain = R.computeStats(R.freshSave());
+  sv.credits = 1e6;
+  const pIron = SP.buyPrice(sv, plain, 'ore', 'iron');
+  check('the station sells basics at a markup over the market', pIron >= Math.ceil(NS.economy.price(sv, plain, 'iron') * 1.5) &&
+    SP.buyPrice(sv, plain, 'bar', 'copper') > SP.buyPrice(sv, plain, 'ore', 'copper') * 3);
+  check('only iron, copper and ice are on sale', SP.BUY.every(b => ['iron', 'copper', 'ice'].indexOf(b.id) >= 0) && SP.buy(sv, plain, 'ore', 'gold', 5) === 0);
+  const c0 = sv.credits, i0 = sv.store.ore.iron || 0;
+  check('buying fills the warehouse and costs credits', SP.buy(sv, plain, 'ore', 'iron', 50) === 50 && sv.store.ore.iron === i0 + 50 && sv.credits === c0 - 50 * pIron);
+  sv.credits = pIron * 3 + 1;
+  check('buying stops at what the credits pay for', SP.buy(sv, plain, 'ore', 'iron', 10) === 3 && sv.credits === 1);
+  sv.credits = 1e6;
+  sv.store = { ore: { iron: 60, copper: 30, ice: 4 }, bar: { iron: 10 }, comp: { circuit: 2 } };
+  sv.manifest = { ore: { iron: 40, copper: 20, ice: 50 }, bar: { iron: 6 }, comp: { circuit: 5 } };
+  let f = SP.fit(sv, plain, 10);
+  check('the manifest fills the hold components and bars first, as far as the warehouse goes', f.comp.circuit === 2 && f.bar.iron === 6 && f.ore.iron === 2 && f.used <= 10);
+  f = SP.fit(sv, plain, 1000);
+  check('it never takes more than the order or the warehouse', f.ore.iron === 40 && f.ore.copper === 20 && f.ore.ice === 4 && f.comp.circuit === 2);
+  check('a damaged manifest is repaired', JSON.stringify(SP.repair({ ore: { iron: -3, gold: 2.7, nope: 4 }, bar: 'x', comp: { circuit: 1 } })) ===
+    JSON.stringify({ ore: { gold: 2 }, bar: {}, comp: { circuit: 1 } }));
+  check('a fresh save has an empty manifest that survives a save', JSON.stringify(R.freshSave().manifest) === JSON.stringify({ ore: {}, bar: {}, comp: {} }) &&
+    R.migrateSave(JSON.parse(JSON.stringify(sv))).manifest.ore.iron === 40);
+
+  /* a launch loads the manifest */
+  sv.manifest = { ore: { iron: 12 }, bar: { iron: 2 }, comp: { circuit: 1 } };
+  sv.store = { ore: { iron: 60 }, bar: { iron: 10 }, comp: { circuit: 2 } };
+  NS.trip.startTrip('career', 2);
+  G.cine = null;
+  G.screen = 'playing';
+  const run = G.run;
+  if (!B.hub()) B.grant('hub', G.base.site.hubX, G.base.site.hubY);
+  check('a career launch loads the manifest from the warehouse as supplies', run.freight.ore.iron === 12 && run.freight.bar.iron === 2 && run.freight.comp.circuit === 1 &&
+    sv.store.ore.iron === 48 && sv.store.bar.iron === 8 && sv.store.comp.circuit === 1 && !run.cargo.iron);
+  check('supplies take hold space', run.cargoUsed >= 3 && run.cargoUsed === SP.slots(G.stats, run.freight));
+  /* docking banks the mined ore only */
+  run.cargo = { copper: 5 };
+  NS.mining.refreshCargoSpace();
+  run.leftDock = true;
+  G.ship.x = G.dock.x; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;
+  const banked0 = run.bankedUnits;
+  NS.trip.update(0);
+  check('docking banks mined ore and keeps the supplies aboard', run.bankedUnits === banked0 + 5 && run.freight.ore.iron === 12 && run.cargoUsed === SP.slots(G.stats, run.freight));
+  /* building takes supplies first */
+  const d = G.base.data;
+  d.stock.ore = {};
+  run.cargo = { iron: 20 };
+  run.freight.ore.copper = 3;
+  NS.mining.refreshCargoSpace();
+  G.ship.x = B.hub().x + 900;
+  const spot = B.findSpot('solar');
+  const placed = B.place('solar', spot.cx, spot.cy);
+  check('a building takes what the stock lacks from the supplies first', placed.ok && run.freight.ore.iron === 8 && !run.freight.ore.copper && run.cargo.iron === 20);
+  /* flying over the hub unloads the supplies */
+  const st0 = { iron: d.stock.ore.iron || 0, bar: d.stock.bar.iron || 0, circ: d.stock.comp.circuit || 0 };
+  G.ship.x = B.hub().x; G.ship.y = B.hub().y; G.ship.vx = G.ship.vy = 0;
+  G.base.hubVisit = false;
+  H.run(NS, 2);
+  check('the hub takes the supplies into its stock', d.stock.ore.iron >= st0.iron + 8 && d.stock.bar.iron === st0.bar + 2 && d.stock.comp.circuit === st0.circ + 1 &&
+    !Object.keys(run.freight.ore).length && !Object.keys(run.freight.bar).length);
+  /* what is left goes home, outside the haul */
+  run.freight = { ore: { copper: 6 }, bar: { iron: 4 }, comp: {} };
+  run.cargo = {};
+  NS.mining.refreshCargoSpace();
+  const snap = NS.resume.capture();
+  check('the autosave keeps the supplies', snap && snap.run.freight.bar.iron === 4);
+  const cu0 = sv.store.ore.copper || 0, bi0 = sv.store.bar.iron || 0;
+  NS.trip.endTrip('dock');
+  /* the report holds the 5 copper mined and docked above, not the 6 supplied */
+check('unused supplies return to the warehouse and stay out of the report', sv.store.ore.copper === cu0 + 6 && sv.store.bar.iron === bi0 + 4 && G.ui.results.hold.copper === 5);
+  sv.manifest = { ore: {}, bar: { iron: 4 }, comp: {} };
+  NS.trip.startTrip('career', 2);
+  G.cine = null;
+  const bi1 = sv.store.bar.iron;
+  NS.trip.endTrip('tow');
+  check('a tow brings half of them back', sv.store.bar.iron === bi1 + 2);
+  NS.trip.startTrip('rush', 0);
+  check('only career trips load the manifest', !G.run.freight || !Object.keys(G.run.freight.bar).length);
+}
 done();

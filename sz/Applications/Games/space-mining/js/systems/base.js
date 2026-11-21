@@ -26,23 +26,16 @@
     return G.run && G.run.mode === 'siege' ? G.run : G.save;
   }
 
-  /* The ship's hold covers ore the outpost stock lacks (null without a ship in flight) */
-  const hold = () => G.run && G.ship && G.ship.alive ? G.run.cargo : null;
+  /* The ship's hold (mined ore and supplies) covers what the outpost stock lacks */
+  const hold = () => NS.supplies.hold();
   const lack = cost => C.missing(wallet(), G.base.data.stock, cost, hold());
   const affordable = cost => !lack(cost);
 
-  /* Pays a cost from the stock, the hold covering the rest; ore from the hold flies over as pods */
+  /* Pays a cost from the stock, the hold covering the rest (it flies over as pods) */
   function spend(cost, tx, ty) {
     const took = C.pay(wallet(), G.base.data.stock, cost, hold());
-    if (!took) return false;
-    let units = 0, k = 0;
-    for (const id in took) {
-      NS.mining.changeCargo(id, -took[id]);
-      units += took[id];
-      if (G.ship && tx != null) pod(G.ship.x, G.ship.y, tx, ty, ORE_BY_ID[id].color, 0.1 * k++);
-    }
-    if (units && G.ship) NS.fx.text(G.ship.x, G.ship.y - 40, units + ' FROM HOLD', '#7cf0ff', 16, 1.4);
-    return true;
+    if (took) NS.supplies.take(took, tx, ty);
+    return !!took;
   }
 
   /* The site of a belt for this trip (before the rocks are laid out, so they keep clear) */
@@ -471,6 +464,7 @@
       NS.mining.changeCargo(id, -n);
       units += n;
     }
+    units += NS.supplies.unload(s);
     if (units) {
       NS.fx.text(h.x, h.y - 50, 'UNLOADED ' + units, '#7cf0ff', 20, 1.6);
       NS.audio.sfx('coin', { volume: 0.5, pitch: 0.8 });

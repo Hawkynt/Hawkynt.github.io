@@ -28,6 +28,7 @@
     snap.run.service = run.service || 0;
     snap.run.plan = run.plan || [];
     snap.run.op = run.op ? JSON.parse(JSON.stringify(run.op)) : null;
+    snap.run.freight = NS.supply.repair(run.freight);
     snap.ship = { x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), angle: r1(s.angle), hull: r1(s.hull), fuel: r1(s.fuel), shield: r1(s.shield) };
     for (let i = 0; i < G.rocks.length; ++i) {
       const o = G.rocks[i];
@@ -86,6 +87,7 @@
     for (let i = 0; i < RUN_KEYS.length; ++i) if (snap.run[RUN_KEYS[i]] !== undefined) run[RUN_KEYS[i]] = snap.run[RUN_KEYS[i]];
     run.cargo = {};
     for (const id in snap.run.cargo) if (ORE_BY_ID[id] && snap.run.cargo[id] > 0) run.cargo[id] = snap.run.cargo[id];
+    run.freight = NS.supply.repair(snap.run.freight);
     NS.mining.refreshCargoSpace();
     run.plan = Array.isArray(snap.run.plan) ? snap.run.plan : [];
     run.banked = {};

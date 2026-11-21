@@ -1,6 +1,7 @@
 /* The station screen, the career hub: Kessler Station turning beside your docked rig, the
-   credits, research and news ticker, and eight tabs - Market (stock, prices, history,
-   forecasts, selling ore, bars and components), Refinery (smelting 3 ore into bars), Contracts
+   credits, research and news ticker, and nine tabs - Market (stock, prices, history,
+   forecasts, selling ore, bars and components), Supply (buying basics, the cargo manifest,
+   NS.supplyUi), Refinery (smelting 3 ore into bars), Contracts
    (deliveries and waves held for credits and data, the daily contract), Shipyard and Modules
    (drawn by NS.shipyard), Hangar (liveries, beams, plumes and the festival track, NS.hangar), Colonies and Log (drawn by NS.colonies) - with buttons to the belt
    map, tech tree, help and title. */
@@ -22,6 +23,7 @@
 
   const TABS = [
     { id: 'market', name: 'Market', icon: 'trade' },
+    { id: 'supply', name: 'Supply', icon: 'cargo' },
     { id: 'refinery', name: 'Refinery', icon: 'refinery' },
     { id: 'contracts', name: 'Contracts', icon: 'contract' },
     { id: 'shipyard', name: 'Shipyard', icon: 'engine' },
@@ -80,6 +82,7 @@
     kit.panel(PX, PY + 40, PW, PH - 40, { alpha: 0.95 });
     switch (G.ui.stationTab) {
       case 'market': market(save); break;
+      case 'supply': NS.supplyUi.draw(PX, PY + 40, PW, PH - 40); break;
       case 'refinery': refinery(save); break;
       case 'contracts': contracts(save); break;
       case 'shipyard': NS.shipyard.drawShipyard(PX, PY + 40, PW, PH - 40); break;

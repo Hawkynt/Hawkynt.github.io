@@ -269,7 +269,7 @@
   }
 
   Object.assign(NS.economy, {
-    BAR_MUL, DEPOT_MUL, HISTORY, initMarket, price, barPrice, sell, refine, reachableOres, hasBase, hasFab, makeContract,
+    BAR_MUL, DEPOT_MUL, HISTORY, initMarket, oreFactor, price, barPrice, sell, refine, reachableOres, hasBase, hasFab, makeContract,
     refillContracts, weeklyContract, dailyContract, progress, canFulfil, fulfil, compPrice, sellComp, tickMarket, forecast, serviceCost, cargoValue,
     storeValue, ZONES
   });

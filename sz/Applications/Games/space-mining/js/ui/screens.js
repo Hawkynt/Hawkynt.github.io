@@ -18,7 +18,7 @@
 
   /* a trip is open (playing, paused, or a screen opened from the pause menu) */
   function inRun() {
-    return !!G.run && (G.screen === 'playing' || G.screen === 'paused' ||
+    return !!G.run && (G.screen === 'playing' || G.screen === 'paused' || G.screen === 'supply' ||
       (G.screen === 'tree' && G.treeReturn === 'paused') || (G.screen === 'help' && G.helpReturn === 'paused'));
   }
 

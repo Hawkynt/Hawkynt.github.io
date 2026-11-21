@@ -69,7 +69,7 @@
       pulseCd: 0, pulse: null, pirateT: (mode === 'career' ? 55 : 35) + r() * 30, respawnT: 2,
       rockTarget: 0, pulled: 0, lasering: false, leftDock: false, ending: null, endT: 0, towT: 0,
       inRad: 0, inWell: 0, crownBroken: false, dronesOut: false, pickT: 0, pickText: null, turretAngle: 0,
-      contam: 0, survivors: 0, op: null, waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
+      contam: 0, survivors: 0, op: null, freight: NS.supply.blank(), waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
       siegeWon: false, reviveT: 0, banked: {}, bankedUnits: 0, docked: false,
     };
     G.specials.length = 0;
@@ -95,6 +95,7 @@
       NS.waves.arm(true);
     }
     NS.events.setup(zone, seed, mods);
+    if (mode === 'career' && !snap) loadManifest();
     if (opts.op && !snap) NS.operation.start(opts.op);
     NS.camera.snap(G.ship.x, G.ship.y);
     NS.backdrop.setZone(zone.index);
@@ -114,6 +115,13 @@
     } else NS.cinematics.play('arrival', { zone: zone });
     if (mods.anomaly && strategic) NS.screens.toast('Anomaly belt this week: ' + mods.anomaly.name + ' - ' + mods.anomaly.text, mods.anomaly.color);
     else if (mods.season && strategic) NS.screens.toast(mods.season.name + ': ' + mods.season.text, mods.season.color);
+  }
+
+  /* the cargo manifest goes aboard as supplies, as far as the warehouse and the hold allow */
+  function loadManifest() {
+    const take = NS.supply.fit(G.save, G.stats, G.run.cargoMax);
+    for (const kind of ['ore', 'bar', 'comp']) for (const id in take[kind]) NS.supply.move(G.save.store, G.run.freight, kind, id, take[kind][id]);
+    NS.mining.refreshCargoSpace();
   }
 
   /* Siege: a starter outpost (hub, power, a rig, a smelter, two lasers) and some stock */
@@ -322,7 +330,7 @@
     if (!n && !droneUnits && fuelMissing < 1 && hullMissing < 1) return;
     const total = run.bankedUnits - banked;
     run.cargo = {};
-    run.cargoUsed = 0;
+    NS.mining.refreshCargoSpace();
     run.leftDock = false;
     if (n && full) rules.bump(save, 'fullDocks', 1);
     const fee = Math.min(save.credits, eco.serviceCost(G.stats, fuelMissing, hullMissing));
@@ -476,6 +484,12 @@
       const n = Math.floor(run.cargo[id] * keep);
       if (n > 0) { hold[id] = n; units += n; }
     }
+    /* supplies still aboard go back to the warehouse, outside the haul */
+    for (const kind of ['ore', 'bar', 'comp'])
+      for (const id in run.freight[kind]) {
+        const n = Math.floor(run.freight[kind][id] * keep);
+        if (n > 0) save.store[kind][id] = (save.store[kind][id] || 0) + n;
+      }
     const all = Object.assign({}, hold);
     for (const id in run.banked) all[id] = (all[id] || 0) + run.banked[id];
     const res = { mode: run.mode, reason: reason, zone: run.zone, hold: all, units: units + run.bankedUnits, lost: run.units - units - run.bankedUnits, rd: run.rd,

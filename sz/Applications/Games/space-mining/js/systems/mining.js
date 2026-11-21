@@ -36,7 +36,7 @@
 
   function refreshCargoSpace() {
     const run = G.run;
-    run.cargoUsed = 0;
+    run.cargoUsed = NS.supply.slots(G.stats, run.freight);
     for (const id in run.cargo) run.cargoUsed += cargoSpace(id, run.cargo[id]);
   }
 

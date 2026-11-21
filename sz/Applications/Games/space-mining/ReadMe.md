@@ -24,6 +24,10 @@ The pacing director follows a timeline of beats per operation (build-up, peak, r
 
 Each belt has an outpost site: a 20 x 16 grid of 48 px cells with seeded ore, gas and crystal deposits, kept clear of rocks. In the command view (Tab) you found it with a Command Hub, then place buildings with a ghost preview that shows the footprint, the range and why a spot is refused. A building must be in link range of the hub or a power relay; the link network carries power and is also the path infection and nanoprobes travel. Buildings cost credits and outpost stock (fly slowly over the hub to unload your hold into it); ore the stock lacks comes straight out of the ship's hold and flies over as cargo pods, while bars and components must be in stock. Buildings take time to build - two sites at a time, drawn as a blueprint filling in - and level up to three. Every few hundred milliseconds the outpost refreshes its network, hands crew to buildings by priority (defence and power first), balances power (consumers slow down in a deficit; fusion burns gas), and runs production: extractors pull from their deposit, the smelter and refinery turn three ore into a bar, the fabricator turns bars into seven components, the lab writes research data, the trade depot ships the best stock home. Every unit of stock that moves flies as a little cargo pod. Storage, housing and fleet supply come from the hub, warehouses and habitats. Between trips each outpost produces a little and costs upkeep.
 
+### Supplies
+
+The outer belts carry little or none of the iron, copper and ice that buildings need, so outposts there are supplied from home. The station's Supply tab sells iron, copper and ice as ore and as bars at a markup over the market price, straight into the warehouse, and holds the cargo manifest: a standing order of ore, bars and components loaded from the warehouse into the hold at every career launch, as far as the hold and the warehouse allow. Docked mid-trip, the Supplies button opens the same list to load or unload on the spot (the trip waits). Supplies ride apart from mined ore: they take hold space (ore packs as usual, a bar or component takes one slot), docking never banks them and they never count as a haul or toward an operation. Flying over a hub unloads them into the outpost stock with the ore, and a building, upgrade or unit takes what the stock lacks from the supplies first, then from mined ore. Whatever is still aboard when the trip ends goes back to the warehouse - half of it after a tow, none of it if the ship is lost.
+
 ### Waves and the fleet
 
 While you are in a belt with an outpost a wave timer runs; the next wave is composed ahead from a point budget that grows with the wave number, the belt's danger and what the outpost is worth, and the Sensor Array shows it early. Waves come from one bearing in clusters: swarmers that bite, raiders that strafe, bombers that dive on soft buildings, shielded frigates, siege ships that shell from beyond turret range, brood carriers, Lattice swarms that corrupt what they touch, and at wave 8 a hive mothership. Turrets (laser, flak, missiles) take targets by preference, shield domes soak damage for the buildings under them, repair bays and repair drones mend. Units are built in the shipyard and drone factory: fighters, gunboats, escort frigates, transports, mining drones, repair drones and purge tenders. Orders - move, attack-move, attack, escort, patrol, hold, mine, repair, purge, return - are shaped into a line, wedge, box or circle facing the way the group travels, units take the nearest slots, the group keeps its slowest member's speed, Shift queues waypoints, factories have rally points, idle units guard their post, and kills earn veterancy ranks. Units and invaders use their own spatial grids; target picking is throttled.
@@ -59,6 +63,7 @@ Core (`js/core/`):
 - **`data-ops.js`** -- The operations of every belt: mood, objectives, time limit, threats, pacing beats and rewards, and the moods
 - **`data-events.js`** -- Belt events, seasons, weekly anomalies and the seven captain's log chapters
 - **`rules.js`** -- Pure progression rules: the save shape and its migration, tree, upgrade, hull, module and licence purchases, derived ship and colony stats, the Daily loadout, hold space, achievements, high scores
+- **`supply.js`** -- Pure supply rules: what the station sells and at what markup, buying, the cargo manifest and its repair, hold slots of supplies, fitting a manifest into the hold, moving supplies between warehouse and hold
 - **`economy.js`** -- Pure market rules: prices, saturation, selling ore, bars and components, refining, contracts (ore, bars, components, waves), the daily and weekly contracts and the streak, the market cycle with news and history, forecasts, the service bill
 - **`colony.js`** -- Pure outpost rules: sites and deposits, the saved outpost and its repair, placement, the link network, power, crew, storage, housing and supply, costs and upgrades (paid from stock, the hold covering missing ore), value, upkeep, wave scaling and composition
 - **`production.js`** -- Pure production chains per step, the while-away yield and the market cycle of every outpost (upkeep, scavengers, hives)
@@ -129,6 +134,7 @@ UI (`js/ui/`):
 - **`touch.js`** -- Virtual fly and aim sticks and ability buttons for touch screens
 - **`title.js`** -- The animated title with a rig drilling a gold-veined rock, Continue, the mode menu, pilot record and preview
 - **`station.js`** -- The career hub: station art, header and news, the Market, Refinery and Contracts tabs, coin payouts
+- **`supply.js`** -- The Supply tab and the docked Supplies screen: buying basics, the manifest with load and unload buttons, the hold gauge
 - **`hangar.js`** -- The Hangar tab: liveries, beams and plumes with live previews, buying and equipping, the festival track
 - **`colonies.js`** -- The Colonies tab (daily contract and streak, anomaly, season, every outpost) and the Log tab
 - **`shipyard.js`** -- The Shipyard tab (hulls, level-up upgrade cards) and the Modules tab
@@ -154,6 +160,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - **`campaign.test.js`** -- A bot plays the Kessler operations in the running game and prints the measured tension per operation
 - **`rules.test.js`** -- Tree, upgrades, hulls, modules, licences, derived stats, the Daily loadout, hold space, achievements
 - **`economy.test.js`** -- Prices, saturation and recovery, drift bounds, news, history, refining, contracts, service costs
+- **`logistics.test.js`** -- Block presses and packed ore, loading the hold at a hub; buying basics, the manifest at launch, supplies apart from the haul, unloading them at a hub and building from them, their return home
 - **`save.test.js`** -- Migration of the old high scores and tutorial flag, repair of damaged saves, round trip, storage failures
 - **`flight.test.js`** -- The laser cone and its lock, the slow turn while firing, banking at the dock without ending the trip, drones hauling to the station, returning home
 - **`world.test.js`** -- Grid queries, seeded belts, fracture and yield, volatile chains, the laser, the tractor and a full hold, drones, docking, endings, belt hazards
@@ -210,6 +217,11 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can unload my hold at the hub and watch ore flow as cargo pods through smelters and fabricators into bars and components
 - [x] As a player, I can build, upgrade and queue units with ore still in my ship's hold when the outpost stock runs short
 - [x] As a player, I can ship the best stock home with the trade depot or transports and earn research in the lab
+
+### Supplies
+- [x] As a player, I can buy iron, copper and ice (ore and bars) at the station to build outposts in belts that have none
+- [x] As a player, I can set a cargo manifest that loads ore, bars and components from the warehouse at every launch, and change the load while docked
+- [x] As a player, I can unload supplies at my hub, build straight from them, and get what I did not use back at the end of the trip
 
 ### Waves & Fleet
 - [x] As a player, I can defend an outpost against waves of pirates, alien swarms and the Lattice that grow with the outpost and the belt, with a warning and a preview
