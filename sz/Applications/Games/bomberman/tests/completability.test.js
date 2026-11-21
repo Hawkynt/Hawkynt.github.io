@@ -113,4 +113,30 @@ for (let w = 0; w < 5; ++w) {
 console.log('honest bot (can die, three lives per world) cleared ' + honest + ' of ' + tried + ' stages attempted');
 check('the honest pass runs to its end', tried >= 5);
 
+/* one power-up under every 7th to 10th brick, on every stage of every mode */
+{
+  const L = NS.levelgen;
+  const NOT_PU = { exit: 1, gem: 1, token: 1 };
+  const tally = (lv) => {
+    let bricks = 0, pu = 0;
+    for (let i = 0; i < lv.grid.length; ++i) {
+      if (!L.isBreakable(lv.grid[i])) continue;
+      ++bricks;
+      if (lv.hidden[i] && !NOT_PU[lv.hidden[i]]) ++pu;
+    }
+    return { bricks, pu, every: bricks / Math.max(1, pu) };
+  };
+  const levels = [];
+  for (let w = 0; w < 5; ++w) for (let l = 0; l < 7; ++l) levels.push(L.storyLevel(w, l));
+  for (let n = 1; n <= 20; ++n) levels.push(L.arcadeLevel(n, 12345));
+  for (let n = 1; n <= 4; ++n) levels.push(L.zenLevel(n, 777));
+  for (let i = 0; i < 5; ++i) levels.push(L.rushLevel(i));
+  const bad = levels.map(lv => Object.assign({ name: lv.name }, tally(lv))).filter(t => t.bricks >= 14 && (t.every < 6.5 || t.every > 10.5));
+  check('every stage hides a power-up under every 7th to 10th brick', !bad.length, JSON.stringify(bad.slice(0, 4)));
+  const ratios = levels.map(tally).filter(t => t.bricks >= 30).map(t => t.every);
+  check('the ratio varies between stages within 7 to 10', Math.min.apply(null, ratios) < 8 && Math.max.apply(null, ratios) > 9);
+  check('the same stage always hides the same power-ups', JSON.stringify(L.storyLevel(2, 3).hidden) === JSON.stringify(L.storyLevel(2, 3).hidden));
+  check('Treasure Nose raises the share', tally(L.storyLevel(1, 2, { drop: 1.3 })).pu > tally(L.storyLevel(1, 2)).pu);
+}
+
 done();

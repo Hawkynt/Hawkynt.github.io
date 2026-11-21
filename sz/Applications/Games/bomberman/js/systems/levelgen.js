@@ -303,6 +303,29 @@
     return finish({ grid: g, hidden: { [exit]: 'exit' }, enemies: [{ type: 'puff', i: idx(COLS - 2, ROWS - 2) }], spawn: idx(1, 1), exit: exit, bossAt: null, kind: spec.kind || 'stage' }, spec, -1);
   }
 
+  /* One power-up under every 7th to 10th brick: the share is drawn per stage from its seed and
+     grows with Treasure Nose (spec.drop); power-ups the map or the generator placed count */
+  const PU_EVERY = [7, 10];
+  const NOT_PU = { exit: 1, gem: 1, token: 1 };
+  function stock(level, spec) {
+    const rng = R.makeRng(((spec.seed || R.hashString(level.name || 'stage')) ^ 0x5bd1e995) >>> 0);
+    const bricks = [];
+    let have = 0;
+    for (let i = 0; i < N; ++i) {
+      if (!isBreakable(level.grid[i])) continue;
+      bricks.push(i);
+      if (level.hidden[i] && !NOT_PU[level.hidden[i]]) ++have;
+    }
+    const every = PU_EVERY[0] + rng() * (PU_EVERY[1] - PU_EVERY[0]);
+    /* rounded, but kept between one per 10 and one per 7 bricks where the count allows */
+    const lo = Math.ceil(bricks.length / PU_EVERY[1]), hi = Math.floor(bricks.length / PU_EVERY[0]);
+    let base = Math.round(bricks.length / every);
+    if (lo <= hi) base = Math.max(lo, Math.min(hi, base));
+    const want = Math.round(base * (spec.drop || 1));
+    const free = rng.shuffle(bricks.filter(i => !level.hidden[i]));
+    for (let k = 0; have < want && k < free.length; ++k, ++have) level.hidden[free[k]] = rollPowerup(rng, spec);
+  }
+
   function finish(level, spec, attempt) {
     level.world = spec.world || 0;
     level.name = spec.name || '';
@@ -312,6 +335,7 @@
     level.time = spec.time === undefined ? C.LEVEL_TIME : spec.time;
     level.par = spec.par || Math.round(40 + level.enemies.length * 9);
     level.boss = spec.boss || null;
+    stock(level, spec);
     return level;
   }
 
