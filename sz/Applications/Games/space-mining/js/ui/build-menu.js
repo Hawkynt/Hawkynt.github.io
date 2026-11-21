@@ -22,18 +22,25 @@
     return { x: x, y: v.y1 - 126, w: Math.min(6 * (TILE + 6) + 14, v.x1 - 410 - x), h: 118 };
   }
 
-  /* hold (optional): the ship's hold, which covers ore the stock lacks */
+  /* one line per cost item, read from the payment plan: what the outpost has, what the ship
+     gives, which bars get smelted from ore; red where the plan falls short.
+     hold (optional): what the ship carries, { ore, bar, comp } */
   function costLines(cost, stock, wallet, hold) {
     const out = [];
-    const fromHold = C.fromHold(stock, cost, hold);
+    const p = C.plan(stock, cost, hold);
     if (cost.cr) out.push(['Credits  ' + NS.kit.group(cost.cr) + '  (have ' + NS.kit.group(wallet.credits) + ')', wallet.credits >= cost.cr ? UI.gold : UI.bad, true]);
     for (const kind of ['ore', 'bar', 'comp'])
       if (cost[kind]) for (const id in cost[kind]) {
+        const need = cost[kind][id];
         const have = stock[kind][id] || 0;
-        const ship = kind === 'ore' ? fromHold[id] || 0 : 0;
+        const ship = Math.min(need, p.hold[kind][id] || 0);
+        const smelt = kind === 'bar' ? p.hold.smelt[id] || 0 : 0;
+        const got = Math.min(need, have) + ship + smelt;
         const name = kind === 'comp' ? COMP_BY_ID[id].name : kind === 'bar' ? ORE_BY_ID[id].bar : ORE_BY_ID[id].name;
-        out.push([cost[kind][id] + ' ' + name + '  (have ' + have + (ship ? ', ' + ship + ' from ship' : '') + ')', have + ship >= cost[kind][id] ? UI.text : UI.bad]);
+        const extra = (ship ? ', ' + ship + ' from ship' : '') + (smelt ? ', ' + smelt + ' smelted from ' + smelt * C.SMELT + ' ore' : '');
+        out.push([need + ' ' + name + '  (have ' + have + extra + ')', got >= need ? UI.text : UI.bad]);
       }
+    if (p.miss && p.miss.indexOf('comp:') === 0) out.push(['Components cannot be made from ore - bring them as supplies', UI.textMute]);
     return out;
   }
 

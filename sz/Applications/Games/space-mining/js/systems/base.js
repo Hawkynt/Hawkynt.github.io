@@ -176,7 +176,7 @@
     if (m === 'credits') return 'credits';
     const p = m.split(':');
     if (p[0] === 'comp') return COMP_BY_ID[p[1]].name;
-    return p[0] === 'bar' ? ORE_BY_ID[p[1]].bar : ORE_BY_ID[p[1]].name;
+    return p[0] === 'bar' ? ORE_BY_ID[p[1]].bar + ' (or ' + C.SMELT + ' ' + ORE_BY_ID[p[1]].name + ' each)' : ORE_BY_ID[p[1]].name;
   }
 
   /* the hub goes down: the outpost is claimed */

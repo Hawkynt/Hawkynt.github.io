@@ -7,7 +7,7 @@
    the Kessler operations and launches First Haul, which banking wins; an outpost in the
    Verdant Shoals installs a press, packs ore and builds with ore from the hold; the Supply tab
    buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
-   loads more; the soundtrack starts calm and switches to the battle arrangement when a raider
+   loads more; a flak tower gets its ingots smelted from the hold's iron; the soundtrack starts calm and switches to the battle arrangement when a raider
    closes in; the Shipyard's Hardpoints page takes the Pulse Cannon and holding 1 fires it. */
 exports.ns = 'SpaceMining';
 
@@ -151,6 +151,21 @@ exports.run = async (t) => {
   await t.wait(300);
   await t.shot('08b-built-from-hold');
   t.check('a relay is built with copper from the ship\'s hold', await t.state("G.base.data.buildings.some(b => b.type === 'relay') && G.run.cargo.copper === 36"));
+  /* a flak tower needs iron ingots the outpost does not have: smelted from the hold's iron */
+  const flakSpot = await t.run((NS, G) => {
+    G.base.data.stock.ore = {};
+    G.base.data.stock.bar = {};
+    G.run.cargo.iron = 14;
+    NS.mining.refreshCargoSpace();
+    NS.command.startPlace('flak');
+    const s = G.base.site, c = NS.base.findSpot('flak');
+    return NS.camera.toView(s.x0 + (c.cx + 0.5) * s.cell, s.y0 + (c.cy + 0.5) * s.cell, {});
+  });
+  t.check('the tooltip tells the ingots get smelted from the ship\'s ore', await t.state("NS.buildMenu.costLines(NS.colony.buildCost('flak', G.stats), G.base.data.stock, NS.base.wallet(), NS.base.hold()).some(l => /smelted from 6 ore/.test(l[0]))"));
+  await t.clickAt(flakSpot.x, flakSpot.y);
+  await t.wait(300);
+  await t.shot('08c-flak-from-hold');
+  t.check('a flak tower is built from hold iron, its ingots smelted on the spot', await t.state("G.base.data.buildings.some(b => b.type === 'flak') && !G.run.cargo.iron"));
   await t.page.key('Tab', 'Tab', 9);
   await t.run((NS, G) => {
     G.ship.x = G.dock.x + 30; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;

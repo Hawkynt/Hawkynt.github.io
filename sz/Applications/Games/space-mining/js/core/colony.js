@@ -2,7 +2,7 @@
    crystal deposits), the saved outpost shape and its repair, footprints and placement rules,
    the link network from the hub through relays, the power balance, crew assignment, storage,
    housing and fleet supply, building costs and upgrades, paying from credits and stock (the
-   ship's hold covering what is missing), the outpost's value, upkeep, and wave scaling and
+   ship's hold covering what is missing, bars smelted from ore on the spot), the outpost's value, upkeep, and wave scaling and
    composition. No DOM, no state access. */
 ;(function() {
   'use strict';
@@ -301,46 +301,70 @@
     return UNIT_BY_ID[type].cost;
   }
 
-  /* wallet: { credits } (career save or siege run); stock: { ore, bar, comp };
-     hold (optional): what the ship carries, { ore, bar, comp }, covering what the stock lacks */
+  /* ore per bar, as the smelter and the refinery work */
+  const SMELT = 3;
+
+  /* How a cost is paid: components and ore from the stock, then the hold; bars from the stock,
+     then the hold, and the rest smelted on the spot from three ore each - hold ore first, then
+     the outpost's ore, after the ore the cost asks for directly is set aside.
+     stock: { ore, bar, comp }; hold (optional): what the ship carries, { ore, bar, comp }.
+     -> { miss ('' or kind:id), stock: taken from the stock, hold: taken from the ship with
+     smelt: { ore id: bars smelted } } */
+  function plan(stock, cost, hold) {
+    const out = { miss: '', stock: { ore: {}, bar: {}, comp: {} }, hold: { ore: {}, bar: {}, comp: {}, smelt: {} } };
+    const left = (src, used, kind, id) => (src && src[kind] ? src[kind][id] || 0 : 0) - (used[kind][id] || 0);
+    const take = (src, used, kind, id, n) => {
+      const k = Math.max(0, Math.min(n, left(src, used, kind, id)));
+      if (k > 0) used[kind][id] = (used[kind][id] || 0) + k;
+      return k;
+    };
+    for (const kind of ['comp', 'ore'])
+      if (cost[kind]) for (const id in cost[kind]) {
+        let need = cost[kind][id];
+        need -= take(stock, out.stock, kind, id, need);
+        need -= take(hold, out.hold, kind, id, need);
+        if (need > 0 && !out.miss) out.miss = kind + ':' + id;
+      }
+    if (cost.bar) for (const id in cost.bar) {
+      let need = cost.bar[id];
+      need -= take(stock, out.stock, 'bar', id, need);
+      need -= take(hold, out.hold, 'bar', id, need);
+      if (need <= 0) continue;
+      let ore = need * SMELT;
+      ore -= take(hold, out.hold, 'ore', id, ore);
+      ore -= take(stock, out.stock, 'ore', id, ore);
+      if (ore > 0) { if (!out.miss) out.miss = 'bar:' + id; }
+      else out.hold.smelt[id] = need;
+    }
+    return out;
+  }
+
   function missing(wallet, stock, cost, hold) {
     if ((cost.cr || 0) > wallet.credits) return 'credits';
-    for (const kind of ['ore', 'bar', 'comp'])
-      if (cost[kind]) for (const id in cost[kind]) {
-        const have = (stock[kind][id] || 0) + (hold && hold[kind] ? hold[kind][id] || 0 : 0);
-        if (have < cost[kind][id]) return kind + ':' + id;
-      }
-    return '';
+    return plan(stock, cost, hold).miss;
   }
 
   function canAfford(wallet, stock, cost, hold) {
     return !missing(wallet, stock, cost, hold);
   }
 
-  /* What the hold has to give because the stock runs short: { ore, bar, comp } by id */
+  /* What the ship has to give: { ore, bar, comp } by id, with smelt (bars made on the spot) */
   function fromHold(stock, cost, hold) {
-    const out = { ore: {}, bar: {}, comp: {} };
-    if (!hold) return out;
-    for (const kind of ['ore', 'bar', 'comp'])
-      if (cost[kind] && hold[kind]) for (const id in cost[kind]) {
-        const n = Math.min(hold[kind][id] || 0, Math.max(0, cost[kind][id] - (stock[kind][id] || 0)));
-        if (n > 0) out[kind][id] = n;
-      }
-    return out;
+    return plan(stock, cost, hold).hold;
   }
 
   /* Pays from the stock first; returns false, or what is still owed from the hold (which the
      caller takes out of the ship) */
   function pay(wallet, stock, cost, hold) {
     if (!canAfford(wallet, stock, cost, hold)) return false;
-    const took = fromHold(stock, cost, hold);
+    const p = plan(stock, cost, hold);
     wallet.credits -= cost.cr || 0;
     for (const kind of ['ore', 'bar', 'comp'])
-      if (cost[kind]) for (const id in cost[kind]) {
-        stock[kind][id] = (stock[kind][id] || 0) - (cost[kind][id] - (took[kind][id] || 0));
+      for (const id in p.stock[kind]) {
+        stock[kind][id] -= p.stock[kind][id];
         if (!stock[kind][id]) delete stock[kind][id];
       }
-    return took;
+    return p.hold;
   }
 
   function refund(wallet, stock, cost, share) {
@@ -576,7 +600,7 @@
 
   Object.assign(NS.colony, {
     CELL, COLS, ROWS, site, deposits, newBase, repairBases, occupancy, centre, linkRange, links, inReach, canPlace,
-    depositUnder, buildCost, upgradeCost, unitCost, missing, canAfford, fromHold, pay, refund, levelMul, storageCap, housing,
+    depositUnder, buildCost, upgradeCost, unitCost, SMELT, plan, missing, canAfford, fromHold, pay, refund, levelMul, storageCap, housing,
     supplyCap, stockCount, stockRoom, buildingPower, power, crewNeed, assignCrew, costValue, baseValue, upkeep, waveInterval,
     waveBudget, isBossWave, composeWave, bestCargo, takeCargo, ORES, ZONES
   });

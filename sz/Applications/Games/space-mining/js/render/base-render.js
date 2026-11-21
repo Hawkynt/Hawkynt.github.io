@@ -438,9 +438,10 @@
     if (!ok) label(chk.ok ? 'Not enough ' + NS.base.missName(NS.base.lack(cost)) : chk.reason, x + S / 2, y - 18, 15, '#ff8a8a');
     else {
       const ship = C.fromHold(b.data.stock, cost, NS.base.hold());
-      let n = 0;
-      for (const id in ship) n += ship[id];
-      if (n) label(n + ' ore from the ship\'s hold', x + S / 2, y - 18, 13, '#7cf0ff');
+      let n = 0, bars = 0;
+      for (const kind of ['ore', 'bar', 'comp']) for (const id in ship[kind]) n += ship[kind][id];
+      for (const id in ship.smelt) bars += ship.smelt[id];
+      if (n || bars) label((n ? n + ' from the ship\'s hold' : '') + (n && bars ? ', ' : '') + (bars ? bars + ' bars smelted' : ''), x + S / 2, y - 18, 13, '#7cf0ff');
     }
   }
 

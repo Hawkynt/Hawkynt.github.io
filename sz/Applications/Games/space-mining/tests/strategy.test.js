@@ -261,8 +261,17 @@ const bd = G.base.data;
   G.run.cargo = { iron: 1 };
   NS.mining.refreshCargoSpace();
   check('stock and hold together still have to cover the cost', !build('solar') && G.run.cargo.iron === 1 && G.base.data.stock.ore.iron === 2);
+  /* a flak tower needs two iron ingots: smelted on the spot from the hold's iron */
+  G.base.data.stock.ore = {};
+  G.base.data.stock.bar = {};
+  G.run.cargo = { iron: 15 };
+  NS.mining.refreshCargoSpace();
+  const flakAt = G.base.data.buildings.length;
+  check('a flak tower is built from hold iron, its ingots smelted on the spot', build('flak') && G.base.data.buildings.length === flakAt + 1 && G.run.cargo.iron === 1,
+    JSON.stringify(G.run.cargo));
   /* leave the outpost as the rest of the run expects it */
   G.base.data.buildings.length = before;
+  G.base.data.stock.bar = {};
   G.base.data.stock.ore = {};
   G.run.cargo = {};
   NS.mining.refreshCargoSpace();

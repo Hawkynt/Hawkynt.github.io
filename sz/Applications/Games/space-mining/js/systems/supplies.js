@@ -41,7 +41,10 @@
         if (s && tx != null) NS.base.pod(s.x, s.y, tx, ty, color(kind, id), 0.1 * k++);
       }
     NS.mining.refreshCargoSpace();
+    let bars = 0;
+    for (const id in took.smelt) bars += took.smelt[id];
     if (units && s) NS.fx.text(s.x, s.y - 40, units + ' FROM HOLD', '#7cf0ff', 16, 1.4);
+    if (bars && s) NS.fx.text(s.x, s.y - 62, bars + ' BARS SMELTED', '#ffb070', 15, 1.4);
     return units;
   }
 

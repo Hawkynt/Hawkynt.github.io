@@ -154,14 +154,37 @@ check('refund gives half back', wallet.credits === 900 && stock.ore.iron === 5);
   const hold = { ore: { iron: 10, copper: 3 }, bar: { copper: 2 }, comp: { circuit: 1 } };
   const cost = { cr: 100, ore: { iron: 9, copper: 2 }, bar: { iron: 1, copper: 2 } };
   check('missing counts the hold', C.missing(w, st, cost) === 'ore:iron' && C.missing(w, st, cost, hold) === '');
-  check('the hold covers bars and components it carries', C.missing(w, st, { bar: { iron: 2 } }, { ore: { iron: 99 }, bar: {}, comp: {} }) === 'bar:iron' &&
-    C.missing(w, st, { comp: { circuit: 1 } }, hold) === '');
+  check('the hold covers bars and components it carries', C.missing(w, st, { comp: { circuit: 1 } }, hold) === '');
   check('missing still refuses when stock and hold together fall short', C.missing(w, st, { ore: { iron: 15 } }, hold) === 'ore:iron');
-  check('the split shows what the hold would give', JSON.stringify(C.fromHold(st, cost, hold)) === JSON.stringify({ ore: { iron: 5, copper: 2 }, bar: { copper: 2 }, comp: {} }));
+  check('the split shows what the hold would give', JSON.stringify(C.fromHold(st, cost, hold)) === JSON.stringify({ ore: { iron: 5, copper: 2 }, bar: { copper: 2 }, comp: {}, smelt: {} }));
   const took = C.pay(w, st, cost, hold);
   check('pay spends the stock first and the hold for the shortfall', took && took.ore.iron === 5 && took.ore.copper === 2 && took.bar.copper === 2 &&
     !('iron' in st.ore) && w.credits === 900 && !('iron' in st.bar));
   check('pay leaves the hold alone (the caller empties it)', hold.ore.iron === 10 && hold.bar.copper === 2);
+  /* missing bars are smelted on the spot from three ore of their kind */
+  const empty = () => ({ ore: {}, bar: {}, comp: {} });
+  check('a missing bar is smelted from three ore in the hold', C.missing(w, empty(), { bar: { copper: 2 } }, { ore: { copper: 6 }, bar: {}, comp: {} }) === '' &&
+    C.missing(w, empty(), { bar: { copper: 2 } }, { ore: { copper: 5 }, bar: {}, comp: {} }) === 'bar:copper');
+  check('the ore a cost asks for directly is set aside first', C.missing(w, empty(), { ore: { iron: 8 }, bar: { iron: 2 } }, { ore: { iron: 13 }, bar: {}, comp: {} }) === 'bar:iron' &&
+    C.missing(w, empty(), { ore: { iron: 8 }, bar: { iron: 2 } }, { ore: { iron: 14 }, bar: {}, comp: {} }) === '');
+  check('the outpost\'s ore smelts bars when the hold has none', C.missing(w, { ore: { silver: 6 }, bar: {}, comp: {} }, { bar: { silver: 2 } }, empty()) === '');
+  check('components are never made from ore', C.missing(w, empty(), { comp: { circuit: 1 } }, { ore: { iron: 99, copper: 99 }, bar: {}, comp: {} }) === 'comp:circuit');
+  {
+    const st2 = { ore: { iron: 3 }, bar: { iron: 1 }, comp: {} };
+    const h2 = { ore: { iron: 12 }, bar: { iron: 1 }, comp: {} };
+    const w2 = { credits: 1000 };
+    /* flak tower at level 1: 220 cr, 8 iron ore, 2 iron ingots */
+    const plan = C.fromHold(st2, { cr: 220, ore: { iron: 8 }, bar: { iron: 2 } }, h2);
+    check('the split takes stock first, then carried bars, then smelts from hold ore', plan.bar.iron === 1 && plan.ore.iron === 5 && !plan.smelt.iron,
+      JSON.stringify(plan));
+    const st3 = { ore: {}, bar: {}, comp: {} }, h3 = { ore: { iron: 20 }, bar: {}, comp: {} };
+    const took = C.pay(w2, st3, { cr: 220, ore: { iron: 8 }, bar: { iron: 2 } }, h3);
+    check('paying smelts the missing bars from the hold: 8 ore and 6 more for two ingots', took && took.ore.iron === 14 && took.smelt.iron === 2 && w2.credits === 780,
+      JSON.stringify(took));
+    const st4 = { ore: { iron: 10 }, bar: {}, comp: {} };
+    C.pay({ credits: 1000 }, st4, { ore: { iron: 4 }, bar: { iron: 2 } }, empty());
+    check('paying smelts from the outpost\'s ore when the hold is empty', !st4.ore.iron);
+  }
   check('pay without the hold refuses as before', C.pay({ credits: 0 }, { ore: {}, bar: {}, comp: {} }, { ore: { iron: 1 } }, { ore: { iron: 0 }, bar: {}, comp: {} }) === false);
 }
 check('upgrades cost more each level and stop at 3', C.upgradeCost({ type: 'laser', lvl: 2 }, stats).cr > C.upgradeCost({ type: 'laser', lvl: 1 }, stats).cr && C.upgradeCost({ type: 'laser', lvl: 3 }, stats) === null);
