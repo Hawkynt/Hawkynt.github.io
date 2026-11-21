@@ -2,7 +2,7 @@
 
 A mining, base-building and real-time strategy game in space for the SynthelicZ Desktop. Fly a mining ship out of Kessler Station into five asteroid belts, laser rocks until they crack into smaller rocks and ore, reel the nuggets in with the tractor beam and haul them home past volatile rocks, radiation, solar storms, gravity wells and pirates. Sell 22 resources into a market that moves, smelt bars, fill contracts, buy hulls, upgrades, station modules and mining drones, and research a 52-node tech tree.
 
-In every belt you can found an outpost: 23 buildings on a build grid - rigs, siphons and harvesters on deposits, smelters, refineries and fabricators that turn ore into bars and components, power, storage, crew, turrets, shields, factories and labs - linked to the hub by power relays. Attack waves of pirates, alien swarms and the nanoprobe Lattice come for it, with a hive mothership per belt; you defend it with turrets, your ship and a fleet you command in formation from a zoomed-out tactical view. The outer belts are alive: the Bloom infects crews and can leave an outpost abandoned, the Lattice hijacks buildings and units. Distress calls, seasons, weekly anomaly belts, a daily contract streak and a captain's log keep the belts changing. Gold Rush, a seeded Daily Belt and a 15-wave Siege round it off. All art is procedural canvas drawing.
+From the Verdant Shoals on you can found an outpost: 23 buildings on a build grid - rigs, siphons and harvesters on deposits, smelters, refineries and fabricators that turn ore into bars and components, power, storage, crew, turrets, shields, factories and labs - linked to the hub by power relays. Attack waves of pirates, alien swarms and the nanoprobe Lattice come for it, with a hive mothership per belt; you defend it with turrets, your ship and a fleet you command in formation from a zoomed-out tactical view. The outer belts are alive: the Bloom infects crews and can leave an outpost abandoned, the Lattice hijacks buildings and units. Distress calls, seasons, weekly anomaly belts, a daily contract streak and a captain's log keep the belts changing. Gold Rush, a seeded Daily Belt and a 15-wave Siege round it off. All art is procedural canvas drawing.
 
 ## How It Works
 
@@ -13,6 +13,12 @@ A trip is one flight into a belt of 6,400 x 4,600 px. The belt is laid out from 
 Docking (slowly, inside the dock ring) banks the hold in the station warehouse and refuels and repairs the ship for the usual bill, and the flight goes on. The trip ends only when the pilot returns home (Enter while docked, the Return home button, or the pause menu): the docking sequence plays, the last hold is settled, the report counts everything banked during the trip, and one market cycle passes. Each ore has a mean-reverting random-walk price factor, a saturation that your own sales push up and that recovers every cycle, booms and busts announced in the news, and a price history. A refinery smelts three ore into one bar worth more; contracts ask for ore or bars and pay credits plus research data. Credits buy hulls, hangar upgrades (six of them, ten levels each, rising costs), station modules (which appear on the station) and belt licences; research data, earned from rare ore, discoveries, contracts and achievements, buys the tech tree, whose purchases take effect at once - also from the pause menu mid-trip.
 
 All art is painted once into cached canvases at twice its size: hulls from layered lit plates with five bank frames, asteroid bodies per size, variant and belt palette (regolith mottling, strata, craters with lit rims, terminator, rim light) with separate ore-vein, vein-glow and crack overlays, nuggets, the station in parts, pirates, wrecks, the gravity-well disc, and per-belt backdrops (domain-warped fbm nebulae, lit planets with bands and rings, moons, suns, a black hole, three star tiles and a far rubble layer). Per frame the game only blits sprites, draws additive glows and strokes; no blur filters are used. Effects are pooled particles (glows with colour ramps, sparks batched into one path per colour, smoke, rock dust, tumbling chunks, embers, rings, floating texts). A busy scene (pirates, storm, drones, hundreds of particles and nuggets) takes about 2.5 ms of script per frame.
+
+### Operations
+
+Every belt teaches one loop of its own and keeps the earlier ones running: the Kessler Drift is mining, the Amber Reach adds escorting freighters, the Verdant Shoals add outposts and attack waves, the Crimson Maw adds enemy outposts and warfare, the Void Crown asks for all of it. Outposts can be founded only in the Verdant Shoals and beyond (Siege brings its own). Each belt has a chain of operations, picked on the belt map: an objective (bank ore, bank ore worth credits, deliver one ore, launch drones, crack geodes and derelicts, shoot down pirates), an optional time limit, threats sent by a pacing director, and a first-clear reward of credits, research and unlocks. Operations open one after another; the last one, the belt's capstone, is needed for the next belt's licence besides the earnings. Every operation carries the mood it is meant to strike - challenging, a breather, a surprise, harder, worse than you thought, a nightmare - and a belt never puts two peaks in a row: after a peak comes a breather or a surprise. Free mining trips stay open in every licensed belt.
+
+The pacing director follows a timeline of beats per operation (build-up, peak, relief, surprise) and a tension score made of the hull lost lately and the threats around the ship. Threats come in clusters off screen at the beat's pace; a player who is crushing it gets them up to a quarter sooner and bigger, one who is drowning up to a quarter later and smaller. An operation is won the moment its last objective is met (the reward is paid at once and the trip goes on), and failed when its time runs out, the ship is lost or the pilot returns home first; the trip report names the outcome. A save from before the operations keeps everything, except that outposts in the Kessler Drift and the Amber Reach are dismantled: their buildings and fleet come back as credits and their stock moves into the station warehouse.
 
 ### Outposts
 
@@ -50,12 +56,15 @@ Core (`js/core/`):
 - **`data-goals.js`** -- The four modes, 29 achievements and the statistics they watch
 - **`data-colony.js`** -- Seven components and their recipes, what the plants smelt, six build categories and the 23 buildings
 - **`data-fleet.js`** -- Seven unit types, ten hostile types with wave costs and unlocks, the boss wave, four formations, veterancy ranks
+- **`data-ops.js`** -- The operations of every belt: mood, objectives, time limit, threats, pacing beats and rewards, and the moods
 - **`data-events.js`** -- Belt events, seasons, weekly anomalies and the seven captain's log chapters
 - **`rules.js`** -- Pure progression rules: the save shape and its migration, tree, upgrade, hull, module and licence purchases, derived ship and colony stats, the Daily loadout, hold space, achievements, high scores
 - **`economy.js`** -- Pure market rules: prices, saturation, selling ore, bars and components, refining, contracts (ore, bars, components, waves), the daily and weekly contracts and the streak, the market cycle with news and history, forecasts, the service bill
 - **`colony.js`** -- Pure outpost rules: sites and deposits, the saved outpost and its repair, placement, the link network, power, crew, storage, housing and supply, costs and upgrades (paid from stock, the hold covering missing ore), value, upkeep, wave scaling and composition
 - **`production.js`** -- Pure production chains per step, the while-away yield and the market cycle of every outpost (upkeep, scavengers, hives)
 - **`outbreak.js`** -- Pure crew, infection and corruption model: arrivals, growth, spread, quarantine, treatment, deaths, abandonment, hijacking, purge, EMP, reclaiming
+- **`ops.js`** -- Pure operation rules: the chain per belt, what opens, the capstone gate, the loops a belt allows, objective progress, recording a result and its reward, the mood rule
+- **`pacing.js`** -- Pure pacing director: beats on the timeline, the tension score, threat pace and size
 - **`calendar.js`** -- Pure date rules: seasons, ISO weeks and the anomaly belt, trip modifiers, daily and weekly contracts, streaks, the seeded event schedule
 - **`data-cosmetics.js`** -- Liveries, beams, plumes with their unlocks, and the festival track tiers
 - **`cosmetics.js`** -- Collection rules: owning, buying, equipping, livery colours, the festival track and its rewards, repair of stored data
@@ -83,6 +92,7 @@ Systems (`js/systems/`), one simulation concern each:
 - **`waves.js`** -- The wave timer, preview, warning, arrival in clusters, the mothership, clearing, retreat of stragglers, Siege victory
 - **`life.js`** -- Gas pockets and Bloom clouds, living rocks, hive nests, contamination
 - **`events.js`** -- The trip's event schedule, the distress mission, reactions to outbreaks and hijacks, the captain's log
+- **`operation.js`** -- The operation in a trip: its clock, objectives, the threats the director sends, winning and failing
 - **`command.js`** -- The command view: camera, pause-and-plan, selection, groups, formations, smart orders, placement
 - **`resume.js`** -- Autosave snapshot of a running trip and its exact restore
 - **`trip.js`** -- A trip from launch to report: belt setup, outpost and fleet, specials, banking at the dock, returning home, fuel and hull, mode clocks, Siege, autosave, discoveries, wrecks, the Crown, settling the hold, the outposts' cycle, results
@@ -105,6 +115,7 @@ Render (`js/render/`):
 - **`world.js`** -- The belt in draw order with culling: hazards, clouds, dock, outpost, rocks with glow and heat (cheaper zoomed out), wrecks, nuggets and tractor beams, drones, charges, pirates, fleets, bolts, the ship, lasers, domes and pods, the command overlay, the pulse, the storm
 - **`base-render.js`** -- The outpost: site, grid, deposits, energy links, buildings with moving parts, construction, dark, infected and hijacked looks, ranges, shield domes, cargo pods, beams, placement preview, the silent station
 - **`fleet-render.js`** -- Clouds, units, invaders, shots, team rings, selection, order paths, markers, the drag box
+- **`op-hud.js`** -- The operation tracker in flight: name, mood, objectives with progress, the clock and the outcome
 - **`hud.js`** -- Gauges, the ore hold, belt and clock, radar, ability slots, warnings, the dock arrow, hints, banners, reticle, letterbox, flash, toasts, achievement pop-ups
 - **`cine-render.js`** -- The intro, launch, new belt, ending and captain's log sequences; arrival, docking, discovery and outpost overlays
 - **`frame.js`** -- One frame: cinematic or belt and flight or command HUD or menu scenery, the active screen, flash and toasts, cursor and draw timing
@@ -121,7 +132,7 @@ UI (`js/ui/`):
 - **`hangar.js`** -- The Hangar tab: liveries, beams and plumes with live previews, buying and equipping, the festival track
 - **`colonies.js`** -- The Colonies tab (daily contract and streak, anomaly, season, every outpost) and the Log tab
 - **`shipyard.js`** -- The Shipyard tab (hulls, level-up upgrade cards) and the Modules tab
-- **`map.js`** -- The belt map with planets, lanes, details, launching and buying licences
+- **`map.js`** -- The belt map with planets, lanes, details, the operations list and brief, launching and buying licences
 - **`tree.js`** -- The tech tree screen on two pages with links, states, detail panel and research that applies mid-trip
 - **`help.js`** -- Eight illustrated How to Play pages
 - **`pause.js`** -- The pause menu with Tech Tree, How to Play, tow home and quit
@@ -139,6 +150,8 @@ Bootstrap:
 Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 - **`harness.js`** -- A recording fake canvas, minimal DOM and storage, a loader that runs the game scripts in `index.html` order, a stepper
+- **`ops.test.js`** -- The operation chains and their moods, opening, the capstone gate, loops per belt, objective progress, results and rewards, the pacing director
+- **`campaign.test.js`** -- A bot plays the Kessler operations in the running game and prints the measured tension per operation
 - **`rules.test.js`** -- Tree, upgrades, hulls, modules, licences, derived stats, the Daily loadout, hold space, achievements
 - **`economy.test.js`** -- Prices, saturation and recovery, drift bounds, news, history, refining, contracts, service costs
 - **`save.test.js`** -- Migration of the old high scores and tutorial flag, repair of damaged saves, round trip, storage failures
@@ -181,6 +194,14 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can fulfil delivery contracts for credits and research data
 - [x] As a player, I can buy four hulls and six upgrades that level up ten times with rising costs
 - [x] As a player, I can build five station modules (refinery, drone bay, scanner array, trade hub, fuel depot) and see them on the station
+
+### Operations
+- [x] As a player, I can pick operations per belt on the belt map, see their mood, objectives, limit and reward, and launch one
+- [x] As a player, I can play the Kessler Drift's six operations - First Haul, Copper Contract, Drone Bay, Geode Hunt, Claim Jumpers and the Kessler Charter
+- [x] As a player, I can follow the objectives and the clock of an operation in flight and see it won or failed
+- [x] As a player, I can only buy the next belt's licence after the capstone operation of the belt before it
+- [x] As a player, I can face pirates sent by a pacing director that builds up, peaks, lets me breathe and surprises me, and eases or presses with how I am doing
+- [x] As a player, I can found outposts from the Verdant Shoals on, and get my old Kessler and Amber outposts back as credits and warehouse stock
 
 ### Outposts
 - [x] As a player, I can found an outpost in any belt from the command view and expand it on a build grid with a placement preview

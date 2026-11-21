@@ -58,7 +58,10 @@ check('modules build level by level', R.buildModule(h, 'refinery') && h.modules.
 const z = R.freshSave();
 check('the home belt is open, the rest locked', R.zoneState(z, 0) === 'open' && R.zoneState(z, 1) === 'locked' && R.zoneState(z, 2) === 'locked');
 z.stats.earned = ZONES[1].unlock.earned;
-check('earnings make the next licence buyable', R.zoneState(z, 1) === 'buyable' && R.zoneState(z, 2) === 'locked');
+check('earnings alone do not open the next licence', R.zoneState(z, 1) === 'locked');
+for (const o of NS.ops.zoneOps('kessler')) NS.ops.finish(z, o, true, 60);
+z.stats.earned = ZONES[1].unlock.earned;
+check('earnings make the next licence buyable once the capstone is cleared', R.zoneState(z, 1) === 'buyable' && R.zoneState(z, 2) === 'locked');
 z.credits = 0;
 check('a licence needs the fee', !R.buyLicense(z, 1));
 z.credits = ZONES[1].unlock.fee;

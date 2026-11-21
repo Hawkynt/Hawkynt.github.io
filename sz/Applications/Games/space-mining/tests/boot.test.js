@@ -9,7 +9,7 @@ const NS = H.load();
 const { check, done } = H;
 const G = NS.state;
 
-check('the game starts on the title', G.screen === 'title' && G.save.v === 2);
+check('the game starts on the title', G.screen === 'title' && G.save.v === 3);
 const key = (code, extra) => env.listeners.keydown.forEach(f => f(Object.assign({ code: code, key: code, preventDefault() {} }, extra || {})));
 const keyUp = (code) => env.listeners.keyup.forEach(f => f({ code: code, key: code, preventDefault() {} }));
 

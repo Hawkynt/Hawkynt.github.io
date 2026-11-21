@@ -42,6 +42,11 @@
     if (name === 'station' && !G.cine) {
       const ch = NS.events.pendingLog();
       if (ch) NS.events.playLog(ch, () => setScreen('station'));
+      /* news the save migration left for the player, once */
+      else if (G.save.notices.length) {
+        toast(G.save.notices.shift(), '#ffd25a');
+        NS.save.writeSave();
+      }
     }
   }
 
@@ -82,10 +87,11 @@
   }
 
   /* Launch into a belt (career from the map, or a mode from the title) */
-  function launch(mode, zoneIndex) {
+  /* opts: { op } launches an operation */
+  function launch(mode, zoneIndex, opts) {
     if (mode === 'career' || mode === 'siege') G.save.resume = null;
     const z = mode === 'daily' ? null : NS.ores.ZONES[zoneIndex];
-    NS.cinematics.play('launch', { zone: z || NS.ores.ZONES[NS.rng.hashString(NS.rng.dayKey()) % 3 + 1] }, () => NS.trip.startTrip(mode, zoneIndex));
+    NS.cinematics.play('launch', { zone: z || NS.ores.ZONES[NS.rng.hashString(NS.rng.dayKey()) % 3 + 1] }, () => NS.trip.startTrip(mode, zoneIndex, opts));
   }
 
   /* the autosaved trip, right where it was */

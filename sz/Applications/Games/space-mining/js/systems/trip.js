@@ -69,7 +69,7 @@
       pulseCd: 0, pulse: null, pirateT: (mode === 'career' ? 55 : 35) + r() * 30, respawnT: 2,
       rockTarget: 0, pulled: 0, lasering: false, leftDock: false, ending: null, endT: 0, towT: 0,
       inRad: 0, inWell: 0, crownBroken: false, dronesOut: false, pickT: 0, pickText: null, turretAngle: 0,
-      contam: 0, survivors: 0, waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
+      contam: 0, survivors: 0, op: null, waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
       siegeWon: false, reviveT: 0, banked: {}, bankedUnits: 0, docked: false,
     };
     G.specials.length = 0;
@@ -95,6 +95,7 @@
       NS.waves.arm(true);
     }
     NS.events.setup(zone, seed, mods);
+    if (opts.op && !snap) NS.operation.start(opts.op);
     NS.camera.snap(G.ship.x, G.ship.y);
     NS.backdrop.setZone(zone.index);
     G.banner = null;
@@ -141,19 +142,27 @@
     return { x: 500, y: 500 };
   }
 
-  function placeSpecials(zone, r, mode, stats) {
-    const geodeChance = (0.3 + stats.geode * 0.5 + (stats.scanner >= 2 ? 0.15 : 0)) * (mode === 'career' ? 1 : 0.6);
-    if (r() < geodeChance) {
+  /* A geode or derelict far from the dock; `known` puts it on the radar */
+  function addSpecial(kind, r, known) {
+    const zone = G.run.zone, stats = G.stats;
+    if (kind === 'geode') {
       const p = farSpot(r, 1400);
       const ore = zone.index >= 3 ? 'voidCrystal' : zone.index >= 1 ? 'gold' : 'silver';
       const g = NS.asteroids.special('geode', p.x, p.y, ore);
-      g.known = stats.scanner >= 3;
+      g.known = known || stats.scanner >= 3;
+      return g;
     }
-    if (r() < 0.25 + stats.geode * 0.4 || (mode === 'career' && G.save.stats.trips === 2)) {
-      const p = farSpot(r, 1600);
-      G.specials.push({ alive: true, kind: 'derelict', x: p.x, y: p.y, r: 86, angle: r() * TAU, hp: 260 * zone.hardness, maxHp: 260 * zone.hardness,
-        known: stats.scanner >= 3, found: false, variant: Math.floor(r() * 2), sparkT: 0 });
-    }
+    const p = farSpot(r, 1600);
+    const d = { alive: true, kind: 'derelict', x: p.x, y: p.y, r: 86, angle: r() * TAU, hp: 260 * zone.hardness, maxHp: 260 * zone.hardness,
+      known: known || stats.scanner >= 3, found: false, variant: Math.floor(r() * 2), sparkT: 0 };
+    G.specials.push(d);
+    return d;
+  }
+
+  function placeSpecials(zone, r, mode, stats) {
+    const geodeChance = (0.3 + stats.geode * 0.5 + (stats.scanner >= 2 ? 0.15 : 0)) * (mode === 'career' ? 1 : 0.6);
+    if (r() < geodeChance) addSpecial('geode', r, false);
+    if (r() < 0.25 + stats.geode * 0.4 || (mode === 'career' && G.save.stats.trips === 2)) addSpecial('derelict', r, false);
     if (zone.id === 'void' && mode === 'career' && !G.save.crownDone) {
       const crown = NS.asteroids.special('crown', G.world.w * 0.85, G.world.h * 0.18, 'voidCrystal');
       crown.known = true;
@@ -471,7 +480,7 @@
     for (const id in run.banked) all[id] = (all[id] || 0) + run.banked[id];
     const res = { mode: run.mode, reason: reason, zone: run.zone, hold: all, units: units + run.bankedUnits, lost: run.units - units - run.bankedUnits, rd: run.rd,
       salvage: run.salvage, fractures: run.fractures, kills: run.kills, t: 0, time: run.t, achievements: [], crown: run.crownBroken, jump: stats.jump,
-      waves: run.waves, invaders: run.invaders, survivors: run.survivors };
+      waves: run.waves, invaders: run.invaders, survivors: run.survivors, op: NS.operation.settle(reason, hold, units) };
     if (run.mode === 'career') {
       for (const id in hold) save.store.ore[id] = (save.store.ore[id] || 0) + hold[id];
       res.value = eco.cargoValue(save, stats, all);
@@ -557,7 +566,7 @@
   }
 
   Object.assign(NS.trip, {
-    flightStats, refreshFlightStats, startTrip, siegeStart, update, banner, finish, revive, shipDestroyed, cutWreck, onSpecialBroken,
+    flightStats, refreshFlightStats, startTrip, addSpecial, siegeStart, update, banner, finish, revive, shipDestroyed, cutWreck, onSpecialBroken,
     keepShare, endTrip, abort, quickSell, bank, deposit, returnHome
   });
 })();

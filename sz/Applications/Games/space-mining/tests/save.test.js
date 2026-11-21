@@ -19,7 +19,7 @@ check('the market and contracts are set up', !!G.save.market.iron && G.save.cont
 NS.save.writeSave();
 const again = NS.save.loadSave();
 check('loading again does not pay the bonus twice', again.credits === G.save.credits && again.highScores.length === 2);
-check('stored as save v2 under its own key', JSON.parse(env.store['sz-space-mining-save-v2']).v === 2);
+check('stored as save v3 under its own key', JSON.parse(env.store['sz-space-mining-save-v2']).v === 3);
 
 check('a huge old score is capped at 5000 credits', R.migrateSave(null, [{ credits: 9e9, ore: 1 }]).credits === R.START_CREDITS + 5000);
 check('no old data, no bonus', R.migrateSave(null, null).credits === R.START_CREDITS && R.migrateSave(null, null).migrated === false);

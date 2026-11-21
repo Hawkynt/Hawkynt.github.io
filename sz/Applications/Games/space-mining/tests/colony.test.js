@@ -203,7 +203,7 @@ const mig = R.migrateSave(old, null);
 check('a pre-colony save loads with no outposts', JSON.stringify(mig.bases) === '{}' && JSON.stringify(mig.store.comp) === '{}' && mig.best.siege === 0 && mig.log.length === 0);
 NS.economy.initMarket(mig);
 check('its market keeps the old prices and gains the new ores', mig.market.iron.f === 1.3 && mig.market.hydrogen && mig.market.hydrogen.f === 1);
-const bad = R.migrateSave({ bases: { amber: { buildings: [{ type: 'hub', cx: 9, cy: 7, lvl: 9, hp: -5 }, { type: 'laser', cx: 9, cy: 7 }, { type: 'ghost', cx: 1, cy: 1 }, { type: 'solar', cx: 30, cy: 1 }],
+const bad = R.migrateSave({ v: 3, bases: { amber: { buildings: [{ type: 'hub', cx: 9, cy: 7, lvl: 9, hp: -5 }, { type: 'laser', cx: 9, cy: 7 }, { type: 'ghost', cx: 1, cy: 1 }, { type: 'solar', cx: 30, cy: 1 }],
   stock: { ore: { iron: 5.7, nope: 3 }, comp: { circuit: 2 } }, crew: -4, units: [{ type: 'fighter', kills: 3 }, { type: 'dragon' }] }, nowhere: {}, kessler: { buildings: [{ type: 'solar', cx: 1, cy: 1 }] } } }, null);
 const ab = bad.bases.amber;
 check('damaged outposts are repaired', ab.buildings.length === 1 && ab.buildings[0].lvl === 3 && ab.buildings[0].hp === 1 && ab.stock.ore.iron === 5 && !ab.stock.ore.nope && ab.crew === 0);

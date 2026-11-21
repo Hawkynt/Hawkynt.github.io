@@ -1,7 +1,9 @@
 /* The belt map: Kessler Station and the five belts on a star chart joined by jump lanes, each
-   shown by its planet with name, danger and ore; the detail panel with hazards, ore mix and
-   licence progress; launching into an open belt and buying the next licence (which plays the
-   new-belt cinematic). The backdrop follows the highlighted belt. */
+   shown by its planet with name, danger and ore; the detail panel with the belt's loop, hazards,
+   ore mix and licence progress, or its operations (list with moods and records, the brief,
+   goals, limit and reward); launching a free trip or an operation into an open belt and buying
+   the next licence (which plays the new-belt cinematic). The backdrop follows the highlighted
+   belt. */
 ;(function() {
   'use strict';
 
@@ -14,6 +16,8 @@
   const kit = NS.kit;
   const W = NS.widgets;
   const rules = NS.rules;
+  const O = NS.ops;
+  const { MOODS } = NS.opsData;
   const scr = NS.screens;
   const { ctx } = NS.view;
   const { sfx } = NS.audio;
@@ -29,7 +33,7 @@
     ctx.fillStyle = 'rgba(0,0,10,0.45)';
     ctx.fillRect(v.x0, v.y0, v.w, v.h);
     kit.text('BELT MAP', 40, 40, 30, '#ffffff', { weight: 'bold' });
-    kit.text('Choose a belt to mine - licences open new belts as your earnings grow', 40, 70, 13, UI.textDim);
+    kit.text('Choose a belt and an operation - the capstone of a belt and your earnings open the next licence', 40, 70, 13, UI.textDim);
     kit.credits(save.credits, 1240, 46, 24, 'right');
 
     /* jump lanes */
@@ -96,7 +100,19 @@
     const x = 250, y = 520, w = 990, h = 180;
     kit.panel(x, y, w, h, { accent: z.theme.accent, glow: true });
     kit.text(z.name.toUpperCase(), x + 24, y + 30, 24, '#ffffff', { weight: 'bold' });
-    kit.text(z.sub, x + 24, y + 56, 14, z.theme.accent);
+    const ops = O.zoneOps(z.id);
+    const tab = ops.length && G.ui.mapTab !== 'belt' ? 'ops' : 'belt';
+    if (ops.length) {
+      W.button('tab_ops', 'Operations', x + w - 250, y + 12, 112, 28, { px: 12, selected: tab === 'ops', action: () => { G.ui.mapTab = 'ops'; } });
+      W.button('tab_belt', 'Belt', x + w - 132, y + 12, 112, 28, { px: 12, selected: tab === 'belt', action: () => { G.ui.mapTab = 'belt'; } });
+    }
+    if (tab === 'ops') opsPanel(save, z, ops, x, y);
+    else beltPanel(z, x, y);
+    actions(save, i, z, state, tab, x, y, w, h);
+  }
+
+  function beltPanel(z, x, y) {
+    kit.text(z.sub + '  -  ' + O.loopOf(z.index).name, x + 24, y + 56, 14, z.theme.accent);
     kit.wrap(z.blurb, x + 24, y + 76, 380, 13, 18, UI.textDim);
     /* ore mix */
     kit.text('ORE', x + 440, y + 26, 12, UI.textMute, { weight: 'bold' });
@@ -117,15 +133,67 @@
       hy += 20;
     }
     if (z.pirates) kit.text('Pirates', x + 670, hy, 13, UI.bad);
+  }
+
+  /* the selected operation of the belt (the first still open, else the last) */
+  function selectedOp(save, ops) {
+    const cur = ops.find(o => o.id === G.ui.opSel);
+    if (cur) return cur;
+    return ops.find(o => O.state(save, o.id) === 'open') || ops[ops.length - 1];
+  }
+
+  function goalLine(op) {
+    return op.goals.map(g => g.text + ' ' + kit.group(g.n)).join('  -  ');
+  }
+
+  function opsPanel(save, z, ops, x, y) {
+    const sel = selectedOp(save, ops);
+    const st = O.state(save, sel.id);
+    const mood = MOODS[sel.mood];
+    kit.text(mood.name.toUpperCase() + (sel.capstone ? '  -  CAPSTONE' : ''), x + 24, y + 56, 13, mood.color, { weight: 'bold' });
+    if (st === 'locked') kit.wrap('Opens after the operation before it.', x + 24, y + 76, 380, 13, 18, UI.textMute);
+    else kit.wrap(sel.brief, x + 24, y + 76, 380, 12, 16, UI.textDim);
+    const rw = sel.reward || {};
+    kit.fitText(goalLine(sel) + (sel.time ? '  -  ' + Math.round(sel.time / 60) + ' min' : ''), x + 24, y + 150, 380, 12, { color: UI.text });
+    const rec = save.ops[sel.id];
+    kit.text(rec && rec.done ? 'Cleared - best ' + rec.best + ' s' : 'Reward ' + kit.group(rw.cr || 0) + ' cr, ' + (rw.rd || 0) + ' research' + (rw.unlock ? ' and an unlock' : ''),
+      x + 24, y + 168, 12, rec && rec.done ? UI.good : UI.gold);
+    for (let k = 0; k < ops.length; ++k) {
+      const o = ops[k], os = O.state(save, o.id), yy = y + 22 + k * 20;
+      const hot = W.area('op_' + o.id, x + 430, yy - 9, 300, 19, () => { G.ui.opSel = o.id; });
+      if (o === sel || hot) {
+        ctx.fillStyle = o === sel ? 'rgba(255,210,90,0.16)' : 'rgba(255,255,255,0.06)';
+        ctx.fillRect(x + 430, yy - 9, 300, 19);
+      }
+      ctx.fillStyle = MOODS[o.mood].color;
+      ctx.beginPath();
+      ctx.arc(x + 442, yy, 4, 0, TAU);
+      ctx.fill();
+      kit.fitText(o.name, x + 454, yy, 220, 13, { color: os === 'locked' ? UI.textMute : o === sel ? '#ffffff' : UI.text, weight: o.capstone ? 'bold' : undefined });
+      if (os === 'done') kit.text('\u2713', x + 718, yy, 13, UI.good, { align: 'right', weight: 'bold' });
+      else if (os === 'locked') kit.lock(x + 712, yy, 10);
+    }
+  }
+
+  function actions(save, i, z, state, tab, x, y, w, h) {
     const bx = x + w - 250, by = y + h - 64;
     if (state === 'open') {
-      W.button('go', 'Launch', bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => act(save, i), px: 20 });
+      const ops = O.zoneOps(z.id);
+      const sel = tab === 'ops' ? selectedOp(save, ops) : null;
+      if (sel && O.state(save, sel.id) !== 'locked') {
+        W.button('go_free', 'Free mining', bx, by - 52, 230, 40, { icon: 'launch', action: () => act(save, i), px: 15 });
+        W.button('go_op', O.state(save, sel.id) === 'done' ? 'Replay operation' : 'Launch operation', bx, by, 230, 48,
+          { accent: UI.gold, icon: 'launch', action: () => scr.launch('career', i, { op: sel.id }), px: 17 });
+      } else W.button('go', 'Launch', bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => act(save, i), px: 20 });
     } else if (state === 'buyable') {
       W.button('buy', 'Buy licence  ' + kit.group(z.unlock.fee), bx, by, 230, 48, { accent: UI.gold, disabled: save.credits < z.unlock.fee, action: () => act(save, i) });
     } else {
       const prev = ZONES[i - 1];
       const prevOpen = !prev || save.licenses.indexOf(prev.id) >= 0;
-      kit.text(prevOpen ? 'Earn ' + kit.group(z.unlock.earned) + ' credits in total' : 'License ' + prev.name + ' first', bx + 115, by + 6, 13, UI.bad, { align: 'center' });
+      const cap = prev && O.capstoneOf(prev.id);
+      const need = !prevOpen ? 'License ' + prev.name + ' first' : !O.licenceReady(save, i) ? 'Clear ' + cap.name + ' first' :
+        'Earn ' + kit.group(z.unlock.earned) + ' credits in total';
+      kit.fitText(need, bx + 115, by + 6, 230, 13, { color: UI.bad, align: 'center' });
       if (prevOpen) kit.bar(bx + 10, by + 22, 210, 8, save.stats.earned / z.unlock.earned, UI.gold);
       kit.text(kit.group(save.stats.earned) + ' / ' + kit.group(z.unlock.earned), bx + 115, by + 44, 12, UI.textDim, { align: 'center' });
     }

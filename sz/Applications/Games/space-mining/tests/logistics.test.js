@@ -7,7 +7,7 @@ const { check, done } = H;
 const G = NS.state;
 const B = NS.base;
 
-NS.trip.startTrip('career', 0);
+NS.trip.startTrip('career', 2);
 G.cine = null;
 G.screen = 'playing';
 const hub = B.grant('hub', G.base.site.hubX, G.base.site.hubY);
@@ -71,11 +71,11 @@ for (let rank = 1; rank <= 6; ++rank) {
     NS.mining.cargoSpace('iron', units) === 0.5 && NS.drones.capacity(4) === 4 * units);
 }
 check('press upgrades stop at rank six', !NS.rules.buildModule(G.save, 'blockPress') && !B.upgradePress());
-const legacy = NS.rules.migrateSave({ tree: { l_blocks: 5 }, bases: { kessler: G.base.data } });
+const legacy = NS.rules.migrateSave({ tree: { l_blocks: 5 }, bases: { verdant: G.base.data } });
 check('old research ranks carry over into both presses',
-  legacy.tree.l_blocks === 1 && legacy.modules.blockPress === 5 && legacy.bases.kessler.blockRank === 5);
+  legacy.tree.l_blocks === 1 && legacy.modules.blockPress === 5 && legacy.bases.verdant.blockRank === 5);
 const migrated = NS.rules.migrateSave(legacy);
-check('a second load preserves press levels', migrated.modules.blockPress === 5 && migrated.bases.kessler.blockRank === 5);
+check('a second load preserves press levels', migrated.modules.blockPress === 5 && migrated.bases.verdant.blockRank === 5);
 
 G.save.modules.blockPress = 1;
 G.save.tree.l_compress = 0;

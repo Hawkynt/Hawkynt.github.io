@@ -1,8 +1,8 @@
-/* The trip report: how the trip ended, the hold unloaded line by line with counting values,
-   salvage, research, the service bill, survivors' bounty, outpost upkeep and research, waves,
-   the market news and new achievements (career); or the score, best and career bonus (Gold
-   Rush, Daily Belt, Siege). Continue goes to the station or the title, Again relaunches a
-   mode. */
+/* The trip report: how the trip ended, the operation flown and its outcome, the hold unloaded
+   line by line with counting values, salvage, research, the service bill, survivors' bounty,
+   outpost upkeep and research, waves, the market news and new achievements (career); or the
+   score, best and career bonus (Gold Rush, Daily Belt, Siege). Continue goes to the station or
+   the title, Again relaunches a mode. */
 ;(function() {
   'use strict';
 
@@ -55,6 +55,7 @@
     kit.text(head[0], 640, y + 72 - (1 - pop) * 20, 38, head[2], { align: 'center', weight: 'bold' });
     kit.text(jump ? 'The emergency jump saved most of the hold' : head[1], 640, y + 106, 14, UI.text, { align: 'center' });
     ctx.globalAlpha = 1;
+    if (r.op) opLine(r.op, y + 130);
     if (career) careerReport(r, x, y, w);
     else modeReport(r, x, y, w);
     const by = y + h - 66;
@@ -63,6 +64,16 @@
       W.button('again', 'Again', 640 - 270, by, 250, 48, { accent: UI.gold, action: () => scr.launch(r.mode, r.zone.index) });
       W.button('cont', 'Title', 640 + 20, by, 250, 48, { action: leave });
     }
+  }
+
+  /* the operation flown on this trip and how it went */
+  function opLine(op, y) {
+    const won = op.status === 'won';
+    const rw = op.reward;
+    const tail = won ? (rw ? '  -  +' + kit.group(rw.cr || 0) + ' cr, +' + (rw.rd || 0) + ' research' + (rw.unlock ? ', unlock' : '') : '  -  cleared again') :
+      (op.why ? '  -  ' + op.why : '');
+    kit.fitText('OPERATION ' + op.name.toUpperCase() + ': ' + (won ? 'COMPLETE' : 'FAILED') + tail, 640, y, 640, 14,
+      { align: 'center', weight: 'bold', color: won ? UI.good : UI.bad });
   }
 
   function careerReport(r, x, y, w) {

@@ -50,6 +50,8 @@
     G.pods.length = 0;
     G.tbeams.length = 0;
     if (mode !== 'career' && mode !== 'siege') { G.base = null; return null; }
+    /* career outposts only where the belt's loops allow them (Siege brings its own) */
+    if (mode === 'career' && !NS.ops.allows(zone.index, 'outpost')) { G.base = null; return null; }
     const site = C.site(zone.index, G.world.w, G.world.h);
     let data;
     if (mode === 'siege') data = C.newBase(zone.id);

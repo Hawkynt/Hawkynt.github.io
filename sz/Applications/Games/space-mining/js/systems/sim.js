@@ -61,6 +61,7 @@
     NS.mining.update(s);
     NS.drones.update(s);
     NS.pirates.update(s);
+    NS.operation.update(s);
     NS.life.update(s);
     NS.base.update(s);
     NS.units.update(s);

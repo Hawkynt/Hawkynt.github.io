@@ -1,5 +1,6 @@
-/* Pure game rules: the save v2 shape and its migration from the first version (and from the
-   pre-colony v2 saves: outposts start empty), tech tree and hangar maths (levels, costs, states,
+/* Pure game rules: the save v3 shape and its migration from the first version (and from the
+   pre-colony v2 saves: outposts start empty; from v2: outposts in belts that no longer allow
+   them are dismantled), operation records and unlocks, tech tree and hangar maths (levels, costs, states,
    buying), hulls, station modules, belt licences, the derived ship and colony stats, cargo
    space per ore and achievement checks. No DOM, no state access. */
 ;(function() {
@@ -25,7 +26,7 @@
     const modules = {};
     for (let i = 0; i < MODULES.length; ++i) modules[MODULES[i].id] = 0;
     return {
-      v: 2, migrated: false, credits: START_CREDITS, rd: START_RD,
+      v: 3, migrated: false, credits: START_CREDITS, rd: START_RD,
       hull: 'prospector', hulls: ['prospector'], upgrades: upgrades, tree: {}, modules: modules,
       licenses: ['kessler'], visited: [], zone: 'kessler',
       store: { ore: {}, bar: {}, comp: {} }, market: null, contracts: [], cycle: 0, news: '',
@@ -33,6 +34,7 @@
       seenIntro: false, seenHelp: false, crownDone: false,
       bases: {}, log: [], logSeen: [], daily: { day: '', streak: 0, last: '', week: '' }, cine: {}, resume: null,
       cosmetics: NS.cosmetics.blank(), festival: { event: '', tokens: 0, claimed: 0 },
+      ops: {}, unlocks: [], notices: [],
     };
   }
 
@@ -48,7 +50,7 @@
     return out;
   }
 
-  /* A repaired v2 save from anything stored; `old` is the first version's high-score list
+  /* A repaired v3 save from anything stored; `old` is the first version's high-score list
      ([{ credits, ore }]): veterans keep their best run as starting credits (capped) */
   function migrateSave(stored, old) {
     const s = freshSave();
@@ -121,6 +123,10 @@
       if (Array.isArray(src.highScores))
         s.highScores = src.highScores.filter(h => h && typeof h.score === 'number' && isFinite(h.score)).slice(0, 10)
           .map(h => ({ score: Math.floor(h.score), mode: typeof h.mode === 'string' ? h.mode : 'career', detail: typeof h.detail === 'string' ? h.detail : '' }));
+      s.ops = NS.ops.repair(src.ops);
+      if (Array.isArray(src.unlocks)) s.unlocks = src.unlocks.filter((u, i, a) => typeof u === 'string' && /^[a-z0-9_]{1,24}$/.test(u) && a.indexOf(u) === i);
+      if (Array.isArray(src.notices)) s.notices = src.notices.filter(n => typeof n === 'string').map(n => n.slice(0, 240)).slice(0, 5);
+      if (!(src.v >= 3)) dismantle(s);
       s.seenIntro = !!src.seenIntro;
       s.seenHelp = !!src.seenHelp;
       s.crownDone = !!src.crownDone;
@@ -137,6 +143,28 @@
       }
     }
     return s;
+  }
+
+  /* Saves from before the operations: outposts in belts that no longer allow them come back as
+     credits (what their buildings and fleet are worth) and their stock moves to the warehouse */
+  function dismantle(s) {
+    const gone = [];
+    let credits = 0;
+    for (let i = 0; i < ZONES.length; ++i) {
+      const z = ZONES[i], b = s.bases[z.id];
+      if (!b || NS.ops.allows(i, 'outpost')) continue;
+      credits += NS.colony.baseValue(b);
+      for (const kind of ['ore', 'bar', 'comp'])
+        for (const id in b.stock[kind]) s.store[kind][id] = (s.store[kind][id] || 0) + b.stock[kind][id];
+      delete s.bases[z.id];
+      gone.push(z);
+      if (s.resume && s.resume.mode === 'career' && s.resume.zone === i)
+        s.resume = Object.assign({}, s.resume, { units: [], enemies: [] });
+    }
+    if (!gone.length) return;
+    s.credits += credits;
+    s.notices.push('Outposts now open from the Verdant Shoals on: your outposts in the ' + gone.map(z => z.name).join(' and the ') +
+      ' were dismantled for ' + credits + ' credits, their stock is in the station warehouse.');
   }
 
   /* ── tech tree (research data) ── */
@@ -235,7 +263,7 @@
     if (save.licenses.indexOf(z.id) >= 0) return 'open';
     const prev = ZONES[index - 1];
     if (prev && save.licenses.indexOf(prev.id) < 0) return 'locked';
-    return save.stats.earned >= z.unlock.earned ? 'buyable' : 'locked';
+    return save.stats.earned >= z.unlock.earned && NS.ops.licenceReady(save, index) ? 'buyable' : 'locked';
   }
 
   function buyLicense(save, index) {

@@ -3,7 +3,9 @@
 /* Space Mining in a real browser: the station's Hangar tab with liveries, beams and plumes, a
    livery bought and equipped with real clicks and shown on the docked ship; then a trip: Space
    drills the ore nearest the nose with a bent beam, docking banks the hold and the flight goes
-   on with the Return home button, which ends the trip only when pressed. */
+   on with the Return home button, which ends the trip only when pressed; the belt map lists
+   the Kessler operations and launches First Haul, which banking wins; an outpost in the
+   Verdant Shoals installs a press, packs ore and builds with ore from the hold. */
 exports.ns = 'SpaceMining';
 
 exports.run = async (t) => {
@@ -61,7 +63,38 @@ exports.run = async (t) => {
   await t.wait(700);
   await t.shot('07-docked-banked');
   t.check('docking banks the hold and remote drone basket immediately', await t.state("G.screen === 'playing' && G.run && G.run.bankedUnits === 20 && !G.drones[0].load && G.hitAreas.some(a => a.id === 'dock-home')"));
+  t.check('the Kessler Drift has no outpost site', await t.state('G.base === null'));
+  await t.hit('dock-home');
+  await t.wait(4200);
+  await t.shot('09-report');
+  t.check('Return home ends the trip with the report', await t.state("G.screen === 'results' && G.ui.results.hold.iron === 17"));
+  /* the belt map lists the Kessler operations; real clicks launch the first one */
+  await t.run((NS, G) => { G.ui.mapSel = 0; NS.screens.setScreen('map'); });
+  await t.wait(400);
+  await t.shot('10-map-operations');
+  t.check('the map lists the six Kessler operations', await t.state("['k_haul', 'k_copper', 'k_drones', 'k_geode', 'k_jumpers', 'k_charter'].every(id => G.hitAreas.some(a => a.id === 'op_' + id))"));
+  await t.hit('op_k_haul');
+  await t.hit('go_op');
+  for (let i = 0; i < 12 && await t.state("!!G.cine || G.screen !== 'playing'"); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
+  await t.wait(400);
+  await t.shot('11-operation-tracker');
+  t.check('the operation flies with its tracker', await t.state("G.run && G.run.op && G.run.op.id === 'k_haul' && G.run.op.status === 'active'"));
   await t.run((NS, G) => {
+    G.run.cargo = { iron: 30, copper: 30 }; NS.mining.refreshCargoSpace(); G.run.leftDock = true;
+    G.ship.x = G.dock.x + 30; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;
+    NS.camera.snap(G.ship.x, G.ship.y);
+  });
+  await t.wait(800);
+  t.check('banking 60 units wins First Haul and pays at once', await t.state("G.run.op.status === 'won' && G.save.ops.k_haul.done"));
+  await t.shot('12-operation-complete');
+  await t.hit('dock-home');
+  await t.wait(4200);
+  t.check('the report names the operation', await t.state("G.screen === 'results' && G.ui.results.op && G.ui.results.op.status === 'won'"));
+  /* an outpost in the Verdant Shoals */
+  await t.run((NS) => { NS.trip.startTrip('career', 2); });
+  for (let i = 0; i < 8 && await t.state('!!G.cine'); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
+  await t.run((NS, G) => {
+    G.ship.maxHull = G.ship.hull = 1e6;
     const h = NS.base.grant('hub', G.base.site.hubX, G.base.site.hubY);
     G.base.data.stock.ore = { copper: 40 };
     G.ship.x = h.x; G.ship.y = h.y; G.ship.vx = G.ship.vy = 0;
@@ -93,9 +126,9 @@ exports.run = async (t) => {
     NS.camera.snap(G.ship.x, G.ship.y);
   });
   await t.wait(500);
-  t.check('the station banks the full unpacked amount', await t.state('G.save.store.ore.copper === 36 && G.run.cargoUsed === 0 && !G.cmd.plan'));
+  t.check('the station banks the full unpacked amount', await t.state('G.save.store.ore.copper === 66 && G.run.cargoUsed === 0 && !G.cmd.plan'));
   await t.hit('dock-home');
   await t.wait(4200);
-  await t.shot('09-report');
-  t.check('Return home ends the trip with the report', await t.state("G.screen === 'results' && G.ui.results.hold.iron === 17"));
+  await t.shot('13-report-verdant');
+  t.check('the Verdant trip ends with the copper banked', await t.state("G.screen === 'results' && G.ui.results.hold.copper === 36"));
 };

@@ -34,6 +34,7 @@
     hints(v, run);
     dockPanel(v, run);
     if (G.base) NS.commandHud.pilotWidget(v);
+    NS.opHud.draw(v);
     drawBanner(v);
     if (NS.touch.active()) NS.touch.draw();
     else reticle();

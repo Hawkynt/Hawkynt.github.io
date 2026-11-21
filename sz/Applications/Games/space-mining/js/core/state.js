@@ -90,7 +90,7 @@
       stationTab: 'market',
       shipyardTab: 'upgrades',
       marketSel: 'iron',
-      mapSel: 0,
+      mapSel: 0, mapTab: 'ops', opSel: '',
       treeSel: 'd_focus',
       treePage: 0,
       logSel: 0,

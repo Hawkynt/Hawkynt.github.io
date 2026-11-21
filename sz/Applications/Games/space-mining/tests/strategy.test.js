@@ -49,7 +49,7 @@ function build(type) {
 
 G.save.seenIntro = true;
 G.save.credits = 90000;
-enter('career', 1);
+enter('career', 2);
 check('a career trip brings the belt\'s outpost site', !!G.base && !B.claimed() && G.base.site.w > 0);
 check('rocks keep clear of the site', G.rocks.every(r => !B.blocks(r.x, r.y, 0)));
 key('Tab');
@@ -65,7 +65,7 @@ check('the command view draws without errors', errors === 0 && G.hitAreas.some(a
 key('Space');
 P.startPlace('hub');
 const hw = cellWorld('hub', G.base.site.hubX, G.base.site.hubY);
-check('placing the hub founds the outpost', P.tryPlace(hw.x, hw.y) && B.claimed() && G.save.bases.amber && G.save.stats.bases === 1);
+check('placing the hub founds the outpost', P.tryPlace(hw.x, hw.y) && B.claimed() && G.save.bases.verdant && G.save.stats.bases === 1);
 check('founding plays its cinematic', G.cine && G.cine.kind === 'founded');
 skipCine();
 steps(60 * 8);
@@ -87,7 +87,7 @@ d.stock.ore = { iron: 400, copper: 200, nickel: 100, ice: 100, titanium: 40, hyd
 d.stock.bar = { iron: 120, copper: 60, titanium: 40, cobalt: 20, silver: 20 };
 d.stock.comp = { circuit: 20, alloy: 20 };
 d.crew = 6;
-const plan = ['solar', 'solar', 'habitat', 'solar', 'habitat', 'smelter', 'rig', 'laser', 'laser', 'flak', 'warehouse', 'shipyard', 'dronefactory', 'habitat',
+const plan = ['solar', 'solar', 'habitat', 'solar', 'solar', 'habitat', 'solar', 'smelter', 'rig', 'laser', 'laser', 'flak', 'warehouse', 'shipyard', 'dronefactory', 'habitat',
   'radar', 'medbay', 'solar', 'solar', 'shield', 'repairbay', 'missile', 'relay', 'fabricator', 'laser', 'flak', 'habitat'];
 let placed = 0;
 for (const t of plan) {
@@ -176,7 +176,11 @@ check('invaders die to turrets and units', G.save.stats.invaders > 20);
 /* an outbreak (the bot keeps a medical bay and serum ready) */
 if (!d.buildings.some(b => b.type === 'medbay')) { const s = B.findSpot('medbay'); B.grant('medbay', s.cx, s.cy); }
 d.stock.comp.serum = 10;
-NS.outbreak.seedInfection(d.buildings.find(b => b.type === 'smelter'), 0.4);
+/* patient zero: the staffed building farthest from the medical bay, whatever the site's layout */
+const med = d.buildings.find(b => b.type === 'medbay');
+const zero = d.buildings.filter(b => (b._staff || 0) > 0 && b.type !== 'medbay')
+  .sort((a, b) => Math.hypot(b.x - med.x, b.y - med.y) - Math.hypot(a.x - med.x, a.y - med.y))[0];
+NS.outbreak.seedInfection(zero, 0.4);
 steps(60 * 8);
 const sick = d.buildings.filter(b => b.inf > 0).length;
 steps(60 * 70);
@@ -220,7 +224,7 @@ tough();
 steps(60, 10);
 NS.trip.abort();
 steps(80);
-check('ending the trip clears the snapshot and keeps the outpost', G.screen === 'results' && !G.save.resume && G.save.bases.amber.buildings.length >= 12 && G.save.bases.amber.units.length > 0);
+check('ending the trip clears the snapshot and keeps the outpost', G.screen === 'results' && !G.save.resume && G.save.bases.verdant.buildings.length >= 12 && G.save.bases.verdant.units.length > 0);
 check('the trip report counts the waves', G.ui.results.waves === 0 || G.ui.results.waves >= 0);
 NS.results.leave();
 check('no runtime errors in the career loop', errors === 0);
