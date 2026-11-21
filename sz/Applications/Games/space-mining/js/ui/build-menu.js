@@ -22,21 +22,24 @@
     return { x: x, y: v.y1 - 126, w: Math.min(6 * (TILE + 6) + 14, v.x1 - 410 - x), h: 118 };
   }
 
-  function costLines(cost, stock, wallet) {
+  /* hold (optional): the ship's hold, which covers ore the stock lacks */
+  function costLines(cost, stock, wallet, hold) {
     const out = [];
+    const fromHold = C.fromHold(stock, cost, hold);
     if (cost.cr) out.push(['Credits  ' + NS.kit.group(cost.cr) + '  (have ' + NS.kit.group(wallet.credits) + ')', wallet.credits >= cost.cr ? UI.gold : UI.bad, true]);
     for (const kind of ['ore', 'bar', 'comp'])
       if (cost[kind]) for (const id in cost[kind]) {
         const have = stock[kind][id] || 0;
+        const ship = kind === 'ore' ? fromHold[id] || 0 : 0;
         const name = kind === 'comp' ? COMP_BY_ID[id].name : kind === 'bar' ? ORE_BY_ID[id].bar : ORE_BY_ID[id].name;
-        out.push([cost[kind][id] + ' ' + name + '  (have ' + have + ')', have >= cost[kind][id] ? UI.text : UI.bad]);
+        out.push([cost[kind][id] + ' ' + name + '  (have ' + have + (ship ? ', ' + ship + ' from ship' : '') + ')', have + ship >= cost[kind][id] ? UI.text : UI.bad]);
       }
     return out;
   }
 
   function tipFor(def, b) {
     const cost = C.buildCost(def.id, G.stats);
-    const lines = costLines(cost, b.data.stock, NS.base.wallet());
+    const lines = costLines(cost, b.data.stock, NS.base.wallet(), NS.base.hold());
     lines.push([(def.power > 0 ? '+' + def.power + ' power' : def.power < 0 ? def.power + ' power' : 'No power') + '   ' + (def.crew ? def.crew + ' crew' : 'no crew') +
       '   ' + def.size + 'x' + def.size + '   upkeep ' + def.upkeep + '/cycle', UI.textDim]);
     return { title: def.name, text: def.desc, lines: lines, color: def.color };
@@ -74,7 +77,7 @@
       const x = a.x + 8 + i * (TILE + 6);
       if (x + TILE > a.x + a.w) break;
       const cost = C.buildCost(def.id, G.stats);
-      const ok = C.canAfford(NS.base.wallet(), b.data.stock, cost);
+      const ok = NS.base.affordable(cost);
       const on = c.place === def.id;
       const hot = btn('b_' + def.id, x, y, TILE, TILE, { color: def.color, on: on, action: () => {
         if (c.place === def.id) c.place = null;

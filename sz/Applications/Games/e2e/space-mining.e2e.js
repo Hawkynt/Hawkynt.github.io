@@ -75,6 +75,17 @@ exports.run = async (t) => {
   await t.hit('loadOre');
   t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && G.run.cargoUsed === 10 && !G.base.data.stock.ore.copper'));
   await t.shot('08-packed-ore');
+  /* the stock is empty now: a relay is paid with copper from the ship's hold */
+  const spot = await t.run((NS, G) => {
+    NS.command.startPlace('relay');
+    const s = G.base.site, c = NS.base.findSpot('relay');
+    return NS.camera.toView(s.x0 + (c.cx + 0.5) * s.cell, s.y0 + (c.cy + 0.5) * s.cell, {});
+  });
+  await t.page.mouseMove(0, 0);
+  await t.clickAt(spot.x, spot.y);
+  await t.wait(300);
+  await t.shot('08b-built-from-hold');
+  t.check('a relay is built with copper from the ship\'s hold', await t.state("G.base.data.buildings.some(b => b.type === 'relay') && G.run.cargo.copper === 36"));
   await t.page.key('Tab', 'Tab', 9);
   await t.run((NS, G) => {
     G.ship.x = G.dock.x + 30; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;
@@ -82,7 +93,7 @@ exports.run = async (t) => {
     NS.camera.snap(G.ship.x, G.ship.y);
   });
   await t.wait(500);
-  t.check('the station banks the full unpacked amount', await t.state('G.save.store.ore.copper === 40 && G.run.cargoUsed === 0 && !G.cmd.plan'));
+  t.check('the station banks the full unpacked amount', await t.state('G.save.store.ore.copper === 36 && G.run.cargoUsed === 0 && !G.cmd.plan'));
   await t.hit('dock-home');
   await t.wait(4200);
   await t.shot('09-report');

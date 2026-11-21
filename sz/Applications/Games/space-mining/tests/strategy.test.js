@@ -242,6 +242,28 @@ check('Siege ends in a scored report', G.screen === 'results' && G.ui.results.mo
 G.save.credits = 1e6;
 enter('siege', 3);
 const bd = G.base.data;
+/* an empty stock: building takes the ore from the ship's hold */
+{
+  const hs = B.hub();
+  G.ship.x = hs.x + 900; G.ship.y = hs.y; G.ship.vx = G.ship.vy = 0;
+  G.base.data.stock.ore = {};
+  G.run.cargo = { iron: 9, copper: 3 };
+  NS.mining.refreshCargoSpace();
+  const before = G.base.data.buildings.length;
+  check('a solar array is built from the hold when the stock is empty', build('solar') && G.base.data.buildings.length === before + 1);
+  check('the hold pays only what the stock lacked', G.run.cargo.iron === 5 && !G.run.cargo.copper && G.run.cargoUsed > 0);
+  check('the ore flies over from the ship as cargo pods', G.pods.length >= 2);
+  G.base.data.stock.ore = { iron: 2 };
+  G.run.cargo = { iron: 1 };
+  NS.mining.refreshCargoSpace();
+  check('stock and hold together still have to cover the cost', !build('solar') && G.run.cargo.iron === 1 && G.base.data.stock.ore.iron === 2);
+  /* leave the outpost as the rest of the run expects it */
+  G.base.data.buildings.length = before;
+  G.base.data.stock.ore = {};
+  G.run.cargo = {};
+  NS.mining.refreshCargoSpace();
+  B.refresh();
+}
 bd.stock.ore = { iron: 9000, copper: 9000, ice: 900 };
 bd.stock.bar = { iron: 900, copper: 900, titanium: 900, cobalt: 900, silver: 900 };
 bd.stock.comp = { circuit: 900, alloy: 900 };

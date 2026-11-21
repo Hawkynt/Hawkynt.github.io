@@ -1,8 +1,9 @@
 /* Pure colony rules: the outpost site of each belt (a build grid with seeded ore, gas and
    crystal deposits), the saved outpost shape and its repair, footprints and placement rules,
    the link network from the hub through relays, the power balance, crew assignment, storage,
-   housing and fleet supply, building costs and upgrades, paying from credits and stock, the
-   outpost's value, upkeep, and wave scaling and composition. No DOM, no state access. */
+   housing and fleet supply, building costs and upgrades, paying from credits and stock (the
+   ship's hold covering missing ore), the outpost's value, upkeep, and wave scaling and
+   composition. No DOM, no state access. */
 ;(function() {
   'use strict';
 
@@ -300,27 +301,45 @@
     return UNIT_BY_ID[type].cost;
   }
 
-  /* wallet: { credits } (career save or siege run); stock: { ore, bar, comp } */
-  function missing(wallet, stock, cost) {
+  /* wallet: { credits } (career save or siege run); stock: { ore, bar, comp };
+     hold (optional): the ship's hold by ore id, which covers ore the stock lacks */
+  function missing(wallet, stock, cost, hold) {
     if ((cost.cr || 0) > wallet.credits) return 'credits';
     for (const kind of ['ore', 'bar', 'comp'])
-      if (cost[kind]) for (const id in cost[kind]) if ((stock[kind][id] || 0) < cost[kind][id]) return kind + ':' + id;
+      if (cost[kind]) for (const id in cost[kind]) {
+        const have = (stock[kind][id] || 0) + (kind === 'ore' && hold ? hold[id] || 0 : 0);
+        if (have < cost[kind][id]) return kind + ':' + id;
+      }
     return '';
   }
 
-  function canAfford(wallet, stock, cost) {
-    return !missing(wallet, stock, cost);
+  function canAfford(wallet, stock, cost, hold) {
+    return !missing(wallet, stock, cost, hold);
   }
 
-  function pay(wallet, stock, cost) {
-    if (!canAfford(wallet, stock, cost)) return false;
+  /* The ore the hold has to give because the stock runs short, by ore id */
+  function fromHold(stock, cost, hold) {
+    const out = {};
+    if (!hold || !cost.ore) return out;
+    for (const id in cost.ore) {
+      const n = Math.min(hold[id] || 0, Math.max(0, cost.ore[id] - (stock.ore[id] || 0)));
+      if (n > 0) out[id] = n;
+    }
+    return out;
+  }
+
+  /* Pays from the stock first; returns false, or the ore still owed from the hold (which the
+     caller takes out of the ship) */
+  function pay(wallet, stock, cost, hold) {
+    if (!canAfford(wallet, stock, cost, hold)) return false;
+    const took = fromHold(stock, cost, hold);
     wallet.credits -= cost.cr || 0;
     for (const kind of ['ore', 'bar', 'comp'])
       if (cost[kind]) for (const id in cost[kind]) {
-        stock[kind][id] -= cost[kind][id];
+        stock[kind][id] = (stock[kind][id] || 0) - (cost[kind][id] - (kind === 'ore' ? took[id] || 0 : 0));
         if (!stock[kind][id]) delete stock[kind][id];
       }
-    return true;
+    return took;
   }
 
   function refund(wallet, stock, cost, share) {
@@ -545,7 +564,7 @@
 
   Object.assign(NS.colony, {
     CELL, COLS, ROWS, site, deposits, newBase, repairBases, occupancy, centre, linkRange, links, inReach, canPlace,
-    depositUnder, buildCost, upgradeCost, unitCost, missing, canAfford, pay, refund, levelMul, storageCap, housing,
+    depositUnder, buildCost, upgradeCost, unitCost, missing, canAfford, fromHold, pay, refund, levelMul, storageCap, housing,
     supplyCap, stockCount, stockRoom, buildingPower, power, crewNeed, assignCrew, costValue, baseValue, upkeep, waveInterval,
     waveBudget, isBossWave, composeWave, bestCargo, takeCargo, ORES, ZONES
   });

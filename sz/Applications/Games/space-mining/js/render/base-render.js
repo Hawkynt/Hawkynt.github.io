@@ -403,7 +403,7 @@
     const cell = NS.base.cellAt(w.x, w.y, def.size);
     const chk = C.canPlace(b.data, b.deps, c.place, cell.cx, cell.cy, G.stats);
     const cost = C.buildCost(c.place, G.stats);
-    const afford = C.canAfford(NS.base.wallet(), b.data.stock, cost);
+    const afford = NS.base.affordable(cost);
     const ok = chk.ok && afford;
     const s = b.site;
     const x = s.x0 + cell.cx * s.cell, y = s.y0 + cell.cy * s.cell, S = def.size * s.cell;
@@ -435,7 +435,13 @@
         ctx.setLineDash([]);
       }
     }
-    if (!ok) label(chk.ok ? 'Not enough ' + NS.base.missName(C.missing(NS.base.wallet(), b.data.stock, cost)) : chk.reason, x + S / 2, y - 18, 15, '#ff8a8a');
+    if (!ok) label(chk.ok ? 'Not enough ' + NS.base.missName(NS.base.lack(cost)) : chk.reason, x + S / 2, y - 18, 15, '#ff8a8a');
+    else {
+      const ship = C.fromHold(b.data.stock, cost, NS.base.hold());
+      let n = 0;
+      for (const id in ship) n += ship[id];
+      if (n) label(n + ' ore from the ship\'s hold', x + S / 2, y - 18, 13, '#7cf0ff');
+    }
   }
 
   function distress() {

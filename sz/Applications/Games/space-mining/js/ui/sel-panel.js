@@ -87,9 +87,9 @@
       for (let i = 0; i < def.makes.length; ++i) {
         const u = UNIT_BY_ID[def.makes[i]];
         const p = row(84);
-        const ok = C.canAfford(B.wallet(), b.data.stock, u.cost);
+        const ok = B.affordable(u.cost);
         btn('mk_' + u.id, p.x, p.y, 84, 32, { icon: u.icon, label: u.name.split(' ').pop(), sub: NS.kit.group(u.cost.cr) + ' cr', color: ok ? u.color : UI.textMute, px: 11,
-          action: () => result(B.queueUnit(o, u.id)), tip: { title: u.name, text: u.role, lines: NS.buildMenu.costLines(u.cost, b.data.stock, B.wallet()).concat([[u.supply + ' supply  -  ' + u.build + 's to build', UI.textDim]]), color: u.color } });
+          action: () => result(B.queueUnit(o, u.id)), tip: { title: u.name, text: u.role, lines: NS.buildMenu.costLines(u.cost, b.data.stock, B.wallet(), B.hold()).concat([[u.supply + ' supply  -  ' + u.build + 's to build', UI.textDim]]), color: u.color } });
       }
       if (o.queue && o.queue.length) {
         const p = row(84);
@@ -136,7 +136,7 @@
       if (up) {
         const p = row(92);
         btn('upgrade', p.x, p.y, 92, 32, { icon: 'upgrade', label: 'Upgrade', sub: NS.kit.group(up.cr) + ' cr', px: 12, color: UI.gold,
-          action: () => result(B.upgrade(o)), tip: { title: 'Upgrade to level ' + (o.lvl + 1), text: 'Half again as strong per level.', lines: NS.buildMenu.costLines(up, b.data.stock, B.wallet()) } });
+          action: () => result(B.upgrade(o)), tip: { title: 'Upgrade to level ' + (o.lvl + 1), text: 'Half again as strong per level.', lines: NS.buildMenu.costLines(up, b.data.stock, B.wallet(), B.hold()) } });
       }
     }
     if ((o.inf || 0) > 0.01) {

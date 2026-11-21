@@ -147,6 +147,21 @@ check('missing names the first lack', C.missing(wallet, stock, { cr: 2000 }) ===
 check('pay takes credits and stock', C.pay(wallet, stock, { cr: 200, ore: { iron: 10 } }) && wallet.credits === 800 && !('iron' in stock.ore));
 C.refund(wallet, stock, { cr: 200, ore: { iron: 10 } }, 0.5);
 check('refund gives half back', wallet.credits === 900 && stock.ore.iron === 5);
+/* the ship's hold covers ore the stock lacks: stock first, the hold for the rest */
+{
+  const w = { credits: 1000 };
+  const st = { ore: { iron: 4 }, bar: { iron: 1 }, comp: {} };
+  const hold = { iron: 10, copper: 3 };
+  const cost = { cr: 100, ore: { iron: 9, copper: 2 }, bar: { iron: 1 } };
+  check('missing counts the hold for ore', C.missing(w, st, cost) === 'ore:iron' && C.missing(w, st, cost, hold) === '');
+  check('the hold never stands in for bars', C.missing(w, st, { bar: { iron: 2 } }, { iron: 99 }) === 'bar:iron');
+  check('missing still refuses when stock and hold together fall short', C.missing(w, st, { ore: { iron: 15 } }, hold) === 'ore:iron');
+  check('the split shows what the hold would give', JSON.stringify(C.fromHold(st, cost, hold)) === JSON.stringify({ iron: 5, copper: 2 }));
+  const took = C.pay(w, st, cost, hold);
+  check('pay spends the stock first and the hold for the shortfall', took && took.iron === 5 && took.copper === 2 && !('iron' in st.ore) && w.credits === 900 && !('iron' in st.bar));
+  check('pay leaves the hold alone (the caller empties it)', hold.iron === 10 && hold.copper === 3);
+  check('pay without the hold refuses as before', C.pay({ credits: 0 }, { ore: {}, bar: {}, comp: {} }, { ore: { iron: 1 } }, { iron: 0 }) === false);
+}
 check('upgrades cost more each level and stop at 3', C.upgradeCost({ type: 'laser', lvl: 2 }, stats).cr > C.upgradeCost({ type: 'laser', lvl: 1 }, stats).cr && C.upgradeCost({ type: 'laser', lvl: 3 }, stats) === null);
 
 /* the market cycle for outposts */

@@ -3,8 +3,8 @@
    placing, upgrading, demolishing, quarantining, sterilising and purging buildings,
    construction (two sites at a time), the link network, crew, power and production refreshed
    on a short beat, infection and corruption, turrets (rogue ones fire on you), shield domes,
-   repair bays, factory queues, the trade depot, unloading the ship at the hub, damage and the
-   loss of the hub, cargo pods and alerts. Owns G.base and G.pods. */
+   repair bays, factory queues, the trade depot, unloading the ship at the hub, paying from
+   the ship's hold, damage and the loss of the hub, cargo pods and alerts. Owns G.base and G.pods. */
 ;(function() {
   'use strict';
 
@@ -24,6 +24,25 @@
 
   function wallet() {
     return G.run && G.run.mode === 'siege' ? G.run : G.save;
+  }
+
+  /* The ship's hold covers ore the outpost stock lacks (null without a ship in flight) */
+  const hold = () => G.run && G.ship && G.ship.alive ? G.run.cargo : null;
+  const lack = cost => C.missing(wallet(), G.base.data.stock, cost, hold());
+  const affordable = cost => !lack(cost);
+
+  /* Pays a cost from the stock, the hold covering the rest; ore from the hold flies over as pods */
+  function spend(cost, tx, ty) {
+    const took = C.pay(wallet(), G.base.data.stock, cost, hold());
+    if (!took) return false;
+    let units = 0, k = 0;
+    for (const id in took) {
+      NS.mining.changeCargo(id, -took[id]);
+      units += took[id];
+      if (G.ship && tx != null) pod(G.ship.x, G.ship.y, tx, ty, ORE_BY_ID[id].color, 0.1 * k++);
+    }
+    if (units && G.ship) NS.fx.text(G.ship.x, G.ship.y - 40, units + ' FROM HOLD', '#7cf0ff', 16, 1.4);
+    return true;
   }
 
   /* The site of a belt for this trip (before the rocks are laid out, so they keep clear) */
@@ -100,10 +119,10 @@
     const chk = C.canPlace(b.data, b.deps, type, cx, cy, G.stats);
     if (!chk.ok) return chk;
     const cost = C.buildCost(type, G.stats);
-    const miss = C.missing(wallet(), b.data.stock, cost);
+    const miss = lack(cost);
     if (miss) return { ok: false, reason: 'Not enough ' + missName(miss) };
-    C.pay(wallet(), b.data.stock, cost);
     const def = BUILDING_BY_ID[type];
+    spend(cost, b.site.x0 + (cx + def.size / 2) * b.site.cell, b.site.y0 + (cy + def.size / 2) * b.site.cell);
     const rec = { id: b.data.nextId++, type: type, cx: cx, cy: cy, lvl: 1, hp: def.hp, prog: 0, inf: 0, cor: 0, rogue: false, quarantine: false };
     if (type === 'fabricator') rec.recipe = 'auto';
     if (def.makes) rec.queue = [];
@@ -183,9 +202,9 @@
     const b = G.base;
     const cost = C.upgradeCost(rec, G.stats);
     if (!cost || rec.prog < 1 || rec.rogue) return { ok: false, reason: cost ? 'Busy' : 'Fully upgraded' };
-    const miss = C.missing(wallet(), b.data.stock, cost);
+    const miss = lack(cost);
     if (miss) return { ok: false, reason: 'Not enough ' + missName(miss) };
-    C.pay(wallet(), b.data.stock, cost);
+    spend(cost, rec.x, rec.y);
     rec.lvl += 1;
     rec.prog = 0.4;
     const k = rec.hp / rec.maxHp;
@@ -265,9 +284,9 @@
     if (rec.prog < 1 || rec.rogue) return { ok: false, reason: 'Factory offline' };
     if (rec.queue.length >= 6) return { ok: false, reason: 'Queue full' };
     if (supplyUsed() + def.supply > C.supplyCap(b.data, G.stats)) return { ok: false, reason: 'Not enough fleet supply - build habitats' };
-    const miss = C.missing(wallet(), b.data.stock, def.cost);
+    const miss = lack(def.cost);
     if (miss) return { ok: false, reason: 'Not enough ' + missName(miss) };
-    C.pay(wallet(), b.data.stock, def.cost);
+    spend(def.cost, rec.x, rec.y);
     rec.queue.push(type);
     return { ok: true };
   }
@@ -768,7 +787,7 @@
   }
 
   Object.assign(NS.base, {
-    wallet, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, upgradePress, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
+    wallet, hold, lack, affordable, spend, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, upgradePress, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
     setRecipe, queueUnit, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, ZONES
   });
 })();
