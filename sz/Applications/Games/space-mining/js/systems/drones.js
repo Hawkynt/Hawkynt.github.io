@@ -237,12 +237,46 @@
     }
   }
 
+  function loaded(d) {
+    return d.alive && d.load > 0 && d.ore;
+  }
+
+  function fleetMiner(u) {
+    return u.side === 'player' && u.type === 'miner';
+  }
+
+  function hasCargo() {
+    return G.drones.some(loaded) || G.units.some(u => fleetMiner(u) && loaded(u));
+  }
+
+  /* Station docking settles every friendly mining basket without using the ship's hold. */
+  function settleAtDock() {
+    const hub = NS.base.cargoHub();
+    let units = 0;
+    const settle = (d) => {
+      if (!loaded(d)) return false;
+      units += d.load;
+      if (hub && distanceSquared(d, hub) < distanceSquared(d, G.dock)) deliver(d, hub);
+      if (d.load) deliver(d, G.dock);
+      return true;
+    };
+    for (const d of G.drones) {
+      if (settle(d) && d.state !== 'docked') d.state = G.run.dronesOut ? 'seek' : 'return';
+    }
+    for (const u of G.units) {
+      if (!fleetMiner(u) || !settle(u)) continue;
+      u.job = 'idle';
+      u.rock = null;
+    }
+    return units;
+  }
+
   /* drones still carrying ore when the trip ends hand it over if there is room */
   function flush() {
     for (let i = 0; i < G.drones.length; ++i) if (G.drones[i].alive && G.drones[i].load) unload(G.drones[i]);
   }
 
   Object.assign(NS.drones, {
-    setup, toggle, update, hurt, blast, flush, capacity, sweep, destination, deliveryRange, deliver
+    setup, toggle, update, hurt, blast, flush, hasCargo, settleAtDock, capacity, sweep, destination, deliveryRange, deliver
   });
 })();

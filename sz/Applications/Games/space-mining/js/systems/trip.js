@@ -214,7 +214,7 @@
     if (dd > DOCK_R * 3) run.leftDock = true;
     const sp = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
     run.docked = dd < DOCK_R * 1.2;
-    if (run.leftDock && dd < DOCK_R && sp < DOCK_SPEED && !G.cine) {
+    if (dd < DOCK_R && sp < DOCK_SPEED && !G.cine && (run.leftDock || NS.drones.hasCargo())) {
       if (run.mode !== 'career') quickSell();
       else deposit();
     }
@@ -262,14 +262,15 @@
   /* Gold Rush and Daily: docking sells the hold on the spot at standard prices */
   function quickSell() {
     const run = G.run;
-    let v = 0;
-    for (const id in run.cargo) v += run.cargo[id] * ORE_BY_ID[id].value;
-    if (v <= 0) return;
-    run.sold += v;
-    if (run.mode === 'siege') run.credits += v;
+    const sold = run.sold;
+    const droneUnits = NS.drones.settleAtDock();
+    for (const id in run.cargo) bank(id, run.cargo[id]);
+    const v = run.sold - sold;
+    if (!v && !droneUnits) return;
     run.cargo = {};
     run.cargoUsed = 0;
     run.leftDock = false;
+    if (!v) return;
     NS.fx.text(G.dock.x, G.dock.y - 80, 'SOLD +' + v, '#ffd25a', 28, 1.6);
     NS.fx.ring(G.dock.x, G.dock.y, 40, 260, 0.6, '#ffd25a', 8);
     NS.audio.sfx('coin', { volume: 0.8 });
@@ -300,6 +301,8 @@
      the usual service fee, and the flight goes on */
   function deposit() {
     const run = G.run, s = G.ship, save = G.save;
+    const banked = run.bankedUnits;
+    const droneUnits = NS.drones.settleAtDock();
     let n = 0;
     const full = run.cargoUsed >= run.cargoMax - 0.5;
     for (const id in run.cargo) {
@@ -307,7 +310,8 @@
       if (k > 0) n += bank(id, k);
     }
     const fuelMissing = s.maxFuel - s.fuel, hullMissing = s.maxHull - s.hull;
-    if (!n && fuelMissing < 1 && hullMissing < 1) return;
+    if (!n && !droneUnits && fuelMissing < 1 && hullMissing < 1) return;
+    const total = run.bankedUnits - banked;
     run.cargo = {};
     run.cargoUsed = 0;
     run.leftDock = false;
@@ -317,11 +321,12 @@
     run.service = (run.service || 0) + fee;
     s.fuel = s.maxFuel;
     s.hull = s.maxHull;
-    NS.fx.text(G.dock.x, G.dock.y - 80, n ? 'BANKED ' + n + ' ORE' : 'SERVICED', '#ffd25a', 28, 1.6);
+    if (total || fee || fuelMissing >= 1 || hullMissing >= 1)
+      NS.fx.text(G.dock.x, G.dock.y - 80, total ? 'BANKED ' + total + ' ORE' : 'SERVICED', '#ffd25a', 28, 1.6);
     if (fee) NS.fx.text(G.dock.x, G.dock.y - 46, 'service -' + fee + ' cr', '#ffb347', 16, 1.6);
     NS.fx.ring(G.dock.x, G.dock.y, 40, 260, 0.6, '#ffd25a', 8);
     NS.audio.sfx('coin', { volume: 0.8 });
-    if (n) NS.screens.toast('Hold banked at the station - keep mining, or return home to end the trip', '#ffd25a');
+    if (total) NS.screens.toast('Ore banked at the station - keep mining, or return home to end the trip', '#ffd25a');
     NS.resume.save();
     NS.save.writeSave();
   }
@@ -449,7 +454,8 @@
   function endTrip(reason) {
     const run = G.run;
     if (!run) return;
-    NS.drones.flush();
+    if (reason === 'dock') NS.drones.settleAtDock();
+    else NS.drones.flush();
     NS.base.sync();
     NS.resume.clear();
     const save = G.save;

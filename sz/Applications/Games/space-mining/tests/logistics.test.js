@@ -128,4 +128,46 @@ const oversized = NS.mining.spawnNugget(ship.x + 1, ship.y - 1, 'iron', 40);
 oversized.age = 1;
 NS.mining.update(0);
 check('a large Fortune drop fills the hold and leaves the remainder', G.run.cargo.iron === 8 && oversized.alive && oversized.units === 32);
+/* Dock with an empty hold and baskets already on their way elsewhere. */
+G.run.cargo = {};
+NS.mining.refreshCargoSpace();
+G.run.dronesOut = false;
+G.run.leftDock = false;
+ship.x = G.dock.x;
+ship.y = G.dock.y;
+ship.vx = ship.vy = 0;
+ship.fuel = ship.maxFuel;
+ship.hull = ship.maxHull;
+G.base.data.blockRank = 0;
+stock.ore = { iron: cap - 2 };
+stock.bar = {};
+const fleet = NS.units.spawn('miner', hub.x, hub.y, 'player');
+Object.assign(fleet, { load: 5, ore: 'iron', job: 'haul' });
+Object.assign(drone, { x: G.dock.x + 150, y: G.dock.y, ore: 'copper', load: 7, state: 'docked' });
+const stationIron = G.save.store.ore.iron;
+const bankedBefore = G.run.bankedUnits;
+NS.trip.update(0);
+check('station landing transfers recalled and fleet drone baskets immediately',
+  !drone.load && !fleet.load && fleet.job === 'idle' && stock.ore.iron === cap &&
+  G.save.store.ore.iron === stationIron + 3 && G.save.store.ore.copper === 7);
+NS.trip.update(0);
+check('remaining at the station does not bank the same baskets twice', G.run.bankedUnits === bankedBefore + 10);
+
+/* Return Home must settle baskets even with a full ship hold. */
+Object.assign(drone, { x: G.dock.x, y: G.dock.y, ore: 'copper', load: 9, state: 'haul' });
+G.run.cargoUsed = G.run.cargoMax;
+NS.trip.endTrip('dock');
+check('Return Home banks drone cargo directly and includes it in the report',
+  !drone.load && G.save.store.ore.copper === 16 && G.ui.results.hold.copper === 16);
+
+NS.trip.startTrip('rush', 0);
+G.cine = null;
+G.ship.x = G.dock.x;
+G.ship.y = G.dock.y;
+G.ship.vx = G.ship.vy = 0;
+Object.assign(drone, { x: G.dock.x + 150, y: G.dock.y, ore: 'gold', load: 6, state: 'haul' });
+G.drones.push(drone);
+NS.trip.update(0);
+check('Gold Rush sells the drone basket on landing without warehouse deposits',
+  !drone.load && G.run.sold === NS.ores.ORE_BY_ID.gold.value * 6 && !G.save.store.ore.gold);
 done();

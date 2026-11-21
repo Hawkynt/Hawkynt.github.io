@@ -52,13 +52,15 @@ exports.run = async (t) => {
   await t.run((NS, G) => { G.input.keys.Space = false; });
   await t.run((NS, G) => {
     const s = G.ship;
+    NS.drones.setup(Object.assign({}, G.stats, { drones: 1 }));
+    Object.assign(G.drones[0], { x: G.dock.x + 1000, y: G.dock.y, ore: 'iron', load: 7, state: 'haul' });
     G.run.cargo = { iron: 10, gold: 3 }; G.run.cargoUsed = 13; G.run.leftDock = true;
     s.x = G.dock.x + 30; s.y = G.dock.y; s.vx = s.vy = 0;
     NS.camera.snap(s.x, s.y);
   });
   await t.wait(700);
   await t.shot('07-docked-banked');
-  t.check('docking banks the hold and keeps the trip going', await t.state("G.screen === 'playing' && G.run && G.run.bankedUnits === 13 && G.hitAreas.some(a => a.id === 'dock-home')"));
+  t.check('docking banks the hold and remote drone basket immediately', await t.state("G.screen === 'playing' && G.run && G.run.bankedUnits === 20 && !G.drones[0].load && G.hitAreas.some(a => a.id === 'dock-home')"));
   await t.run((NS, G) => {
     const h = NS.base.grant('hub', G.base.site.hubX, G.base.site.hubY);
     G.base.data.stock.ore = { copper: 40 };
@@ -84,5 +86,5 @@ exports.run = async (t) => {
   await t.hit('dock-home');
   await t.wait(4200);
   await t.shot('09-report');
-  t.check('Return home ends the trip with the report', await t.state("G.screen === 'results' && G.ui.results.hold.iron === 10"));
+  t.check('Return home ends the trip with the report', await t.state("G.screen === 'results' && G.ui.results.hold.iron === 17"));
 };
