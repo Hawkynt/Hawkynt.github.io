@@ -166,7 +166,7 @@
   function nodeText(n, lvl) {
     const v = n.per * lvl;
     if (n.stat === 'blockRank') {
-      const names = ['Block', 'Compressed Block', 'Double Compressed Block', 'Triple Compressed Block'];
+      const names = ['Block', 'Compressed Block', 'Double Compressed Block', 'Triple Compressed Block', 'Quadruple Compressed Block', 'Quintuple Compressed Block'];
       return n.fmt.replace('{block}', names[lvl - 1]).replace('{size}', String(blockSize({ blockRank: lvl })));
     }
     return n.fmt.replace('{p}', String(Math.round(v * 100))).replace('{v}', String(Math.round(v * 100) / 100));

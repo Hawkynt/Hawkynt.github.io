@@ -47,7 +47,7 @@
     { id: 'l_tractor', branch: 'logistics', name: 'Graviton Coils', icon: 'tractor', row: 0, lane: 1, stat: 'tractorMul', per: 0.2, fmt: '+{p}% tractor reach', costs: [2, 4, 7, 10], req: [] },
     { id: 'l_compress', branch: 'logistics', name: 'Ore Compactor', icon: 'compress', row: 1, lane: 0, stat: 'compress', per: 1, fmt: 'Iron, ice and copper take half the space', costs: [9], req: [['l_hold', 2]] },
     { id: 'l_broker', branch: 'logistics', name: 'Broker Network', icon: 'trade', row: 1, lane: 1, stat: 'priceMul', per: 0.04, fmt: '+{p}% sale prices', costs: [3, 5, 8, 12], req: [['l_tractor', 1]] },
-    { id: 'l_blocks', branch: 'logistics', name: 'Block Press', icon: 'compress', row: 3, lane: 0, stat: 'blockRank', per: 1, fmt: '{block}: {size} units of one material per slot', costs: [8, 16, 28, 44], req: [['l_compress', 1]] },
+    { id: 'l_blocks', branch: 'logistics', name: 'Block Press', icon: 'compress', row: 3, lane: 0, stat: 'blockRank', per: 1, fmt: '{block}: {size} units of one material per slot', costs: [8, 16, 28, 44, 64, 88], req: [['l_compress', 1]] },
     { id: 'l_contract', branch: 'logistics', name: 'Contract Office', icon: 'contract', row: 2, lane: 0.5, stat: 'contracts', per: 1, fmt: '+{v} contract slot, +15% contract pay per level', costs: [6, 12], req: [['l_compress', 1], ['l_broker', 1]] },
 
     /* Automation */

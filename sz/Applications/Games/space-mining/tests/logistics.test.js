@@ -45,18 +45,24 @@ check('a full nearby hub sends a whole basket to the station', NS.drones.destina
 deliverFrom(G.dock, 2);
 check('station fallback banks all overflow', G.save.store.ore.iron === 10 && !drone.load);
 
-for (let rank = 1; rank <= 4; ++rank) {
-  G.save.tree.l_blocks = rank;
+G.save.tree.l_hold = 2;
+G.save.tree.l_compress = 1;
+G.save.rd = 500;
+for (let rank = 1; rank <= 6; ++rank) {
+  check('Block Press rank ' + rank + ' can be researched', NS.rules.buyNode(G.save, 'l_blocks'));
   NS.trip.refreshFlightStats();
   const units = 4 ** rank;
   stock.ore = { iron: units, copper: units + 1 };
   stock.bar = { iron: units };
   check('rank ' + rank + ' packs by material and keeps partial blocks',
     NS.colony.stockCount(stock, G.stats) === 4 &&
-    NS.mining.cargoSpace('iron', units) === 1 && NS.drones.capacity(4) === 4 * units);
+    NS.mining.cargoSpace('iron', units) === 0.5 && NS.drones.capacity(4) === 4 * units);
+  const node = NS.treeData.TREE_BY_ID.l_blocks;
+  check('rank ' + rank + ' displays its capacity', NS.rules.nodeText(node, rank).includes(units + ' units'));
 }
 
 G.save.tree.l_blocks = 1;
+G.save.tree.l_compress = 0;
 NS.trip.refreshFlightStats();
 G.run.cargo = {};
 NS.mining.refreshCargoSpace();
