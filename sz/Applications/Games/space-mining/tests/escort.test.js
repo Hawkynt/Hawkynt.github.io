@@ -240,7 +240,7 @@ NS.trip.endTrip('dock');
 
 /* ── supply freighters ── */
 const SU = NS.supply;
-check('three supply packs: iron, copper and a builder\'s mix', SU.PACKS.length === 3 && SU.PACKS.map(k => k.id).join() === 'iron,copper,mix');
+check('four supply packs: iron, copper, a builder\'s mix and parts', SU.PACKS.length === 4 && SU.PACKS.map(k => k.id).join() === 'iron,copper,mix,parts');
 const priceIron = SU.packPrice(G.save, G.stats, SU.PACK_BY_ID.iron);
 check('a pack costs the station\'s supply prices plus the freight fee', priceIron === SU.FREIGHT_FEE + SU.PACK_BY_ID.iron.load.bar.iron * SU.buyPrice(G.save, G.stats, 'bar', 'iron') +
   SU.PACK_BY_ID.iron.load.ore.iron * SU.buyPrice(G.save, G.stats, 'ore', 'iron'));
@@ -276,6 +276,26 @@ check('a shipment counts toward no operation', !G.run.op);
 const store0 = G.save.store.bar.iron || 0, storeIce = G.save.store.ore.ice || 0;
 NS.trip.endTrip('dock');
 check('a shipment still on its way at the end of the trip puts its load into the warehouse', (G.save.store.bar.iron || 0) === store0 + 4 && (G.save.store.ore.ice || 0) === storeIce + 20);
+
+/* operations chain within one trip */
+{
+  for (const id of ['a_first', 'a_long', 'a_storm', 'a_twin', 'a_wing']) NS.ops.finish(G.save, OP_BY_ID[id], true, 60);
+  launch('a_convoy');
+  G.run.op.delivered = 2;
+  steps(2);
+  check('a won operation names the next one of the belt', G.run.op.status === 'won' && G.run.op.nextId === 'a_three');
+  steps(60 * (NS.operation.NEXT_IN + 1));
+  check('which starts in the same trip after a breather', G.run.op.id === 'a_three' && G.run.op.status === 'active' && G.freighters.length === 3);
+  G.run.op.lost = 5;
+  steps(2);
+  check('a failed one is the next one again', G.run.op.status === 'failed' && G.run.op.nextId === 'a_three');
+  steps(60 * (NS.operation.NEXT_IN + 1));
+  check('and starts over in the same trip', G.run.op.id === 'a_three' && G.run.op.status === 'active' && G.run.op.lost === 0);
+  const tries = G.save.ops.a_three.tries;
+  NS.trip.endTrip('dock');
+  check('going home leaves an operation that started on its own unfailed', G.save.ops.a_three.tries === tries && G.ui.results.op.id === 'a_convoy' &&
+    G.ui.results.op.status === 'won');
+}
 
 /* drawing */
 launch('a_three');

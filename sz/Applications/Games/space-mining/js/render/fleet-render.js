@@ -129,6 +129,33 @@
     ctx.stroke();
   }
 
+  /* a Syndicate structure: scaffolding while it goes up, spores rotting it, a hijack's glow */
+  function syndicate(e) {
+    if (e.built < 1) {
+      ctx.strokeStyle = 'rgba(255,180,74,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(e.x - e.r, e.y - e.r, e.r * 2, e.r * 2);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ffb44a';
+      ctx.fillRect(e.x - e.r, e.y + e.r + 4, e.r * 2 * e.built, 3);
+    }
+    if (e.sporeT > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.35 + Math.sin(G.time * 4 + e.id) * 0.15;
+      K.blit(ctx, K.glow('#9ae04a'), e.x, e.y, e.r / 20);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    if (e.hijackT > 0) {
+      ctx.strokeStyle = K.rgba('#3affd0', 0.5 + Math.sin(G.time * 8) * 0.3);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r + 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   function drawEnemies() {
     const tint = G.run && G.run.zone ? G.run.zone.theme.accent : null;
     for (let i = 0; i < G.enemies.length; ++i) {
@@ -159,8 +186,13 @@
         K.blit(ctx, K.glow(d.color), e.x - Math.cos(e.angle) * e.r, e.y - Math.sin(e.angle) * e.r, d.boss ? 1.6 : e.r / 26);
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'source-over';
-        K.blitRot(ctx, FA.enemy(e.type, d.boss ? tint : null), e.x, e.y, e.angle, 1, 1 - Math.abs(e.bank) * 0.12);
+        /* an unseen Stalker is a faint shimmer; a structure going up is see-through */
+        if (d.cloaked && !(e.seenT > 0)) ctx.globalAlpha = 0.14 + Math.sin(G.time * 11 + e.id) * 0.05;
+        else if (d.structure && e.built < 1) ctx.globalAlpha = 0.45 + e.built * 0.4;
+        K.blitRot(ctx, FA.enemy(e.type, d.boss ? tint : null), e.x, e.y, d.structure && !d.dmg ? 0 : e.angle, 1, 1 - Math.abs(e.bank) * 0.12);
+        ctx.globalAlpha = 1;
       }
+      if (d.structure) syndicate(e);
       if (e.flash > 0) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = e.flash * (d.boss ? 1.5 : 8);

@@ -2,7 +2,8 @@
    watch at the start, lays out the specials it needs, checks the objectives every step, runs
    its clock, sends pirates at the pace of the director (the beat of its timeline and the
    tension from the hull lost and the threats round the ship; in an escort round a freighter),
-   counts the freighters delivered and lost, forces the storm an operation asks for and pays
+   counts the freighters delivered and lost, sets out the Syndicate's bases, forces the storm an
+   operation asks for and pays
    its reward the moment it is won. A won or failed operation leaves the trip running as free mining; returning home
    settles one still running. Owns G.run.op. */
 ;(function() {
@@ -17,12 +18,16 @@
   const PC = NS.pacing;
   const R = NS.rng.fx;
 
+  /* seconds between a decided operation and the next one starting in the same trip */
+  const NEXT_IN = 10;
+
   const WHY = {
     time: 'The clock ran out - the trip goes on',
     lost: 'The ship was lost',
     home: 'You returned home before it was done',
     convoy: 'Too many freighters were lost',
     outpost: 'The outpost fell',
+    escaped: 'Too many haulers got away',
   };
 
   function def() {
@@ -44,6 +49,7 @@
       else if (kind === 'geode' || kind === 'derelict') for (let i = 0; i < op.force[kind]; ++i) NS.trip.addSpecial(kind, R, true);
     }
     if (op.convoy) NS.freighters.setup(op);
+    if (op.syndicate) NS.aiBase.setup(op);
     /* an outpost already standing takes the operation's wave pace at once */
     if (op.waves && G.base && NS.base.claimed()) NS.waves.arm(true);
     return run.op;
@@ -65,7 +71,8 @@
   function measured(o, extra) {
     const run = G.run;
     const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base, delivered: o.delivered || 0,
-      waves: run.waves || 0, clean: o.seeded && !!(G.base && NS.base.hub()) && !infected() };
+      waves: run.waves || 0, clean: o.seeded && !!(G.base && NS.base.hub()) && !infected(),
+      razed: run.razed || {}, scouted: NS.aiBase.scouted(), repelled: NS.aiBase.repelled() };
     outpost(m);
     if (extra) {
       m.units += extra.units;
@@ -108,9 +115,32 @@
     return h;
   }
 
+  /* the belt's next open operation (or a failed one again), for a trip that goes on */
+  function upNext() {
+    const run = G.run;
+    if (!run || run.mode !== 'career') return null;
+    const list = O.zoneOps(run.zone.id);
+    for (let i = 0; i < list.length; ++i) if (O.state(G.save, list[i].id) === 'open') return list[i];
+    return null;
+  }
+
+  /* a decided operation hands over to the next one in the same trip after a short breather */
+  function chain(o, dt) {
+    if (o.why === 'lost' || G.run.ending) return;
+    const next = upNext();
+    if (!next) return;
+    o.nextId = next.id;
+    o.nextT = (o.nextT === undefined ? NEXT_IN : o.nextT) - dt;
+    if (o.nextT > 0) return;
+    start(next.id);
+    G.run.op.chained = true;
+    NS.trip.banner('NEXT OPERATION', next.name + ' - ' + next.goals[0].text, MOODS[next.mood].color);
+  }
+
   function update(dt) {
     const o = G.run && G.run.op;
-    if (!o || o.status !== 'active') return;
+    if (o && o.status !== 'active') { chain(o, dt); return; }
+    if (!o) return;
     const op = OP_BY_ID[o.id];
     o.t += dt;
     const s = G.ship;
@@ -133,7 +163,8 @@
       PC.track(o.pace, { hullLost: lost, threats: threats(op), cap: op.threat ? op.threat.cap : op.waves ? 24 : 8 }, dt);
     }
     if (op.waves) outbreaks(op, o, dt);
-    if (op.waves && o.hadHub && !NS.base.hub()) return fail('outpost');
+    if (((op.waves && !op.waves.off) || op.keep) && o.hadHub && !NS.base.hub()) return fail('outpost');
+    if (op.syndicate && op.syndicate.escape && NS.aiBase.escapedCount() >= op.syndicate.escape) return fail('escaped');
     if (O.complete(op, measured(o))) return win();
     if (op.convoy && (o.lost || 0) > op.convoy.loss) return fail('convoy');
     if (op.time && o.t >= op.time) return fail('time');
@@ -163,11 +194,17 @@
     }
   }
 
-  /* the wave pace of the running operation (null without one) */
+  /* the wave pace of the running operation (null without one); off: no waves at all */
   function waveCfg() {
     const o = G.run && G.run.op;
     const op = o && o.status === 'active' ? OP_BY_ID[o.id] : null;
     return op && op.waves ? op.waves : null;
+  }
+
+  /* the pace for the outpost's wave clock: none when the operation sets none or turns them off */
+  function wavePace() {
+    const c = waveCfg();
+    return c && !c.off ? c : null;
   }
 
   /* the pirates the director sends: each beat sets the pace, a peak or a surprise brings the
@@ -216,6 +253,8 @@
     o.status = 'won';
     const r = O.finish(G.save, op, true, o.t);
     o.first = r.first;
+    G.run.cleared = (G.run.cleared || 0) + 1;
+    G.run.lastOp = report(o, op);
     NS.trip.banner('OPERATION COMPLETE', op.name + (r.first ? ' - reward paid' : ''), MOODS.E.color);
     NS.audio.sfx('levelup', { volume: 0.7 });
     NS.music.cue('win');
@@ -228,7 +267,7 @@
     o.why = why;
     O.finish(G.save, op, false, o.t);
     NS.music.cue('lose');
-    if (why === 'time' || why === 'convoy') NS.trip.banner('OPERATION FAILED', WHY[why], MOODS.W.color);
+    if (why === 'time' || why === 'convoy' || why === 'escaped') NS.trip.banner('OPERATION FAILED', WHY[why], MOODS.W.color);
     NS.save.writeSave();
   }
 
@@ -239,13 +278,19 @@
     const op = OP_BY_ID[o.id];
     if (o.status === 'active') {
       if (reason !== 'destroyed' && O.complete(op, measured(o, { hold: hold, units: units }))) win();
+      /* one that started on its own after another was decided is simply left for the next trip */
+      else if (o.chained && reason !== 'destroyed' && G.run.lastOp) return Object.assign({ cleared: G.run.cleared || 1 }, G.run.lastOp);
       else fail(reason === 'destroyed' ? 'lost' : 'home');
     }
+    return report(o, op);
+  }
+
+  function report(o, op) {
     return { id: o.id, name: op.name, mood: op.mood, status: o.status, why: WHY[o.why] || '', first: o.first, reward: o.first ? op.reward : null,
-      convoy: op.convoy ? { delivered: o.delivered || 0, lost: o.lost || 0, paid: o.paid || 0 } : null };
+      convoy: op.convoy ? { delivered: o.delivered || 0, lost: o.lost || 0, paid: o.paid || 0 } : null, cleared: G.run.cleared || 0 };
   }
 
   Object.assign(NS.operation, {
-    WHY, def, start, progress, update, settle, waveCfg
+    WHY, NEXT_IN, def, start, progress, update, settle, waveCfg, wavePace, upNext
   });
 })();

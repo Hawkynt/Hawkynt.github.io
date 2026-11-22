@@ -39,6 +39,10 @@
       cost: { cr: 600, bar: { titanium: 4 }, comp: { alloy: 1 } }, aggro: 560, color: '#e0e8ff', role: 'Long-range rail gun for armour; Overcharge pierces a whole line' },
     { id: 'bulwark', dtype: 'explosive', name: 'Bulwark', from: 'shipyard', icon: 'turret', hp: 520, speed: 110, r: 22, range: 640, dmg: 60, rof: 3.4, splash: 80, supply: 4, build: 22, licence: 'crimson', ability: 'barrage',
       cost: { cr: 760, bar: { iron: 6, titanium: 4 }, comp: { alloy: 2 } }, aggro: 660, color: '#ff8a5a', role: 'Siege artillery for structures and heavies; Barrage shells an area' },
+    { id: 'sporecaster', dtype: '', name: 'Sporecaster', from: 'medbay', icon: 'serum', hp: 200, speed: 170, r: 15, range: 0, dmg: 0, rof: 0, supply: 3, build: 18, licence: 'crimson', ability: 'spores',
+      cost: { cr: 640, ore: { ice: 10 }, bar: { silver: 2 }, comp: { serum: 1 } }, color: '#9ae04a', role: 'Seeds Bloom spores into enemy structures - they rot and stall' },
+    { id: 'spike', dtype: '', name: 'Spike', from: 'lab', icon: 'glitch', hp: 160, speed: 230, r: 13, range: 0, dmg: 0, rof: 0, supply: 2, build: 16, licence: 'crimson', ability: 'hijack',
+      cost: { cr: 580, bar: { copper: 3 }, comp: { circuit: 2 } }, color: '#3affd0', role: 'Hijacks an enemy tower and turns its guns on its makers' },
   ];
   /* abilities: cooldown (s), duration (s) and their numbers; auto: cast on its own by default */
   const ABILITIES = {
@@ -48,6 +52,8 @@
     cloak: { name: 'Cloak', icon: 'glitch', cd: 26, dur: 8, radius: 230, auto: true, desc: 'Invaders lose it and the allies around it' },
     overcharge: { name: 'Overcharge', icon: 'crosshair', cd: 15, mul: 2, length: 900, width: 26, auto: true, desc: 'Its next shot pierces everything on a line' },
     barrage: { name: 'Barrage', icon: 'blast', cd: 24, shells: 6, spread: 120, every: 0.45, auto: true, desc: 'Six shells on the target area' },
+    spores: { name: 'Spores', icon: 'serum', cd: 30, reach: 520, radius: 200, dur: 14, rot: 0.02, jump: 260, auto: true, desc: 'Infects the enemy structures round its target' },
+    hijack: { name: 'Hijack', icon: 'glitch', cd: 35, reach: 420, dur: 20, auto: true, desc: 'Turns the nearest enemy tower or battery for twenty seconds' },
   };
   const UNIT_BY_ID = {};
   for (let i = 0; i < UNITS.length; ++i) {
@@ -67,6 +73,20 @@
     { id: 'nanoswarm', armour: 'swarm', name: 'Nanoprobe Swarm', faction: 'lattice', hp: 80, speed: 160, r: 16, range: 22, dmg: 0, rof: 0.6, pts: 6, target: 'buildings', loot: 20, corrupt: 0.18, color: '#3affd0' },
     { id: 'nanodrone', armour: 'light', name: 'Lattice Drone', faction: 'lattice', hp: 50, speed: 260, r: 10, range: 180, dmg: 5, rof: 0.6, pts: 2, target: 'units', loot: 8, corrupt: 0.04, color: '#3affd0' },
     { id: 'hive', armour: 'structure', name: 'Hive Nest', faction: 'alien', hp: 900, speed: 0, r: 46, range: 560, dmg: 0, rof: 4.5, pts: 0, target: 'static', loot: 120, spawns: 'swarmer', jelly: 8, color: '#ff8ae0' },
+    /* the Syndicate: units, then its structures (structure: built and standing, income from
+       harvesters, reach from relays, shields from pylons; capital: the Citadel) */
+    { id: 'syn_fighter', armour: 'light', name: 'Syndicate Fighter', faction: 'syndicate', hp: 110, speed: 290, r: 15, range: 230, dmg: 8, rof: 0.9, pts: 3, target: 'units', loot: 30, color: '#ff6a4a' },
+    { id: 'juggernaut', armour: 'armoured', name: 'Juggernaut', faction: 'syndicate', hp: 1700, speed: 70, r: 34, range: 380, dmg: 34, rof: 2.2, pts: 14, target: 'buildings', loot: 300, color: '#c84a3a' },
+    { id: 'stalker', armour: 'light', name: 'Stalker', faction: 'syndicate', hp: 170, speed: 270, r: 14, range: 200, dmg: 14, rof: 1.2, pts: 5, target: 'units', loot: 50, cloaked: true, color: '#9a6a8a' },
+    { id: 'hauler', armour: 'armoured', name: 'Syndicate Hauler', faction: 'syndicate', hp: 600, speed: 85, r: 28, range: 0, dmg: 0, rof: 9, pts: 0, target: 'route', loot: 400, cargo: 400, color: '#d8a060' },
+    { id: 'syn_core', armour: 'structure', name: 'Syndicate Command', faction: 'syndicate', hp: 3200, speed: 0, r: 56, range: 420, dmg: 16, rof: 0.7, pts: 0, target: 'static', structure: true, loot: 1500, color: '#ff5a3a' },
+    { id: 'syn_harvester', armour: 'structure', name: 'Harvester', faction: 'syndicate', hp: 700, speed: 0, r: 30, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, income: 3, loot: 200, color: '#e0a040' },
+    { id: 'syn_tower', armour: 'structure', name: 'Gun Tower', faction: 'syndicate', hp: 950, speed: 0, r: 24, range: 400, dmg: 14, rof: 0.55, pts: 0, target: 'static', structure: true, loot: 150, color: '#ff7a4a' },
+    { id: 'syn_battery', armour: 'structure', name: 'Artillery Battery', faction: 'syndicate', hp: 1100, speed: 0, r: 30, range: 640, dmg: 45, rof: 3.6, pts: 0, target: 'static', structure: true, artillery: true, loot: 250, color: '#ff9a5a' },
+    { id: 'syn_factory', armour: 'structure', name: 'War Factory', faction: 'syndicate', hp: 1400, speed: 0, r: 40, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, factory: true, loot: 300, color: '#d86a4a' },
+    { id: 'syn_relay', armour: 'structure', name: 'Relay', faction: 'syndicate', hp: 450, speed: 0, r: 18, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, reach: 220, loot: 60, color: '#ffb07a' },
+    { id: 'syn_pylon', armour: 'structure', name: 'Shield Pylon', faction: 'syndicate', hp: 800, speed: 0, r: 24, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, guard: 320, loot: 200, color: '#ff8ab0' },
+    { id: 'citadel', armour: 'structure', name: 'Syndicate Citadel', faction: 'syndicate', hp: 9000, speed: 0, r: 84, range: 560, dmg: 30, rof: 0.5, pts: 0, target: 'static', structure: true, capital: true, artillery: true, shield: 3500, loot: 6000, color: '#ff3a5a' },
     { id: 'mothership', armour: 'bio', name: 'Hive Mothership', faction: 'alien', hp: 6000, speed: 55, r: 96, range: 520, dmg: 22, rof: 0.45, pts: 80, target: 'buildings', loot: 3000, shield: 1500, spawns: 'swarmer', boss: true, color: '#d050ff' },
   ];
   const ENEMY_BY_ID = {};

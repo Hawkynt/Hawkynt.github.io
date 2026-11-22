@@ -31,7 +31,8 @@
        stat (rise of career statistics, summed), record (a career statistic reached),
        deliver (freighters docked at their post), waves (repelled this trip), outpost (a finished
        hub), build (finished buildings, of: types or cat: a build category), clean (the
-       outbreak the operation started is over)
+       outbreak the operation started is over), raze (Syndicate structures or craft of the
+       types destroyed), scout (a Syndicate base found), repel (attack groups wiped out)
      time: seconds (0 = none); threat: pirate kinds by weight, first wave, seconds between
        waves, wave size and the most pirates at once; beats: [seconds, beat] from the start;
      force: specials laid out for the operation (storm: seconds until a storm is warned);
@@ -47,6 +48,11 @@
        reached the outpost: no spores from bites, belt outbreaks or cargo yet);
      force.outbreak: seconds until an outbreak in a crew building; force.radiation: { at, n }
        radiation clouds that drift over the outpost;
+     waves.off: no invader waves (the Syndicate is the threat); keep: losing the outpost fails it;
+     syndicate: the bases - where (far, far2, mid), build order, factory mix, credits, the
+       structures standing at the start, guards, attack groups (first, every, size), haulers
+       (first, every, max), toward: 'mid' reaches for the fields between - and escape: the
+       haulers that may get away before it fails;
      reward: credits, research, unlock ids */
   const OPS = [
     { id: 'k_haul', zone: 'kessler', name: 'First Haul', mood: 'C', time: 0,
@@ -182,6 +188,64 @@
       goals: [{ type: 'stat', stats: ['bosses'], n: 1, text: 'Destroy the mothership' }],
       waves: { from: 8, nano: 0, first: 60, every: 75, boss: 3 },
       reward: { cr: 6000, rd: 12 } },
+
+    /* the Crimson Maw: the Syndicate (its bases replace the invader waves) */
+    { id: 'c_scout', zone: 'crimson', name: 'Scout the Syndicate', mood: 'C', time: 0,
+      brief: 'A Syndicate base is mining the far side of the Maw. Find it, and take out two of its harvesters - mind the Stalkers: turrets cannot see them until something comes close.',
+      goals: [{ type: 'scout', n: 1, text: 'Find the base' }, { type: 'raze', of: ['syn_harvester'], n: 2, text: 'Raze harvesters' }],
+      waves: { off: true },
+      syndicate: { bases: [{ at: 'far', order: 'outpost', mix: 'light', credits: 0, start: ['syn_harvester', 'syn_harvester', 'syn_harvester'], guards: { stalker: 2, syn_fighter: 1 } }] },
+      reward: { cr: 3000, rd: 7 } },
+    { id: 'c_raid', zone: 'crimson', name: 'Harvester Raid', mood: 'E', time: 0,
+      brief: 'Their income runs on harvesters. Burn four of them - in and out before the factory has a fleet.',
+      goals: [{ type: 'raze', of: ['syn_harvester'], n: 4, text: 'Raze harvesters' }],
+      waves: { off: true },
+      syndicate: { bases: [{ at: 'far', order: 'outpost', mix: 'light', credits: 100, start: ['syn_harvester', 'syn_harvester', 'syn_harvester', 'syn_tower'], guards: { syn_fighter: 3 },
+        attack: { first: 240, every: 150, size: 4 } }] },
+      reward: { cr: 3200, rd: 7 } },
+    { id: 'c_counter', zone: 'crimson', name: 'Counter-Attack', mood: 'S', time: 0, keep: true,
+      brief: 'The Syndicate wants the Maw to itself. Found an outpost and hold it: three attack groups are coming - turrets, your ship and your fleet against their fighters and Juggernauts.',
+      goals: [{ type: 'outpost', n: 1, text: 'Found the outpost' }, { type: 'repel', n: 3, text: 'Repel attack groups' }],
+      waves: { off: true },
+      syndicate: { bases: [{ at: 'far', order: 'standard', mix: 'standard', credits: 400, start: ['syn_harvester', 'syn_harvester', 'syn_tower', 'syn_factory', 'syn_factory'],
+        attack: { first: 170, every: 110, size: 5 } }] },
+      reward: { cr: 3600, rd: 8 } },
+    { id: 'c_lattice', zone: 'crimson', name: 'Lattice Outpost', mood: 'H', time: 0,
+      brief: 'One Syndicate base has gone silent - the Lattice runs it now, and its factories spit nanoprobes that corrupt what they touch. Raze its core.',
+      goals: [{ type: 'raze', of: ['syn_core'], n: 1, text: 'Raze the core' }],
+      waves: { off: true },
+      syndicate: { bases: [{ at: 'far', order: 'standard', mix: 'lattice', credits: 300, start: ['syn_harvester', 'syn_harvester', 'syn_tower', 'syn_tower', 'syn_factory'],
+        guards: { nanodrone: 4, nanoswarm: 2 }, attack: { first: 140, every: 100, size: 6 } }] },
+      reward: { cr: 4000, rd: 9 } },
+    { id: 'c_expand', zone: 'crimson', name: 'Contested Deposits', mood: 'H', time: 600,
+      brief: 'The Syndicate is reaching for the fields between you, relay by relay. Raze three relays and three harvesters in ten minutes before it holds the Maw.',
+      goals: [{ type: 'raze', of: ['syn_relay'], n: 3, text: 'Raze relays' }, { type: 'raze', of: ['syn_harvester'], n: 3, text: 'Raze harvesters' }],
+      waves: { off: true },
+      syndicate: { bases: [{ at: 'far', order: 'expand', mix: 'standard', credits: 900, toward: 'mid', start: ['syn_harvester', 'syn_tower', 'syn_factory'],
+        attack: { first: 200, every: 120, size: 5 } }] },
+      reward: { cr: 4200, rd: 9 } },
+    { id: 'c_twin', zone: 'crimson', name: 'Two Fronts', mood: 'W', time: 0,
+      brief: 'Two bases, two factories feeding attack groups, batteries that outrange your turrets. Raze both cores.',
+      goals: [{ type: 'raze', of: ['syn_core'], n: 2, text: 'Raze the cores' }],
+      waves: { off: true },
+      syndicate: { bases: [
+        { at: 'far', order: 'standard', mix: 'standard', credits: 300, start: ['syn_harvester', 'syn_harvester', 'syn_tower', 'syn_factory', 'syn_battery'], attack: { first: 180, every: 130, size: 5 } },
+        { at: 'far2', order: 'standard', mix: 'standard', credits: 300, start: ['syn_harvester', 'syn_harvester', 'syn_tower', 'syn_factory', 'syn_battery'], attack: { first: 240, every: 130, size: 5 } }] },
+      reward: { cr: 5200, rd: 10 } },
+    { id: 'c_freight', zone: 'crimson', name: 'Cut Their Freighters', mood: 'S', time: 0,
+      brief: 'The Syndicate ships its ore out in haulers. Shoot down five of them - if four get away the run is lost.',
+      goals: [{ type: 'raze', of: ['hauler'], n: 5, text: 'Shoot down haulers' }],
+      waves: { off: true },
+      syndicate: { escape: 4, bases: [{ at: 'far', order: 'standard', mix: 'standard', credits: 300, start: ['syn_harvester', 'syn_harvester', 'syn_harvester', 'syn_tower', 'syn_tower', 'syn_factory'],
+        guards: { syn_fighter: 4 }, haul: { first: 25, every: 35, max: 14 }, attack: { first: 300, every: 150, size: 5 } }] },
+      reward: { cr: 4000, rd: 8 } },
+    { id: 'c_citadel', zone: 'crimson', name: 'Syndicate Citadel', mood: 'N', time: 0, capstone: true,
+      brief: 'The Syndicate\'s heart: a shielded citadel behind shield pylons and artillery, Juggernauts at the gate. Break the pylons, silence the batteries, raze the citadel - and the Void Crown is open.',
+      goals: [{ type: 'raze', of: ['citadel'], n: 1, text: 'Raze the citadel' }],
+      waves: { off: true },
+      syndicate: { bases: [{ at: 'far', citadel: true, order: 'fortress', mix: 'heavy', credits: 1500, start: ['syn_pylon', 'syn_pylon', 'syn_battery', 'syn_battery', 'syn_tower', 'syn_tower', 'syn_tower', 'syn_factory', 'syn_harvester', 'syn_harvester'],
+        guards: { juggernaut: 2, syn_fighter: 4 }, attack: { first: 200, every: 120, size: 6 } }] },
+      reward: { cr: 8000, rd: 14 } },
   ];
 
   const OP_BY_ID = {};

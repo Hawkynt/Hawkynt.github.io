@@ -1,5 +1,5 @@
 /* Pure supply rules: the basics Kessler Station sells (iron, copper and ice as ore, iron and
-   copper as bars) at a markup over the market, buying them into the warehouse, the cargo manifest
+   copper as bars, alloy and circuits) at a markup over the market, buying them into the warehouse, the cargo manifest
    (a standing order of ore, bars and components loaded at every career launch) and its repair,
    the hold slots supplies take (ore packs as usual, a bar or component takes one), fitting a
    manifest into the hold, moving supplies between the warehouse and the hold, and the packs a
@@ -16,6 +16,7 @@
   const BUY = [
     { kind: 'ore', id: 'iron' }, { kind: 'ore', id: 'copper' }, { kind: 'ore', id: 'ice' },
     { kind: 'bar', id: 'iron' }, { kind: 'bar', id: 'copper' },
+    { kind: 'comp', id: 'alloy' }, { kind: 'comp', id: 'circuit' },
   ];
   const MARKUP = 1.6;
   const KINDS = ['comp', 'bar', 'ore'];
@@ -24,6 +25,7 @@
     { id: 'iron', name: 'Iron', icon: 'cargo', load: { ore: { iron: 40 }, bar: { iron: 8 } } },
     { id: 'copper', name: 'Copper', icon: 'cargo', load: { ore: { copper: 30 }, bar: { copper: 8 } } },
     { id: 'mix', name: 'Builder\'s mix', icon: 'cargo', load: { ore: { iron: 24, copper: 14, ice: 20 }, bar: { iron: 4, copper: 4 } } },
+    { id: 'parts', name: 'Parts', icon: 'chip', load: { bar: { iron: 8, titanium: 4 }, comp: { alloy: 6, circuit: 3 } } },
   ];
   const PACK_BY_ID = {};
   for (let i = 0; i < PACKS.length; ++i) PACK_BY_ID[PACKS[i].id] = PACKS[i];
@@ -36,6 +38,7 @@
 
   /* credits per unit; the market's swings count, the broker's sale bonus does not */
   function buyPrice(save, stats, kind, id) {
+    if (kind === 'comp') return Math.ceil(NS.colonyData.COMP_BY_ID[id].value * MARKUP);
     const f = NS.economy.oreFactor(save, id) * ORE_BY_ID[id].value;
     return Math.ceil((kind === 'bar' ? f * 3 * NS.economy.BAR_MUL[1] : f) * MARKUP);
   }

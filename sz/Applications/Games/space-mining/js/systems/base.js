@@ -191,7 +191,7 @@
       rules.bump(G.save, 'bases', 1);
       NS.cinematics.play('founded', { x: rec.x, y: rec.y, zone: b.zone });
     }
-    const cfg = NS.operation.waveCfg();
+    const cfg = NS.operation.wavePace();
     b.waveT = cfg ? cfg.first : C.waveInterval(b.zone, b.mode) + (b.mode === 'siege' ? -20 : 60);
   }
 
@@ -284,6 +284,7 @@
     const def = UNIT_BY_ID[type];
     if (!def || !BUILDING_BY_ID[rec.type].makes || BUILDING_BY_ID[rec.type].makes.indexOf(type) < 0) return { ok: false, reason: 'Wrong factory' };
     if (rec.prog < 1 || rec.rogue) return { ok: false, reason: 'Factory offline' };
+    if (!rec.queue) rec.queue = [];
     if (!unitOpen(def)) return { ok: false, reason: 'Needs the ' + ZONES.find(z => z.id === def.licence).name + ' licence' };
     if (rec.queue.length >= 6) return { ok: false, reason: 'Queue full' };
     if (supplyUsed() + def.supply > C.supplyCap(b.data, G.stats)) return { ok: false, reason: 'Not enough fleet supply - build habitats' };
@@ -478,7 +479,7 @@
       NS.audio.sfx('coin', { volume: 0.5, pitch: 0.8 });
     } else if (C.stockCount(b.data.stock, b.data) >= cap) NS.fx.text(h.x, h.y - 50, 'STORAGE FULL', '#ff6a5c', 18, 1.4);
     /* contaminated cargo: a scan catches it, else the spores get in */
-    const cfg = NS.operation.waveCfg();
+    const cfg = NS.operation.wavePace();
     if (run.contam > 0 && units) {
       const scanned = (cfg && cfg.spores === false) || G.stats.cargoScan || b.data.buildings.some(o => (o.type === 'radar' || o.type === 'medbay') && o.prog >= 1 && !o.rogue);
       if (scanned) NS.fx.text(h.x, h.y - 90, 'CARGO SCAN: spores purged', '#9ae04a', 16, 2);

@@ -13,7 +13,7 @@
   const { UNIT_BY_ID, ENEMY_BY_ID } = NS.fleetData;
 
   const RUN_KEYS = ['t', 'units', 'rd', 'rdAcc', 'salvage', 'fractures', 'kills', 'damage', 'charges', 'timeLeft', 'contam',
-    'survivors', 'waves', 'invaders', 'credits', 'planAt', 'pirateT', 'leftDock', 'bosses', 'crownBroken'];
+    'survivors', 'waves', 'invaders', 'credits', 'planAt', 'pirateT', 'leftDock', 'bosses', 'crownBroken', 'cleared', 'lastOp'];
 
   const r1 = (v) => Math.round(v * 10) / 10;
 
@@ -30,6 +30,8 @@
     snap.run.op = run.op ? JSON.parse(JSON.stringify(run.op)) : null;
     snap.run.freight = NS.supply.repair(run.freight);
     snap.escort = G.freighters.length || G.wing.length ? NS.freighters.capture() : null;
+    snap.syndicate = NS.aiBase.capture();
+    snap.run.razed = Object.assign({}, run.razed);
     snap.ship = { x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), angle: r1(s.angle), hull: r1(s.hull), fuel: r1(s.fuel), shield: r1(s.shield) };
     for (let i = 0; i < G.rocks.length; ++i) {
       const o = G.rocks[i];
@@ -46,7 +48,7 @@
     for (let i = 0; i < G.enemies.length; ++i) {
       const e = G.enemies[i];
       if (e.alive) snap.enemies.push({ type: e.type, x: r1(e.x), y: r1(e.y), hp: r1(e.hp), maxHp: r1(e.maxHp), shield: r1(e.shield), dormant: e.dormant ? 1 : 0,
-        wave: e.wave, home: e.home, migrate: e.migrate, guard: e.guard });
+        wave: e.wave, home: e.home, migrate: e.migrate, guard: e.guard, base: e.base, built: e.built, route: e.route });
     }
     for (let i = 0; i < G.clouds.length; ++i) {
       const c = G.clouds[i];
@@ -94,6 +96,8 @@
     run.banked = {};
     for (const id in snap.run.banked || {}) if (ORE_BY_ID[id] && snap.run.banked[id] > 0) run.banked[id] = snap.run.banked[id];
     run.bankedUnits = +snap.run.bankedUnits || 0;
+    run.razed = {};
+    for (const id in snap.run.razed || {}) if (ENEMY_BY_ID[id] && snap.run.razed[id] > 0) run.razed[id] = Math.floor(snap.run.razed[id]);
     const op = snap.run.op;
     run.op = op && NS.opsData.OP_BY_ID[op.id] && op.pace && typeof op.t === 'number' ? op : null;
     NS.freighters.restore(snap.escort);
@@ -148,7 +152,10 @@
       e.maxHp = q.maxHp || e.maxHp;
       e.hp = Math.min(e.maxHp, q.hp);
       e.shield = Math.min(e.maxShield, q.shield || 0);
+      if (q.base !== undefined && q.base !== null) { e.base = q.base; e.built = q.built === undefined ? 1 : q.built; e.shieldBase = e.maxShield; }
+      if (q.route) e.route = q.route;
     }
+    NS.aiBase.restore(run.op ? snap.syndicate : null);
     const b = G.base;
     if (b && snap.wave) {
       b.hubVisit = !!snap.wave.hubVisit;

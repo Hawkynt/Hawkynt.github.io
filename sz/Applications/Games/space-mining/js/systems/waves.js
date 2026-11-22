@@ -39,7 +39,7 @@
   function compose() {
     const b = G.base;
     const m = b.mods || NS.calendar.NEUTRAL;
-    const cfg = NS.operation.waveCfg();
+    const cfg = NS.operation.wavePace();
     /* an operation's waves have the strength it was designed for, not the outpost's history */
     const no = cfg ? cfg.from + (G.run.waves || 0) : b.data.wave + 1;
     b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: cfg ? true : b.data.bossDone, mul: m.waves * (cfg && cfg.mul || 1), nano: cfg && cfg.nano !== undefined ? cfg.nano : m.nano, army: army(),
@@ -52,7 +52,7 @@
     const b = G.base;
     if (!b) return;
     const iv = C.waveInterval(b.zone, b.mode);
-    const cfg = NS.operation.waveCfg();
+    const cfg = NS.operation.wavePace();
     b.waveT = cfg ? (first ? cfg.first : cfg.every) : b.mode === 'siege' ? (first ? 50 : iv) : first ? iv * 0.85 : iv;
     b.active = false;
     b.spawnQ = [];
@@ -62,6 +62,9 @@
   function update(dt) {
     const b = G.base;
     if (!b || !NS.base.claimed() || b.data.abandoned) return;
+    /* an operation against the Syndicate sends no invader waves */
+    const off = NS.operation.waveCfg();
+    if (off && off.off) return;
     if (!b.next) compose();
     if (b.active) {
       flush(dt);
@@ -152,7 +155,7 @@
     const b = G.base;
     const run = G.run;
     b.active = false;
-    b.data.wave = NS.operation.waveCfg() ? b.data.wave + 1 : b.waveNo;
+    b.data.wave = NS.operation.wavePace() ? b.data.wave + 1 : b.waveNo;
     const reward = Math.round(70 * b.waveNo * (0.6 + b.zone.danger * 0.4) * (b.mods ? b.mods.reward : 1) / 10) * 10;
     NS.base.wallet().credits += reward;
     if (run.mode === 'career') {
@@ -175,7 +178,7 @@
       NS.trip.finish('victory', 3);
       return;
     }
-    const cfg = NS.operation.waveCfg();
+    const cfg = NS.operation.wavePace();
     b.waveT = cfg ? cfg.every : C.waveInterval(b.zone, b.mode);
     compose();
   }

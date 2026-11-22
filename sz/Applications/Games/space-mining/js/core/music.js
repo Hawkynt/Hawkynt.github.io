@@ -111,7 +111,9 @@
     }
     for (let i = 0; i < G.enemies.length; ++i) {
       const e = G.enemies[i];
-      if (!e.alive || e.dormant || e.def.target === 'static') continue;
+      if (!e.alive || e.dormant) continue;
+      if (e.def.capital && near(e.x, e.y, CONTACT)) o.boss = true;
+      if (e.def.target === 'static') continue;
       if (e.def.boss) o.boss = true;
       if (near(e.x, e.y, NEAR)) ++o.threats;
       else if (near(e.x, e.y, CONTACT)) o.ambush = true;

@@ -2,7 +2,8 @@
    ready) and auto-cast when it makes sense, cooldowns, and the effects - the Herder's tether
    pulling loose rocks into a clump, the Minelayer's contact mines, the Aegis bubble soaking
    damage for allied craft and the ship, the Phantom's cloak, the Lancer's overcharged rail
-   that pierces a line and the Bulwark's barrage. Owns its effect lists (cleared per trip). */
+   that pierces a line, the Bulwark's barrage, the Sporecaster's spores and the Spike's hijack.
+   Owns its effect lists (cleared per trip). */
 ;(function() {
   'use strict';
 
@@ -56,6 +57,14 @@
     else if (id === 'bubble') A.bubbles.push({ u: u, x: u.x, y: u.y, r: ab.radius, hp: ab.hp, maxHp: ab.hp, t: ab.dur, hit: 0 });
     else if (id === 'cloak') cloak(u, ab);
     else if (id === 'overcharge') u.charged = true;
+    else if (id === 'spores') {
+      /* a spore pod at the nearest Syndicate structure in reach (or the point given) */
+      const t = p && NS.aiBase.nearestStructure(p.x, p.y, ab.radius) || NS.aiBase.nearestStructure(u.x, u.y, ab.reach);
+      if (!t || Math.hypot(t.x - u.x, t.y - u.y) > ab.reach + t.r) return false;
+      G.tbeams.push({ x0: u.x, y0: u.y, x1: t.x, y1: t.y, t: 0.4, color: '#9ae04a', soft: true });
+      NS.aiBase.sporeAt(t.x, t.y);
+    }
+    else if (id === 'hijack') { if (!NS.aiBase.hijack(u)) return false; }
     else if (id === 'barrage') {
       const t = p || (u.target && u.target.alive ? u.target : null);
       if (!t) return false;
@@ -218,6 +227,8 @@
       if (n >= 2) cast(u);
       return;
     }
+    if (id === 'spores') { if (NS.aiBase.nearestStructure(u.x, u.y, ab.reach)) cast(u); return; }
+    if (id === 'hijack') { if (G.enemies.some(e => e.alive && e.def.structure && e.def.dmg && !e.def.capital && e.type !== 'syn_core' && Math.hypot(e.x - u.x, e.y - u.y) < ab.reach)) cast(u); return; }
     if (id === 'barrage') {
       const t = u.target;
       if (t && t.alive && (t.r >= 28 || (t.def && t.def.boss)) && Math.hypot(t.x - u.x, t.y - u.y) < u.range) cast(u);

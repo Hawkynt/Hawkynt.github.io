@@ -26,7 +26,7 @@
     /* left of the ability column under the radar */
     const x = v.x1 - W - 112, y = v.y0 + RADAR_R * 2 + 36;
     const fr = G.freighters;
-    const h = 40 + prog.length * 30 + fr.length * 18 + (fr.length ? 6 : 0) + (o.status !== 'active' ? 22 : 0);
+    const h = 40 + prog.length * 30 + fr.length * 18 + (fr.length ? 6 : 0) + (o.status !== 'active' ? 22 : 0) + (o.status !== 'active' && o.nextId ? 18 : 0);
     const mood = MOODS[op.mood];
     kit.panel(x, y, W, h, { alpha: 0.82, radius: 8, brackets: false, accent: mood.color });
     kit.fitText(op.name.toUpperCase(), x + 12, y + 14, W - 90, 13, { weight: 'bold', color: '#ffffff' });
@@ -59,6 +59,11 @@
     if (fr.length) yy += 6;
     if (o.status === 'won') kit.text('COMPLETE' + (o.first ? ' - reward paid' : ''), x + 12, yy, 12, UI.good, { weight: 'bold' });
     else if (o.status === 'failed') kit.text('FAILED', x + 12, yy, 12, UI.bad, { weight: 'bold' });
+    /* the next operation of the belt starts in this trip */
+    if (o.status !== 'active' && o.nextId) {
+      const nx = NS.opsData.OP_BY_ID[o.nextId];
+      kit.fitText((o.status === 'failed' && o.nextId === o.id ? 'Again in ' : 'Next: ' + nx.name + ' in ') + Math.max(0, Math.ceil(o.nextT || 0)) + 's', x + 12, yy + 18, W - 24, 11, { color: UI.textDim });
+    }
   }
 
   Object.assign(NS.opHud, {

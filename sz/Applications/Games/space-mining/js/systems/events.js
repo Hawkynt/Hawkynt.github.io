@@ -63,7 +63,7 @@
   function trigger(kind) {
     const b = G.base;
     if (kind === 'outbreak') {
-      const cfg = NS.operation.waveCfg();
+      const cfg = NS.operation.wavePace();
       if (!b || !NS.base.claimed() || b.data.abandoned || (cfg && cfg.spores === false)) return;
       const list = b.data.buildings.filter(o => o.prog >= 1 && (o._staff || 0) > 0);
       if (!list.length) return;

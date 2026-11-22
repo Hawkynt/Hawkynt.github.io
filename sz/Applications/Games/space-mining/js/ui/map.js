@@ -180,13 +180,15 @@
   function actions(save, i, z, state, tab, x, y, w, h) {
     const bx = x + w - 250, by = y + h - 64;
     if (state === 'open') {
+      /* one way in: a trip runs the belt's next open operation (mine as you like during it);
+         a finished one picked from the list is replayed; with the chain done the belt is mined */
       const ops = O.zoneOps(z.id);
+      const next = openOp(save, i);
       const sel = tab === 'ops' ? selectedOp(save, ops) : null;
-      if (sel && O.state(save, sel.id) !== 'locked') {
-        W.button('go_free', 'Free mining', bx, by - 52, 230, 40, { icon: 'launch', action: () => act(save, i), px: 15 });
-        W.button('go_op', O.state(save, sel.id) === 'done' ? 'Replay operation' : 'Launch operation', bx, by, 230, 48,
-          { accent: UI.gold, icon: 'launch', action: () => scr.launch('career', i, { op: sel.id }), px: 17 });
-      } else W.button('go', 'Launch', bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => act(save, i), px: 20 });
+      if (sel && O.state(save, sel.id) === 'done') {
+        W.button('go_op', 'Replay ' + sel.name, bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => scr.launch('career', i, { op: sel.id }), px: 15 });
+        W.button('go', next ? 'Launch: ' + next.name : 'Mine the belt', bx, by - 52, 230, 40, { icon: 'launch', action: () => act(save, i), px: 14 });
+      } else W.button('go', next ? 'Launch: ' + next.name : 'Mine the belt', bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => act(save, i), px: next ? 15 : 20 });
     } else if (state === 'buyable') {
       W.button('buy', 'Buy licence  ' + kit.group(z.unlock.fee), bx, by, 230, 48, { accent: UI.gold, disabled: save.credits < z.unlock.fee, action: () => act(save, i) });
     } else {
@@ -201,10 +203,17 @@
     }
   }
 
+  /* the operation a belt's trip runs: the next open one, if the chain is not done */
+  function openOp(save, i) {
+    const ops = O.zoneOps(ZONES[i].id);
+    return ops.find(o => O.state(save, o.id) === 'open') || null;
+  }
+
   function act(save, i) {
     const state = rules.zoneState(save, i);
     if (state === 'open') {
-      scr.launch('career', i);
+      const op = openOp(save, i);
+      scr.launch('career', i, op ? { op: op.id } : undefined);
     } else if (state === 'buyable') {
       if (!rules.buyLicense(save, i)) {
         sfx('error');

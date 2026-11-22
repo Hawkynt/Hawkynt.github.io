@@ -131,10 +131,10 @@
       cost: { cr: 200, ore: { copper: 6 } }, color: '#4fd8ff',
       desc: 'Previews the next wave, shows threats and lifeforms on the minimap and scans docking cargo for spores.' },
     { id: 'lab', name: 'Research Lab', cat: 'science', icon: 'data', size: 2, hp: 480, build: 14, power: -5, crew: 2, upkeep: 6, prio: 3,
-      cost: { cr: 520, bar: { copper: 3, silver: 2 } }, rate: 24, color: '#b48aff',
+      cost: { cr: 520, bar: { copper: 3, silver: 2 } }, rate: 24, makes: ['spike'], color: '#b48aff',
       desc: 'Turns out research data for the tech tree; doubles it while it has circuits to burn.' },
     { id: 'medbay', name: 'Medical Bay', cat: 'science', icon: 'serum', size: 2, hp: 520, build: 12, power: -4, crew: 2, upkeep: 6, prio: 8,
-      cost: { cr: 440, ore: { ice: 8 }, bar: { silver: 2 } }, radius: 340, cure: 0.05, color: '#9ae04a',
+      cost: { cr: 440, ore: { ice: 8 }, bar: { silver: 2 } }, radius: 340, cure: 0.05, makes: ['sporecaster'], color: '#9ae04a',
       desc: 'Treats infected crew within reach, scans cargo, and with serum in stock vaccinates the whole outpost.' },
   ];
 

@@ -1,7 +1,9 @@
-/* Fleet art, painted once per key and facing +x: the seven outpost craft in steel with their
+/* Fleet art, painted once per key and facing +x: the fifteen outpost craft in steel with their
    role colour, the deserter (Lattice) tint, the invaders - Bloom organisms (swarmer, brood
    carrier, hive nest, mothership) grown over Lattice frames, rust-red pirate craft (raider,
-   bomber, shielded frigate, siege ship) and the cyan Lattice drone - plus nebula gas and Bloom
+   bomber, shielded frigate, siege ship), the cyan Lattice drone, the Syndicate's crimson craft and
+   structures (fighter, Stalker, Juggernaut, hauler, Command, harvester, tower, battery, factory,
+   relay, shield pylon, Citadel) - plus nebula gas and Bloom
    clouds and the silent distress station. Pure painting into cached canvases. */
 ;(function() {
   'use strict';
@@ -37,6 +39,19 @@
     gr.addColorStop(1, K.rgba(color, 0));
     g.fillStyle = gr;
     g.fillRect(x - r * 2.2, y - r * 2.2, r * 4.4, r * 4.4);
+  }
+
+  /* a Syndicate structure's footing: an n-sided plate of radius r with a dark rim and an amber band */
+  function synBlock(g, c, r, sides, col) {
+    const pts = [];
+    for (let i = 0; i < sides; ++i) { const a = i / sides * TAU + Math.PI / sides; pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+    part(g, c, pts, '#2a2228');
+    part(g, c, pts.map(p => [p[0] * 0.84, p[1] * 0.84]), col);
+    g.strokeStyle = 'rgba(255,180,74,0.6)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(c, c, r * 0.6, 0, TAU);
+    g.stroke();
   }
 
   function canopy(g, x, y, rx, ry, tint) {
@@ -167,6 +182,17 @@
       g.fillStyle = col;
       g.fillRect(c - 18, c - 14, 22, 2.5);
       g.fillRect(c - 18, c + 11.5, 22, 2.5);
+    },
+    sporecaster(g, c, col) {
+      part(g, c, [[-14, -10], [6, -10], [12, 0], [6, 10], [-14, 10]], '#6a7a5a');
+      for (let i = 0; i < 3; ++i) dot(g, c - 8 + i * 6, c, 3, col);
+      canopy(g, c + 7, c, 3, 3, '#e0ffb0');
+    },
+    spike(g, c, col) {
+      part(g, c, [[-12, -7], [8, -2], [16, 0], [8, 2], [-12, 7], [-8, 0]], '#3a4a4a');
+      g.strokeStyle = col; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(c - 8, c); g.lineTo(c + 14, c); g.stroke();
+      dot(g, c + 14, c, 2.2, col);
     },
     transport(g, c, col) {
       part(g, c, [[-22, -12], [14, -12], [22, -5], [22, 5], [14, 12], [-22, 12]], '#6a6a72');
@@ -333,6 +359,66 @@
         g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
       }
       veins(g, c, 44, '#ff8ae0', n, 12);
+    },
+    /* ── the Syndicate: crimson and gunmetal plates, amber trim ── */
+    syn_fighter(g, c) {
+      part(g, c, [[-12, -9], [-2, -3], [-2, 3], [-12, 9]], '#2a2a32');
+      part(g, c, [[-12, -4], [8, -3], [15, 0], [8, 3], [-12, 4]], '#a8302a');
+      g.fillStyle = '#ffb44a'; g.fillRect(c - 6, c - 1, 10, 2);
+    },
+    stalker(g, c) {
+      part(g, c, [[-13, -7], [10, -1], [14, 0], [10, 1], [-13, 7], [-9, 0]], '#4a3a46');
+      g.fillStyle = 'rgba(200,140,180,0.7)'; g.fillRect(c - 9, c - 0.8, 16, 1.6);
+    },
+    juggernaut(g, c) {
+      part(g, c, [[-32, -24], [14, -26], [34, -10], [34, 10], [14, 26], [-32, 24], [-36, 0]], '#5a2a28');
+      part(g, c, [[-24, -16], [10, -16], [22, -6], [22, 6], [10, 16], [-24, 16]], '#2a2a32');
+      for (let i = -1; i <= 1; i += 2) {
+        g.fillStyle = metal(g, c, c + i * 10 - 3, c + 30, c + i * 10 + 3, '#9aa4b4');
+        g.fillRect(c, c + i * 10 - 3, 32, 6);
+      }
+      g.fillStyle = '#ffb44a'; g.fillRect(c - 28, c - 24, 30, 3); g.fillRect(c - 28, c + 21, 30, 3);
+      dot(g, c - 10, c, 5, '#ff5a3a');
+    },
+    hauler(g, c) {
+      part(g, c, [[-30, -14], [20, -14], [30, -6], [30, 6], [20, 14], [-30, 14]], '#4a4048');
+      for (let i = 0; i < 4; ++i) {
+        g.fillStyle = metal(g, c - 26 + i * 11, c - 11, c - 18 + i * 11, c + 11, i % 2 ? '#c8803a' : '#a85a2a');
+        g.fillRect(c - 26 + i * 11, c - 11, 9, 22);
+      }
+      dot(g, c + 24, c, 3, '#ffb44a');
+    },
+    syn_core(g, c) { synBlock(g, c, 54, 8, '#7a2a2a'); dot(g, c, c, 16, '#ff5a3a'); dot(g, c, c, 8, '#ffd0a0'); },
+    syn_harvester(g, c) {
+      synBlock(g, c, 28, 6, '#6a4a2a');
+      for (let i = 0; i < 3; ++i) { const a = i * TAU / 3; part(g, c, [[Math.cos(a) * 8, Math.sin(a) * 8], [Math.cos(a + 0.4) * 30, Math.sin(a + 0.4) * 30], [Math.cos(a - 0.4) * 30, Math.sin(a - 0.4) * 30]], '#c8903a'); }
+      dot(g, c, c, 7, '#ffd25a');
+    },
+    syn_tower(g, c) { synBlock(g, c, 22, 6, '#5a2a2a'); dot(g, c, c, 9, '#2a2a32'); g.fillStyle = metal(g, c, c - 3, c + 22, c + 3, '#9aa4b4'); g.fillRect(c, c - 3, 22, 6); },
+    syn_battery(g, c) {
+      synBlock(g, c, 28, 4, '#5a3a2a');
+      g.fillStyle = metal(g, c, c - 5, c + 30, c + 5, '#8a94a4'); g.fillRect(c - 4, c - 5, 34, 10);
+      dot(g, c - 8, c, 9, '#3a2a2a'); dot(g, c - 8, c, 4, '#ff9a5a');
+    },
+    syn_factory(g, c) {
+      synBlock(g, c, 38, 4, '#6a2a2a');
+      g.fillStyle = '#1a1418'; g.fillRect(c - 22, c - 10, 44, 20);
+      for (let i = 0; i < 5; ++i) { g.fillStyle = i % 2 ? '#3a2a2a' : '#4a3030'; g.fillRect(c - 20 + i * 8, c - 8, 7, 16); }
+      g.fillStyle = '#ffb44a'; g.fillRect(c - 22, c + 12, 44, 3);
+    },
+    syn_relay(g, c) { synBlock(g, c, 16, 6, '#5a3a3a'); g.fillStyle = '#c8c0b0'; g.fillRect(c - 1.5, c - 16, 3, 32); dot(g, c, c - 14, 3, '#ffb07a'); },
+    syn_pylon(g, c) {
+      synBlock(g, c, 22, 3, '#5a2a3a');
+      g.strokeStyle = 'rgba(255,138,176,0.8)'; g.lineWidth = 2;
+      g.beginPath(); g.arc(c, c, 12, 0, TAU); g.stroke();
+      dot(g, c, c, 6, '#ffb0d0');
+    },
+    citadel(g, c) {
+      synBlock(g, c, 84, 8, '#5a1a22');
+      synBlock(g, c, 56, 6, '#7a2a2a');
+      for (let i = 0; i < 6; ++i) { const a = i * TAU / 6 + 0.26; dot(g, c + Math.cos(a) * 66, c + Math.sin(a) * 66, 8, '#2a2a32'); dot(g, c + Math.cos(a) * 66, c + Math.sin(a) * 66, 3, '#ff9a5a'); }
+      dot(g, c, c, 22, '#ff3a5a'); dot(g, c, c, 11, '#ffe0c0');
+      g.strokeStyle = '#ffb44a'; g.lineWidth = 3; g.beginPath(); g.arc(c, c, 44, 0, TAU); g.stroke();
     },
     mothership(g, c, d, n) {
       organic(g, c, 100, 62, '#6a2a90', '#14041e', n);

@@ -81,7 +81,7 @@ exports.run = async (t) => {
   await t.shot('10-map-operations');
   t.check('the map lists the six Kessler operations', await t.state("['k_haul', 'k_copper', 'k_drones', 'k_geode', 'k_jumpers', 'k_charter'].every(id => G.hitAreas.some(a => a.id === 'op_' + id))"));
   await t.hit('op_k_haul');
-  await t.hit('go_op');
+  await t.hit('go');
   for (let i = 0; i < 12 && await t.state("!!G.cine || G.screen !== 'playing'"); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
   await t.wait(400);
   await t.shot('11-operation-tracker');
@@ -222,7 +222,7 @@ exports.run = async (t) => {
   await t.shot('18-map-amber');
   t.check('the map lists the nine Amber escorts', await t.state("NS.ops.zoneOps('amber').every(o => G.hitAreas.some(a => a.id === 'op_' + o.id))"));
   await t.hit('op_a_first');
-  await t.hit('go_op');
+  await t.hit('go');
   for (let i = 0; i < 12 && await t.state("!!G.cine || G.screen !== 'playing'"); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
   t.check('One Freighter lays out four trading posts and a freighter at the dock', await t.state("G.run.op.id === 'a_first' && G.posts.length === 4 && G.freighters.length === 1"));
   await t.run((NS, G) => {

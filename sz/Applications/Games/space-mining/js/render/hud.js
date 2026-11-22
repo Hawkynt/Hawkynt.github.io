@@ -172,7 +172,9 @@
     }
     for (let i = 0; i < G.enemies.length; ++i) {
       const e = G.enemies[i];
-      if (e.alive && (!e.dormant || G.stats.scanner >= 1)) blip(cx, cy, k, s, e.x, e.y, e.def.boss ? 4 : e.r > 30 ? 2.8 : 2, e.dormant ? '#8a4a7a' : e.def.faction === 'lattice' ? '#3affd0' : '#ff4a4a', 0, !!e.def.boss);
+      if (!e.alive || (e.dormant && G.stats.scanner < 1) || (e.def.cloaked && !(e.seenT > 0))) continue;
+      const core = (e.type === 'syn_core' || e.def.capital) && NS.aiBase.scouted();
+      blip(cx, cy, k, s, e.x, e.y, e.def.boss || core ? 4 : e.r > 30 ? 2.8 : 2, e.dormant ? '#8a4a7a' : e.def.faction === 'lattice' ? '#3affd0' : e.def.faction === 'syndicate' ? '#ff8a3a' : '#ff4a4a', 0, !!e.def.boss || core, e.def.structure);
     }
     if (G.base) {
       const h = NS.base.hub();

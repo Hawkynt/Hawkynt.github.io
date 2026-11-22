@@ -29,7 +29,7 @@ function steps(n) {
 
 /* ── data ── */
 const ab = UNITS.filter(u => u.ability);
-check('six craft carry an ability, each with its own', ab.length === 6 && new Set(ab.map(u => u.ability)).size === 6 && ab.every(u => ABILITIES[u.ability]));
+check('eight craft carry an ability, each with its own', ab.length === 8 && new Set(ab.map(u => u.ability)).size === 8 && ab.every(u => ABILITIES[u.ability]));
 check('every ability craft comes from a factory that makes it', ab.every(u => BUILDING_BY_ID[u.from].makes.indexOf(u.id) >= 0));
 check('the Herder, Minelayer and Aegis come with the Verdant licence, the rest with the Crimson Maw',
   ['herder', 'minelayer', 'aegis'].every(id => UNIT_BY_ID[id].licence === 'verdant') && ['phantom', 'lancer', 'bulwark'].every(id => UNIT_BY_ID[id].licence === 'crimson'));

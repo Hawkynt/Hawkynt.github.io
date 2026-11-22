@@ -69,7 +69,7 @@
       pulseCd: 0, pulse: null, pirateT: (mode === 'career' ? 55 : 35) + r() * 30, respawnT: 2,
       rockTarget: 0, pulled: 0, lasering: false, leftDock: false, ending: null, endT: 0, towT: 0,
       inRad: 0, inWell: 0, crownBroken: false, dronesOut: false, pickT: 0, pickText: null, turretAngle: 0,
-      contam: 0, survivors: 0, op: null, freight: NS.supply.blank(), waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
+      contam: 0, survivors: 0, razed: {}, op: null, freight: NS.supply.blank(), waves: 0, invaders: 0, bosses: 0, credits: mode === 'siege' ? 2400 : 0, mods: mods, saveT: 12,
       siegeWon: false, reviveT: 0, banked: {}, bankedUnits: 0, docked: false,
     };
     G.specials.length = 0;
@@ -79,6 +79,7 @@
     NS.freighters.clear();
     NS.units.clear();
     NS.abilities.clear();
+    NS.aiBase.clear();
     NS.enemies.clear();
     NS.command.reset();
     NS.base.prepare(zone, mode);
@@ -566,6 +567,7 @@
     G.base = null;
     NS.units.clear();
     NS.abilities.clear();
+    NS.aiBase.clear();
     NS.enemies.clear();
     NS.command.reset();
     G.distress = null;

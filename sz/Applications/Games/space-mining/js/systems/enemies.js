@@ -53,7 +53,7 @@
     const r2 = range * range;
     for (let i = 0; i < list.length; ++i) {
       const e = list[i];
-      if (!e.alive || e.dormant) continue;
+      if (!e.alive || e.dormant || hidden(e)) continue;
       const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
       if (d > r2) continue;
       let s = Math.sqrt(d);
@@ -72,6 +72,23 @@
     return best;
   }
 
+  /* a cloaked Stalker nobody has spotted cannot be picked as a target */
+  function hidden(e) {
+    return !!e.def.cloaked && !(e.seenT > 0);
+  }
+
+  /* what spots a Stalker: the ship or a craft within 260 px, a Sensor Array within 700 px, the
+     scanner pulse sweeping over it, or the Stalker firing */
+  function spot(e, dt) {
+    if (e.seenT > 0) e.seenT -= dt;
+    const s = G.ship, run = G.run;
+    if (s && s.alive && (s.x - e.x) * (s.x - e.x) + (s.y - e.y) * (s.y - e.y) < 260 * 260) { e.seenT = 1.5; return; }
+    if (run && run.pulse && Math.hypot(e.x - s.x, e.y - s.y) < run.pulse.r * Math.min(1, run.pulse.t / 1.2 * 1.6)) { e.seenT = 4; return; }
+    if (NS.units.nearestPlayer(e.x, e.y, 260, false)) { e.seenT = 1.5; return; }
+    if (G.base) for (const o of G.base.data.buildings)
+      if (o.type === 'radar' && o.prog >= 1 && !o.rogue && (o.x - e.x) * (o.x - e.x) + (o.y - e.y) * (o.y - e.y) < 700 * 700) { e.seenT = 1.5; return; }
+  }
+
   /* slowed to k of its speed for secs (the strongest hold wins); motherships shrug off half */
   function slow(e, k, secs) {
     if (!e || !e.alive || e.cx !== undefined || e === G.ship) return;
@@ -86,7 +103,7 @@
     let best = null, bd = range * range;
     for (let i = 0; i < list.length; ++i) {
       const e = list[i];
-      if (!e.alive || e.dormant || skip.indexOf(e) >= 0) continue;
+      if (!e.alive || e.dormant || hidden(e) || skip.indexOf(e) >= 0) continue;
       const q = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
       if (q < bd) { bd = q; best = e; }
     }
@@ -168,6 +185,13 @@
       if (G.run.mode === 'career') NS.rules.bump(G.save, 'invaders', 1);
     }
     if (e.parent) e.parent.children = Math.max(0, e.parent.children - 1);
+    /* what an operation counts as razed: Syndicate structures and craft by type */
+    if (G.run && d.faction === 'syndicate') G.run.razed[e.type] = (G.run.razed[e.type] || 0) + 1;
+    if (d.capital) {
+      NS.trip.banner('THE CITADEL FALLS', 'The Syndicate\'s heart is broken', '#ffd25a');
+      NS.fx.slowMo(1.6, 0.3);
+      NS.fx.flash('#ffd0a0', 0.7);
+    }
     if (d.boss) NS.waves.bossDown(e);
     if (e.type === 'hive') NS.events.hiveDown(e);
   }
@@ -251,7 +275,8 @@
       const list = grid.query(s.x, s.y, 40, near);
       for (let i = 0; i < list.length; ++i) {
         const e = list[i];
-        if (!e.alive || e.dormant) continue;
+        /* a shot never hits what fired it (a hijacked tower is still in the hostile grid) */
+        if (!e.alive || e.dormant || e === s.from) continue;
         if ((e.x - s.x) * (e.x - s.x) + (e.y - s.y) * (e.y - s.y) < (e.r + 3) * (e.r + 3)) return e;
       }
       const t = s.target;
@@ -406,6 +431,15 @@
 
   function think(e, dt) {
     const d = e.def;
+    if (d.structure) { NS.aiBase.think(e, dt); return; }
+    if (d.cloaked) spot(e, dt);
+    if (d.target === 'route') {
+      /* a hauler heads for the edge of the belt; gone with its cargo when it gets there */
+      const rt = e.route || { x: e.x, y: e.y };
+      if (steer(e, rt.x, rt.y, e.speed, dt, 0) < 60) { e.alive = false; NS.aiBase.escaped(e); return; }
+      face(e, Math.atan2(e.vy, e.vx), dt);
+      return;
+    }
     if (e.type === 'hive') { hive(e, dt); return; }
     if (e.migrate) {
       const t = NS.units.nearestPlayer(e.x, e.y, 240, true);
@@ -492,9 +526,9 @@
       case 'mothership': mothership(e, t, dt, dist, a); break;
       default: {
         /* raiders orbit, frigates and siege ships stand off, Lattice drones dart */
-        const keep = e.type === 'siege' ? d.range * 0.88 : e.type === 'frigate' ? 300 : e.type === 'raider' ? 220 : 170;
+        const keep = e.type === 'siege' ? d.range * 0.88 : e.type === 'frigate' || e.type === 'juggernaut' ? 300 : e.type === 'raider' || e.type === 'syn_fighter' || e.type === 'stalker' ? 220 : 170;
         const side = e.id % 2 ? 1 : -1;
-        const orbit = e.type === 'raider' || e.type === 'nanodrone' ? 0.8 * side : 0.15 * side;
+        const orbit = e.type === 'raider' || e.type === 'nanodrone' || e.type === 'syn_fighter' || e.type === 'stalker' ? 0.8 * side : 0.15 * side;
         steer(e, t.x - Math.cos(a + orbit) * keep, t.y - Math.sin(a + orbit) * keep, e.speed, dt, 0);
         face(e, a, dt);
         e.fireT -= dt;
@@ -504,7 +538,8 @@
           if (e.type === 'siege') {
             fire('enemy', 'artillery', mx, my, t, d.dmg, 340, { splash: 70 });
             NS.audio.sfxAt('explode', e.x, e.y, { volume: 0.25, pitch: 1.8 });
-          } else if (e.type === 'frigate') fire('enemy', 'shell', mx, my, t, d.dmg, 560);
+          } else if (e.type === 'frigate' || e.type === 'juggernaut') fire('enemy', 'shell', mx, my, t, d.dmg, 560);
+          if (d.cloaked) e.seenT = Math.max(e.seenT || 0, 1);
           else fire('enemy', e.type === 'nanodrone' ? 'nanobolt' : 'bolt', mx, my, t, d.dmg, 640, { corrupt: d.corrupt || 0 });
           NS.fx.muzzle(mx, my, a, d.color);
         }
@@ -525,7 +560,7 @@
       hitTarget(t, e.def.dmg, 'enemy', e);
       NS.fx.sparks(t.x, t.y, a + Math.PI, 1.2, 4, '#e0a0ff', 200, 0.25);
       /* Bloom swarmers carry spores into what they bite (not before an operation lets the Bloom in) */
-      const cfg = NS.operation.waveCfg();
+      const cfg = NS.operation.wavePace();
       if (t.cx !== undefined && G.run.zone.life > 0 && !(cfg && cfg.spores === false) && R() < 0.06 * G.run.zone.life * (1 - (G.stats.vaccine || 0))) {
         const fresh = !(t.inf > 0);
         NS.outbreak.seedInfection(t, 0.06);

@@ -180,9 +180,9 @@
   /* what a supply pack holds, one line per ore or bar */
   function packLines(pack) {
     const out = [];
-    for (const kind of ['bar', 'ore']) {
+    for (const kind of ['comp', 'bar', 'ore']) {
       const part = pack.load[kind] || {};
-      for (const id in part) out.push([part[id] + ' ' + NS.ores.ORE_BY_ID[id].name + (kind === 'bar' ? ' Ingot' : ''), UI.text]);
+      for (const id in part) out.push([part[id] + ' ' + (kind === 'comp' ? NS.colonyData.COMP_BY_ID[id].name : NS.ores.ORE_BY_ID[id].name + (kind === 'bar' ? ' Ingot' : '')), UI.text]);
     }
     return out;
   }
