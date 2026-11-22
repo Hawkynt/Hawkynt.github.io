@@ -56,6 +56,7 @@
 
   function move(p) {
     const c = G.cmd;
+    c.kcell = null;
     if (pan) {
       c.x = pan.cx - (p.x - pan.x) / G.cam.zoom;
       c.y = pan.cy - (p.y - pan.y) / G.cam.zoom;
@@ -98,6 +99,19 @@
   function key(e) {
     const c = G.cmd;
     const code = e.code;
+    /* build mode: the digits pick a tile of the open category */
+    if (c.buildMode && /^Digit[1-9]$/.test(code) && !e.ctrlKey && !e.metaKey) {
+      const def = NS.buildMenu.tiles()[+code.charAt(5) - 1];
+      if (def) P.startPlace(def.id, true);
+      return true;
+    }
+    if (c.place) {
+      if (code === 'ArrowLeft') return P.nudge(-1, 0);
+      if (code === 'ArrowRight') return P.nudge(1, 0);
+      if (code === 'ArrowUp') return P.nudge(0, -1);
+      if (code === 'ArrowDown') return P.nudge(0, 1);
+      if (code === 'Enter' || code === 'NumpadEnter') { P.placeHere(); return true; }
+    }
     if (/^Digit[1-9]$/.test(code)) {
       const n = +code.charAt(5);
       if (e.ctrlKey || e.metaKey) P.setGroup(n);
@@ -109,7 +123,8 @@
       case 'Tab': P.toggle(false); return true;
       case 'Space': P.plan(); return true;
       case 'Escape':
-        if (c.place || c.pending) { c.place = null; c.pending = null; return true; }
+        if (c.place || c.pending) { c.place = null; c.pending = null; c.kcell = null; return true; }
+        if (c.buildMode) { c.buildMode = false; return true; }
         if (c.sel.length || c.selB) { P.clearSel(); return true; }
         return false;
       case 'KeyA':
@@ -121,8 +136,16 @@
       case 'KeyR': if (c.sel.length) P.order('return', 0, 0, null, false); return true;
       case 'KeyG': if (c.sel.length) P.hold(); return true;
       case 'KeyT': castAll(NS.camera.toWorld(G.input.mouseX, G.input.mouseY, {})); return true;
-      case 'KeyB': NS.buildMenu.cycle(e.shiftKey ? -1 : 1); return true;
-      case 'KeyU': if (c.selB) { const r = NS.base.upgrade(c.selB); if (!r.ok) P.say(r.reason, '#ff6a5c'); } return true;
+      case 'KeyB':
+        /* the first B opens build mode, the next ones step through the categories */
+        if (!c.buildMode) { c.buildMode = true; P.say('Build mode: 1-9 picks, B the next category, arrows move, Enter builds, Esc leaves'); }
+        else NS.buildMenu.cycle(e.shiftKey ? -1 : 1);
+        return true;
+      case 'KeyU': {
+        const w = NS.camera.toWorld(G.input.mouseX, G.input.mouseY, {});
+        P.upgradeKey(c.selB || NS.base.buildingAt(w.x, w.y), e.shiftKey);
+        return true;
+      }
       case 'Delete': case 'Backspace': if (c.selB && c.selB.type !== 'hub') { NS.base.demolish(c.selB); c.selB = null; } return true;
       case 'Home': case 'KeyM': { const h = NS.base.hub(); if (h) P.centre(h.x, h.y); return true; }
       case 'Equal': case 'NumpadAdd': P.zoomStep(1); return true;
@@ -153,6 +176,8 @@
       return true;
     }
     if (code === 'KeyT') return castAll({ x: G.input.aimWX, y: G.input.aimWY }) >= 0;
+    /* U: the building under the aim (or under the ship) is upgraded */
+    if (code === 'KeyU') return P.upgradeKey(NS.base.buildingAt(G.input.aimWX, G.input.aimWY) || NS.base.buildingAt(G.ship.x, G.ship.y), e.shiftKey) || true;
     if (code === 'KeyG') return P.escortShip();
     if (code === 'KeyR') return P.returnHome();
     if (code === 'KeyE') {

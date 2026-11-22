@@ -288,6 +288,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can build Herder Tugs, Minelayers, Aegis, Phantoms, Lancers and Bulwarks and cast their abilities with T or a button, or let them auto-cast
 - [x] As a player, I can select units by click, drag box, double-click and groups 1-9, and order them to move, attack-move, attack, escort, patrol, hold, mine, repair, purge or return
 - [x] As a player, I can move units in line, wedge, box or circle formation with waypoints and rally points, and see them earn veterancy
+- [x] As a player, I can build and upgrade by keyboard: build mode with digit-picked tiles, a ghost steered by the arrows, Enter to build, U and Shift+U to upgrade
 - [x] As a player, I can switch between the pilot view and a zoomed-out command view with a minimap, build menu, selection panel, alerts and pause-and-plan, and command my fleet from the cockpit
 
 ### Life in the Belts
@@ -363,7 +364,10 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | 1-9 / Ctrl+1-9 | Recall / set a control group (command view) |
 | Ctrl+A | Select every combat unit |
 | Space | Pause and plan (command view) |
-| B / U / Delete | Build category / upgrade / demolish (command view) |
+| B | Build mode, then the next tab; Shift+B the previous one (command view) |
+| 1-9 / arrows / Enter | In build mode: pick a tile (the ghost starts on the nearest free spot), move the ghost a cell, build and keep placing |
+| U / Shift+U | Upgrade the selected building or the one under the cursor (in flight: under the aim) / every one of its kind |
+| Delete | Demolish the selected building (command view) |
 | Wheel / + / - | Zoom the command view |
 | T / H | Tech tree / How to Play (menus) |
 | B | Research the selected node |

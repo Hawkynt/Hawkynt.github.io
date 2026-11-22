@@ -26,6 +26,8 @@
     c.sel.length = 0;
     c.selB = null;
     c.place = null;
+    c.kcell = null;
+    c.buildMode = false;
     c.pending = null;
     c.box = null;
     c.marks.length = 0;
@@ -52,6 +54,8 @@
     } else {
       c.plan = false;
       c.place = null;
+      c.kcell = null;
+      c.buildMode = false;
       c.pending = null;
       c.box = null;
       NS.audio.sfx('blip', { volume: 0.5, pitch: 1.2 });
@@ -80,10 +84,12 @@
     if (!c.on) return;
     const k = G.input.keys;
     const sp = 900 / c.zoom * dt;
-    if (k.KeyA || k.ArrowLeft) c.x -= sp;
-    if (k.KeyD || k.ArrowRight) c.x += sp;
-    if (k.KeyW || k.ArrowUp) c.y -= sp;
-    if (k.KeyS || k.ArrowDown) c.y += sp;
+    /* while placing, the arrows move the building's ghost instead (WASD still pans) */
+    const ar = !c.place;
+    if (k.KeyA || (ar && k.ArrowLeft)) c.x -= sp;
+    if (k.KeyD || (ar && k.ArrowRight)) c.x += sp;
+    if (k.KeyW || (ar && k.ArrowUp)) c.y -= sp;
+    if (k.KeyS || (ar && k.ArrowDown)) c.y += sp;
     c.x = Math.max(0, Math.min(G.world.w, c.x));
     c.y = Math.max(0, Math.min(G.world.h, c.y));
   }
@@ -344,11 +350,59 @@
   }
 
   /* ── placement ── */
-  function startPlace(type) {
+  function startPlace(type, byKey) {
     const c = G.cmd;
     c.place = type;
     c.selB = null;
     c.sel.length = 0;
+    /* picked by key: the ghost starts on the nearest free spot to the hub */
+    c.kcell = byKey ? NS.base.findSpot(type) : null;
+  }
+
+  /* the cell the ghost stands on: the keyboard's while it steers, else under the cursor */
+  function placeCell() {
+    const c = G.cmd;
+    if (!c.place) return null;
+    if (c.kcell) return c.kcell;
+    const w = NS.camera.toWorld(G.input.mouseX, G.input.mouseY, {});
+    return NS.base.cellAt(w.x, w.y, BUILDING_BY_ID[c.place].size);
+  }
+
+  /* arrows: the ghost a cell at a time, the camera following it */
+  function nudge(dx, dy) {
+    const c = G.cmd;
+    if (!c.place) return false;
+    const cell = placeCell();
+    const size = BUILDING_BY_ID[c.place].size;
+    c.kcell = { cx: Math.max(0, Math.min(NS.colony.COLS - size, cell.cx + dx)), cy: Math.max(0, Math.min(NS.colony.ROWS - size, cell.cy + dy)) };
+    const s = G.base.site;
+    centre(s.x0 + (c.kcell.cx + size / 2) * s.cell, s.y0 + (c.kcell.cy + size / 2) * s.cell);
+    return true;
+  }
+
+  /* Enter: builds on the ghost's cell (and keeps placing the same kind) */
+  function placeHere() {
+    const c = G.cmd;
+    const cell = placeCell();
+    if (!cell) return false;
+    const def = BUILDING_BY_ID[c.place], s = G.base.site;
+    const ok = tryPlace(s.x0 + (cell.cx + def.size / 2) * s.cell, s.y0 + (cell.cy + def.size / 2) * s.cell, true);
+    if (ok && c.place) c.kcell = NS.base.findSpot(c.place);
+    return ok;
+  }
+
+  /* U: the building upgraded; all: every one of its kind the outpost can pay for */
+  function upgradeKey(rec, all) {
+    if (!rec) { say('Select or point at a building to upgrade', '#ff6a5c'); return false; }
+    const list = all ? G.base.data.buildings.filter(o => o.type === rec.type) : [rec];
+    let n = 0, why = '';
+    for (const o of list) {
+      const r = NS.base.upgrade(o);
+      if (r.ok) ++n; else why = why || r.reason;
+    }
+    if (n) say(n > 1 ? n + ' ' + BUILDING_BY_ID[rec.type].name + 's upgraded' : BUILDING_BY_ID[rec.type].name + ' upgraded', '#5cff9a');
+    else say(why || 'Nothing to upgrade', '#ff6a5c');
+    return n > 0;
   }
 
   function tryPlace(x, y, keep) {
@@ -369,6 +423,6 @@
   Object.assign(NS.command, {
     ZOOMS, cmd, reset, available, toggle, plan, update, zoomStep, centre, say, liveSel, select, selectBuilding, clearSel, unitAt,
     enemyAt, rockAt, clickSelect, selectBox, selectType, selectAllCombat, setGroup, recallGroup, order, smartOrder, setFormation, hold,
-    escortShip, returnHome, attackAim, startPlace, tryPlace
+    escortShip, returnHome, attackAim, startPlace, tryPlace, placeCell, nudge, placeHere, upgradeKey
   });
 })();

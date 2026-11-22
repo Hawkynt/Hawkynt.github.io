@@ -78,6 +78,7 @@
       }
       list = BUILDINGS.filter(d => d.cat === c.cat && d.id !== 'hub');
     }
+    if (c.buildMode) kit.text('BUILD MODE  -  1-9 pick, B next tab, Esc leaves', a.x + a.w - 10, a.y - 10, 11, UI.accent, { align: 'right', weight: 'bold' });
     const y = a.y + (claimed ? 34 : 28);
     for (let i = 0; i < list.length; ++i) {
       const def = list[i];
@@ -97,9 +98,15 @@
       ctx.globalAlpha = 1;
       kit.fitText(def.name, x + TILE / 2, y + 54, TILE - 6, 11, { weight: 'bold', color: hot ? '#ffffff' : UI.text, align: 'center' });
       kit.text(NS.kit.group(cost.cr), x + TILE / 2, y + 68, 11, ok ? UI.gold : UI.bad, { align: 'center', weight: 'bold' });
+      if (c.buildMode) kit.text(String(i + 1), x + 8, y + 10, 12, UI.accent, { weight: 'bold' });
     }
     if (!claimed) kit.wrap('Pick the Command Hub, then click inside the outpost site. It costs ' + NS.kit.group(C.buildCost('hub', G.stats).cr) +
       ' credits and starts four crew. Waves will come for it.', a.x + TILE + 26, a.y + 40, a.w - TILE - 40, 13, 18, UI.textDim);
+  }
+
+  /* the tiles the menu shows now: the hub before founding, else the open category's buildings */
+  function tiles() {
+    return NS.base.claimed() ? BUILDINGS.filter(d => d.cat === G.cmd.cat && d.id !== 'hub') : [BUILDING_BY_ID.hub];
   }
 
   /* B cycles the categories */
@@ -111,6 +118,6 @@
   }
 
   Object.assign(NS.buildMenu, {
-    TILE, area, draw, cycle, costLines
+    TILE, area, draw, cycle, costLines, tiles
   });
 })();

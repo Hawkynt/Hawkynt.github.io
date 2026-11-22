@@ -417,8 +417,7 @@
     const c = G.cmd;
     if (!c.on || !c.place) return;
     const def = BUILDING_BY_ID[c.place];
-    const w = NS.camera.toWorld(G.input.mouseX, G.input.mouseY, {});
-    const cell = NS.base.cellAt(w.x, w.y, def.size);
+    const cell = NS.command.placeCell();
     const chk = C.canPlace(b.data, b.deps, c.place, cell.cx, cell.cy, G.stats);
     const cost = C.buildCost(c.place, G.stats);
     const afford = NS.base.affordable(cost);

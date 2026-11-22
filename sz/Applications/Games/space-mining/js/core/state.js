@@ -57,7 +57,7 @@
     distress: null,
 
     /* the command view: camera, pause-and-plan, selection, groups, formation, placement */
-    cmd: { on: false, x: 0, y: 0, zoom: 0.42, plan: false, sel: [], selB: null, groups: {}, form: 'wedge', place: null, pending: null,
+    cmd: { on: false, x: 0, y: 0, zoom: 0.42, plan: false, sel: [], selB: null, groups: {}, form: 'wedge', place: null, kcell: null, buildMode: false, pending: null,
       cat: 'core', box: null, marks: [], msg: null, hover: null, panel: 'build' },
 
     /* effects: additive and alpha-blended particles, shockwave rings, floating texts */
