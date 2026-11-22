@@ -257,4 +257,22 @@ exports.run = async (t) => {
   await t.wait(300);
   await t.shot('20-escort-delivered');
   t.check('the freighter docks at its post and wins the operation', await t.state("G.run.op.status === 'won' && G.save.ops.a_first.done && G.freighters[0].paid > 0"));
+
+  /* the Arsenal: the third tree page, bought with Intel */
+  await t.run((NS, G) => { G.save.intel = 12; G.treeReturn = 'paused'; NS.screens.setScreen('tree'); NS.tree.setPage(2); G.ui.treeSel = 'r_fusion'; });
+  await t.wait(400);
+  await t.shot('21-arsenal');
+  t.check('the Arsenal page shows its eighteen nodes and the Intel', await t.state("['w_dmg', 'v_wing', 't_flare', 'x_vet', 'z_cloak', 'r_fusion'].every(id => G.hitAreas.some(a => a.id === id))"));
+  await t.hit('w_dmg');
+  t.check('clicking a node (hovering selects it) researches it with Intel', await t.state("G.save.tree.w_dmg === 1 && G.save.intel === 10"));
+
+  /* tiers on the map: a cleared operation offers Replay, Hard and (once Hard is cleared) Nightmare */
+  await t.run((NS, G) => { NS.trip.endTrip('dock'); NS.screens.setScreen('map'); G.ui.mapSel = 1; G.ui.mapTab = 'ops'; G.ui.opSel = 'a_first'; });
+  await t.wait(500);
+  await t.shot('22-map-tiers');
+  t.check('a cleared escort offers its Hard tier, Nightmare still shut', await t.state("['go_op', 'go_hard', 'go_nm'].every(id => G.hitAreas.some(a => a.id === id)) && NS.tiers.unlocked(G.save, NS.opsData.OP_BY_ID.a_first, 'hard') && !NS.tiers.unlocked(G.save, NS.opsData.OP_BY_ID.a_first, 'nightmare')"));
+  await t.run((NS, G) => NS.screens.setScreen('station'));
+  await t.wait(400);
+  await t.shot('23-station-weekly');
+  t.check('the station shows the weekly Nightmare Op', await t.state("G.hitAreas.some(a => a.id === 'weekly_op')"));
 };
