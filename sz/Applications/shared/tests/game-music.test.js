@@ -205,6 +205,16 @@ check('stingers still play in the current key', audio.made.sources > before);
 M.play(null);
 
 /* ── the Mega Drive styles: FM voices, PSG arpeggios, march drums ── */
+/* the long passes of the 16-bit styles: about three minutes, every groove its own verse or key */
+for (const st of ['fm16calm', 'fm16', 'fm16war']) {
+  const song = { id: 'long-' + st, style: st, root: 52, scale: 'minor', prog: [0, 5, 6, 4], seed: 5 };
+  const R = M.resolve(song);
+  const bars = M.planCycle(song, 1).reduce((a, sec) => a + sec.bars, 0);
+  const secs = bars * 4 * 60 / R.bpm;
+  const grooves = M.planCycle(song, 1).filter(sec => sec.name === 'groove').map(sec => sec.verse + ':' + sec.transpose);
+  check(st + ' runs a pass of about three minutes before it comes round (' + Math.round(secs) + ' s)', secs >= 130 && secs <= 240);
+  check(st + ' gives every groove of a pass its own verse', new Set(grooves).size === grooves.length);
+}
 check('three Mega Drive styles: calm, song and war', ['fm16calm', 'fm16', 'fm16war'].every(st => M.STYLES[st]), Object.keys(M.STYLES).join());
 const fmWaves = new Set();
 for (const st of ['fm16calm', 'fm16', 'fm16war']) for (const k in M.STYLES[st].layers) { const L = M.STYLES[st].layers[k]; if (L.wave) fmWaves.add(L.wave); if (L.dropWave) fmWaves.add(L.dropWave); }

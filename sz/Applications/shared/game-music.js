@@ -161,7 +161,8 @@
   // with an intro, then groove, build-up, drop and breakdown; every pass picks
   // a new verse melody, sometimes new harmony, a longer groove, a second drop
   // melody, a half-time drop or a key change, while the hook stays, so the
-  // song is recognisable without looping. Gameplay intensity colours it: calm
+  // song is recognisable without looping (the 16-bit styles run long passes of about three
+  // minutes, every section with a verse, chords or key of its own). Gameplay intensity colours it: calm
   // play thins the layers, at full intensity breakdowns are skipped and a
   // groove jumps into a build-up and on into the drop.
 
@@ -220,15 +221,15 @@
     // the Mega Drive: two-operator FM bass, brass, leads, pads and bells (the YM2612 in
     // miniature), PSG square arpeggios and punchy drums with tom fills - a calm, a song and a war
     // arrangement, so one theme can follow a game from quiet work into battle
-    fm16calm: { bpm: 92, form: 'calm', duck: 0, layers: {
+    fm16calm: { bpm: 92, form: 'calm', long: true, duck: 0, layers: {
       pad: L({ vol: 0.022, wave: 'fmpad' }), bass: L({ vol: 0.05, wave: 'fmbass', pattern: 'walk', e: 0.25 }),
       arp: L({ vol: 0.013, wave: 'psg', rate: 4, pattern: 'updown', oct: 2, e: 0.35 }), lead: L({ vol: 0.022, wave: 'fmlead', density: 0.3, e: 0.42 }),
       bells: L({ vol: 0.022, wave: 'fmbell' }), drums: L({ vol: 0.032, style: 'soft', e: 0.5 }) } },
-    fm16: { bpm: 116, form: 'song', duck: 0.1, layers: {
+    fm16: { bpm: 116, form: 'song', long: true, duck: 0.1, layers: {
       pad: L({ vol: 0.022, wave: 'fmpad' }), bass: L({ vol: 0.06, wave: 'fmbass', pattern: 'octave', drop: 'gallop', e: 0.2 }),
       arp: L({ vol: 0.015, wave: 'psg', rate: 2, pattern: 'up', oct: 2, e: 0.4 }), lead: L({ vol: 0.03, wave: 'fmlead', dropWave: 'fmbrass', density: 0.55, e: 0.45 }),
       bells: L({ vol: 0.02, wave: 'fmbell' }), drums: L({ vol: 0.055, style: 'chip', drop: 'genesis', e: 0.25 }) } },
-    fm16war: { bpm: 138, form: 'song', duck: 0.15, layers: {
+    fm16war: { bpm: 138, form: 'song', long: true, duck: 0.15, layers: {
       pad: L({ vol: 0.02, wave: 'fmpad' }), bass: L({ vol: 0.064, wave: 'fmbass', pattern: 'gallop', drop: 'gallop', e: 0.15 }),
       arp: L({ vol: 0.015, wave: 'psg', rate: 1, pattern: 'updown', oct: 2, e: 0.4 }), lead: L({ vol: 0.034, wave: 'fmbrass', dropWave: 'fmbrass', density: 0.6, e: 0.35 }),
       stab: L({ vol: 0.016, pattern: 'sync', wave: 'fmbrass', e: 0.8 }), bells: L({ vol: 0.018, wave: 'fmbell' }),
@@ -298,7 +299,22 @@
     const base = { prog: progA, transpose: transpose, verse: verse };
     const S = (name, bars, e0, e1, extra) => Object.assign({ name: name, bars: bars, e0: e0, e1: e1 }, base, extra || {});
     const out = [];
-    if (R.form === 'calm') {
+    /* the long forms (the 16-bit styles): some three minutes of sections that each bring a
+       verse, a chord sequence or a key of their own before a pass ends */
+    const progC = R.long ? pick(progB) : null;
+    if (R.long && R.form === 'calm') {
+      out.push(S('groove', 8, 0.3, 0.35), S('groove', 8, 0.42, 0.48, { prog: progB, verse: verse + 1 }), S('break', 8, 0.2, 0.22, { prog: progB, brk: 'bells' }),
+        S('groove', 8, 0.38, 0.45, { prog: progC, verse: verse + 2 }), S('groove', 8, 0.45, 0.5, { prog: progC, verse: verse + 3, transpose: transpose + 2 }),
+        S('break', 8, 0.25, 0.25, { prog: progA, brk: 'melodic', transpose: transpose + 2 }), S('groove', 8, 0.4, 0.46, { verse: verse + 4 }),
+        S('groove', 8, 0.35, 0.4, { prog: progB, verse: verse + 5 }));
+    } else if (R.long && R.form === 'song') {
+      if (cycle === 0) out.push(S('intro', 4, 0.2, 0.35));
+      out.push(S('groove', 8, 0.5, 0.6), S('groove', 8, 0.55, 0.62, { prog: progB, verse: verse + 1 }), S('build', 4, 0.65, 0.8, { lite: true }),
+        S('drop', 8, 0.95, 1), S('break', 8, 0.3, 0.35, { prog: progB, lite: true, brk: 'melodic' }),
+        S('groove', 8, 0.5, 0.6, { prog: progC, verse: verse + 2, transpose: transpose + 2 }), S('build', 4, 0.65, 0.8, { lite: true, transpose: transpose + 2 }),
+        S('drop', 16, 0.95, 1, { dropB: true, lift: cycle % 2 === 1, transpose: transpose + 2 }), S('break', 8, 0.3, 0.35, { prog: progC, lite: true, brk: 'bells' }),
+        S('groove', 8, 0.5, 0.58, { verse: verse + 3 }));
+    } else if (R.form === 'calm') {
       out.push(S('groove', 8, 0.3, 0.35), S('groove', 8, 0.45, 0.5, { prog: progB, verse: verse + 1 }), S('groove', 8, 0.38, 0.42), S('break', 8, 0.2, 0.2, { prog: progB, brk: 'bells' }));
     } else if (R.form === 'song') {
       if (cycle === 0) out.push(S('intro', 4, 0.2, 0.35));
