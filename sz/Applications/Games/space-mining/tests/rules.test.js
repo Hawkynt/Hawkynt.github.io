@@ -12,9 +12,9 @@ const { TREE, TREE_BY_ID, BRANCHES } = NS.treeData;
 const { UPGRADES, HULLS, MODULES } = NS.ships;
 const { ZONES, ORES } = NS.ores;
 
-check('eleven branches on two pages and 56 nodes', BRANCHES.length === 11 && TREE.length === 56 && BRANCHES.filter(b => b.page === 1).length === 5);
+check('seventeen branches on three pages and 74 nodes', BRANCHES.length === 17 && TREE.length === 74 && BRANCHES.filter(b => b.page === 1).length === 5 && BRANCHES.filter(b => b.page === 2).length === 6);
 check('the colony page covers construction, defence, fleet, biosecurity and industry', ['construction', 'fortification', 'fleet', 'biosecurity', 'industry'].every(id => TREE.some(n => n.branch === id)));
-check('every prerequisite names a real node', TREE.every(n => n.req.every(r => TREE_BY_ID[r[0]] && r[1] <= TREE_BY_ID[r[0]].costs.length)));
+check('every prerequisite names a real node or an operation', TREE.every(n => n.req.every(r => (TREE_BY_ID[r[0]] && r[1] <= TREE_BY_ID[r[0]].costs.length) || (r[0].indexOf('op:') === 0 && NS.opsData.OP_BY_ID[r[0].slice(3)]))));
 check('every node belongs to a branch', TREE.every(n => BRANCHES.some(b => b.id === n.branch)));
 
 const s = R.freshSave();

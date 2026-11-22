@@ -98,7 +98,7 @@
 
   /* Pirate craft, facing +x, in rust red and black */
   function pirate(kind) {
-    const S = kind === 'gunship' ? 80 : kind === 'raider' ? 54 : 40;
+    const S = { gunship: 80, raider: 54, jammer: 48, layer: 52, mine: 28, battery: 76 }[kind] || 40;
     return K.sprite('pirate:' + kind, S, S, (g, w) => {
       const c = w / 2;
       const red = '#c8302a', dark = '#24181a', bone = '#d8c8b0';
@@ -115,6 +115,51 @@
         part([[-14, 4], [-8, 14], [-2, 5]], dark);
         part([[-16, -4], [6, -3], [18, 0], [6, 3], [-16, 4]], red);
         part([[-4, -2], [8, -1], [8, 1], [-4, 2]], bone);
+      } else if (kind === 'mine') {
+        /* a spiked sphere with a red eye */
+        g.strokeStyle = '#6a6a72';
+        g.lineWidth = 2;
+        for (let k = 0; k < 8; ++k) {
+          const a = k / 8 * TAU;
+          g.beginPath();
+          g.moveTo(c + Math.cos(a) * 6, c + Math.sin(a) * 6);
+          g.lineTo(c + Math.cos(a) * 13, c + Math.sin(a) * 13);
+          g.stroke();
+        }
+        g.fillStyle = metal(g, c - 8, c - 8, c + 8, c + 8, dark);
+        g.beginPath();
+        g.arc(c, c, 8, 0, TAU);
+        g.fill();
+        g.fillStyle = '#ff3a2a';
+        g.beginPath();
+        g.arc(c, c, 3, 0, TAU);
+        g.fill();
+        return;
+      } else if (kind === 'battery') {
+        /* a gun platform: an octagonal base, a turret and twin barrels */
+        const base = [];
+        for (let k = 0; k < 8; ++k) base.push([Math.cos((k + 0.5) / 8 * TAU) * 30, Math.sin((k + 0.5) / 8 * TAU) * 30]);
+        part(base, dark);
+        part([[-14, -14], [14, -14], [18, 0], [14, 14], [-14, 14], [-18, 0]], red);
+        part([[10, -8], [36, -7], [36, -3], [10, -2]], '#6a6a72');
+        part([[10, 2], [36, 3], [36, 7], [10, 8]], '#6a6a72');
+        part([[-6, -4], [6, -4], [6, 4], [-6, 4]], bone);
+      } else if (kind === 'jammer') {
+        /* a slim hull carrying a dish */
+        part([[-18, -6], [10, -5], [20, 0], [10, 5], [-18, 6]], red);
+        part([[-12, -16], [-2, -16], [-2, 16], [-12, 16]], dark);
+        g.strokeStyle = '#7af0ff';
+        g.lineWidth = 2.5;
+        g.beginPath();
+        g.arc(c + 14, c, 10, -1.1, 1.1);
+        g.stroke();
+        part([[-4, -2], [8, -2], [8, 2], [-4, 2]], bone);
+      } else if (kind === 'layer') {
+        /* a boxy hauler with a mine rack at the stern */
+        part([[-22, -12], [12, -12], [22, 0], [12, 12], [-22, 12]], red);
+        part([[-24, -8], [-14, -8], [-14, 8], [-24, 8]], dark);
+        for (let k = -1; k <= 1; ++k) { g.fillStyle = '#ff3a2a'; g.fillRect(c - 22, c + k * 5 - 1.5, 3, 3); }
+        part([[-4, -3], [10, -3], [10, 3], [-4, 3]], bone);
       } else if (kind === 'raider') {
         part([[-22, -18], [8, -14], [14, -10], [-18, -8]], dark);
         part([[-22, 18], [8, 14], [14, 10], [-18, 8]], dark);

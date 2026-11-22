@@ -16,7 +16,7 @@ All art is painted once into cached canvases at twice its size: hulls from layer
 
 ### Fuel and range
 
-Fuel is what keeps a trip short of endless. The engines burn 2 units a second at full thrust (a new ship's tank lasts about 50 seconds of it) and a trickle while coasting; a full hold burns up to half again as much, the afterburner about three times as much, heavier hulls more (Wasp x0.9, Hauler x1.25, Leviathan x1.45), a tuned engine burns faster in step with its top speed (so fuel per distance stays), and every belt burns more than the last (x1.00, 1.35, 1.55, 1.80, 2.05 from the Kessler Drift to the Void Crown: denser dust, stronger fields). Bigger tanks (Fuel Tanks, +8% a level up to +80%) and Lean Burn (-6% a level up to -24%) grow with the career, but the belts grow and burn faster, so a fully upgraded Leviathan in the Void Crown crosses from the dock to the rim only about a fifth more often on a tank than a new ship in the Kessler Drift - fuel matters from the first trip to the last. The fuel gauge carries a bingo mark: the fuel it takes to reach the nearest place to refuel (cruising, with the hold as it is, plus a margin), and below it the HUD warns BINGO FUEL. Running dry calls a tow that takes half the hold and ends the trip (or the Emergency Jump) - unless fuel comes aboard while it is on its way (drifting into a post or a gas pocket, or a fuel cell), which calls it off.
+Fuel is what keeps a trip short of endless. The engines burn 2 units a second at full thrust (a new ship's tank lasts about 50 seconds of it) and a trickle while coasting; a full hold burns up to half again as much, the afterburner about three times as much, heavier hulls more (Wasp x0.9, Hauler x1.25, Leviathan x1.45), a tuned engine burns faster in step with its top speed (so fuel per distance stays), and every belt burns more than the last (x1.00, 1.35, 1.55, 1.80, 2.05 from the Kessler Drift to the Void Crown: denser dust, stronger fields). Bigger tanks (Fuel Tanks, +8% a level up to +80%) and Lean Burn (-6% a level up to -24%) grow with the career, but the belts grow and burn faster, so through the career fuel never stops mattering: a well upgraded ship in the outer belts crosses from the dock to the rim about as often on a tank as a new ship in the Kessler Drift. Only the Arsenal's Drive branch (Deep Tanks, then the Fusion Drive after the Syndicate Citadel) lifts the limit at the very end. The fuel gauge carries a bingo mark: the fuel it takes to reach the nearest place to refuel (cruising, with the hold as it is, plus a margin), and below it the HUD warns BINGO FUEL. Running dry calls a tow that takes half the hold and ends the trip (or the Emergency Jump) - unless fuel comes aboard while it is on its way (drifting into a post or a gas pocket, or a fuel cell), which calls it off.
 
 There is more than one place to fill up, and each comes with the belt that needs it:
 - **Kessler Dock** - refuels and repairs for the usual bill (the Fuel Depot makes it cheaper, then free).
@@ -35,7 +35,19 @@ The pacing director follows a timeline of beats per operation (build-up, peak, r
 
 The Amber Reach adds freighters. Four trading posts sit at the edges of the belt - north, east, south and west, placed by the belt's seed - and lanes with a couple of bends run from the dock to each of them, cleared of rocks when an escort operation starts. A freighter undocks on the operation's schedule and follows its lane at a slow, steady pace (quicker in the wider belts, so a run takes as long whatever the belt's size; half speed inside a solar storm); its route is drawn faintly in the belt and marked on the radar, and an arrow on the screen edge points at every freighter in flight, red while one is under attack. Pirates lie in wait at choke points along the lanes and strike as a freighter passes: skimmers latch on and drain its cargo - up to fifteen percent each - then run, and shooting one down before it gets away brings the cargo back; raiders and gunships shoot its hull. Ambushers whose freighter docks give up the raid and leave. A freighter that reaches its post pays the operation's fee times the share of cargo still aboard; one that docks with less than half its cargo voids its contract and counts as lost, and so does one whose hull gives out. Several freighters heading in different directions at once make a fast hull, afterburners and long-range weapons pay off. Some freighters stop halfway and ask for ore to patch their reactor: fly up to them slowly with the belt's commonest ore in the hold and they take it and fly on. From the Hired Wing operation on, two fighters fly with every convoy: they guard the ship and dive on whatever attacks a freighter.
 
-The Amber Reach operations: One Freighter (challenging), Long Lane (breather), Storm Crossing (surprise: a storm front and an ambush in it), Two Freighters in opposite directions (harder), Hired Wing (breather), Convoy of three on one lane (harder), Three Directions, all three to arrive, with a gunship in every ambush (worse than you think), Reactor Trouble (surprise: a freighter wants ore you mine on the way) and the capstone, the Long Haul (nightmare: four freighters, a storm front and armoured gunship leaders), which opens the Verdant Shoals licence. An escort operation fails once more freighters are lost than it allows.
+Every Amber escort turns on its own twist, so no two play alike:
+- **One Freighter** (C) - one freighter, one ambush: the basics.
+- **Courier Run** (E) - a courier flies the long lane at well over twice a freighter's speed; keeping up takes speed and fuel, and fast skimmers try to catch it.
+- **Glass Cargo** (S) - a freighter with a cracked hull - a single hit point - crosses a solar storm: any bolt, mine or blast destroys it, so raiders must die before they fire.
+- **Pirate Tide** (H) - two freighters on one lane against swarms of eight to ten skimmers per ambush: wide guns (flak) and a hired wing pay off.
+- **Hired Wing** (E) - the guild's two fighters fly with you from now on.
+- **Gun Run** (H) - the lane passes a pirate outpost: three gun batteries stand beside it and shell any freighter (or the ship) within 520 px. The freighters leave late enough to raze them first.
+- **Three Directions** (W) - three freighters to three posts, the ambushes led by Jammers: a Jammer's EMP beam stops a freighter dead while it stays within 380 px.
+- **Reactor Trouble** (S) - the freighter stops halfway and asks for ore.
+- **Long Haul** (N) - four freighters to all four posts through a storm; gunships join the ambushes and Minelayers fly ahead of the freighters seeding their lanes with mines (a mine that a freighter touches deals 70 damage; the laser, the weapons and the wing shoot them).
+
+The Long Haul opens the Verdant Shoals licence. An escort operation fails once more freighters are lost than it allows.
+
 
 ### Outposts
 
@@ -78,6 +90,48 @@ Six craft carry an ability on a cooldown. From the drone factory, with the Verda
 
 Gas pockets and Bloom clouds drift in the belts (fly through to scoop them); living rocks burst with spores when drilled, crystalline ones shed swarmers, hive nests sleep in hollow rocks. Bio-matter contaminates the hold. Unloaded at a hub without a cargo scan it seeds infection, which grows logistically in staffed buildings, spreads along links, slows work and kills crew - when the last crew dies the outpost is abandoned, scavengers strip it and after three cycles it becomes a hive. Quarantine cuts a building from the links, the medical bay treats nearby crew (and with serum vaccinates the outpost), sterilising kills the spores and some crew. Lattice corruption replicates inside a building and spreads along links; at 100% the building turns: turrets fire on your fleet, factories make Lattice drones, reactors drain the grid, and corrupted units desert. Purges (a circuit each), purge tenders and the hub's EMP clean it; vaccine and firewall research slow both. Distress calls lead to silent stations guarded by a hive or Lattice drones; clear them, dock, and bring the survivors to an outpost as crew. Seasons (by local date), a weekly anomaly belt with its own rules and pay, the daily and weekly contracts with a streak, and seven captain's log chapters played as cinematics complete the loop.
 
+### The Void Crown: everything at once
+
+The last belt runs every loop together, adds allied stations to protect and sets three factions loose - the Syndicate, the Lattice and the Hive - that fight you and, where an operation says so, each other: in a feud every raider of one faction turns on the nearest craft of another within 450 px. Factions also come at you in **fronts**: groups that arrive from the rim on a schedule and go for your outpost, your craft, your ship, or an allied station.
+
+An **allied station** stands somewhere out at the rim with its own hull and guns (it shoots the nearest hostile within 480 px). Invaders sent at it fly for it; when every allied station of an operation falls, the operation fails.
+
+The Void Crown operations:
+- **Void Crystals** (C) - bank 24 void crystals while hunters (raiders and gunships) stalk the ship.
+- **Protect Friends** (H) - an allied station is under siege by the Hive: hold out four minutes with it standing.
+- **Build Base** (E) - found an outpost in the Void, finish three turrets, hold a wave.
+- **Base and Haulers** (W) - raze a Syndicate core while its haulers try to get away; five escaped haulers lose the run.
+- **Survivors** (S) - escort two freighters of survivors to the far posts through Lattice space: Lattice drones and nanoprobe swarms ambush them.
+- **Three-Front War** (H) - the Syndicate dug in, the Hive and the Lattice coming from the rim, all three feuding: raze the Syndicate core and hold out five minutes.
+- **The Crown** (N, capstone) - shatter the Crown Heart while all three factions converge on you and an allied station; then the career ending plays.
+
+### Hard and Nightmare tiers, the weekly Nightmare Op
+
+A cleared operation opens its **Hard** tier, and a cleared Hard its **Nightmare** tier, picked on the map beside Replay. Hard flies the operation with one modifier, Nightmare with two (always the Hard one plus another); which ones is fixed per operation, and only those that make sense for it are drawn:
+- **Veteran foes** - every pirate and enemy has half again its hull.
+- **Swarm** - ambushes, pirate threats and fronts are half again as big.
+- **Fog** - the radar sees half as far.
+- **Endless storm** - solar storms come one after another.
+- **Dry tanks** - the tank holds 60%.
+- **No turrets** - turrets cannot be built (operations with invader waves).
+- **Double convoy** - every freighter comes with a twin (escorts).
+
+Each tier keeps its own best time. The first clear of Hard pays twice the operation's Intel, the first clear of Nightmare three times plus three festival tokens. Medals show on the map: bronze for a clear, silver for Hard, gold for Nightmare.
+
+Every ISO week brings a **weekly Nightmare Op**: one operation of the career and two modifiers, the same for everyone that week (seeded by the week). It opens once that operation is open or cleared in your career; the station shows it with a button straight in. A win scores 10,000 less ten points a second (at least 500), keeps the week's best, pays 5 Intel the first time each week and enters the High Scores; winning in consecutive weeks builds a streak.
+
+### The Arsenal and Intel
+
+Operations pay a second currency, **Intel**, on their first clear - 1 for a challenge or a breather, 2 for a surprise or a harder one, 3 for a peak, 4 for a nightmare (Hard and Nightmare tiers pay more, see above). Intel buys the third page of the tech tree, the Arsenal, six branches of three nodes:
+- **Weapons** - Hot Coils (+10% hardpoint damage a level), Quick Loaders (-8% hardpoint cooldown), Long Barrels (+15% hardpoint range).
+- **Convoy** - Armoured Freighters (+20% freighter hull), Tuned Haulers (+8% freighter speed), Bigger Wing (one more fighter in the hired wing a level).
+- **Tactics** - Drilled Crews (-10% ability cooldowns), Keen Sensors (+25% reach for spotting cloaked craft), Signal Flares (+20% scanner pulse reach).
+- **Warfare** - Sappers (+15% unit damage to structures), Penetrators (armour soaks 10% less of a hit), Veteran Pilots (+10% unit hit points).
+- **Xeno** - Virulent Spores (+25% spore rot), Deep Hijack (+30% hijack time), Phase Cloak (+30% cloak time).
+- **Drive** - Scoop Intake (+50% gas scooping speed a level, for fuel and for the hold), Deep Tanks (+25% fuel), Fusion Drive (burns 70% less; needs the Syndicate Citadel cleared).
+
+A node may need a cleared operation besides its prerequisites. With the Fusion Drive and Deep Tanks a fully upgraded Leviathan carries over five minutes of full thrust in the Void Crown: the best ship, fully upgraded, never has to think about fuel again.
+
 ### Hangar, festivals and soundtrack
 
 The station's Hangar tab collects 15 liveries (paint schemes laid over any hull), 11 mining-beam colours and 11 thruster plumes. Each opens from the start, with credits or research, with achievements, belt licences, by breaking the Crown, or on a festival track. Six seasons a year (Perihelion Lights, Frostbelt, Spring Bloom, Solar Solstice, Perseid Drift, Void Night) each run a six-tier track: every finished trip pays tokens by the value of its haul, and the track pays credits, research and that season's own livery, beam and plume. The soundtrack is in the style of the 16-bit consoles - FM bass, brass, leads and bells, PSG square arpeggios, punchy drums with tom fills - composed live by the shared `SZ.GameMusic` (all themes are original). Every belt has one theme, a career trip a variant of its own, and the theme follows what the pilot is doing: calm while mining or docked, a walking groove while cruising, a tense march when a wave or an ambush is coming, a storm is warned or an operation's director is about to strike, the full battle arrangement while pirates or invaders are close or the outpost is under attack, and a heavier phrygian version when a mothership is in the belt. Changes land on the next bar line; the music climbs at once but calms down only after some quiet seconds, so one passing skimmer does not toss it around. Calm and explore are the quiet pair: the music trades between them only after a piece has played two and a half minutes, and a quiet stretch that long crossfades slowly into another variation of the same mood (three per mood, drawn from the belt's theme). Pause-and-plan thins the band. Won and failed operations and repelled waves play a short phrase over the music. The station, the menus, Gold Rush and the Daily Belt and Siege have their own themes in the same style.
@@ -94,12 +148,13 @@ The code lives in `js/` as plain scripts on the `SZ.SpaceMining` namespace, load
 Core (`js/core/`):
 
 - **`namespace.js`** -- The `SZ.SpaceMining` namespace with one object per module, so modules can call modules that load after them
+- **`tiers.js`** -- Hard and Nightmare tiers: the modifiers, which ones an operation draws, unlocking, first-clear rewards, medals, the weekly Nightmare Op, its score and streak
 - **`fuel.js`** -- Belt sizes, how far out a point lies, rock density and richness by distance, burn rates, the bingo cost home, fuel cells and the Ramscoop
 - **`constants.js`** -- View plane, simulation clock, world, grid and pool sizes, rock radii, flight, laser, tractor and dock tuning, feel timings, UI palette
 - **`rng.js`** -- Seeded mulberry32 generators, string hashing, the local day key, angle and segment helpers
 - **`data-ores.js`** -- 22 resources in seven kinds (value, rarity, colours, research yield, bar name) and five belts (rock ore mix, gases, life and nanoprobe pressure, hazards, pirates, licence, colour theme)
 - **`data-ships.js`** -- Four hulls, six hangar upgrades, five station modules, three pirate types
-- **`data-tree.js`** -- The tech tree on two pages: eleven branches, 56 nodes with research costs, prerequisites, placement and per-level stats
+- **`data-tree.js`** -- The tech tree on three pages: seventeen branches, 74 nodes with research or Intel costs, prerequisites (other nodes or a cleared operation), placement and per-level stats
 - **`data-goals.js`** -- The four modes, 29 achievements and the statistics they watch
 - **`data-weapons.js`** -- The nine hardpoint weapons (type, firing mode, cooldown, damage, range, unlock, price), their levels and the hardpoints of each hull
 - **`data-colony.js`** -- Seven components and their recipes, what the plants smelt, six build categories and the 25 buildings
@@ -133,6 +188,7 @@ Systems (`js/systems/`), one simulation concern each:
 - **`fx.js`** -- Pooled particles and colour ramps, rock chunks and dust, rings, floating texts, explosions, shake, hit-stop, slow motion, flashes
 - **`camera.js`** -- The chase camera with velocity and aim look-ahead, speed zoom, cinematic focus, shake; world and view mapping
 - **`asteroids.js`** -- Seeded belt layout, rock hit points, damage, heat and chipping, fracture into children and nuggets, volatile chains, drift, respawning, geodes and the Crown Heart
+- **`allies.js`** -- Allied stations with hull and guns, faction fronts arriving on a schedule, the feud between factions
 - **`refuel.js`** -- Refuelling in flight: trading posts, the hub, fuel cells, the Ramscoop, the nearest place to refuel and the bingo warning
 - **`ship.js`** -- The mining ship: inertia flight, boost, banking, fuel, edges, bouncing off rocks with impact damage, shield and hull, blasts, exhaust
 - **`mining.js`** -- The laser cone, its lock and the ray cast, fault cracks, the split beam, nuggets and salvage, the tractor beam, the hold, the scanner pulse, seismic charges
@@ -198,7 +254,7 @@ UI (`js/ui/`):
 - **`colonies.js`** -- The Colonies tab (daily contract and streak, anomaly, season, every outpost) and the Log tab
 - **`shipyard.js`** -- The Shipyard tab (hulls, level-up upgrade cards) and the Modules tab
 - **`map.js`** -- The belt map with planets, lanes, details, the operations list and brief, launching and buying licences
-- **`tree.js`** -- The tech tree screen on two pages with links, states, detail panel and research that applies mid-trip
+- **`tree.js`** -- The tech tree screen on three pages (Ship, Colony, Arsenal) with links, states, detail panel and research that applies mid-trip
 - **`help.js`** -- Eight illustrated How to Play pages
 - **`pause.js`** -- The pause menu with Tech Tree, How to Play, tow home and quit
 - **`results.js`** -- The trip report or mode score with counted values and the next goal
@@ -281,6 +337,10 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 ### Escort
 - [x] As a player, I can escort freighters from the dock along lanes to trading posts at the belt edges and get paid by the cargo they deliver
+- [x] As a player, I replay cleared operations on Hard and Nightmare with modifiers, for medals, Intel and tokens
+- [x] As a player, I fly the weekly Nightmare Op for a score, a streak and a place in the High Scores
+- [x] As a player, I protect allied stations and fight three factions that also fight each other in the Void Crown, ending with The Crown
+- [x] As a player, I face a different twist in every Amber escort: a fast courier, a one-hit-point freighter, skimmer swarms, a pirate gun outpost beside the lane, Jammers that stop a freighter, Minelayers that mine its lane
 - [x] As a player, I can fight off ambushes at choke points, shoot down skimmers that drain a freighter's cargo to win it back, and keep raiders off its hull
 - [x] As a player, I can follow every freighter on the radar, by edge arrows and in the operation tracker, and see one under attack
 - [x] As a player, I can protect several freighters heading in different directions at once, through solar storms
@@ -336,7 +396,9 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can play seasons, a weekly anomaly belt with its own rules, a daily contract streak and weekly contracts, and read the captain's log as the story of the Bloom and the Lattice unfolds
 
 ### Progression & Modes
-- [x] As a player, I can research a 52-node tech tree in Drilling, Engines, Logistics, Automation, Defense and Science for the ship and Construction, Fortification, Fleet, Biosecurity and Industry for the colony, with immediate effect
+- [x] As a player, I can research a 74-node tech tree in Drilling, Engines, Logistics, Automation, Defense and Science for the ship, Construction, Fortification, Fleet, Biosecurity and Industry for the colony, and Weapons, Convoy, Tactics, Warfare, Xeno and Drive in the Arsenal
+- [x] As a player, I earn Intel from operations and spend it on the Arsenal, some of whose nodes need a cleared operation
+- [x] As a player, I never worry about fuel once the best ship is fully upgraded with the Fusion Drive for the colony, with immediate effect
 - [x] As a player, I can buy licences that open the next belt as my earnings grow
 - [x] As a player, I can earn 29 achievements that pay research data
 - [x] As a player, I can find and shatter the Crown Heart to complete the career

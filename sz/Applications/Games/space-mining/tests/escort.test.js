@@ -6,7 +6,9 @@
    following the lane, an ambush at a choke point, skimmers draining cargo and giving it back
    when shot down, hull damage and losses failing the operation, delivery paying by cargo, the
    reactor stop that takes ore from the hold, storms slowing the convoy, the hired wing, the
-   autosave, and supply freighters the hub orders to the outpost. */
+   autosave, supply freighters the hub orders to the outpost, and the twist every Amber escort
+   turns on: a courier, a one-hit-point freighter, skimmer swarms, a pirate gun outpost, Jammers
+   that stop a freighter and Minelayers that mine its lane. */
 const H = require('./harness');
 H.installEnv();
 const NS = H.load();
@@ -278,12 +280,125 @@ const store0 = G.save.store.bar.iron || 0, storeIce = G.save.store.ore.ice || 0;
 NS.trip.endTrip('dock');
 check('a shipment still on its way at the end of the trip puts its load into the warehouse', (G.save.store.bar.iron || 0) === store0 + 4 && (G.save.store.ore.ice || 0) === storeIce + 20);
 
+/* ── every escort has its own twist ── */
+{
+  const amber = O.zoneOps('amber');
+  const twist = op => {
+    const cv = op.convoy, a = cv.ambush || {}, kinds = Object.keys(a.kinds || {});
+    if (cv.list.some(c => c.hp === 1)) return 'glass';
+    if (cv.list.some(c => c.speed > 1.5)) return 'courier';
+    if (cv.battery) return 'battery';
+    if (a.lead === 'jammer' || kinds.indexOf('jammer') >= 0) return 'jammer';
+    if (kinds.indexOf('layer') >= 0) return 'mines';
+    if (a.size && a.size[0] >= 8) return 'swarm';
+    if (cv.wing) return 'wing';
+    if (cv.list.some(c => c.need)) return 'reactor';
+    return 'plain';
+  };
+  const twists = amber.map(twist);
+  check('every Amber escort turns on its own twist (' + twists.join(' ') + ')', new Set(twists).size === amber.length);
+}
+
+/* a courier outruns a freighter */
+fr = launch('a_long');
+park();
+fr[0].wait = 0;
+steps(5);
+const dc = fr[0].d;
+steps(60);
+check('Courier Run sends a courier at over twice a freighter\'s speed', fr[0].d - dc > E.pace(G.world.w) * 2.1);
+NS.trip.endTrip('dock');
+
+/* glass cargo: one hit point */
+fr = launch('a_storm');
+park();
+fr[0].wait = 0;
+steps(5);
+check('Glass Cargo\'s freighter has a single hit point', fr[0].hp === 1 && fr[0].maxHp === 1);
+NS.freighters.hurt(fr[0], 5);
+steps(2);
+check('one hit destroys it and fails the operation', fr[0].state === 'lost' && G.run.op.status === 'failed');
+NS.trip.endTrip('dock');
+
+/* a swarm */
+check('Pirate Tide ambushes with swarms of eight or more', OP_BY_ID.a_twin.convoy.ambush.size[0] >= 8);
+
+/* the pirate gun outpost beside the lane */
+fr = launch('a_convoy');
+park();
+const guns = G.pirates.filter(p => p.kind === 'battery');
+const gp = G.posts.find(q => q.id === fr[0].to);
+check('Gun Run raises three gun batteries beside the lane', guns.length === 3 && guns.every(b => E.distance(gp.path, b.x, b.y) > 200 && E.distance(gp.path, b.x, b.y) < 450));
+check('the freighters leave late enough to raze them first', fr[0].wait >= 20);
+fr[0].wait = 0;
+steps(5);
+const b0 = guns[0];
+fr[0].d = 0;
+for (let d = 0; d < gp.len; d += 20) { const q = E.at(gp.path, d); if (Math.hypot(q.x - b0.x, q.y - b0.y) < 380) { fr[0].d = d; break; } }
+/* nothing in the line of fire */
+for (const r of G.rocks) if (Math.hypot(r.x - b0.x, r.y - b0.y) < 700) r.alive = false;
+NS.grid.compact(G.rocks);
+NS.asteroids.rebuildGrid();
+const hb = fr[0].hp;
+steps(60 * 8);
+check('a battery shells a freighter within its range', fr[0].hp < hb);
+const bh0 = b0.hp;
+NS.pirates.damage(b0, 50, b0.x, b0.y, 'kinetic');
+check('batteries take damage and stay put', b0.hp < bh0 && b0.vx === 0 && b0.vy === 0);
+NS.trip.endTrip('dock');
+
+/* a jammer stops a freighter */
+fr = launch('a_three');
+park();
+fr[0].wait = 0;
+steps(5);
+fr[0].d = 800;
+steps(2);
+const jam = NS.pirates.spawn('jammer', fr[0].x + 250, fr[0].y);
+jam.prey = fr[0];
+steps(30);
+const dj = fr[0].d;
+steps(60 * 2);
+check('a Jammer within reach stops its freighter dead', Math.abs(fr[0].d - dj) < 1 && fr[0].jam > 0);
+jam.alive = false;
+steps(60);
+check('shot down, the freighter flies on', fr[0].d > dj + 10);
+check('Three Directions\' ambushes are led by Jammers', OP_BY_ID.a_three.convoy.ambush.lead === 'jammer');
+NS.trip.endTrip('dock');
+
+/* mines on the lane */
+fr = launch('a_haul');
+park();
+fr[0].wait = 0;
+steps(5);
+fr[0].d = 600;
+steps(2);
+const ahead = NS.freighters.ahead(fr[0], 120);
+const mine = NS.pirates.spawn('mine', ahead.x, ahead.y);
+mine.arm = 0;
+const hm = fr[0].hp;
+steps(60 * 4);
+check('a freighter that touches a mine takes 70 damage and the mine is gone', !mine.alive && Math.abs(hm - fr[0].hp - 70) < 1e-6);
+const m2 = NS.pirates.spawn('mine', 1000, 1000);
+NS.pirates.damage(m2, 20, 1000, 1000, 'energy');
+check('the laser and the weapons shoot mines', !m2.alive);
+const layer = NS.pirates.spawn('layer', fr[0].x - 300, fr[0].y);
+layer.prey = fr[0];
+fr[0].jam = 999;
+const mines0 = G.pirates.filter(p => p.kind === 'mine' && p.alive).length;
+steps(60 * 12);
+const laid = G.pirates.filter(p => p.kind === 'mine' && p.alive);
+check('a Minelayer seeds the lane ahead of its freighter', laid.length > mines0 && laid.every(m => E.distance(G.posts.find(q => q.id === fr[0].to).path, m.x, m.y) < 140));
+check('the Long Haul brings Minelayers', Object.keys(OP_BY_ID.a_haul.convoy.ambush.kinds).indexOf('layer') >= 0);
+NS.trip.endTrip('dock');
+
 /* operations chain within one trip */
 {
   for (const id of ['a_first', 'a_long', 'a_storm', 'a_twin', 'a_wing']) NS.ops.finish(G.save, OP_BY_ID[id], true, 60);
   launch('a_convoy');
   G.run.op.delivered = 2;
   steps(2);
+  if (G.run.op.status !== 'won' || G.run.op.nextId !== 'a_three') console.log('  chain:', G.run.op.status, G.run.op.why, G.run.op.nextId, G.run.op.lost);
   check('a won operation names the next one of the belt', G.run.op.status === 'won' && G.run.op.nextId === 'a_three');
   steps(60 * (NS.operation.NEXT_IN + 1));
   check('which starts in the same trip after a breather', G.run.op.id === 'a_three' && G.run.op.status === 'active' && G.freighters.length === 3);

@@ -26,7 +26,7 @@
     const modules = {};
     for (let i = 0; i < MODULES.length; ++i) modules[MODULES[i].id] = 0;
     return {
-      v: 3, migrated: false, credits: START_CREDITS, rd: START_RD,
+      v: 3, migrated: false, credits: START_CREDITS, rd: START_RD, intel: 0,
       hull: 'prospector', hulls: ['prospector'], upgrades: upgrades, tree: {}, modules: modules,
       licenses: ['kessler'], visited: [], zone: 'kessler',
       store: { ore: {}, bar: {}, comp: {} }, market: null, contracts: [], cycle: 0, news: '',
@@ -34,7 +34,7 @@
       seenIntro: false, seenHelp: false, crownDone: false,
       bases: {}, log: [], logSeen: [], daily: { day: '', streak: 0, last: '', week: '' }, cine: {}, resume: null,
       cosmetics: NS.cosmetics.blank(), festival: { event: '', tokens: 0, claimed: 0 },
-      ops: {}, unlocks: [], notices: [], manifest: { ore: {}, bar: {}, comp: {} }, weapons: { owned: {}, slots: [] },
+      ops: {}, weekly: null, unlocks: [], notices: [], manifest: { ore: {}, bar: {}, comp: {} }, weapons: { owned: {}, slots: [] },
     };
   }
 
@@ -59,6 +59,8 @@
       s.migrated = !!src.migrated;
       s.credits = Math.floor(num(src.credits, 0, 1e12, s.credits));
       s.rd = Math.floor(num(src.rd, 0, 1e6, s.rd));
+      s.intel = Math.floor(num(src.intel, 0, 1e6, 0));
+      s.weekly = NS.tiers.repairWeekly(src.weekly);
       if (Array.isArray(src.hulls)) s.hulls = ['prospector'].concat(src.hulls.filter(h => HULL_BY_ID[h] && h !== 'prospector'));
       s.hull = HULL_BY_ID[src.hull] && s.hulls.indexOf(src.hull) >= 0 ? src.hull : 'prospector';
       for (let i = 0; i < UPGRADES.length; ++i) {
@@ -181,10 +183,31 @@
     return lvl < n.costs.length ? n.costs[lvl] : 0;
   }
 
+  /* a prerequisite: a node at a level, or 'op:<id>' - an operation cleared */
+  function reqMet(save, r) {
+    if (r[0].indexOf('op:') === 0) { const rec = save.ops && save.ops[r[0].slice(3)]; return !!(rec && rec.done); }
+    return nodeLevel(save, r[0]) >= r[1];
+  }
+
   function reqsMet(save, n) {
     for (let i = 0; i < n.req.length; ++i)
-      if (nodeLevel(save, n.req[i][0]) < n.req[i][1]) return false;
+      if (!reqMet(save, n.req[i])) return false;
     return true;
+  }
+
+  /* what a node needs, in words */
+  function reqText(n) {
+    return n.req.map(r => {
+      if (r[0].indexOf('op:') === 0) { const op = NS.opsData.OP_BY_ID[r[0].slice(3)]; return (op ? op.name : r[0]) + ' cleared'; }
+      const q = TREE_BY_ID[r[0]];
+      return q.name + (q.costs.length > 1 ? ' ' + r[1] : '');
+    }).join(' and ');
+  }
+
+  /* the currency a node is bought with: 'rd' or 'intel' */
+  function currencyOf(n) {
+    for (let i = 0; i < NS.treeData.BRANCHES.length; ++i) if (NS.treeData.BRANCHES[i].id === n.branch) return NS.treeData.BRANCHES[i].currency || 'rd';
+    return 'rd';
   }
 
   /* 'maxed' | 'locked' | 'expensive' | 'available' */
@@ -192,12 +215,12 @@
     const n = TREE_BY_ID[id];
     if (nodeLevel(save, id) >= n.costs.length) return 'maxed';
     if (!reqsMet(save, n)) return 'locked';
-    return save.rd < nodeCost(save, id) ? 'expensive' : 'available';
+    return (save[currencyOf(n)] || 0) < nodeCost(save, id) ? 'expensive' : 'available';
   }
 
   function buyNode(save, id) {
     if (!TREE_BY_ID[id] || nodeState(save, id) !== 'available') return false;
-    save.rd -= nodeCost(save, id);
+    save[currencyOf(TREE_BY_ID[id])] -= nodeCost(save, id);
     save.tree[id] = nodeLevel(save, id) + 1;
     return true;
   }
@@ -302,7 +325,7 @@
       maxSpeed: h.maxSpeed * (1 + (thrustMul - 1) * 0.7),
       laser: h.laser * upMul(save, 'laser') * (1 + t('laserMul')),
       cargo: Math.round(h.cargo * upMul(save, 'cargo') * (1 + t('cargoMul'))),
-      fuel: Math.round(h.fuel * upMul(save, 'fuel')), burn: h.burn || 1, engine: 1 + (thrustMul - 1) * 0.7,
+      fuel: Math.round(h.fuel * upMul(save, 'fuel') * (1 + t('deepTanks'))), burn: h.burn || 1, engine: 1 + (thrustMul - 1) * 0.7,
       hull: Math.round(h.hull * upMul(save, 'hull')),
       shield: t('shield'),
       tractor: 170 * (1 + (upMul(save, 'tractor') - 1) * 0.6) * (1 + t('tractorMul')),
@@ -314,7 +337,7 @@
       droneArmor: 1 + t('droneArmor'),
       smartDrones: t('smartDrones') > 0,
       crit: t('crit'), yieldMul: 1 + t('yieldMul'), chip: 1 + t('chip'), twin: t('twin'), seismic: t('seismic'),
-      fuelEff: Math.max(0.4, 1 - t('fuelEff')), scoop: t('scoop'), cells: t('cells'), boost: t('boost'), grip: 1 + t('grip'), jump: t('jump') > 0,
+      fuelEff: Math.max(0.4, 1 - t('fuelEff')) * (t('fusion') > 0 ? 0.3 : 1), scoopRate: 1 + t('scoopRate'), scoop: t('scoop'), cells: t('cells'), boost: t('boost'), grip: 1 + t('grip'), jump: t('jump') > 0,
       blockPress: t('blockPress') > 0, blockRank: save.modules.blockPress || 0, fortune: t('fortune'),
       compress: t('compress') > 0, priceMul: 1 + t('priceMul') + (save.modules.tradeHub || 0) * 0.04,
       contracts: 3 + t('contracts') + (save.modules.tradeHub || 0), contractMul: 1 + t('contracts') * 0.15,
@@ -326,6 +349,9 @@
       linkRange: t('linkRange'), turretDmg: 1 + t('turretDmg'), turretRange: 1 + t('turretRange'), shieldMul: 1 + t('shieldMul'),
       repairMul: 1 + t('repairMul'), unitHp: 1 + t('unitHp'), unitDmg: 1 + t('unitDmg'), unitSpeed: 1 + t('unitSpeed'),
       supply: t('supply'), vaccine: Math.min(0.85, t('vaccine')), firewall: Math.min(0.85, t('firewall')), cargoScan: t('cargoScan') > 0,
+      hpDmg: 1 + t('hpDmg'), hpCd: Math.max(0.5, 1 - t('hpCd')), hpRange: 1 + t('hpRange'), freighterHp: 1 + t('freighterHp'), freighterSpeed: 1 + t('freighterSpeed'),
+      wing: t('wing'), abilityCd: Math.max(0.5, 1 - t('abilityCd')), detect: 1 + t('detect'), pulseMul: 1 + t('pulseMul'), unitStruct: 1 + t('unitStruct'),
+      pierce: Math.min(0.5, t('pierce')), sporeMul: 1 + t('sporeMul'), hijackDur: 1 + t('hijackDur'), cloakDur: 1 + t('cloakDur'),
       emp: t('emp') > 0, extract: 1 + t('extract'), process: 1 + t('process'), storageMul: 1 + t('storageMul'), powerMul: 1 + t('powerMul'),
     };
   }
@@ -405,7 +431,7 @@
   }
 
   Object.assign(NS.rules, {
-    START_CREDITS, START_RD, freshSave, migrateSave, nodeLevel, nodeCost, nodeState, buyNode, nodeText,
+    START_CREDITS, START_RD, freshSave, migrateSave, nodeLevel, nodeCost, nodeState, buyNode, nodeText, reqMet, reqText, currencyOf,
     upgradeCost, buyUpgrade, buyHull, moduleCost, moduleUnlocked, buildModule, zoneState, buyLicense, computeStats, dailyLoadout,
     oreSpace, blockSize, packedSlots, packedRoom, fortuneYield, bump, record, checkAchievements, achievementCount, addHighScore
   });

@@ -162,8 +162,8 @@
 
   function progress() {
     para([
-      'Research data buys the tech tree: Drilling, Engines, Logistics, Automation (mining drones), Defense and Science. Open it from the title, the station or the pause menu - it takes effect at once.',
-      'Operations on the belt map teach each belt: the capstone and your earnings open the next licence. The Amber Reach adds escorts - freighters fly marked lanes to trading posts and get ambushed at choke points. Shoot down skimmers to win back their cargo (under half and the contract is void) and keep raiders off the hull. The Verdant Shoals turn your outpost into a tower defense: watch the wave bearings on the minimap.',
+      'Research data buys the Ship and Colony pages of the tech tree; Intel, paid by operations, buys the Arsenal (weapons, convoy, tactics, warfare, xeno, drive). Open it from the title, the station or the pause menu - it takes effect at once.',
+      'Operations on the belt map teach each belt; the capstone and your earnings open the next licence: escorts in the Amber Reach, tower defense in the Verdant Shoals, enemy bases in the Crimson Maw, everything at once in the Void Crown. A cleared operation opens Hard, then Nightmare (modifiers, medals); the station shows the weekly Nightmare Op.',
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
     const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill the ore nearest the nose'], ['Enter (docked)', 'Return home, end the trip'],

@@ -54,6 +54,7 @@
     NS.fleetRender.drawClouds();
     drawDock();
     NS.escortRender.drawLanes();
+    NS.escortRender.drawAllies();
     NS.baseRender.draw();
     NS.backdrop.drawDust(rect, s ? s.vx : 0, s ? s.vy : 0);
     drawRocks();

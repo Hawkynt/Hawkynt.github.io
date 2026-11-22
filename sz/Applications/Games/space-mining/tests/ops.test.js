@@ -14,7 +14,7 @@ const { ZONES, ORE_BY_ID } = NS.ores;
 
 /* the data */
 check('every operation names a real belt, mood and goal type', OPS.every(o => NS.ores.ZONE_BY_ID[o.zone] && MOODS[o.mood] && o.goals.length &&
-  o.goals.every(g => ['bank', 'ore', 'value', 'stat', 'record', 'deliver', 'waves', 'outpost', 'build', 'clean', 'raze', 'scout', 'repel'].indexOf(g.type) >= 0)));
+  o.goals.every(g => ['bank', 'ore', 'value', 'stat', 'record', 'deliver', 'waves', 'outpost', 'build', 'clean', 'raze', 'scout', 'repel', 'hold', 'crown'].indexOf(g.type) >= 0)));
 check('the Kessler Drift has six operations ending in its capstone', O.zoneOps('kessler').length === 6 && O.capstoneOf('kessler').id === 'k_charter' &&
   O.zoneOps('kessler').filter(o => o.capstone).length === 1);
 check('every threat names real pirates', OPS.every(o => !o.threat || Object.keys(o.threat.kinds).every(k => NS.ships.PIRATES[k])));

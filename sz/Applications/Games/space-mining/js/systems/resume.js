@@ -30,6 +30,7 @@
     snap.run.op = run.op ? JSON.parse(JSON.stringify(run.op)) : null;
     snap.run.freight = NS.supply.repair(run.freight);
     snap.escort = G.freighters.length || G.wing.length ? NS.freighters.capture() : null;
+    snap.allies = G.allies.length ? NS.allies.capture() : null;
     snap.syndicate = NS.aiBase.capture();
     snap.run.razed = Object.assign({}, run.razed);
     snap.ship = { x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), angle: r1(s.angle), hull: r1(s.hull), fuel: r1(s.fuel), shield: r1(s.shield) };
@@ -101,6 +102,7 @@
     const op = snap.run.op;
     run.op = op && NS.opsData.OP_BY_ID[op.id] && op.pace && typeof op.t === 'number' ? op : null;
     NS.freighters.restore(snap.escort);
+    if (snap.allies) NS.allies.restore(snap.allies);
     run.service = +snap.run.service || 0;
     const s = G.ship, p = snap.ship;
     s.x = p.x; s.y = p.y; s.vx = p.vx; s.vy = p.vy; s.angle = p.angle;

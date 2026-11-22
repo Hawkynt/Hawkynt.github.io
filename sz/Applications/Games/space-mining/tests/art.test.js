@@ -42,7 +42,7 @@ for (let st = 1; st <= 3; ++st) paints('cracks ' + st, () => NS.rockArt.cracks(4
 paints('geode', () => NS.rockArt.geode('voidCrystal'), 1500);
 paints('crown heart', () => NS.rockArt.crown(), 1500);
 paints('dock', () => NS.propArt.dock(), 800);
-for (const k of ['skimmer', 'raider', 'gunship']) paints('pirate ' + k, () => NS.propArt.pirate(k), 400);
+for (const k of Object.keys(NS.ships.PIRATES)) paints('pirate ' + k, () => NS.propArt.pirate(k), 400);
 paints('derelict', () => NS.propArt.derelict(0), 400);
 paints('gravity well', () => NS.propArt.well(), 1500);
 paints('radiation cloud', () => NS.propArt.radCloud(3), 400);

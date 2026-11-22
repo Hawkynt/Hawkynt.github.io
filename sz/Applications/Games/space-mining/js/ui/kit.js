@@ -50,6 +50,8 @@
     for (let i = 0; i < words.length; ++i) {
       const test = line ? line + ' ' + words[i] : words[i];
       if (ctx.measureText(test).width > maxW && line) {
+        /* opts.lines: at most that many lines, the last one cut short */
+        if (opts.lines && lines + 1 >= opts.lines) { line += ' ...'; break; }
         text(line, x, yy, px, color, { align: opts.align, weight: opts.weight, baseline: 'top' });
         line = words[i];
         yy += lineH;
@@ -201,8 +203,8 @@
     const s = group(n);
     const w = ctx.measureText(s).width + px * 1.25;
     const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
-    const col = kind === 'rd' ? UI.data : UI.gold;
-    icon(kind === 'rd' ? 'data' : 'coin', x0 + px * 0.45, y, px * 0.95, col);
+    const col = kind === 'rd' ? UI.data : kind === 'intel' ? '#ff9a6a' : UI.gold;
+    icon(kind === 'rd' ? 'data' : kind === 'intel' ? 'star' : 'coin', x0 + px * 0.45, y, px * 0.95, col);
     text(s, x0 + px * 1.15, y, px, col, { weight: 'bold' });
     return w;
   }

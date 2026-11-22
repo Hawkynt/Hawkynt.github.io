@@ -69,6 +69,7 @@
     NS.units.update(s);
     NS.abilities.update(s);
     NS.aiBase.update(s);
+    NS.allies.update(s);
     NS.enemies.update(s);
     NS.hardpoints.update(s);
     if (G.base) {

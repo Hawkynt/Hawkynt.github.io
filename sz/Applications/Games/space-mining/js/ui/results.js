@@ -70,10 +70,11 @@
   function opLine(op, y) {
     const won = op.status === 'won';
     const rw = op.reward;
-    const tail = won ? (rw ? '  -  +' + kit.group(rw.cr || 0) + ' cr, +' + (rw.rd || 0) + ' research' + (rw.unlock ? ', unlock' : '') : '  -  cleared again') :
+    const tail = won ? (rw ? '  -  +' + kit.group(rw.cr || 0) + ' cr, +' + (rw.rd || 0) + ' research, +' + NS.ops.intelFor(op) + ' intel' + (rw.unlock ? ', unlock' : '') : '  -  cleared again') :
       (op.why ? '  -  ' + op.why : '');
     const many = op.cleared > 1 ? '  (' + op.cleared + ' operations this trip)' : '';
-    kit.fitText('OPERATION ' + op.name.toUpperCase() + ': ' + (won ? 'COMPLETE' : 'FAILED') + tail + many, 640, y, 640, 14,
+    const tier = op.weekly ? ' (WEEKLY NIGHTMARE' + (op.score ? ', ' + kit.group(op.score) + ' POINTS' : '') + ')' : op.tier && op.tier !== 'normal' ? ' (' + op.tier.toUpperCase() + ')' : '';
+    kit.fitText('OPERATION ' + op.name.toUpperCase() + tier + ': ' + (won ? 'COMPLETE' : 'FAILED') + tail + many, 640, y, 640, 14,
       { align: 'center', weight: 'bold', color: won ? UI.good : UI.bad });
   }
 

@@ -305,7 +305,7 @@
   function spores(e, dt) {
     const ab = ABILITIES.spores;
     e.sporeT -= dt;
-    e.hp -= e.maxHp * ab.rot * dt;
+    e.hp -= e.maxHp * ab.rot * (G.stats && G.stats.sporeMul || 1) * dt;
     if (e.hp <= 0) { NS.enemies.damage(e, 1, null); return; }
     if (!e.sporeJumped && e.sporeT < ab.dur / 2) {
       e.sporeJumped = true;
@@ -344,7 +344,7 @@
       if (d < bd) { bd = d; best = e; }
     }
     if (!best) return null;
-    best.hijackT = ab.dur;
+    best.hijackT = ab.dur * (G.stats && G.stats.hijackDur || 1);
     G.tbeams.push({ x0: u.x, y0: u.y, x1: best.x, y1: best.y, t: 0.5, color: '#3affd0', zig: true });
     NS.fx.ring(best.x, best.y, best.r, best.r * 2.5, 0.6, '#3affd0', 4);
     return best;

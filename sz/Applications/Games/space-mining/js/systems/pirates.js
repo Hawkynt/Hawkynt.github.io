@@ -1,6 +1,8 @@
-/* Pirates: waves announced by a warning and arriving from out of sight, three kinds (skimmers
-   that dart in to steal ore from the hold or latch onto a freighter and drain its cargo, raiders
-   that circle and shoot, gunships that stand off and fire bursts), their prey (the ship, a
+/* Pirates: waves announced by a warning and arriving from out of sight, skimmers that dart in
+   to steal ore from the hold or latch onto a freighter and drain its cargo, raiders that circle
+   and shoot, gunships that stand off and fire bursts, Jammers whose EMP beam stops a freighter,
+   Minelayers that mine a freighter's lane ahead of it, mines, and the gun batteries of a pirate
+   outpost that shell what comes in range, their prey (the ship, a
    drone, a wing fighter or a freighter), rock avoidance, bolts from both sides (pirates and the
    point-defense turret), damage, blasts, death with loot and the stolen ore or cargo given back.
    Owns G.pirates and G.bolts. */
@@ -21,7 +23,7 @@
 
   function spawn(kind, x, y) {
     const d = PIRATES[kind];
-    const hpMul = 1 + 0.35 * (G.run.zone.danger - 1);
+    const hpMul = (1 + 0.35 * (G.run.zone.danger - 1)) * (NS.operation.mod('veteran') ? 1.5 : 1);
     const p = {
       alive: true, kind: kind, x: x, y: y, vx: 0, vy: 0, angle: 0, r: d.r, hp: d.hp * hpMul, maxHp: d.hp * hpMul,
       fireT: 1 + R() * 2, burst: 0, orbit: R() < 0.5 ? 1 : -1, stolen: null, flee: 0, hitFlash: 0, exhaustT: 0, bank: 0,
@@ -114,6 +116,8 @@
       if (!p.alive) continue;
       const d = PIRATES[p.kind];
       if (p.hitFlash > 0) p.hitFlash -= dt;
+      if (d.still) { still(p, d, dt); continue; }
+      p.beam = null;
       /* target: the ship, or a drone that is closer; a cloaked ship leaves only a guess */
       const hidden = s.cloak > 0;
       if (!hidden) p.ghost = null;
@@ -136,6 +140,8 @@
       }
       const fr = p.prey || (G.freighters.length ? NS.freighters.nearest(p.x, p.y, 900) : null);
       if (fr && (fr === p.prey || Math.abs(fr.x - p.x) + Math.abs(fr.y - p.y) < shipD - 150)) tgt = fr;
+      /* jammers and minelayers only ever go for a freighter */
+      if ((p.kind === 'jammer' || p.kind === 'layer') && fr) tgt = fr;
       const dx = tgt.x - p.x, dy = tgt.y - p.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       if (p.latch) {
@@ -149,18 +155,25 @@
       } else if (p.kind === 'skimmer' && tgt === fr) {
         steer(p, fr.x + fr.vx * 0.3, fr.y + fr.vy * 0.3, d.speed, d.accel, dt);
         if (dist < p.r + fr.r + 8) latch(p, fr);
+      } else if (p.kind === 'layer' && tgt === fr) {
+        layMines(p, d, fr, dt);
       } else if (p.kind === 'skimmer') {
         const prey = hidden ? p.ghost : s;
         steer(p, prey.x + prey.vx * 0.3, prey.y + prey.vy * 0.3, d.speed, d.accel, dt);
         const sd = Math.sqrt((s.x - p.x) * (s.x - p.x) + (s.y - p.y) * (s.y - p.y));
         if (!hidden && sd < p.r + s.r + 6) grab(p, s, d);
       } else {
-        const want = p.kind === 'gunship' ? 380 : 270;
+        const want = p.kind === 'gunship' ? 380 : p.kind === 'jammer' ? 220 : 270;
         const ox = -dy / dist * p.orbit, oy = dx / dist * p.orbit;
         const k = (dist - want) / want;
         steer(p, p.x + dx / dist * k * 300 + ox * 220, p.y + dy / dist * k * 300 + oy * 220, d.speed, d.accel, dt);
+        /* a jammer's EMP beam stops its freighter dead while it stays in reach */
+        if (d.jam && tgt === fr && dist < d.jam && NS.freighters.flying(fr)) {
+          fr.jam = 0.25;
+          p.beam = fr;
+        }
         p.fireT -= dt;
-        if (p.fireT <= 0 && dist < 620 && tgt.alive) {
+        if (d.fire > 0 && p.fireT <= 0 && dist < 620 && tgt.alive) {
           if (p.kind === 'gunship') {
             shoot(p, tgt, 560, d.dmg);
             if (++p.burst >= 3) { p.burst = 0; p.fireT = d.fire * 4; } else p.fireT = 0.14;
@@ -181,6 +194,64 @@
     compact(G.pirates);
     turret(dt);
     bolts(dt);
+  }
+
+  /* a minelayer flies ahead of its freighter and drops mines on its lane, then runs */
+  function layMines(p, d, f, dt) {
+    if (!NS.freighters.flying(f) || (p.laid || 0) >= d.mines) { p.flee = 8; return; }
+    if (!p.spot) p.spot = Object.assign({}, NS.freighters.ahead(f, 600 + (p.laid || 0) * 260));
+    steer(p, p.spot.x, p.spot.y, d.speed, d.accel, dt);
+    if (Math.hypot(p.spot.x - p.x, p.spot.y - p.y) < 60) {
+      const m = spawn('mine', p.spot.x, p.spot.y);
+      m.arm = 1;
+      p.laid = (p.laid || 0) + 1;
+      p.spot = null;
+      NS.audio.sfxAt('blip', p.x, p.y, { volume: 0.3, pitch: 0.5 });
+    }
+  }
+
+  /* things that stand still: a mine waits for a hull, a gun battery shells what comes in range */
+  function still(p, d, dt) {
+    const s = G.ship;
+    if (p.kind === 'mine') {
+      p.life = (p.life === undefined ? 120 : p.life) - dt;
+      if (p.life <= 0) { p.alive = false; return; }
+      p.arm = (p.arm || 0) - dt;
+      p.angle += dt * 1.5;
+      if (p.arm > 0) return;
+      for (let k = 0; k < G.freighters.length; ++k) {
+        const f = G.freighters[k];
+        if (NS.freighters.flying(f) && Math.hypot(f.x - p.x, f.y - p.y) < p.r + f.r + 4) {
+          NS.freighters.hurt(f, d.dmg);
+          boom(p);
+          return;
+        }
+      }
+      if (s && s.alive && Math.hypot(s.x - p.x, s.y - p.y) < p.r + s.r) { NS.ship.hurt(25, 'mine'); boom(p); }
+      return;
+    }
+    /* a gun battery: the nearest freighter in range, else the ship */
+    let tgt = null, bd = d.range;
+    for (let k = 0; k < G.freighters.length; ++k) {
+      const f = G.freighters[k];
+      const dd = Math.hypot(f.x - p.x, f.y - p.y);
+      if (NS.freighters.flying(f) && dd < bd) { bd = dd; tgt = f; }
+    }
+    if (!tgt && s && s.alive && !(s.cloak > 0) && Math.hypot(s.x - p.x, s.y - p.y) < d.range) tgt = s;
+    p.fireT -= dt;
+    if (!tgt) return;
+    p.angle += clamp(angleDiff(p.angle, Math.atan2(tgt.y - p.y, tgt.x - p.x)), -2 * dt, 2 * dt);
+    if (p.fireT <= 0) {
+      shoot(p, tgt, 520, d.dmg);
+      p.fireT = d.fire;
+    }
+  }
+
+  function boom(p) {
+    p.alive = false;
+    NS.fx.explode(p.x, p.y, 34, NS.fx.FIRE, { noDebris: true });
+    NS.fx.shockwave(p.x, p.y, 120, '#ffb070');
+    NS.audio.sfxAt('explode', p.x, p.y, { volume: 0.5, pitch: 1.3 });
   }
 
   /* a skimmer clamps onto a freighter's hull */
@@ -327,7 +398,11 @@
   /* type: the damage type of the hit, counted against the pirate's armour */
   function damage(p, amount, hx, hy, type) {
     if (!p.alive) return;
-    if (type) amount *= NS.combat.mult(type, PIRATES[p.kind].armour);
+    if (type) {
+      /* Penetrators: armour soaks less of a resisted hit */
+      const m = NS.combat.mult(type, PIRATES[p.kind].armour);
+      amount *= m < 1 ? Math.min(1, m + (G.stats && G.stats.pierce || 0)) : m;
+    }
     p.hp -= amount;
     p.hitFlash = 0.08;
     if (p.hp > 0) return;

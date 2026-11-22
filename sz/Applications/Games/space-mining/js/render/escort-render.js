@@ -61,8 +61,42 @@
     ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, k)), 4);
   }
 
+  /* allied stations: a green-lit post with its name and hull */
+  function drawAllies() {
+    for (let i = 0; i < G.allies.length; ++i) {
+      const a = G.allies[i];
+      if (!a.alive) continue;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5;
+      K.blit(ctx, K.glow('#5cff9a'), a.x, a.y, 2.4);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      K.blitRot(ctx, PA.post(), a.x, a.y, a.angle, 1.3);
+      if (a.flash > 0) { ctx.globalAlpha = 0.6; K.blitRot(ctx, K.silhouette('post', PA.post()), a.x, a.y, a.angle, 1.3); ctx.globalAlpha = 1; }
+      kit.text(a.name.toUpperCase(), a.x, a.y - a.r - 30, 13, '#5cff9a', { align: 'center', weight: 'bold' });
+      bar(a.x, a.y - a.r - 20, 120, a.hp / a.maxHp, a.hp / a.maxHp > 0.4 ? '#5cff9a' : '#ff5c6c');
+    }
+  }
+
   /* freighters and the wing, above the pirates */
   function drawShips() {
+    /* jammer beams */
+    for (let i = 0; i < G.pirates.length; ++i) {
+      const p = G.pirates[i];
+      if (!p.alive || !p.beam) continue;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = K.rgba('#7af0ff', 0.45 + Math.sin(G.time * 30) * 0.25);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      const n = 6;
+      for (let k = 1; k <= n; ++k) {
+        const t = k / n, j = k < n ? (Math.sin(G.time * 40 + k * 2.1) * 10) : 0;
+        ctx.lineTo(p.x + (p.beam.x - p.x) * t + j, p.y + (p.beam.y - p.y) * t - j);
+      }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
     for (let i = 0; i < G.freighters.length; ++i) {
       const f = G.freighters[i];
       if (!f.alive) continue;
@@ -78,6 +112,7 @@
         ctx.globalAlpha = 1;
       }
       if (f.state === 'wait') continue;
+      if (f.jam > 0) kit.text('JAMMED', f.x, f.y + 58, 13, '#7af0ff', { align: 'center', weight: 'bold' });
       kit.text(f.name.toUpperCase(), f.x, f.y - 66, 12, f.hitT > 0 ? UI.bad : '#bfe8ff', { align: 'center', weight: 'bold' });
       bar(f.x, f.y - 56, 80, f.cargo, '#ffd25a');
       bar(f.x, f.y - 49, 80, f.hp / f.maxHp, f.hp / f.maxHp > 0.4 ? '#5cff9a' : '#ff5c6c');
@@ -134,6 +169,7 @@
   }
 
   Object.assign(NS.escortRender, {
+    drawAllies,
     drawLanes, drawShips, arrows
   });
 })();

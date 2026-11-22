@@ -321,7 +321,7 @@
     const run = G.run, st = G.stats, s = G.ship;
     if (!run || st.scan <= 0 || run.pulseCd > 0 || !s) return false;
     run.pulseCd = 9 - st.scan;
-    const r = 900 + st.scan * 320;
+    const r = (900 + st.scan * 320) * (st.pulseMul || 1);
     run.pulse = { x: s.x, y: s.y, r: r, t: 0 };
     NS.fx.ring(s.x, s.y, 20, r, 1.1, '#4fd8ff', 8);
     NS.fx.ring(s.x, s.y, 10, r * 0.6, 0.8, '#ffffff', 3);

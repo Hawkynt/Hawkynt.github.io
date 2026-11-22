@@ -146,17 +146,25 @@
     return op.goals.map(g => g.text + ' ' + kit.group(g.n)).join('  -  ');
   }
 
+  const MEDAL = { bronze: '#d08a4a', silver: '#d8e0ea', gold: '#ffd25a' };
+
   function opsPanel(save, z, ops, x, y) {
     const sel = selectedOp(save, ops);
     const st = O.state(save, sel.id);
     const mood = MOODS[sel.mood];
     kit.text(mood.name.toUpperCase() + (sel.capstone ? '  -  CAPSTONE' : ''), x + 24, y + 56, 13, mood.color, { weight: 'bold' });
     if (st === 'locked') kit.wrap('Opens after the operation before it.', x + 24, y + 76, 380, 13, 18, UI.textMute);
-    else kit.wrap(sel.brief, x + 24, y + 76, 380, 12, 16, UI.textDim);
+    else if (st === 'done') {
+      /* a cleared one: what its Hard and Nightmare tiers throw in */
+      const T = NS.tiers, names = t => T.modsFor(sel, t).map(m => T.MODS[m].name).join(' + ');
+      kit.wrap(sel.brief, x + 24, y + 76, 380, 12, 16, UI.textDim, { lines: 3 });
+      kit.fitText('Hard: ' + names('hard') + '   Nightmare: ' + names('nightmare'), x + 24, y + 132, 380, 12, { color: '#d050ff' });
+    } else kit.wrap(sel.brief, x + 24, y + 76, 380, 12, 16, UI.textDim);
     const rw = sel.reward || {};
     kit.fitText(goalLine(sel) + (sel.time ? '  -  ' + Math.round(sel.time / 60) + ' min' : ''), x + 24, y + 150, 380, 12, { color: UI.text });
     const rec = save.ops[sel.id];
-    kit.text(rec && rec.done ? 'Cleared - best ' + rec.best + ' s' : 'Reward ' + kit.group(rw.cr || 0) + ' cr, ' + (rw.rd || 0) + ' research' + (rw.unlock ? ' and an unlock' : ''),
+    const md = NS.tiers.medal(save, sel), tb = rec && rec.tiers || {};
+    kit.text(rec && rec.done ? 'Cleared - best ' + rec.best + ' s' + (tb.hard && tb.hard.done ? ', Hard ' + tb.hard.best + ' s' : '') + (tb.nightmare && tb.nightmare.done ? ', Nightmare ' + tb.nightmare.best + ' s' : '') + '  -  ' + md.toUpperCase() : 'Reward ' + kit.group(rw.cr || 0) + ' cr, ' + (rw.rd || 0) + ' research' + (rw.unlock ? ' and an unlock' : ''),
       x + 24, y + 168, 12, rec && rec.done ? UI.good : UI.gold);
     /* rows close up for a long chain so nine still fit the panel */
     const step = Math.min(20, 156 / ops.length), px = step < 19 ? 12 : 13;
@@ -172,7 +180,7 @@
       ctx.arc(x + 442, yy, 4, 0, TAU);
       ctx.fill();
       kit.fitText(o.name, x + 454, yy, 220, px, { color: os === 'locked' ? UI.textMute : o === sel ? '#ffffff' : UI.text, weight: o.capstone ? 'bold' : undefined });
-      if (os === 'done') kit.text('\u2713', x + 718, yy, 13, UI.good, { align: 'right', weight: 'bold' });
+      if (os === 'done') kit.text('\u2713', x + 718, yy, 13, MEDAL[NS.tiers.medal(save, o)] || UI.good, { align: 'right', weight: 'bold' });
       else if (os === 'locked') kit.lock(x + 712, yy, 10);
     }
   }
@@ -186,7 +194,11 @@
       const next = openOp(save, i);
       const sel = tab === 'ops' ? selectedOp(save, ops) : null;
       if (sel && O.state(save, sel.id) === 'done') {
-        W.button('go_op', 'Replay ' + sel.name, bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => scr.launch('career', i, { op: sel.id }), px: 15 });
+        /* replay it, or fly its Hard or Nightmare tier once open */
+        const T = NS.tiers;
+        W.button('go_op', 'Replay', bx, by, 74, 48, { accent: UI.gold, action: () => scr.launch('career', i, { op: sel.id }), px: 13 });
+        W.button('go_hard', 'Hard', bx + 78, by, 74, 48, { accent: MEDAL.silver, disabled: !T.unlocked(save, sel, 'hard'), action: () => scr.launch('career', i, { op: sel.id, tier: 'hard' }), px: 13 });
+        W.button('go_nm', 'Nightmare', bx + 156, by, 74, 48, { accent: '#d050ff', disabled: !T.unlocked(save, sel, 'nightmare'), action: () => scr.launch('career', i, { op: sel.id, tier: 'nightmare' }), px: 11 });
         W.button('go', next ? 'Launch: ' + next.name : 'Mine the belt', bx, by - 52, 230, 40, { icon: 'launch', action: () => act(save, i), px: 14 });
       } else W.button('go', next ? 'Launch: ' + next.name : 'Mine the belt', bx, by, 230, 48, { accent: UI.gold, icon: 'launch', action: () => act(save, i), px: next ? 15 : 20 });
     } else if (state === 'buyable') {

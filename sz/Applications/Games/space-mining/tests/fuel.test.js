@@ -19,7 +19,8 @@ function career(hull, ups, tree) {
   const s = R.freshSave();
   s.hull = hull;
   for (const u of NS.ships.UPGRADES) s.upgrades[u.id] = ups ? u.max : 0;
-  if (tree) for (const n of NS.treeData.TREE) s.tree[n.id] = n.costs.length;
+  /* the ship and colony pages; the Arsenal's Drive branch lifts the limit at the very end (arsenal.test.js) */
+  if (tree) for (const n of NS.treeData.TREE) if (NS.treeData.BRANCHES.find(b => b.id === n.branch).page < 2) s.tree[n.id] = n.costs.length;
   return s;
 }
 
@@ -55,7 +56,7 @@ check('tanks and Lean Burn add range', F.crossings(tuned, k, 'career') > first);
 for (const hull of NS.ships.HULLS) {
   const st = R.computeStats(career(hull.id, true, true));
   const c = F.crossings(st, ZONES[4], 'career');
-  check('a maxed ' + hull.name + ' in the Void Crown has between 0.6 and 2 times the range of a new ship at home (' + c.toFixed(1) + ' vs ' + first.toFixed(1) + ')', c <= first * 2 && c >= first * 0.6);
+  check('a ' + hull.name + ' maxed short of the Arsenal in the Void Crown has between 0.6 and 2 times the range of a new ship at home (' + c.toFixed(1) + ' vs ' + first.toFixed(1) + ')', c <= first * 2 && c >= first * 0.6);
 }
 
 check('the Ramscoop takes gas by level', F.scoopFuel(0, 'hydrogen') === 0 && F.scoopFuel(1, 'hydrogen') === 3 && F.scoopFuel(1, 'helium3') === 0 && F.scoopFuel(2, 'helium3') === 5 && F.scoopFuel(3, 'xenon') === 7 && F.scoopFuel(3, 'iron') === 0);

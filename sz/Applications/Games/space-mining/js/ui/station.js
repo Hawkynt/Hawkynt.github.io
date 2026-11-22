@@ -107,6 +107,25 @@
       ctx.globalAlpha = 1;
     }
     nextOp(save);
+    weekly(save);
+  }
+
+  /* this week's Nightmare Op: the operation, its two modifiers, the best score and the streak */
+  function weekly(save) {
+    const T = NS.tiers;
+    const wk = T.weekly(NS.calendar.weekKey(new Date(Date.now())));
+    const op = NS.opsData.OP_BY_ID[wk.op], z = NS.ores.ZONE_BY_ID[op.zone];
+    const open = T.weeklyOpen(save, wk) && save.licenses.indexOf(z.id) >= 0;
+    const rec = save.weekly && save.weekly.week === wk.week ? save.weekly : null;
+    const x = 40, y = NS.ops.nextOp(save) ? 188 : 122, w = 520;
+    kit.panel(x, y, w, 58, { alpha: 0.85, radius: 8, brackets: false, accent: '#d050ff' });
+    kit.text('WEEKLY NIGHTMARE  ' + wk.week, x + 14, y + 16, 11, '#d050ff', { weight: 'bold' });
+    kit.fitText(z.name + '  -  ' + op.name, x + 14, y + 36, w - 160, 16, { weight: 'bold', color: open ? '#ffffff' : UI.textMute });
+    kit.fitText(wk.mods.map(m => T.MODS[m].name).join(' + ') + (rec ? '  -  best ' + kit.group(rec.best) + ', streak ' + rec.streak : save.weekly && save.weekly.streak ? '  -  streak ' + save.weekly.streak : ''),
+      x + 190, y + 16, w - 330, 11, { color: UI.textDim });
+    W.button('weekly_op', open ? 'Fly it' : 'Locked', x + w - 120, y + 12, 106, 34, { accent: '#d050ff', icon: 'launch', disabled: !open, action: () => {
+      scr.launch('career', z.index, { op: op.id, tier: 'nightmare', mods: wk.mods, weekly: true });
+    } });
   }
 
   /* the next operation, plainly: its belt, name and first goal, and a button straight to it */

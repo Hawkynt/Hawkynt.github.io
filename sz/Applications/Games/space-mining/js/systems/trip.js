@@ -82,6 +82,7 @@
     NS.units.clear();
     NS.abilities.clear();
     NS.aiBase.clear();
+    NS.allies.clear();
     NS.enemies.clear();
     NS.command.reset();
     NS.base.prepare(zone, mode);
@@ -103,7 +104,7 @@
     }
     NS.events.setup(zone, seed, mods);
     if (mode === 'career' && !snap) loadManifest();
-    if (opts.op && !snap) NS.operation.start(opts.op);
+    if (opts.op && !snap) NS.operation.start(opts.op, opts.tier, opts.mods, opts.weekly);
     NS.camera.snap(G.ship.x, G.ship.y);
     NS.backdrop.setZone(zone.index);
     G.banner = null;
@@ -576,6 +577,7 @@
     NS.units.clear();
     NS.abilities.clear();
     NS.aiBase.clear();
+    NS.allies.clear();
     NS.enemies.clear();
     NS.command.reset();
     G.distress = null;

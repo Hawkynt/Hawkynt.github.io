@@ -27,7 +27,7 @@
     opts = opts || {};
     const def = ENEMY_BY_ID[type];
     const zone = G.run ? G.run.zone : { danger: 1 };
-    const hpMul = (1 + 0.3 * (zone.danger - 1)) * (opts.hpMul || 1);
+    const hpMul = (1 + 0.3 * (zone.danger - 1)) * (opts.hpMul || 1) * (NS.operation.mod('veteran') ? 1.5 : 1);
     const e = {
       alive: true, id: nextId++, type: type, def: def, x: x, y: y, vx: 0, vy: 0, angle: opts.angle || 0, r: def.r,
       hp: def.hp * hpMul, maxHp: def.hp * hpMul, shield: (def.shield || 0) * hpMul, maxShield: (def.shield || 0) * hpMul, shieldT: 0,
@@ -82,9 +82,11 @@
   function spot(e, dt) {
     if (e.seenT > 0) e.seenT -= dt;
     const s = G.ship, run = G.run;
-    if (s && s.alive && (s.x - e.x) * (s.x - e.x) + (s.y - e.y) * (s.y - e.y) < 260 * 260) { e.seenT = 1.5; return; }
+    /* Keen Sensors stretch the reach of the ship and the craft */
+    const see = 260 * (G.stats && G.stats.detect || 1);
+    if (s && s.alive && (s.x - e.x) * (s.x - e.x) + (s.y - e.y) * (s.y - e.y) < see * see) { e.seenT = 1.5; return; }
     if (run && run.pulse && Math.hypot(e.x - s.x, e.y - s.y) < run.pulse.r * Math.min(1, run.pulse.t / 1.2 * 1.6)) { e.seenT = 4; return; }
-    if (NS.units.nearestPlayer(e.x, e.y, 260, false)) { e.seenT = 1.5; return; }
+    if (NS.units.nearestPlayer(e.x, e.y, see, false)) { e.seenT = 1.5; return; }
     if (G.base) for (const o of G.base.data.buildings)
       if (o.type === 'radar' && o.prog >= 1 && !o.rogue && (o.x - e.x) * (o.x - e.x) + (o.y - e.y) * (o.y - e.y) < 700 * 700) { e.seenT = 1.5; return; }
   }
@@ -139,6 +141,8 @@
       NS.base.damage(t, dmg, side);
       return;
     }
+    if (t.ally) { NS.allies.damage(t, dmg); return; }
+    if (t.cargo !== undefined && t.to !== undefined) { NS.freighters.hurt(t, dmg); return; }
     if (t.side) { NS.units.damage(t, dmg, by); return; }
     damage(t, dmg, by, side === 'player' ? type : '');
   }
@@ -152,8 +156,12 @@
         e.shield = Math.max(0, e.shield - amount * 3);
         e.stun = Math.max(e.stun, 0.6);
       }
-      amount *= NS.combat.mult(type, e.def.armour);
+      /* Penetrators: armour soaks less of a resisted hit */
+      const m = NS.combat.mult(type, e.def.armour);
+      amount *= m < 1 ? Math.min(1, m + (G.stats && G.stats.pierce || 0)) : m;
     }
+    /* Sappers: player craft hit structures harder */
+    if (by && by.side === 'player' && e.def.structure) amount *= G.stats && G.stats.unitStruct || 1;
     e.flash = 0.08;
     e.shieldT = 3;
     if (e.shield > 0) {
@@ -264,6 +272,10 @@
         const u = list[i];
         if (u.alive && (u.x - s.x) * (u.x - s.x) + (u.y - s.y) * (u.y - s.y) < (r + u.r) * (r + u.r)) NS.units.damage(u, s.dmg * 0.6);
       }
+      for (let i = 0; i < G.allies.length; ++i) {
+        const a = G.allies[i];
+        if (a.alive && Math.hypot(a.x - s.x, a.y - s.y) < r + a.r) NS.allies.damage(a, s.dmg * 0.8);
+      }
       const sh = G.ship;
       if (sh && sh.alive && (sh.x - s.x) * (sh.x - s.x) + (sh.y - s.y) * (sh.y - s.y) < r * r) NS.ship.hurt(s.dmg * 0.4, 'blast');
     }
@@ -292,6 +304,9 @@
     if (sh && sh.alive && !sh.hidden && (sh.x - s.x) * (sh.x - s.x) + (sh.y - s.y) * (sh.y - s.y) < sh.r * sh.r) return sh;
     const o = NS.base.buildingAt(s.x, s.y);
     if (o && !o.rogue && (o.x - s.x) * (o.x - s.x) + (o.y - s.y) * (o.y - s.y) < o.r * o.r * 1.2) return o;
+    /* what it was fired at besides: an allied station, a freighter, a rival in a feud */
+    const t = s.target;
+    if (t && t.alive && t !== s.from && (t.ally || t.cargo !== undefined || t.def) && (t.x - s.x) * (t.x - s.x) + (t.y - s.y) * (t.y - s.y) < (t.r + 3) * (t.r + 3)) return t;
     return null;
   }
 
@@ -364,6 +379,10 @@
      come for the outpost: they only turn on ships and units near it or right next to them */
   function pickTarget(e) {
     const d = e.def;
+    /* an ambush's freighter, a feud's rival, a front's allied station come first */
+    if (e.prey && NS.freighters.flying(e.prey)) return e.prey;
+    if (NS.allies.feud()) { const r = NS.allies.rival(e, 450); if (r) return r; }
+    if (e.allyT && e.allyT.alive) return NS.units.nearestPlayer(e.x, e.y, 260, true) || e.allyT;
     if (d.target === 'units' || d.target === 'any') {
       /* a wave's swarmers go for the outpost and its fleet; the ship only when it comes close */
       const shipToo = d.target === 'units' || !e.wave;
@@ -481,6 +500,7 @@
             if (NS.outbreak.inject(t, d.corrupt * (1 - (G.stats.firewall || 0)))) NS.events.rogue(t);
             NS.events.corrupted(t);
           } else if (t.side) NS.units.corrupt(t, 0.35);
+          else if (t.ally || t.def || t.cargo !== undefined) hitTarget(t, 40, 'enemy', e);
           else NS.ship.hurt(8, 'bolt');
           e.alive = false;
           NS.fx.explode(e.x, e.y, 14, NS.fx.TOXIC, { noDebris: true });
@@ -657,6 +677,6 @@
   }
 
   Object.assign(NS.enemies, {
-    spawn, nearest, nearestExcept, queryHostile, nearestBuilding, hitTarget, damage, wake, fire, update, emp, slow, clear, count, retreat
+    spawn, spot, nearest, nearestExcept, queryHostile, nearestBuilding, hitTarget, damage, wake, fire, update, emp, slow, clear, count, retreat
   });
 })();

@@ -28,14 +28,23 @@
     convoy: 'Too many freighters were lost',
     outpost: 'The outpost fell',
     escaped: 'Too many haulers got away',
+    ally: 'The allied station fell',
   };
+
+  /* the running operation flies with this modifier */
+  function mod(id) {
+    const o = G.run && G.run.op;
+    return !!(o && o.status === 'active' && o.mods && o.mods.indexOf(id) >= 0);
+  }
 
   function def() {
     const o = G.run && G.run.op;
     return o ? OP_BY_ID[o.id] : null;
   }
 
-  function start(id) {
+  /* tier: 'normal' | 'hard' | 'nightmare'; mods: forced modifiers (else the tier's own); weekly:
+     the week's Nightmare Op */
+  function start(id, tier, mods, weekly) {
     const op = OP_BY_ID[id];
     const run = G.run;
     if (!op || !run || run.mode !== 'career' || op.zone !== run.zone.id) return null;
@@ -43,13 +52,18 @@
       id: id, t: 0, status: 'active', why: '', first: false, base: O.snapshot(op, G.save.stats),
       waveT: op.threat ? op.threat.first : 0, beat: 'build', pace: PC.create(), hull: G.ship ? G.ship.hull : 0, waves: 0,
       delivered: 0, lost: 0, paid: 0, ambushes: 0, hadHub: false, seeded: false, rad: false,
+      tier: tier || 'normal', mods: mods ? mods.slice() : NS.tiers.modsFor(op, tier || 'normal'), weekly: !!weekly,
     };
+    /* Dry tanks: the tank holds 60% */
+    if (mod('dry') && G.ship) { G.ship.maxFuel *= 0.6; G.ship.fuel = Math.min(G.ship.fuel, G.ship.maxFuel); }
+    if (mod('storm')) NS.hazards.forceStorm(20);
     if (op.force) for (const kind in op.force) {
       if (kind === 'storm') NS.hazards.forceStorm(op.force.storm);
       else if (kind === 'geode' || kind === 'derelict') for (let i = 0; i < op.force[kind]; ++i) NS.trip.addSpecial(kind, R, true);
     }
     if (op.convoy) NS.freighters.setup(op);
     if (op.syndicate) NS.aiBase.setup(op);
+    NS.allies.setup(op);
     /* an outpost already standing takes the operation's wave pace at once */
     if (op.waves && G.base && NS.base.claimed()) NS.waves.arm(true);
     return run.op;
@@ -72,7 +86,8 @@
     const run = G.run;
     const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base, delivered: o.delivered || 0,
       waves: run.waves || 0, clean: o.seeded && !!(G.base && NS.base.hub()) && !infected(),
-      razed: run.razed || {}, scouted: NS.aiBase.scouted(), repelled: NS.aiBase.repelled() };
+      razed: run.razed || {}, scouted: NS.aiBase.scouted(), repelled: NS.aiBase.repelled(), t: o.t,
+      crown: run.crownBroken || (run.zone.id === 'void' && G.save.crownDone && !G.rocks.some(r => r.kind === 'crown')) };
     outpost(m);
     if (extra) {
       m.units += extra.units;
@@ -126,7 +141,7 @@
 
   /* a decided operation hands over to the next one in the same trip after a short breather */
   function chain(o, dt) {
-    if (o.why === 'lost' || G.run.ending) return;
+    if (o.why === 'lost' || G.run.ending || o.tier !== 'normal' || o.weekly) return;
     const next = upNext();
     if (!next) return;
     o.nextId = next.id;
@@ -165,10 +180,13 @@
     if (op.waves) outbreaks(op, o, dt);
     if (((op.waves && !op.waves.off) || op.keep) && o.hadHub && !NS.base.hub()) return fail('outpost');
     if (op.syndicate && op.syndicate.escape && NS.aiBase.escapedCount() >= op.syndicate.escape) return fail('escaped');
+    if (op.allies && op.allies.length && !NS.allies.alive()) return fail('ally');
     if (O.complete(op, measured(o))) return win();
     if (op.convoy && (o.lost || 0) > op.convoy.loss) return fail('convoy');
     if (op.time && o.t >= op.time) return fail('time');
     if (op.threat) director(op, o, dt);
+    /* Endless storm: the next front is always on its way */
+    if (mod('storm') && (!G.storm || (G.storm.phase === 'calm' && G.storm.t > 25))) NS.hazards.forceStorm(20);
   }
 
   /* the outpost side of an operation: the hub seen standing, the forced outbreak and the
@@ -233,6 +251,7 @@
   }
 
   function send(kinds, n, beat) {
+    if (mod('swarm')) n = Math.ceil(n * 1.5);
     const s = (G.freighters.length && NS.freighters.anyFlying()) || G.ship;
     const a = R() * TAU;
     for (let i = 0; i < n; ++i) {
@@ -251,7 +270,8 @@
   function win() {
     const o = G.run.op, op = OP_BY_ID[o.id];
     o.status = 'won';
-    const r = O.finish(G.save, op, true, o.t);
+    const r = o.tier === 'normal' ? O.finish(G.save, op, true, o.t) : NS.tiers.finish(G.save, op, o.tier, true, o.t);
+    if (o.weekly) o.score = (NS.tiers.finishWeekly(G.save, new Date(Date.now()), true, o.t) || {}).score;
     o.first = r.first;
     G.run.cleared = (G.run.cleared || 0) + 1;
     G.run.lastOp = report(o, op);
@@ -265,9 +285,10 @@
     const o = G.run.op, op = OP_BY_ID[o.id];
     o.status = 'failed';
     o.why = why;
-    O.finish(G.save, op, false, o.t);
+    if (o.tier === 'normal') O.finish(G.save, op, false, o.t);
+    else NS.tiers.finish(G.save, op, o.tier, false, o.t);
     NS.music.cue('lose');
-    if (why === 'time' || why === 'convoy' || why === 'escaped') NS.trip.banner('OPERATION FAILED', WHY[why], MOODS.W.color);
+    if (why === 'time' || why === 'convoy' || why === 'escaped' || why === 'ally') NS.trip.banner('OPERATION FAILED', WHY[why], MOODS.W.color);
     NS.save.writeSave();
   }
 
@@ -287,10 +308,11 @@
 
   function report(o, op) {
     return { id: o.id, name: op.name, mood: op.mood, status: o.status, why: WHY[o.why] || '', first: o.first, reward: o.first ? op.reward : null,
-      convoy: op.convoy ? { delivered: o.delivered || 0, lost: o.lost || 0, paid: o.paid || 0 } : null, cleared: G.run.cleared || 0 };
+      convoy: op.convoy ? { delivered: o.delivered || 0, lost: o.lost || 0, paid: o.paid || 0 } : null, cleared: G.run.cleared || 0,
+      tier: o.tier || 'normal', mods: o.mods || [], weekly: !!o.weekly, score: o.score || 0 };
   }
 
   Object.assign(NS.operation, {
-    WHY, NEXT_IN, def, start, progress, update, settle, waveCfg, wavePace, upNext
+    WHY, NEXT_IN, def, mod, start, progress, update, settle, waveCfg, wavePace, upNext
   });
 })();

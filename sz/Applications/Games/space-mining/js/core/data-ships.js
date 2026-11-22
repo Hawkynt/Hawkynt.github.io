@@ -25,7 +25,7 @@
     },
     {
       id: 'leviathan', name: 'Leviathan', cost: 85000, desc: 'A deep-belt mining cruiser: twin lasers, drone racks, a fortress hull.',
-      thrust: 560, maxSpeed: 470, laser: 48, cargo: 110, fuel: 220, hull: 260, burn: 1.45, drones: 1, scale: 1.35,
+      thrust: 560, maxSpeed: 470, laser: 48, cargo: 110, fuel: 300, hull: 260, burn: 1.45, drones: 1, scale: 1.35,
       colors: { hull: '#5a4a8a', trim: '#e8c8ff', dark: '#1e1834', glow: '#c88aff', glass: '#ffd25a' },
     },
   ];
@@ -71,6 +71,12 @@
     skimmer: { armour: 'light', name: 'Skimmer', hp: 40, speed: 360, accel: 520, r: 15, fire: 0, dmg: 10, loot: 60, steal: true },
     raider: { armour: 'light', name: 'Raider', hp: 90, speed: 300, accel: 380, r: 20, fire: 1.4, dmg: 7, loot: 140 },
     gunship: { armour: 'armoured', name: 'Gunship', hp: 260, speed: 210, accel: 240, r: 30, fire: 0.55, dmg: 6, loot: 420 },
+    /* jam: reach of the EMP beam that stops a freighter; mines: how many a Minelayer lays;
+       still: does not move (a mine, a gun battery); range: how far a battery shoots */
+    jammer: { armour: 'light', name: 'Jammer', hp: 90, speed: 280, accel: 380, r: 18, fire: 0, dmg: 0, loot: 200, jam: 380 },
+    layer: { armour: 'light', name: 'Minelayer', hp: 100, speed: 300, accel: 420, r: 19, fire: 0, dmg: 0, loot: 180, mines: 3 },
+    mine: { armour: 'light', name: 'Mine', hp: 12, speed: 0, accel: 0, r: 12, fire: 0, dmg: 70, loot: 0, still: true },
+    battery: { armour: 'structure', name: 'Gun Battery', hp: 420, speed: 0, accel: 0, r: 30, fire: 1.1, dmg: 14, loot: 600, still: true, range: 520 },
   };
 
   Object.assign(NS.ships, {

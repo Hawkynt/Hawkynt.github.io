@@ -1,4 +1,4 @@
-/* The tech tree screen on two pages (Ship and Colony): branch columns of nodes with
+/* The tech tree screen on three pages (Ship, Colony and the Arsenal bought with Intel): branch columns of nodes with
    prerequisite links, level pips,
    state colours (maxed, available, too expensive, locked) and research costs; a detail panel
    with the current and next level and buying. Purchases take effect at once - also mid-trip
@@ -100,10 +100,11 @@
     ctx.fillRect(v.x0, v.y0, v.w, v.h);
     kit.text('TECH TREE', 60, 44, 30, '#ffffff', { weight: 'bold' });
     kit.text(G.treeReturn === 'paused' ? (G.run && G.run.mode === 'daily' ? 'The Daily Belt flies a fixed rig - research applies from your next trip' : 'Trip paused - research applies the moment you buy it')
-      : 'Research data comes from rare ore, discoveries, contracts and achievements', 60, 74, 14, UI.textDim);
-    kit.amount(save.rd, 1220, 46, 26, 'right', 'rd');
+      : page === 2 ? 'Intel comes from the first clear of every operation - more for the hard ones' : 'Research data comes from rare ore, discoveries, contracts and achievements', 60, 74, 14, UI.textDim);
+    if (page === 2) kit.amount(save.intel || 0, 1220, 46, 26, 'right', 'intel');
+    else kit.amount(save.rd, 1220, 46, 26, 'right', 'rd');
     for (let p = 0; p < PAGES.length; ++p)
-      W.button('page' + p, PAGES[p], 640 + p * 150, 28, 140, 36, { selected: page === p, icon: p ? 'habitat' : 'engine', px: 15, accent: p ? '#ffb44a' : UI.data,
+      W.button('page' + p, PAGES[p], 520 + p * 140, 28, 130, 36, { selected: page === p, icon: ['engine', 'habitat', 'crosshair'][p], px: 15, accent: ['#4fd8ff', '#ffb44a', '#ff9a6a'][p],
         action: () => setPage(p) });
 
     /* branch columns */
@@ -131,8 +132,9 @@
       if (pageOf(n) !== page) continue;
       const p = nodePos(n);
       for (let k = 0; k < n.req.length; ++k) {
+        if (!TREE_BY_ID[n.req[k][0]]) continue;
         const q = nodePos(TREE_BY_ID[n.req[k][0]]);
-        const met = rules.nodeLevel(save, n.req[k][0]) >= n.req[k][1];
+        const met = rules.reqMet(save, n.req[k]);
         ctx.strokeStyle = met ? K.rgba(branchColor(n.branch), 0.8) : 'rgba(120,130,160,0.25)';
         ctx.lineWidth = met ? 3 : 2;
         ctx.beginPath();
@@ -213,7 +215,7 @@
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
     }
-    const label = state === 'maxed' ? 'MAX' : rules.nodeCost(save, n.id) + ' rd';
+    const label = state === 'maxed' ? 'MAX' : rules.nodeCost(save, n.id) + (rules.currencyOf(n) === 'intel' ? ' intel' : ' rd');
     kit.text(label, p.x, p.y + R + 12, 12, state === 'maxed' ? UI.gold : state === 'expensive' ? UI.bad : state === 'locked' ? UI.textMute : UI.text, { align: 'center', weight: 'bold' });
   }
 
@@ -234,17 +236,16 @@
     kit.text('Now:  ' + (lvl ? rules.nodeText(n, lvl) : 'nothing yet'), x + 300, y + 30, 14, lvl ? UI.text : UI.textMute);
     if (lvl < max) kit.text('Next: ' + rules.nodeText(n, lvl + 1), x + 300, y + 56, 14, UI.good);
     if (state === 'locked') {
-      const parts = n.req.map(r => TREE_BY_ID[r[0]].name + (TREE_BY_ID[r[0]].costs.length > 1 ? ' ' + r[1] : ''));
-      kit.text('Requires ' + parts.join(' and '), x + 300, y + 86, 13, UI.bad);
+      kit.text('Requires ' + rules.reqText(n), x + 300, y + 86, 13, UI.bad);
     }
     const bx = x + w - 260, by = y + 70;
     if (state !== 'maxed') {
-      W.button('buy', state === 'locked' ? 'Locked' : 'Research  -  ' + rules.nodeCost(save, n.id) + ' data', bx, by, 240, 44, {
+      W.button('buy', state === 'locked' ? 'Locked' : 'Research  -  ' + rules.nodeCost(save, n.id) + (rules.currencyOf(n) === 'intel' ? ' intel' : ' data'), bx, by, 240, 44, {
         disabled: state !== 'available', accent: UI.data, action: () => buy(n.id),
       });
     } else
       kit.text('Fully researched', bx + 120, by + 22, 16, UI.gold, { align: 'center', weight: 'bold' });
-    kit.text('B researches the selected node  -  Tab switches Ship / Colony', x + 84, y + 100, 12, UI.textMute);
+    kit.text('B researches the selected node  -  Tab switches Ship / Colony / Arsenal', x + 84, y + 100, 12, UI.textMute);
   }
 
   /* B buys the selected node from the keyboard */

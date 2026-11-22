@@ -121,10 +121,15 @@
     } else if (run.salvage > 0) kit.credits(run.salvage, cx, v.y0 + 42, 14, 'center');
   }
 
+  /* Fog halves the radar's reach */
+  function radarRange() {
+    return NS.operation.mod('fog') ? 750 : 1500;
+  }
+
   function radar(v, run, s) {
     const R = RADAR_R;
     const cx = v.x1 - R - 20, cy = v.y0 + R + 20;
-    const range = 1500;
+    const range = radarRange();
     const k = R / range;
     ctx.fillStyle = 'rgba(4,10,20,0.78)';
     ctx.beginPath();
@@ -172,6 +177,7 @@
     for (let i = 0; i < G.rocks.length; ++i)
       if (G.rocks[i].kind !== 'rock' && G.rocks[i].known) blip(cx, cy, k, s, G.rocks[i].x, G.rocks[i].y, 4, '#e8c8ff', 0, true);
     for (let i = 0; i < G.pirates.length; ++i) blip(cx, cy, k, s, G.pirates[i].x, G.pirates[i].y, 2.6, '#ff4a4a', 0);
+    for (let i = 0; i < G.allies.length; ++i) if (G.allies[i].alive) blip(cx, cy, k, s, G.allies[i].x, G.allies[i].y, 5, '#5cff9a', 0, true);
     for (let i = 0; i < G.drones.length; ++i) if (G.drones[i].alive) blip(cx, cy, k, s, G.drones[i].x, G.drones[i].y, 1.8, '#5cff9a', 0);
     for (let i = 0; i < G.units.length; ++i) {
       const u = G.units[i];
@@ -436,6 +442,7 @@
   }
 
   Object.assign(NS.hud, {
+    radarRange,
     draw, drawFlash, drawToast, drawBannerOnly: drawBanner, VIEW_W, VIEW_H
   });
 })();

@@ -95,7 +95,7 @@
       /* the Ramscoop fills the tank first, then the gas goes into the hold */
       const ram = !c.bio && NS.fuel.scoopFuel(G.stats.scoop || 0, c.res) > 0 && s.fuel < s.maxFuel - 0.01;
       if (sp < 20 || (!ram && !NS.mining.fits(c.res, 1))) continue;
-      c.acc += dt * (2 + sp / 160);
+      c.acc += dt * (2 + sp / 160) * (G.stats.scoopRate || 1);
       while (c.acc >= 1 && c.amount > 0) {
         const o = ORE_BY_ID[c.res];
         const fuel = c.bio ? 0 : NS.refuel.scoop(c.res);

@@ -71,7 +71,7 @@
       for (let k = 0; k < ab.shells; ++k)
         A.barrages.push({ u: u, x: t.x + (R() - 0.5) * ab.spread * 2, y: t.y + (R() - 0.5) * ab.spread * 2, t: k * ab.every, cx: t.x, cy: t.y, left: ab.shells * ab.every + 1 });
     }
-    u.abCd = ab.cd;
+    u.abCd = ab.cd * (G.stats && G.stats.abilityCd || 1);
     NS.fx.ring(u.x, u.y, u.r, u.r * 3, 0.4, u.def.color, 3);
     NS.audio.sfxAt('powerup', u.x, u.y, { volume: 0.4, pitch: 1.2 });
     return true;
@@ -113,10 +113,10 @@
   function cloak(u, ab) {
     for (let i = 0; i < G.units.length; ++i) {
       const o = G.units[i];
-      if (o.alive && o.side === 'player' && Math.hypot(o.x - u.x, o.y - u.y) < ab.radius) o.cloakT = Math.max(o.cloakT || 0, ab.dur);
+      if (o.alive && o.side === 'player' && Math.hypot(o.x - u.x, o.y - u.y) < ab.radius) o.cloakT = Math.max(o.cloakT || 0, ab.dur * (G.stats && G.stats.cloakDur || 1));
     }
     const s = G.ship;
-    if (s && s.alive && Math.hypot(s.x - u.x, s.y - u.y) < ab.radius) s.cloak = Math.max(s.cloak || 0, ab.dur);
+    if (s && s.alive && Math.hypot(s.x - u.x, s.y - u.y) < ab.radius) s.cloak = Math.max(s.cloak || 0, ab.dur * (G.stats && G.stats.cloakDur || 1));
   }
 
   /* the Lancer's charged shot: everything within the line's width takes double damage */

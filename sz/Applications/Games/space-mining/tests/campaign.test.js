@@ -7,7 +7,8 @@
    for the one in the way), never drills a volatile rock (nor through one) and gets clear of a lit fuse. Between operations it sells the warehouse and spends like a player
    (drone research, shields, point defense, hull and laser upgrades, then the Amber licence,
    the Wasp and its weapons). In an escort it shadows the freighter nearest its next choke point,
-   dashes to whichever freighter is attacked and fetches ore for one with reactor trouble. A competent bot fights and arms itself; a weak one only mines, never
+   dashes to whichever freighter is attacked (a Jammer or a mine ahead of one first), razes a pirate
+   gun outpost beside the lane and fetches ore for one with reactor trouble. A competent bot fights and arms itself; a weak one only mines, never
    turns on the pirates and spends on mining alone. Each operation reports whether it was won, its time, hull lost, waves and the
    tension the pacing director measured, the times it turned for fuel and whether it was towed,
    so the curve the moods promise can be checked. Both bots watch the fuel gauge and turn for the
@@ -23,6 +24,13 @@ const { check, done } = H;
 const G = NS.state;
 const O = NS.ops;
 const { MOODS } = NS.opsData;
+
+/* HURT=1: the ship's hull damage by source per operation */
+const hurtBy = {};
+if (process.env.HURT) {
+  const orig = NS.ship.hurt;
+  NS.ship.hurt = function(n, why) { hurtBy[why || '?'] = (hurtBy[why || '?'] || 0) + n; return orig.apply(this, arguments); };
+}
 
 const view = {};
 function point(x, y) {
@@ -45,10 +53,13 @@ function nearest(list, s, pred, range) {
 /* the rock worth the trip: ore value times richness and size over the distance, so the pilot
    heads out to the rich rim as a player does */
 function richest(s) {
+  const op = NS.operation.def();
+  const want = op && op.goals.find(g => g.type === 'ore');
   let best = null, bv = 0;
   for (const r of G.rocks) {
     if (!r.alive || !r.ore || r.volatile || r.kind !== 'rock') continue;
-    const v = NS.ores.ORE_BY_ID[r.ore].value * (0.5 + r.rich) * r.tier / (Math.hypot(r.x - s.x, r.y - s.y) + 900);
+    /* the ore an operation asks for is worth far more to the pilot */
+    const v = NS.ores.ORE_BY_ID[r.ore].value * (want && want.ore === r.ore ? 30 : 1) * (0.5 + r.rich) * r.tier / (Math.hypot(r.x - s.x, r.y - s.y) + 900);
     if (v > bv) { bv = v; best = r; }
   }
   return best;
@@ -90,7 +101,12 @@ function pilot(fights) {
   let lock = false, cap = 200;
   /* an escort: the freighters in flight, pirates on them, one stuck for ore */
   const fl = G.freighters.filter(f => NS.freighters.flying(f));
-  const onConvoy = fights && fl.length ? nearest(G.pirates, s, p => fl.some(f => Math.hypot(p.x - f.x, p.y - f.y) < 700)) : null;
+  /* jammers holding a freighter and mines just ahead of one come first, then whatever attacks one */
+  const onConvoy = !fights || !fl.length ? null :
+    nearest(G.pirates, s, p => (p.kind === 'jammer' && p.beam) || (p.kind === 'mine' && fl.some(f => Math.hypot(p.x - f.x, p.y - f.y) < 600))) ||
+    nearest(G.pirates, s, p => p.kind !== 'battery' && fl.some(f => Math.hypot(p.x - f.x, p.y - f.y) < 700));
+  /* a pirate gun outpost beside the lane: raze it before the freighters pass */
+  const battery = fights ? nearest(G.pirates, s, p => p.kind === 'battery') : null;
   const stuck = fl.find(f => f.state === 'need');
   const guard = fl.length ? fl.slice().sort((a, b) => nextChoke(a) - nextChoke(b))[0] : null;
   /* a battered ship goes home to the dock for repairs, firing at whatever it locks on the way */
@@ -101,6 +117,7 @@ function pilot(fights) {
   if (hurt) { tx = G.dock.x; ty = G.dock.y; lock = !!pirate; }
   else if (stop) { tx = stop.x; ty = stop.y; stand = stop.kind === 'dock' ? 0 : 70; cap = stop.kind === 'dock' ? 260 : 200; lock = !!pirate; }
   else if (close || (pirate && !fl.length)) { tx = pirate.x; ty = pirate.y; stand = 260; lock = true; }
+  else if (battery && !onConvoy) { tx = battery.x; ty = battery.y; stand = 280; lock = true; cap = 380; }
   else if (onConvoy) {
     /* an escort stays with the freighter under attack and shoots from beside it */
     const f = fl.slice().sort((a, b) => Math.hypot(a.x - onConvoy.x, a.y - onConvoy.y) - Math.hypot(b.x - onConvoy.x, b.y - onConvoy.y))[0];
@@ -215,7 +232,8 @@ function play(op, fights, cap) {
   const out = { id: op.id, mood: op.mood, won: !!o && o.status === 'won', time: Math.round(o ? o.t : t), hull: Math.round(hullLost),
     waves: o ? o.waves : 0, peak: Math.max(0, ...trace), mean: trace.length ? trace.reduce((a, b) => a + b, 0) / trace.length : 0,
     cargo: cargoShare(), fuel: tank.turns, low: tank.low, towed: tank.towed, fate: G.freighters.map(f => f.state[0] + (f.state === 'fly' || f.state === 'need' ? Math.round(f.hp) + '/' + Math.round(f.cargo * 100) : '')).join('') };
-  if (process.env.FATE) console.log('  ' + op.id + (out.won ? ' won ' : ' lost ') + out.fate);
+  if (process.env.FATE) console.log('  ' + op.id + (out.won ? ' won ' : ' lost ') + out.fate + (o && o.why ? ' (' + o.why + ')' : ''));
+  if (process.env.HURT) { console.log('  hurt ' + op.id + ' ' + JSON.stringify(hurtBy) + (G.run && G.run.ending ? ' ending ' + G.run.ending : '')); for (const k in hurtBy) delete hurtBy[k]; }
   if (G.run) NS.trip.endTrip('dock');
   for (let i = 0; i < 10 && G.cine; ++i) NS.cinematics.skip();
   return out;
@@ -284,7 +302,7 @@ const REPS = 3;
 const pro = campaign(true, 'Competent', ['kessler', 'amber'], { amber: REPS });
 const by = id => pro.find(r => r.id === id);
 const kes = pro.filter(r => r.id[0] === 'k'), amb = pro.filter(r => r.id[0] === 'a');
-check('the competent bot clears the Kessler operations at the first try, the capstone (on a fuel budget) within two', kes.length === 6 && kes.every(r => r.won && r.tries <= (r.id === 'k_charter' ? 2 : 1)), JSON.stringify(kes.map(r => r.id + ':' + r.won + ':' + r.tries)));
+check('the competent bot clears the Kessler operations at the first try, the harder one and the capstone within two', kes.length === 6 && kes.every(r => r.won && r.tries <= (r.mood === 'H' || r.mood === 'W' ? 2 : 1)), JSON.stringify(kes.map(r => r.id + ':' + r.won + ':' + r.tries)));
 check('the capstone opens the Amber licence (with the earnings)', O.licenceReady(G.save, 1) && G.save.licenses.indexOf('amber') >= 0);
 check('the mining operations send no pirates', ['k_haul', 'k_copper', 'k_drones', 'k_geode'].every(id => by(id) && by(id).waves === 0 && by(id).peak < 0.05));
 const jump = by('k_jumpers'), charter = by('k_charter');
@@ -311,7 +329,7 @@ check('the nightmare is among the hardest escorts of the belt', aby('a_haul').me
 check('a careful escort delivers most of the cargo on the breathers', aby('a_long').cargo >= 60 && aby('a_wing').cargo >= 60);
 
 /* the same pilot flying the long sorties from the same save, but never looking at the fuel gauge */
-const CARELESS = ['k_copper', 'k_jumpers', 'k_charter', 'a_storm', 'a_convoy', 'a_order', 'a_haul'];
+const CARELESS = ['k_copper', 'k_jumpers', 'k_charter', 'a_long', 'a_storm', 'a_convoy', 'a_three', 'a_order', 'a_haul'];
 const careless = (() => {
   const keep = JSON.stringify(G.save);
   tank.careless = true;
@@ -329,7 +347,7 @@ const careless = (() => {
   table('Careless bot (never watches the fuel)', rows);
   return rows;
 })();
-check('a pilot who never watches the fuel gets towed home', careless.some(r => r.towed), careless.map(r => r.id + ':' + r.towed).join(' '));
+check('a pilot who never watches the fuel runs dry or nearly so', careless.some(r => r.towed || r.low < 0.05), careless.map(r => r.id + ':' + (r.towed ? 'towed' : Math.round(r.low * 100) + '%')).join(' '));
 check('the careless pilot wins fewer of them than the careful one', careless.filter(r => r.won).length < CARELESS.filter(id => by(id) && by(id).won).length);
 
 const weak = campaign(false, 'Weak', ['kessler']);

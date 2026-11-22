@@ -50,8 +50,12 @@
   }
 
   const lvl = (w) => Math.max(1, CB.level(G.save, w.id));
-  const dmgOf = (w) => w.dmg * LEVEL_DMG[lvl(w) - 1];
-  const cdOf = (w) => w.cd * LEVEL_CD[lvl(w) - 1];
+  /* the Arsenal's Hot Coils, Quick Loaders and Long Barrels */
+  const dmgMul = () => G.stats && G.stats.hpDmg || 1;
+  const cdMul = () => G.stats && G.stats.hpCd || 1;
+  const rangeMul = () => G.stats && G.stats.hpRange || 1;
+  const dmgOf = (w) => w.dmg * LEVEL_DMG[lvl(w) - 1] * dmgMul();
+  const cdOf = (w) => w.cd * LEVEL_CD[lvl(w) - 1] * cdMul();
 
   /* ── targets ── */
   function foes(fn) {
@@ -113,7 +117,7 @@
   function shot(kind, a, speed, dmg, w, extra) {
     const s = G.ship;
     const o = Object.assign({ kind: kind, x: s.x + Math.cos(a) * s.r, y: s.y + Math.sin(a) * s.r, vx: Math.cos(a) * speed + s.vx * 0.5, vy: Math.sin(a) * speed + s.vy * 0.5,
-      angle: a, speed: speed, dmg: dmg, type: w.type, color: w.color, life: (w.range || 600) / speed, target: null, turn: 0, splash: 0 }, extra || {});
+      angle: a, speed: speed, dmg: dmg, type: w.type, color: w.color, life: (w.range || 600) * rangeMul() / speed, target: null, turn: 0, splash: 0 }, extra || {});
     G.wshots.push(o);
     return o;
   }
@@ -451,6 +455,6 @@
   }
 
   Object.assign(NS.hardpoints, {
-    clear, slots, trigger, update, hit, hud, state: () => W
+    clear, slots, trigger, update, hit, hud, dmgMul, cdMul, rangeMul, state: () => W
   });
 })();

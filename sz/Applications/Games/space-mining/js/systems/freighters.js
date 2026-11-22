@@ -55,12 +55,14 @@
     const r = NS.rng.makeRng((G.run.seed ^ 0x5e5c0) >>> 0);
     const list = E.posts(r, G.world.w, G.world.h, G.dock);
     for (let i = 0; i < list.length; ++i) G.posts.push(list[i]);
-    const dests = E.resolve(cv.list.map(c => c.to), list, G.dock);
+    /* Double convoy: every freighter comes with a twin eight seconds behind */
+    const cl = NS.operation.mod('doubled') ? cv.list.reduce((a, c) => a.concat([c, Object.assign({}, c, { at: c.at + 8 })]), []) : cv.list;
+    const dests = E.resolve(cl.map(c => c.to), list, G.dock);
     /* freighters for the outpost fly to its hub (or the site, while there is none) */
-    const home = cv.list.some(c => c.to === 'hub') && G.base ? hubLane(NS.base.hub() || { x: G.base.site.cx, y: G.base.site.cy }) : null;
+    const home = cl.some(c => c.to === 'hub') && G.base ? hubLane(NS.base.hub() || { x: G.base.site.cx, y: G.base.site.cy }) : null;
     if (home) home.chokes = E.chokes(home.path, cv.ambush ? cv.ambush.chokes : 0, r).map(c => ({ d: c.d, x: c.x, y: c.y, sprung: false }));
     for (let i = 0; i < dests.length; ++i) {
-      if (cv.list[i].to === 'hub' && home) dests[i] = home;
+      if (cl[i].to === 'hub' && home) dests[i] = home;
       const p = dests[i];
       if (p.path) continue;
       p.path = E.lane(G.dock, p, r);
@@ -69,12 +71,12 @@
       clearLane(p.path);
     }
     const ore = commonOre(G.run.zone);
-    for (let i = 0; i < cv.list.length; ++i) {
-      const c = cv.list[i], p = dests[i];
+    for (let i = 0; i < cl.length; ++i) {
+      const c = cl[i], p = dests[i];
       E.at(p.path, 0, pt);
       const f = {
         alive: true, id: i + 1, name: 'Freighter ' + LETTERS[i], to: p.id, state: 'wait', wait: c.at, d: 0, x: pt.x, y: pt.y, vx: 0, vy: 0,
-        angle: pt.angle, r: F.r, hp: F.hp, maxHp: F.hp, cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0,
+        angle: pt.angle, r: F.r, hp: c.hp || hullHp(), maxHp: c.hp || hullHp(), cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0, pace: c.speed || 1, jam: 0,
         need: c.need ? { d: p.len * c.need.at, n: c.need.n, ore: ore, got: 0, done: false } : null,
       };
       /* an operation's supply freighter: it unloads at the hub and counts for the operation */
@@ -82,6 +84,27 @@
       G.freighters.push(f);
     }
     if (cv.wing || G.save.unlocks.indexOf('wing') >= 0) hireWing();
+    if (cv.battery && dests[0]) batteries(dests[0].path, cv.battery.n, r);
+  }
+
+  /* a pirate outpost beside the lane: gun batteries at even spacing, alternating sides */
+  function batteries(path, n, r) {
+    const len = E.length(path);
+    for (let k = 0; k < n; ++k) {
+      const d = len * (0.32 + 0.36 * k / Math.max(1, n - 1));
+      const a = E.at(path, d, {});
+      const side = k % 2 ? 1 : -1, off = 300 + r() * 60;
+      const x = clamp(a.x - Math.sin(a.angle) * off * side, 80, G.world.w - 80), y = clamp(a.y + Math.cos(a.angle) * off * side, 80, G.world.h - 80);
+      const b = NS.pirates.spawn('battery', x, y);
+      b.angle = a.angle + Math.PI / 2 * side;
+    }
+  }
+
+  /* the point dist ahead of a freighter on its lane */
+  function ahead(f, dist) {
+    const p = post(f.to);
+    if (!p || !p.path) return { x: f.x, y: f.y, angle: f.angle };
+    return E.at(p.path, Math.min(p.len - 20, f.d + dist), {});
   }
 
   /* rocks on a lane drift out of the way before the first freighter */
@@ -94,9 +117,20 @@
     NS.asteroids.rebuildGrid();
   }
 
+  /* the Arsenal's Armoured Freighters and Tuned Haulers */
+  function hullHp() {
+    return Math.round(F.hp * (G.stats && G.stats.freighterHp || 1));
+  }
+
+  function speed() {
+    return E.pace(G.world.w) * (G.stats && G.stats.freighterSpeed || 1);
+  }
+
+  /* two fighters, more with Bigger Wing, flying on alternate sides */
   function hireWing() {
-    for (let k = 0; k < 2; ++k)
-      G.wing.push({ alive: true, slot: k ? 1 : -1, x: G.dock.x + (k ? 60 : -60), y: G.dock.y + 200, vx: 0, vy: 0, angle: -Math.PI / 2, bank: 0,
+    const n = 2 + (G.stats && G.stats.wing || 0);
+    for (let k = 0; k < n; ++k)
+      G.wing.push({ alive: true, slot: (k % 2 ? 1 : -1) * (1 + Math.floor(k / 2) * 0.7), x: G.dock.x + (k % 2 ? 60 : -60), y: G.dock.y + 200 + Math.floor(k / 2) * 40, vx: 0, vy: 0, angle: -Math.PI / 2, bank: 0,
         r: WING.r, hp: WING.hp, maxHp: WING.hp, fireT: R() * 0.3, target: null, flash: 0, exT: 0 });
   }
 
@@ -224,7 +258,7 @@
     const jumped = z.pirates > 0 && R() < Math.min(0.8, z.pirates);
     G.freighters.push({
       alive: true, id: G.freighters.length + 1, kind: 'supply', name: 'Supply ' + LETTERS[n % LETTERS.length], to: 'hub', state: 'wait', wait: 3, d: 0, x: pt.x, y: pt.y,
-      vx: 0, vy: 0, angle: pt.angle, r: F.r, hp: F.hp, maxHp: F.hp, cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0, need: null, pack: pack.id,
+      vx: 0, vy: 0, angle: pt.angle, r: F.r, hp: hullHp(), maxHp: hullHp(), cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0, need: null, pack: pack.id,
       load: JSON.parse(JSON.stringify(pack.load)),
       chokes: jumped ? E.chokes(p.path, 1, R).map(c => ({ d: c.d, x: c.x, y: c.y, sprung: false })) : [],
       ambush: jumped ? { kinds: { skimmer: 2, raider: 1 + Math.floor(z.danger / 2) }, size: [1 + Math.floor(z.danger / 3), 2 + Math.floor(z.danger / 3)], chokes: 1 } : null,
@@ -334,7 +368,9 @@
     if (f.state === 'need') { handover(f); return; }
     const storm = G.storm && G.storm.phase === 'active';
     const x0 = f.x, y0 = f.y;
-    f.d += E.pace(G.world.w) * (storm ? F.storm : 1) * dt;
+    /* a jammer's beam holds it dead in space */
+    if (f.jam > 0) f.jam -= dt;
+    else f.d += speed() * (f.pace || 1) * (storm ? F.storm : 1) * dt;
     if (f.need && !f.need.done && f.d >= f.need.d) {
       f.d = f.need.d;
       f.state = 'need';
@@ -400,7 +436,8 @@
   function spring(c, f, amb, p) {
     c.sprung = true;
     if (!amb) return;
-    const n = amb.size[0] + Math.floor(R() * (amb.size[1] - amb.size[0] + 1));
+    let n = amb.size[0] + Math.floor(R() * (amb.size[1] - amb.size[0] + 1));
+    if (NS.operation.mod('swarm')) n = Math.ceil(n * 1.5);
     const side = R() < 0.5 ? -1 : 1;
     const a = f.angle + side * Math.PI / 2;
     const kinds = Object.keys(amb.kinds);
@@ -415,7 +452,8 @@
       }
       const aa = a + (R() - 0.5) * 0.9, d = 820 + R() * 200;
       const x = clamp(c.x + Math.cos(aa) * d, 60, G.world.w - 60), y = clamp(c.y + Math.sin(aa) * d, 60, G.world.h - 60);
-      const pr = NS.pirates.spawn(kind, x, y);
+      /* pirate kinds come from the pirate clans; anything else (Lattice drones) from the factions */
+      const pr = NS.ships.PIRATES[kind] ? NS.pirates.spawn(kind, x, y) : NS.enemies.spawn(kind, x, y, {});
       pr.prey = f;
       if (amb.lead && i === n) {
         pr.lead = true;
@@ -525,6 +563,6 @@
   }
 
   Object.assign(NS.freighters, {
-    WING, clear, setup, order, shipments, settle, flying, nearest, hitAt, wingAt, anyFlying, active, hurt, hurtWing, drain, recover, update, capture, restore, commonOre
+    WING, hullHp, speed, hireWing, ahead, clear, setup, order, shipments, settle, flying, nearest, hitAt, wingAt, anyFlying, active, hurt, hurtWing, drain, recover, update, capture, restore, commonOre
   });
 })();

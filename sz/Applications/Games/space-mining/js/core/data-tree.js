@@ -1,7 +1,8 @@
-/* Static tech tree data on two pages: the ship (Drilling, Engines, Logistics, Automation,
-   Defense, Science) and the colony (Construction, Fortification, Fleet, Biosecurity, Industry),
-   56 nodes bought with research data, with level costs, prerequisites, grid placement and the
-   stat each level adds (see rules.computeStats). Pure data. */
+/* Static tech tree data on three pages: the ship (Drilling, Engines, Logistics, Automation,
+   Defense, Science), the colony (Construction, Fortification, Fleet, Biosecurity, Industry) and
+   the Arsenal (Weapons, Convoy, Tactics, Warfare, Xeno, Drive; paid in Intel), 74 nodes bought
+   with research data or Intel, with level costs, prerequisites (a node, or a cleared operation as
+   'op:<id>'), grid placement and the stat each level adds (see rules.computeStats). Pure data. */
 ;(function() {
   'use strict';
 
@@ -20,9 +21,15 @@
     { id: 'fleet', name: 'Fleet', color: '#4fd8ff', icon: 'fighter', page: 1 },
     { id: 'biosecurity', name: 'Biosecurity', color: '#9ae04a', icon: 'serum', page: 1 },
     { id: 'industry', name: 'Industry', color: '#ffd25a', icon: 'refinery', page: 1 },
+    { id: 'weapons', name: 'Weapons', color: '#ff6a4a', icon: 'crosshair', page: 2, currency: 'intel' },
+    { id: 'convoy', name: 'Convoy', color: '#7cf0ff', icon: 'cargo', page: 2, currency: 'intel' },
+    { id: 'tactics', name: 'Tactics', color: '#ffd25a', icon: 'scan', page: 2, currency: 'intel' },
+    { id: 'warfare', name: 'Warfare', color: '#ff5c8a', icon: 'blast', page: 2, currency: 'intel' },
+    { id: 'xeno', name: 'Xeno', color: '#9ae04a', icon: 'serum', page: 2, currency: 'intel' },
+    { id: 'drive', name: 'Drive', color: '#4fc3ff', icon: 'engine', page: 2, currency: 'intel' },
   ];
   for (let i = 0; i < BRANCHES.length; ++i) BRANCHES[i].page = BRANCHES[i].page || 0;
-  const PAGES = ['Ship', 'Colony'];
+  const PAGES = ['Ship', 'Colony', 'Arsenal'];
 
   /* per: amount one level adds to `stat`; fmt: {p} = per as percent, {v} = per as a value */
   const TREE = [
@@ -103,6 +110,25 @@
     { id: 'i_smelt', branch: 'industry', name: 'Arc Furnaces', icon: 'refinery', row: 0, lane: 1, stat: 'process', per: 0.2, fmt: '+{p}% smelting and fabrication speed', costs: [3, 5, 8], req: [] },
     { id: 'i_storage', branch: 'industry', name: 'Compression Racks', icon: 'compress', row: 1, lane: 0, stat: 'storageMul', per: 0.25, fmt: '+{p}% outpost storage', costs: [3, 6], req: [['i_extract', 1]] },
     { id: 'i_power', branch: 'industry', name: 'Power Routing', icon: 'bolt', row: 1, lane: 1, stat: 'powerMul', per: 0.1, fmt: '+{p}% power output', costs: [4, 7, 10], req: [['i_smelt', 1]] },
+    /* Arsenal (Intel) */
+    { id: 'w_dmg', branch: 'weapons', name: 'Hot Coils', icon: 'blast', row: 0, lane: 0, stat: 'hpDmg', per: 0.1, fmt: '+{p}% hardpoint damage', costs: [2, 3, 5], req: [] },
+    { id: 'w_cd', branch: 'weapons', name: 'Quick Loaders', icon: 'clock', row: 0, lane: 1, stat: 'hpCd', per: 0.08, fmt: '-{p}% hardpoint cooldown', costs: [2, 3, 5], req: [] },
+    { id: 'w_range', branch: 'weapons', name: 'Long Barrels', icon: 'crosshair', row: 1, lane: 0.5, stat: 'hpRange', per: 0.15, fmt: '+{p}% hardpoint range', costs: [3, 5], req: [['w_dmg', 1]] },
+    { id: 'v_hull', branch: 'convoy', name: 'Armoured Freighters', icon: 'hull', row: 0, lane: 0, stat: 'freighterHp', per: 0.2, fmt: '+{p}% freighter hull', costs: [2, 3, 5], req: [] },
+    { id: 'v_speed', branch: 'convoy', name: 'Tuned Haulers', icon: 'engine', row: 0, lane: 1, stat: 'freighterSpeed', per: 0.08, fmt: '+{p}% freighter speed', costs: [2, 4], req: [] },
+    { id: 'v_wing', branch: 'convoy', name: 'Bigger Wing', icon: 'drone', row: 1, lane: 0.5, stat: 'wing', per: 1, fmt: '+{v} fighter in the hired wing', costs: [4, 7], req: [['v_hull', 1]] },
+    { id: 't_cd', branch: 'tactics', name: 'Drilled Crews', icon: 'clock', row: 0, lane: 0, stat: 'abilityCd', per: 0.1, fmt: '-{p}% ability cooldowns', costs: [2, 3, 5], req: [] },
+    { id: 't_eye', branch: 'tactics', name: 'Keen Sensors', icon: 'scan', row: 0, lane: 1, stat: 'detect', per: 0.25, fmt: '+{p}% reach spotting cloaked craft', costs: [2, 4], req: [] },
+    { id: 't_flare', branch: 'tactics', name: 'Signal Flares', icon: 'star', row: 1, lane: 0.5, stat: 'pulseMul', per: 0.2, fmt: '+{p}% scanner pulse reach', costs: [3, 5], req: [['t_eye', 1]] },
+    { id: 'x_siege', branch: 'warfare', name: 'Sappers', icon: 'blast', row: 0, lane: 0, stat: 'unitStruct', per: 0.15, fmt: '+{p}% unit damage to structures', costs: [2, 4, 6], req: [] },
+    { id: 'x_pierce', branch: 'warfare', name: 'Penetrators', icon: 'crack', row: 0, lane: 1, stat: 'pierce', per: 0.1, fmt: 'Armour soaks {p}% less of a hit', costs: [3, 5], req: [] },
+    { id: 'x_vet', branch: 'warfare', name: 'Veteran Pilots', icon: 'hull', row: 1, lane: 0.5, stat: 'unitHp', per: 0.1, fmt: '+{p}% unit hit points', costs: [3, 5], req: [['x_siege', 1]] },
+    { id: 'z_spore', branch: 'xeno', name: 'Virulent Spores', icon: 'serum', row: 0, lane: 0, stat: 'sporeMul', per: 0.25, fmt: '+{p}% spore rot', costs: [3, 5], req: [] },
+    { id: 'z_hijack', branch: 'xeno', name: 'Deep Hijack', icon: 'chip', row: 0, lane: 1, stat: 'hijackDur', per: 0.3, fmt: '+{p}% hijack time', costs: [3, 5], req: [] },
+    { id: 'z_cloak', branch: 'xeno', name: 'Phase Cloak', icon: 'warp', row: 1, lane: 0.5, stat: 'cloakDur', per: 0.3, fmt: '+{p}% cloak time', costs: [3, 5], req: [['z_spore', 1]] },
+    { id: 'r_intake', branch: 'drive', name: 'Scoop Intake', icon: 'gas', row: 0, lane: 0, stat: 'scoopRate', per: 0.5, fmt: '+{p}% gas scooping speed (fuel and hold)', costs: [2, 3, 5], req: [] },
+    { id: 'r_tanks', branch: 'drive', name: 'Deep Tanks', icon: 'fuel', row: 0, lane: 1, stat: 'deepTanks', per: 0.25, fmt: '+{p}% fuel', costs: [3, 5], req: [] },
+    { id: 'r_fusion', branch: 'drive', name: 'Fusion Drive', icon: 'flame', row: 1, lane: 0.5, stat: 'fusion', per: 1, fmt: 'The engines burn 70% less fuel', costs: [8], req: [['r_tanks', 2], ['op:c_citadel', 1]] },
   ];
 
   const TREE_BY_ID = {};

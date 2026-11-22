@@ -114,6 +114,7 @@
     if (!b) return { ok: false, reason: 'No outpost site here' };
     const chk = C.canPlace(b.data, b.deps, type, cx, cy, G.stats);
     if (!chk.ok) return chk;
+    if (BUILDING_BY_ID[type].cat === 'defense' && NS.operation.mod('noturrets')) return { ok: false, reason: 'No turrets on this tier' };
     const cost = C.buildCost(type, G.stats);
     const miss = lack(cost);
     if (miss) return { ok: false, reason: 'Not enough ' + missName(miss) };

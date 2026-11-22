@@ -73,7 +73,8 @@
      m: { units (banked), banked: { ore: units }, stats (career statistics now), base (at the start),
           delivered (freighters docked at their post), waves (repelled this trip), outpost (a
           finished hub in the belt), built (finished buildings by type), clean (an outbreak the
-          operation started is over), razed (Syndicate kills by type), scouted, repelled } */
+          operation started is over), razed (Syndicate kills by type), scouted, repelled, t (seconds
+          the operation has run, for hold), crown (the Crown Heart shattered) } */
   function measure(g, m) {
     if (g.type === 'bank') return m.units || 0;
     if (g.type === 'ore') return (m.banked && m.banked[g.ore]) || 0;
@@ -89,6 +90,8 @@
     if (g.type === 'clean') return m.clean ? 1 : 0;
     if (g.type === 'scout') return m.scouted ? 1 : 0;
     if (g.type === 'repel') return m.repelled || 0;
+    if (g.type === 'hold') return Math.floor(m.t || 0);
+    if (g.type === 'crown') return m.crown ? 1 : 0;
     if (g.type === 'raze') {
       let n = 0;
       for (let i = 0; i < g.of.length; ++i) n += (m.razed && m.razed[g.of[i]]) || 0;
@@ -130,6 +133,12 @@
   }
 
   /* ── results ── */
+  /* Intel a first clear pays: by mood unless the operation names its own */
+  const INTEL = { C: 1, E: 1, S: 2, H: 2, W: 3, N: 4 };
+  function intelFor(op) {
+    return op.reward && op.reward.intel !== undefined ? op.reward.intel : INTEL[op.mood] || 1;
+  }
+
   function finish(save, op, won, secs) {
     const rec = save.ops[op.id] || (save.ops[op.id] = { done: false, tries: 0, best: 0 });
     rec.tries += 1;
@@ -143,6 +152,7 @@
     save.credits += rw.cr || 0;
     save.stats.earned = (save.stats.earned || 0) + (rw.cr || 0);
     save.rd += rw.rd || 0;
+    save.intel = (save.intel || 0) + intelFor(op);
     if (rw.unlock) for (let i = 0; i < rw.unlock.length; ++i) if (save.unlocks.indexOf(rw.unlock[i]) < 0) save.unlocks.push(rw.unlock[i]);
     if (save.weapons && NS.combat.grantUnlocked) NS.combat.grantUnlocked(save);
     return { first: true, reward: rw };
@@ -166,11 +176,14 @@
       if (!OP_BY_ID[id] || !r || typeof r !== 'object') continue;
       const n = (v, hi) => typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(hi, Math.floor(v))) : 0;
       out[id] = { done: !!r.done, tries: n(r.tries, 1e6), best: n(r.best, 1e7) };
+      const tiers = NS.tiers.repairTiers(r.tiers);
+      if (tiers) out[id].tiers = tiers;
     }
     return out;
   }
 
   Object.assign(NS.ops, {
+    INTEL, intelFor,
     MOODS, LOOPS, zoneOps, capstoneOf, allows, loopOf, done, state, nextOp, licenceReady, progress, complete, snapshot, finish, moodsOk, repair
   });
 })();

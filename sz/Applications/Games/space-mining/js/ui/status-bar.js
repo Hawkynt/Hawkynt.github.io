@@ -57,7 +57,7 @@
     for (let i = 0; i < list.length; ++i) {
       const s = list[i];
       const tr = document.createElement('tr');
-      const row = [i + 1, s.score, MODES[s.mode] ? MODES[s.mode].name : s.mode === 'classic' ? 'Classic' : s.mode, s.detail || ''];
+      const row = [i + 1, s.score, MODES[s.mode] ? MODES[s.mode].name : s.mode === 'classic' ? 'Classic' : s.mode === 'weekly' ? 'Weekly Nightmare' : s.mode, s.detail || ''];
       for (let k = 0; k < row.length; ++k) {
         const td = document.createElement('td');
         td.textContent = String(row[k]);
