@@ -114,6 +114,7 @@
     switch (G.screen) {
       case 'paused': scr.resume(); break;
       case 'supply': NS.supplyUi.close(); break;
+      case 'savedata': scr.setScreen('title'); break;
       case 'tree': scr.setScreen(G.treeReturn); break;
       case 'help': scr.setScreen(G.helpReturn || 'title'); break;
       case 'map': scr.setScreen('station'); break;

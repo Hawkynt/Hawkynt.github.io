@@ -131,7 +131,8 @@
       { id: 'daily', label: MODES.daily.name, sub: MODES.daily.desc, icon: 'calendar', accent: MODES.daily.color, action: () => scr.launch('daily', 0) },
       { id: 'siege', label: MODES.siege.name, sub: MODES.siege.desc, icon: 'turret', accent: MODES.siege.color, action: () => scr.launch('siege', siegeZone()) },
       { id: 'tree', label: 'Tech Tree', sub: 'Research with data from the belts', icon: 'tree', accent: UI.data, action: () => scr.openTree('title') },
-      { id: 'help', label: 'How to Play', sub: 'Controls, outposts, life in the belts', icon: 'help', action: () => scr.openHelp('title') });
+      { id: 'help', label: 'How to Play', sub: 'Controls, outposts, life in the belts', icon: 'help', action: () => scr.openHelp('title') },
+      { id: 'savedata', label: 'Save Data', sub: 'Export, import or reset the career', icon: 'cargo', action: () => NS.saveUi.open() });
     const bh = items.length > 6 ? 48 : 52, gap = items.length > 6 ? 7 : 9;
     const bw = 340, x = 640 - bw / 2;
     let y = 208;

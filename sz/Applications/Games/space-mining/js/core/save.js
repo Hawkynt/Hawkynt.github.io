@@ -67,10 +67,32 @@
     return G.stats;
   }
 
+  /* the save as stored: runtime fields (prefixed _) left out */
+  function snapshot() {
+    if (G.base && NS.base.sync) NS.base.sync();
+    return JSON.stringify(G.save, (k, v) => k.charAt(0) === '_' ? undefined : v);
+  }
+
+  /* a save from a file takes over: repaired like a stored one, the market and contracts set up */
+  function adopt(raw) {
+    const save = migrateSave(raw, null);
+    eco.initMarket(save);
+    if (!save.contracts.length) eco.refillContracts(save, computeStats(save), NS.rng.makeRng(save.cycle * 7919 + 13));
+    G.save = save;
+    refreshStats();
+    writeSave();
+    return save;
+  }
+
+  /* a fresh career, the old one gone */
+  function reset() {
+    return adopt(null);
+  }
+
   G.save = loadSave();
   refreshStats();
 
   Object.assign(NS.save, {
-    SAVE_KEY, OLD_SCORES_KEY, OLD_TUTORIAL_KEY, loadSave, writeSave, refreshStats
+    SAVE_KEY, OLD_SCORES_KEY, OLD_TUTORIAL_KEY, loadSave, writeSave, refreshStats, snapshot, adopt, reset
   });
 })();

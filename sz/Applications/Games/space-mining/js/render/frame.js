@@ -47,6 +47,7 @@
       case 'results': NS.results.draw(); break;
       case 'paused': NS.pause.draw(); break;
       case 'supply': NS.supplyUi.drawScreen(); break;
+      case 'savedata': NS.saveUi.draw(); break;
     }
     NS.hud.drawFlash();
     NS.hud.drawToast();

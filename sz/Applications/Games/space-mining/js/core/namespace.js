@@ -7,12 +7,12 @@
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
 
   const MODULES = ['constants', 'rng', 'ores', 'ships', 'treeData', 'goals', 'colonyData', 'fleetData', 'eventData', 'opsData', 'weaponData', 'syndicateData', 'ops', 'pacing', 'combat', 'escort', 'syndicate', 'rules',
-    'economy', 'supply', 'colony', 'production', 'outbreak', 'calendar', 'cosmeticData', 'cosmetics', 'save', 'audio', 'music',
+    'economy', 'supply', 'colony', 'production', 'outbreak', 'calendar', 'cosmeticData', 'cosmetics', 'save', 'saveFile', 'audio', 'music',
     'grid', 'fx', 'camera', 'ship', 'asteroids', 'mining', 'hazards', 'pirates', 'drones', 'formations', 'orders', 'base',
     'supplies', 'turrets', 'hardpoints', 'freighters', 'units', 'abilities', 'aiBase', 'enemies', 'waves', 'life', 'events', 'operation', 'command', 'resume', 'trip', 'cinematics', 'sim',
     'artKit', 'shipArt', 'rockArt', 'propArt', 'stationArt', 'backdropArt', 'colonyArt', 'fleetArt', 'view', 'backdrop',
     'world', 'baseRender', 'fleetRender', 'fxRender', 'weaponRender', 'escortRender', 'abilityRender', 'opHud', 'hud', 'cineRender', 'kit', 'widgets', 'screens', 'statusBar', 'touch',
-    'title', 'station', 'shipyard', 'hangar', 'colonies', 'supplyUi', 'map', 'tree', 'help', 'pause', 'results', 'commandHud', 'buildMenu', 'selPanel',
+    'title', 'station', 'shipyard', 'hangar', 'colonies', 'supplyUi', 'saveUi', 'map', 'tree', 'help', 'pause', 'results', 'commandHud', 'buildMenu', 'selPanel',
     'frame', 'commandInput', 'input', 'app'];
   for (let i = 0; i < MODULES.length; ++i)
     NS[MODULES[i]] = NS[MODULES[i]] || {};
