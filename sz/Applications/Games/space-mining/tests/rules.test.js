@@ -67,6 +67,8 @@ check('a licence needs the fee', !R.buyLicense(z, 1));
 z.credits = ZONES[1].unlock.fee;
 check('buying the licence opens the belt', R.buyLicense(z, 1) && R.zoneState(z, 1) === 'open' && z.credits === 0);
 z.stats.earned = 1e9;
+check('the Verdant licence waits for the Amber capstone', R.zoneState(z, 2) === 'locked');
+for (const o of NS.ops.zoneOps('amber')) NS.ops.finish(z, o, true, 60);
 check('belts open strictly in order', R.zoneState(z, 3) === 'locked' && R.zoneState(z, 2) === 'buyable');
 check('belt unlock thresholds rise', ZONES.every((zz, i) => i === 0 || zz.unlock.earned > ZONES[i - 1].unlock.earned));
 

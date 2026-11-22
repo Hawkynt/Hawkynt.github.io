@@ -150,7 +150,14 @@
     }
   }
 
+  /* an operation's storm: warned in `secs`, in any belt (one with none of its own gets one) */
+  function forceStorm(secs) {
+    if (!G.storm) G.storm = { phase: 'calm', t: secs, angle: R() * TAU, front: 0, freq: 0.5 };
+    G.storm.phase = 'calm';
+    G.storm.t = secs;
+  }
+
   Object.assign(NS.hazards, {
-    setup, update
+    setup, update, forceStorm
   });
 })();

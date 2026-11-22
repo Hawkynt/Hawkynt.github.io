@@ -59,7 +59,8 @@
   }
 
   /* ── progress ──
-     m: { units (banked), banked: { ore: units }, stats (career statistics now), base (at the start) } */
+     m: { units (banked), banked: { ore: units }, stats (career statistics now), base (at the start),
+          delivered (freighters docked at their post) } */
   function measure(g, m) {
     if (g.type === 'bank') return m.units || 0;
     if (g.type === 'ore') return (m.banked && m.banked[g.ore]) || 0;
@@ -69,6 +70,7 @@
       return v;
     }
     if (g.type === 'record') return (m.stats && m.stats[g.stat]) || 0;
+    if (g.type === 'deliver') return m.delivered || 0;
     let n = 0;
     for (let i = 0; i < g.stats.length; ++i) n += ((m.stats && m.stats[g.stats[i]]) || 0) - ((m.base && m.base[g.stats[i]]) || 0);
     return n;

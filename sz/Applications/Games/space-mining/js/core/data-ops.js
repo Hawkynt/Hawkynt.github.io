@@ -28,10 +28,16 @@
   ];
 
   /* goals: bank (units banked), ore (units of one ore banked), value (credits' worth banked),
-       stat (rise of career statistics, summed), record (a career statistic reached)
+       stat (rise of career statistics, summed), record (a career statistic reached),
+       deliver (freighters docked at their post)
      time: seconds (0 = none); threat: pirate kinds by weight, first wave, seconds between
        waves, wave size and the most pirates at once; beats: [seconds, beat] from the start;
-     force: specials laid out for the operation; reward: credits, research, unlock ids */
+     force: specials laid out for the operation (storm: seconds until a storm is warned);
+     convoy: freighters - fee per full delivery, losses allowed, the schedule (where each goes,
+       when it undocks, need: a stop at a share of the lane for n of the belt's commonest ore),
+       the ambush at choke points per lane (kinds, size, chokes, lead: an armoured leader) and
+       wing: the hired wing flies along (it does on every convoy once 'wing' is unlocked);
+     reward: credits, research, unlock ids */
   const OPS = [
     { id: 'k_haul', zone: 'kessler', name: 'First Haul', mood: 'C', time: 0,
       brief: 'Kessler Station buys anything you bring. Laser rocks until they crack, reel the ore in with the tractor and bank 60 units at the dock.',
@@ -62,6 +68,65 @@
       threat: { kinds: { skimmer: 3, raider: 2 }, first: 40, every: 38, size: [2, 4], cap: 8 },
       beats: [[0, 'build'], [110, 'peak'], [190, 'relief'], [250, 'surprise'], [320, 'peak'], [420, 'relief']],
       reward: { cr: 1500, rd: 6 } },
+
+    /* the Amber Reach: escort */
+    { id: 'a_first', zone: 'amber', name: 'One Freighter', mood: 'C', time: 0,
+      brief: 'A freighter leaves the dock for the nearest trading post. Its lane is marked - pirates wait at a choke point along it. Fly with it and keep them off until it docks.',
+      goals: [{ type: 'deliver', n: 1, text: 'Deliver freighters' }],
+      convoy: { fee: 600, loss: 0, list: [{ to: 'near', at: 6 }], ambush: { kinds: { skimmer: 1 }, size: [2, 2], chokes: 1 } },
+      reward: { cr: 1200, rd: 4 } },
+    { id: 'a_long', zone: 'amber', name: 'Long Lane', mood: 'E', time: 0,
+      brief: 'The far post pays better. A longer lane, one ambush - there is time to mine on the way while the freighter crawls.',
+      goals: [{ type: 'deliver', n: 1, text: 'Deliver freighters' }],
+      convoy: { fee: 900, loss: 0, list: [{ to: 'far', at: 6 }], ambush: { kinds: { skimmer: 2, raider: 1 }, size: [2, 3], chokes: 1 } },
+      reward: { cr: 1400, rd: 4 } },
+    { id: 'a_storm', zone: 'amber', name: 'Storm Crossing', mood: 'S', time: 0,
+      brief: 'A solar front is coming through the reach and the freighter will not wait. Storms halve its speed - and the pirates use the static to strike.',
+      goals: [{ type: 'deliver', n: 1, text: 'Deliver freighters' }],
+      force: { storm: 26 },
+      convoy: { fee: 1000, loss: 0, list: [{ to: 'far', at: 6 }], ambush: { kinds: { skimmer: 2, raider: 1 }, size: [2, 3], chokes: 2 } },
+      reward: { cr: 1600, rd: 5 } },
+    { id: 'a_twin', zone: 'amber', name: 'Two Freighters', mood: 'H', time: 0,
+      brief: 'Two freighters, two posts on opposite sides of the dock. You cannot be with both - pick your moments and fly fast.',
+      goals: [{ type: 'deliver', n: 2, text: 'Deliver freighters' }],
+      convoy: { fee: 900, loss: 0, list: [{ to: 'near', at: 6 }, { to: 'opp', at: 14 }], ambush: { kinds: { skimmer: 2, raider: 2 }, size: [2, 3], chokes: 1 } },
+      threat: { kinds: { skimmer: 1, raider: 1 }, first: 55, every: 45, size: [1, 2], cap: 6 },
+      beats: [[0, 'build'], [40, 'peak'], [80, 'relief']],
+      reward: { cr: 2200, rd: 5 } },
+    { id: 'a_wing', zone: 'amber', name: 'Hired Wing', mood: 'E', time: 0,
+      brief: 'The guild lends you two fighters. They guard you and dive on whatever attacks a freighter - and once this run is done they fly with every convoy.',
+      goals: [{ type: 'deliver', n: 1, text: 'Deliver freighters' }],
+      convoy: { fee: 1000, loss: 0, wing: true, list: [{ to: 'side', at: 6 }], ambush: { kinds: { skimmer: 1, raider: 2 }, size: [3, 3], chokes: 2 } },
+      reward: { cr: 1500, rd: 4, unlock: ['wing'] } },
+    { id: 'a_convoy', zone: 'amber', name: 'Convoy', mood: 'H', time: 0,
+      brief: 'Three freighters on the long lane, one after another. The pirates know the route - and they keep coming.',
+      goals: [{ type: 'deliver', n: 2, text: 'Deliver freighters' }],
+      convoy: { fee: 800, loss: 1, list: [{ to: 'far', at: 6 }, { to: 'far', at: 14 }, { to: 'far', at: 22 }], ambush: { kinds: { skimmer: 2, raider: 2, gunship: 0.5 }, size: [3, 4], chokes: 2 } },
+      threat: { kinds: { skimmer: 2, raider: 1 }, first: 45, every: 40, size: [2, 3], cap: 8 },
+      beats: [[0, 'build'], [50, 'peak'], [95, 'relief']],
+      reward: { cr: 2600, rd: 6 } },
+    { id: 'a_three', zone: 'amber', name: 'Three Directions', mood: 'W', time: 0,
+      brief: 'Three freighters twelve seconds apart, three posts, and a gunship leads every ambush. The guild wants all three - none may be lost.',
+      goals: [{ type: 'deliver', n: 3, text: 'Deliver freighters' }],
+      convoy: { fee: 1000, loss: 0, list: [{ to: 'near', at: 6 }, { to: 'opp', at: 18 }, { to: 'side', at: 30 }], ambush: { kinds: { skimmer: 2, raider: 2 }, size: [2, 3], chokes: 1, lead: 'gunship' } },
+      threat: { kinds: { skimmer: 2, raider: 1 }, first: 50, every: 40, size: [1, 2], cap: 8 },
+      beats: [[0, 'build'], [35, 'peak'], [75, 'surprise'], [110, 'relief']],
+      reward: { cr: 3000, rd: 7 } },
+    { id: 'a_order', zone: 'amber', name: 'Reactor Trouble', mood: 'S', time: 0,
+      brief: 'The freighter limps out with a failing reactor. Halfway it will stop and ask for ore to patch it - bring the belt\'s commonest ore alongside, slowly.',
+      goals: [{ type: 'deliver', n: 1, text: 'Deliver freighters' }],
+      convoy: { fee: 1200, loss: 0, list: [{ to: 'far', at: 6, need: { at: 0.45, n: 15 } }], ambush: { kinds: { skimmer: 2, raider: 1 }, size: [2, 3], chokes: 1 } },
+      threat: { kinds: { skimmer: 1, raider: 1 }, first: 60, every: 40, size: [1, 2], cap: 5 },
+      reward: { cr: 2000, rd: 5 } },
+    { id: 'a_haul', zone: 'amber', name: 'Long Haul', mood: 'N', time: 0, capstone: true,
+      brief: 'The charter for the Verdant Shoals rides on one run: four freighters to all four posts, a storm front on the way and armoured gunships leading the ambushes. Lose one at most.',
+      goals: [{ type: 'deliver', n: 3, text: 'Deliver freighters' }],
+      force: { storm: 70 },
+      convoy: { fee: 1200, loss: 1, list: [{ to: 'near', at: 6 }, { to: 'far', at: 18 }, { to: 'opp', at: 30 }, { to: 'side', at: 42 }],
+        ambush: { kinds: { skimmer: 2, raider: 2 }, size: [2, 3], chokes: 1, lead: 'gunship' } },
+      threat: { kinds: { skimmer: 1, raider: 2, gunship: 1 }, first: 70, every: 36, size: [2, 3], cap: 9 },
+      beats: [[0, 'build'], [45, 'peak'], [90, 'relief'], [120, 'surprise'], [160, 'peak'], [210, 'relief']],
+      reward: { cr: 5000, rd: 10 } },
   ];
 
   const OP_BY_ID = {};

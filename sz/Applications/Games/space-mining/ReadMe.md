@@ -16,9 +16,15 @@ All art is painted once into cached canvases at twice its size: hulls from layer
 
 ### Operations
 
-Every belt teaches one loop of its own and keeps the earlier ones running: the Kessler Drift is mining, the Amber Reach adds escorting freighters, the Verdant Shoals add outposts and attack waves, the Crimson Maw adds enemy outposts and warfare, the Void Crown asks for all of it. Outposts can be founded only in the Verdant Shoals and beyond (Siege brings its own). Each belt has a chain of operations, picked on the belt map: an objective (bank ore, bank ore worth credits, deliver one ore, launch drones, crack geodes and derelicts, shoot down pirates), an optional time limit, threats sent by a pacing director, and a first-clear reward of credits, research and unlocks. Operations open one after another; the last one, the belt's capstone, is needed for the next belt's licence besides the earnings. Every operation carries the mood it is meant to strike - challenging, a breather, a surprise, harder, worse than you thought, a nightmare - and a belt never puts two peaks in a row: after a peak comes a breather or a surprise. Free mining trips stay open in every licensed belt.
+Every belt teaches one loop of its own and keeps the earlier ones running: the Kessler Drift is mining, the Amber Reach adds escorting freighters, the Verdant Shoals add outposts and attack waves, the Crimson Maw adds enemy outposts and warfare, the Void Crown asks for all of it. Outposts can be founded only in the Verdant Shoals and beyond (Siege brings its own). Each belt has a chain of operations, picked on the belt map: an objective (bank ore, bank ore worth credits, deliver one ore, launch drones, crack geodes and derelicts, shoot down pirates, deliver freighters), an optional time limit, threats sent by a pacing director, and a first-clear reward of credits, research and unlocks. Operations open one after another; the last one, the belt's capstone, is needed for the next belt's licence besides the earnings. Every operation carries the mood it is meant to strike - challenging, a breather, a surprise, harder, worse than you thought, a nightmare - and a belt never puts two peaks in a row: after a peak comes a breather or a surprise. Free mining trips stay open in every licensed belt.
 
 The pacing director follows a timeline of beats per operation (build-up, peak, relief, surprise) and a tension score made of the hull lost lately and the threats around the ship. Threats come in clusters off screen at the beat's pace; a player who is crushing it gets them up to a quarter sooner and bigger, one who is drowning up to a quarter later and smaller. An operation is won the moment its last objective is met (the reward is paid at once and the trip goes on), and failed when its time runs out, the ship is lost or the pilot returns home first; the trip report names the outcome. A save from before the operations keeps everything, except that outposts in the Kessler Drift and the Amber Reach are dismantled: their buildings and fleet come back as credits and their stock moves into the station warehouse.
+
+### Escort
+
+The Amber Reach adds freighters. Four trading posts sit at the edges of the belt - north, east, south and west, placed by the belt's seed - and lanes with a couple of bends run from the dock to each of them, cleared of rocks when an escort operation starts. A freighter undocks on the operation's schedule and follows its lane at a slow, steady pace (half speed inside a solar storm); its route is drawn faintly in the belt and marked on the radar, and an arrow on the screen edge points at every freighter in flight, red while one is under attack. Pirates lie in wait at choke points along the lanes and strike as a freighter passes: skimmers latch on and drain its cargo - up to fifteen percent each - then run, and shooting one down before it gets away brings the cargo back; raiders and gunships shoot its hull. Ambushers whose freighter docks give up the raid and leave. A freighter that reaches its post pays the operation's fee times the share of cargo still aboard; one that docks with less than half its cargo voids its contract and counts as lost, and so does one whose hull gives out. Several freighters heading in different directions at once make a fast hull, afterburners and long-range weapons pay off. Some freighters stop halfway and ask for ore to patch their reactor: fly up to them slowly with the belt's commonest ore in the hold and they take it and fly on. From the Hired Wing operation on, two fighters fly with every convoy: they guard the ship and dive on whatever attacks a freighter.
+
+The Amber Reach operations: One Freighter (challenging), Long Lane (breather), Storm Crossing (surprise: a storm front and an ambush in it), Two Freighters in opposite directions (harder), Hired Wing (breather), Convoy of three on one lane (harder), Three Directions, all three to arrive, with a gunship in every ambush (worse than you think), Reactor Trouble (surprise: a freighter wants ore you mine on the way) and the capstone, the Long Haul (nightmare: four freighters, a storm front and armoured gunship leaders), which opens the Verdant Shoals licence. An escort operation fails once more freighters are lost than it allows.
 
 ### Outposts
 
@@ -69,6 +75,7 @@ Core (`js/core/`):
 - **`data-ops.js`** -- The operations of every belt: mood, objectives, time limit, threats, pacing beats and rewards, and the moods
 - **`data-events.js`** -- Belt events, seasons, weekly anomalies and the seven captain's log chapters
 - **`rules.js`** -- Pure progression rules: the save shape and its migration, tree, upgrade, hull, module and licence purchases, derived ship and colony stats, the Daily loadout, hold space, achievements, high scores
+- **`escort.js`** -- Pure escort rules: the trading posts at the belt edges, lanes with bends, points along a lane, choke points, where each freighter of a schedule goes, the pay for a delivery, the cargo latched skimmers drain
 - **`supply.js`** -- Pure supply rules: what the station sells and at what markup, buying, the cargo manifest and its repair, hold slots of supplies, fitting a manifest into the hold, moving supplies between warehouse and hold
 - **`economy.js`** -- Pure market rules: prices, saturation, selling ore, bars and components, refining, contracts (ore, bars, components, waves), the daily and weekly contracts and the streak, the market cycle with news and history, forecasts, the service bill
 - **`colony.js`** -- Pure outpost rules: sites and deposits, the saved outpost and its repair, placement, the link network, power, crew, storage, housing and supply, costs and upgrades (paid from stock, the hold covering missing ore), value, upkeep, wave scaling and composition
@@ -94,7 +101,8 @@ Systems (`js/systems/`), one simulation concern each:
 - **`ship.js`** -- The mining ship: inertia flight, boost, banking, fuel, edges, bouncing off rocks with impact damage, shield and hull, blasts, exhaust
 - **`mining.js`** -- The laser cone, its lock and the ray cast, fault cracks, the split beam, nuggets and salvage, the tractor beam, the hold, the scanner pulse, seismic charges
 - **`hazards.js`** -- Radiation fields, gravity wells with infall, solar storms with warning and front
-- **`pirates.js`** -- Pirate waves, skimmers that steal ore, raiders and gunships that shoot, rock avoidance, bolts, the point-defense turret, loot
+- **`freighters.js`** -- Escort in a trip: the trading posts and lanes, freighters undocking, following their lane, ambushes at choke points, reactor stops, hull damage, delivery and pay, the hired wing
+- **`pirates.js`** -- Pirate waves, skimmers that steal ore or latch onto freighters, raiders and gunships that shoot, rock avoidance, bolts, the point-defense turret, loot
 - **`drones.js`** -- Mining drones: launch, target choice (Prospector AI), drilling, sweeping, returning, unloading, hauling to the station when the hold is full, rebuilding
 - **`formations.js`** -- Formation slots (line, wedge, box, circle), rotation, matching units to slots, group speed
 - **`orders.js`** -- Issuing orders in formation, queued waypoints, patrol legs, escort stations, when an order is done
@@ -118,7 +126,7 @@ Render (`js/render/`):
 - **`view.js`** -- Canvas fitting, backing resolution cap, the visible plane rectangle, pointer mapping, resize and maximize
 - **`ship-art.js`** -- The layered hull painter with five bank frames for the four hulls, nozzles and emitters, the mining drone
 - **`rock-art.js`** -- Asteroid bodies, ore veins and vein glow, volatile veins, crack stages, nuggets, salvage, debris chips, the geode, the Crown Heart
-- **`prop-art.js`** -- The dock, pirates, the derelict, the gravity well, radiation haze, the seismic charge, the icon set
+- **`prop-art.js`** -- The dock, pirates, the freighter, the trading post, the derelict, the gravity well, radiation haze, the seismic charge, the icon set
 - **`station-art.js`** -- Kessler Station in parts: hub, turning ring, and module arms that grow with their level
 - **`backdrop-art.js`** -- Belt nebula layers, planets, moons, suns, the black hole, star tiles, the far rubble tile
 - **`colony-art.js`** -- The 23 buildings per level, dark and hijacked variants, turret heads, dish, drill and torus, deposits, the strategy icons
@@ -128,7 +136,8 @@ Render (`js/render/`):
 - **`world.js`** -- The belt in draw order with culling: hazards, clouds, dock, outpost, rocks with glow and heat (cheaper zoomed out), wrecks, nuggets and tractor beams, drones, charges, pirates, fleets, bolts, the ship, lasers, domes and pods, the command overlay, the pulse, the storm
 - **`base-render.js`** -- The outpost: site, grid, deposits, energy links, buildings with moving parts, construction, dark, infected and hijacked looks, ranges, shield domes, cargo pods, beams, placement preview, the silent station
 - **`fleet-render.js`** -- Clouds, units, invaders, shots, team rings, selection, order paths, markers, the drag box
-- **`op-hud.js`** -- The operation tracker in flight: name, mood, objectives with progress, the clock and the outcome
+- **`op-hud.js`** -- The operation tracker in flight: name, mood, objectives with progress, the clock, the convoy's cargo and hull, and the outcome
+- **`escort-render.js`** -- The lanes, the trading posts, freighters with their cargo and hull bars, the hired wing, edge arrows toward freighters
 - **`weapon-render.js`** -- Weapon shots, mines, nets, the tether line, swarm drones and the cloak shimmer
 - **`hud.js`** -- Gauges, the ore hold, belt and clock, radar, ability slots, warnings, the dock arrow, hints, banners, reticle, letterbox, flash, toasts, achievement pop-ups
 - **`cine-render.js`** -- The intro, launch, new belt, ending and captain's log sequences; arrival, docking, discovery and outpost overlays
@@ -217,10 +226,19 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 ### Operations
 - [x] As a player, I can pick operations per belt on the belt map, see their mood, objectives, limit and reward, and launch one
 - [x] As a player, I can play the Kessler Drift's six operations - First Haul, Copper Contract, Drone Bay, Geode Hunt, Claim Jumpers and the Kessler Charter
+- [x] As a player, I can play the Amber Reach's nine escort operations, from One Freighter to the Long Haul
 - [x] As a player, I can follow the objectives and the clock of an operation in flight and see it won or failed
 - [x] As a player, I can only buy the next belt's licence after the capstone operation of the belt before it
 - [x] As a player, I can face pirates sent by a pacing director that builds up, peaks, lets me breathe and surprises me, and eases or presses with how I am doing
 - [x] As a player, I can found outposts from the Verdant Shoals on, and get my old Kessler and Amber outposts back as credits and warehouse stock
+
+### Escort
+- [x] As a player, I can escort freighters from the dock along lanes to trading posts at the belt edges and get paid by the cargo they deliver
+- [x] As a player, I can fight off ambushes at choke points, shoot down skimmers that drain a freighter's cargo to win it back, and keep raiders off its hull
+- [x] As a player, I can follow every freighter on the radar, by edge arrows and in the operation tracker, and see one under attack
+- [x] As a player, I can protect several freighters heading in different directions at once, through solar storms
+- [x] As a player, I can hand ore to a freighter stuck halfway so it can fly on
+- [x] As a player, I can fly with a hired wing of two fighters that guards me and my freighters
 
 ### Outposts
 - [x] As a player, I can found an outpost in any belt from the command view and expand it on a build grid with a placement preview
@@ -293,7 +311,6 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 ### Planned Features
 - [ ] As a player, I can trade between my outposts with their own prices
-- [ ] As a player, I can fly escort contracts for other miners
 - [ ] As a player, I can play the command view fully on a touch screen (taps select and order; there are no touch gestures for box selection or groups yet)
 
 ## Controls

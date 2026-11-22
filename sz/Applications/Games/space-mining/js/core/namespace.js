@@ -6,12 +6,12 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
 
-  const MODULES = ['constants', 'rng', 'ores', 'ships', 'treeData', 'goals', 'colonyData', 'fleetData', 'eventData', 'opsData', 'weaponData', 'ops', 'pacing', 'combat', 'rules',
+  const MODULES = ['constants', 'rng', 'ores', 'ships', 'treeData', 'goals', 'colonyData', 'fleetData', 'eventData', 'opsData', 'weaponData', 'ops', 'pacing', 'combat', 'escort', 'rules',
     'economy', 'supply', 'colony', 'production', 'outbreak', 'calendar', 'cosmeticData', 'cosmetics', 'save', 'audio', 'music',
     'grid', 'fx', 'camera', 'ship', 'asteroids', 'mining', 'hazards', 'pirates', 'drones', 'formations', 'orders', 'base',
-    'supplies', 'hardpoints', 'units', 'enemies', 'waves', 'life', 'events', 'operation', 'command', 'resume', 'trip', 'cinematics', 'sim',
+    'supplies', 'hardpoints', 'freighters', 'units', 'enemies', 'waves', 'life', 'events', 'operation', 'command', 'resume', 'trip', 'cinematics', 'sim',
     'artKit', 'shipArt', 'rockArt', 'propArt', 'stationArt', 'backdropArt', 'colonyArt', 'fleetArt', 'view', 'backdrop',
-    'world', 'baseRender', 'fleetRender', 'fxRender', 'weaponRender', 'opHud', 'hud', 'cineRender', 'kit', 'widgets', 'screens', 'statusBar', 'touch',
+    'world', 'baseRender', 'fleetRender', 'fxRender', 'weaponRender', 'escortRender', 'opHud', 'hud', 'cineRender', 'kit', 'widgets', 'screens', 'statusBar', 'touch',
     'title', 'station', 'shipyard', 'hangar', 'colonies', 'supplyUi', 'map', 'tree', 'help', 'pause', 'results', 'commandHud', 'buildMenu', 'selPanel',
     'frame', 'commandInput', 'input', 'app'];
   for (let i = 0; i < MODULES.length; ++i)

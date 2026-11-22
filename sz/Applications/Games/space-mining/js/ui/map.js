@@ -158,18 +158,20 @@
     const rec = save.ops[sel.id];
     kit.text(rec && rec.done ? 'Cleared - best ' + rec.best + ' s' : 'Reward ' + kit.group(rw.cr || 0) + ' cr, ' + (rw.rd || 0) + ' research' + (rw.unlock ? ' and an unlock' : ''),
       x + 24, y + 168, 12, rec && rec.done ? UI.good : UI.gold);
+    /* rows close up for a long chain so nine still fit the panel */
+    const step = Math.min(20, 156 / ops.length), px = step < 19 ? 12 : 13;
     for (let k = 0; k < ops.length; ++k) {
-      const o = ops[k], os = O.state(save, o.id), yy = y + 22 + k * 20;
-      const hot = W.area('op_' + o.id, x + 430, yy - 9, 300, 19, () => { G.ui.opSel = o.id; });
+      const o = ops[k], os = O.state(save, o.id), yy = y + 22 + k * step;
+      const hot = W.area('op_' + o.id, x + 430, yy - step / 2, 300, step - 1, () => { G.ui.opSel = o.id; });
       if (o === sel || hot) {
         ctx.fillStyle = o === sel ? 'rgba(255,210,90,0.16)' : 'rgba(255,255,255,0.06)';
-        ctx.fillRect(x + 430, yy - 9, 300, 19);
+        ctx.fillRect(x + 430, yy - step / 2, 300, step - 1);
       }
       ctx.fillStyle = MOODS[o.mood].color;
       ctx.beginPath();
       ctx.arc(x + 442, yy, 4, 0, TAU);
       ctx.fill();
-      kit.fitText(o.name, x + 454, yy, 220, 13, { color: os === 'locked' ? UI.textMute : o === sel ? '#ffffff' : UI.text, weight: o.capstone ? 'bold' : undefined });
+      kit.fitText(o.name, x + 454, yy, 220, px, { color: os === 'locked' ? UI.textMute : o === sel ? '#ffffff' : UI.text, weight: o.capstone ? 'bold' : undefined });
       if (os === 'done') kit.text('\u2713', x + 718, yy, 13, UI.good, { align: 'right', weight: 'bold' });
       else if (os === 'locked') kit.lock(x + 712, yy, 10);
     }

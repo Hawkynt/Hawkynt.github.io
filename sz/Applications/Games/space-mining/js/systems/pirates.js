@@ -1,7 +1,8 @@
 /* Pirates: waves announced by a warning and arriving from out of sight, three kinds (skimmers
-   that dart in to steal ore from the hold, raiders that circle and shoot, gunships that stand
-   off and fire bursts), rock avoidance, bolts from both sides (pirates and the point-defense
-   turret), damage, blasts, death with loot and the stolen ore spilled back.
+   that dart in to steal ore from the hold or latch onto a freighter and drain its cargo, raiders
+   that circle and shoot, gunships that stand off and fire bursts), their prey (the ship, a
+   drone, a wing fighter or a freighter), rock avoidance, bolts from both sides (pirates and the
+   point-defense turret), damage, blasts, death with loot and the stolen ore or cargo given back.
    Owns G.pirates and G.bolts. */
 ;(function() {
   'use strict';
@@ -24,6 +25,7 @@
     const p = {
       alive: true, kind: kind, x: x, y: y, vx: 0, vy: 0, angle: 0, r: d.r, hp: d.hp * hpMul, maxHp: d.hp * hpMul,
       fireT: 1 + R() * 2, burst: 0, orbit: R() < 0.5 ? 1 : -1, stolen: null, flee: 0, hitFlash: 0, exhaustT: 0, bank: 0,
+      prey: null, latch: null, took: 0, loot: null, lead: false,
     };
     G.pirates.push(p);
     return p;
@@ -116,16 +118,36 @@
       if (!hidden) p.ghost = null;
       else if (!p.ghost) p.ghost = { x: s.x + (R() - 0.5) * 700, y: s.y + (R() - 0.5) * 700, alive: false, vx: 0, vy: 0 };
       let tgt = hidden ? p.ghost : s;
+      const shipD = Math.abs(s.x - p.x) + Math.abs(s.y - p.y);
       for (let k = 0; k < G.drones.length; ++k) {
         const dr = G.drones[k];
-        if (dr.alive && dr.state !== 'docked' && Math.abs(dr.x - p.x) + Math.abs(dr.y - p.y) < Math.abs(s.x - p.x) + Math.abs(s.y - p.y) - 200) tgt = dr;
+        if (dr.alive && dr.state !== 'docked' && Math.abs(dr.x - p.x) + Math.abs(dr.y - p.y) < shipD - 200) tgt = dr;
       }
+      for (let k = 0; k < G.wing.length; ++k) {
+        const w = G.wing[k];
+        if (w.alive && Math.abs(w.x - p.x) + Math.abs(w.y - p.y) < shipD - 200) tgt = w;
+      }
+      /* a freighter: the one an ambush was sent for, or one much nearer than the ship */
+      /* ambushers whose freighter made it to its post give up the raid */
+      if (p.prey && !NS.freighters.flying(p.prey)) {
+        if (p.prey.state === 'done') p.flee = 6;
+        p.prey = null;
+      }
+      const fr = p.prey || (G.freighters.length ? NS.freighters.nearest(p.x, p.y, 900) : null);
+      if (fr && (fr === p.prey || Math.abs(fr.x - p.x) + Math.abs(fr.y - p.y) < shipD - 150)) tgt = fr;
       const dx = tgt.x - p.x, dy = tgt.y - p.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      if (p.flee > 0 || p.stolen) {
+      if (p.latch) {
+        latched(p, d, dt);
+        continue;
+      }
+      if (p.flee > 0 || p.stolen || p.loot) {
         p.flee -= dt;
         steer(p, p.x - (s.x - p.x) * 3, p.y - (s.y - p.y) * 3, d.speed * 1.15, d.accel, dt);
         if (dist > 1700) p.alive = false;
+      } else if (p.kind === 'skimmer' && tgt === fr) {
+        steer(p, fr.x + fr.vx * 0.3, fr.y + fr.vy * 0.3, d.speed, d.accel, dt);
+        if (dist < p.r + fr.r + 8) latch(p, fr);
       } else if (p.kind === 'skimmer') {
         const prey = hidden ? p.ghost : s;
         steer(p, prey.x + prey.vx * 0.3, prey.y + prey.vy * 0.3, d.speed, d.accel, dt);
@@ -158,6 +180,44 @@
     compact(G.pirates);
     turret(dt);
     bolts(dt);
+  }
+
+  /* a skimmer clamps onto a freighter's hull */
+  function latch(p, f) {
+    p.latch = f;
+    p.latchA = Math.atan2(p.y - f.y, p.x - f.x) - f.angle;
+    p.took = 0;
+    NS.fx.sparks(p.x, p.y, 0, TAU, 8, '#ff8a5a', 200, 0.25);
+    NS.audio.sfxAt('hurt', p.x, p.y, { volume: 0.4, pitch: 1.4 });
+  }
+
+  /* riding the hull and draining the hold until it has its share, then off with it */
+  function latched(p, d, dt) {
+    const f = p.latch;
+    if (!NS.freighters.flying(f)) { unlatch(p); return; }
+    const a = f.angle + p.latchA;
+    p.x = f.x + Math.cos(a) * (f.r + p.r * 0.4);
+    p.y = f.y + Math.sin(a) * (f.r + p.r * 0.4);
+    p.vx = f.vx;
+    p.vy = f.vy;
+    p.angle = a + Math.PI;
+    p.took += NS.freighters.drain(f, dt);
+    if (R() < dt * 6) NS.fx.sparks(p.x, p.y, a, 0.8, 2, '#ffd25a', 160, 0.2);
+    if (p.took >= NS.escort.FREIGHTER.take || f.cargo <= 0) {
+      NS.fx.text(f.x, f.y - 40, '-' + Math.round(p.took * 100) + '% CARGO', '#ff5c6c', 16, 1.3);
+      unlatch(p);
+    }
+  }
+
+  /* lets go and runs with what it drained */
+  function unlatch(p) {
+    if (p.took > 0 && p.latch) p.loot = { f: p.latch, cargo: p.took };
+    p.latch = null;
+    p.prey = null;
+    p.took = 0;
+    p.flee = 3;
+    p.vx += Math.cos(p.angle) * 200;
+    p.vy += Math.sin(p.angle) * 200;
   }
 
   function grab(p, s, d) {
@@ -239,6 +299,15 @@
             break;
           }
         }
+        if (b.alive && (G.freighters.length || G.wing.length)) {
+          const f = NS.freighters.hitAt(b.x, b.y), w = f ? null : NS.freighters.wingAt(b.x, b.y);
+          if (f) NS.freighters.hurt(f, b.dmg);
+          if (w) NS.freighters.hurtWing(w, b.dmg);
+          if (f || w) {
+            NS.fx.hitSpark(b.x, b.y, b.angle + Math.PI, '#ff8a5a');
+            b.alive = false;
+          }
+        }
       }
       if (!b.alive) continue;
       const list = NS.asteroids.queryRocks(b.x, b.y, 4, near);
@@ -268,6 +337,8 @@
     NS.fx.hitStop(0.04);
     NS.mining.spawnSalvage(p.x, p.y, Math.round(d.loot * G.stats.salvage * (0.8 + R() * 0.4)), 3 + Math.floor(p.r / 10));
     if (p.stolen) for (let i = 0; i < p.stolen.units; ++i) NS.mining.spawnNugget(p.x, p.y, p.stolen.ore, 1, null, 140);
+    if (p.latch && p.took > 0) NS.freighters.recover(p.latch, p.took, p.x, p.y);
+    else if (p.loot) NS.freighters.recover(p.loot.f, p.loot.cargo, p.x, p.y);
     if (R() < 0.35) {
       G.run.rd += 1;
       NS.fx.text(p.x, p.y - 30, '+1 DATA', '#b48aff', 15, 1.2);
@@ -291,6 +362,6 @@
   }
 
   Object.assign(NS.pirates, {
-    spawn, wave, update, damage, blast, clear
+    spawn, wave, update, damage, blast, clear, unlatch
   });
 })();

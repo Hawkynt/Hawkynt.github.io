@@ -1,8 +1,8 @@
 /* Autosave and continue: a compact snapshot of a running Career or Siege trip (the trip
    counters, the ship, every rock, cloud, unit, invader and shot-free battle state, the wave
-   clock, the distress mission and, in Siege, the outpost itself) written into the save every
-   few seconds and when the page hides, and the restore that rebuilds the trip exactly there
-   after a reload. Career outposts live in the save already. Reads and writes G.save.resume. */
+   clock, the distress mission, the freighters of an escort and, in Siege, the outpost itself)
+   written into the save every few seconds and when the page hides, and the restore that
+   rebuilds the trip exactly there after a reload. Career outposts live in the save already. Reads and writes G.save.resume. */
 ;(function() {
   'use strict';
 
@@ -29,6 +29,7 @@
     snap.run.plan = run.plan || [];
     snap.run.op = run.op ? JSON.parse(JSON.stringify(run.op)) : null;
     snap.run.freight = NS.supply.repair(run.freight);
+    snap.escort = G.freighters.length || G.wing.length ? NS.freighters.capture() : null;
     snap.ship = { x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), angle: r1(s.angle), hull: r1(s.hull), fuel: r1(s.fuel), shield: r1(s.shield) };
     for (let i = 0; i < G.rocks.length; ++i) {
       const o = G.rocks[i];
@@ -95,6 +96,7 @@
     run.bankedUnits = +snap.run.bankedUnits || 0;
     const op = snap.run.op;
     run.op = op && NS.opsData.OP_BY_ID[op.id] && op.pace && typeof op.t === 'number' ? op : null;
+    NS.freighters.restore(run.op ? snap.escort : null);
     run.service = +snap.run.service || 0;
     const s = G.ship, p = snap.ship;
     s.x = p.x; s.y = p.y; s.vx = p.vx; s.vy = p.vy; s.angle = p.angle;

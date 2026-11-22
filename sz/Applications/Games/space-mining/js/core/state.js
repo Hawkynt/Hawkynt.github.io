@@ -47,6 +47,10 @@
     enemies: [],
     shots: [],
     wshots: [],
+    /* escort: the trading posts with their lanes, freighters and the hired wing */
+    posts: [],
+    freighters: [],
+    wing: [],
     pods: [],
     tbeams: [],
     clouds: [],

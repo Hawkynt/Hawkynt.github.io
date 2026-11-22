@@ -14,7 +14,7 @@ const { ZONES, ORE_BY_ID } = NS.ores;
 
 /* the data */
 check('every operation names a real belt, mood and goal type', OPS.every(o => NS.ores.ZONE_BY_ID[o.zone] && MOODS[o.mood] && o.goals.length &&
-  o.goals.every(g => ['bank', 'ore', 'value', 'stat', 'record'].indexOf(g.type) >= 0)));
+  o.goals.every(g => ['bank', 'ore', 'value', 'stat', 'record', 'deliver'].indexOf(g.type) >= 0)));
 check('the Kessler Drift has six operations ending in its capstone', O.zoneOps('kessler').length === 6 && O.capstoneOf('kessler').id === 'k_charter' &&
   O.zoneOps('kessler').filter(o => o.capstone).length === 1);
 check('every threat names real pirates', OPS.every(o => !o.threat || Object.keys(o.threat.kinds).every(k => NS.ships.PIRATES[k])));
@@ -44,8 +44,11 @@ s.stats.earned = 1e9;
 check('the Amber licence waits for the Kessler capstone', R.zoneState(s, 1) === 'locked' && !O.licenceReady(s, 1));
 for (const o of O.zoneOps('kessler')) O.finish(s, o, true, 60);
 check('after the capstone it can be bought', O.licenceReady(s, 1) && R.zoneState(s, 1) === 'buyable');
-check('a belt without operations yet does not hold the next licence back', (s.licenses.push('amber'), O.licenceReady(s, 2) && R.zoneState(s, 2) === 'buyable'));
-check('earnings still count', (s.stats.earned = 0, R.zoneState(s, 2) === 'locked'));
+check('the Verdant licence waits for the Amber capstone', (s.licenses.push('amber'), !O.licenceReady(s, 2) && R.zoneState(s, 2) === 'locked'));
+for (const o of O.zoneOps('amber')) O.finish(s, o, true, 60);
+check('after the Long Haul it can be bought', O.licenceReady(s, 2) && R.zoneState(s, 2) === 'buyable');
+check('a belt without operations yet does not hold the next licence back', (s.licenses.push('verdant'), O.licenceReady(s, 3) && R.zoneState(s, 3) === 'buyable'));
+check('earnings still count', (s.stats.earned = 0, R.zoneState(s, 3) === 'locked'));
 
 /* progress */
 const jump = OP_BY_ID.k_jumpers, haul = OP_BY_ID.k_haul, charter = OP_BY_ID.k_charter, drones = OP_BY_ID.k_drones;

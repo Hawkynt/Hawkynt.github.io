@@ -53,6 +53,7 @@
     drawHazards();
     NS.fleetRender.drawClouds();
     drawDock();
+    NS.escortRender.drawLanes();
     NS.baseRender.draw();
     NS.backdrop.drawDust(rect, s ? s.vx : 0, s ? s.vy : 0);
     drawRocks();
@@ -61,6 +62,7 @@
     drawDrones();
     drawCharges();
     drawPirates();
+    NS.escortRender.drawShips();
     NS.fleetRender.draw();
     drawBolts();
     NS.weaponRender.draw();

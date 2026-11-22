@@ -1,11 +1,13 @@
 'use strict';
 
-/* The campaign played by bots in the running game. A bot flies the Kessler operations one after
-   another with the mouse controls a player has (thrust toward the cursor, drill at it): it mines
+/* The campaign played by bots in the running game. A bot flies the Kessler and then the Amber
+   operations one after another with the mouse controls a player has (thrust toward the cursor, drill at it): it mines
    the nearest ore, chases loose nuggets, cracks marked geodes and wrecks, fights pirates and
    banks at the dock when the hold is full, locks the laser on pirates with Space and fires its weapons at them, limps home for repairs when the hull runs low; it flies carefully (slow through the rocks, braking
    for the one in the way), never drills a volatile rock (nor through one) and gets clear of a lit fuse. Between operations it sells the warehouse and spends like a player
-   (drone research, shields, point defense, hull and laser upgrades). A competent bot fights and arms itself; a weak one only mines, never
+   (drone research, shields, point defense, hull and laser upgrades, then the Amber licence,
+   the Wasp and its weapons). In an escort it shadows the freighter nearest its next choke point,
+   dashes to whichever freighter is attacked and fetches ore for one with reactor trouble. A competent bot fights and arms itself; a weak one only mines, never
    turns on the pirates and spends on mining alone. Each operation reports whether it was won, its time, hull lost, waves and the
    tension the pacing director measured, so the curve the moods promise can be checked. */
 const H = require('./harness');
@@ -59,11 +61,25 @@ function pilot(fights) {
     inp.rightDown = true;
     return;
   }
-  let lock = false;
+  let lock = false, cap = 200;
+  /* an escort: the freighters in flight, pirates on them, one stuck for ore */
+  const fl = G.freighters.filter(f => NS.freighters.flying(f));
+  const onConvoy = fights && fl.length ? nearest(G.pirates, s, p => fl.some(f => Math.hypot(p.x - f.x, p.y - f.y) < 700)) : null;
+  const stuck = fl.find(f => f.state === 'need');
+  const guard = fl.length ? fl.slice().sort((a, b) => nextChoke(a) - nextChoke(b))[0] : null;
   /* a battered ship goes home to the dock for repairs, firing at whatever it locks on the way */
   const hurt = s.hull < s.maxHull * 0.45;
+  const close = pirate && Math.hypot(pirate.x - s.x, pirate.y - s.y) < 500;
   if (hurt) { tx = G.dock.x; ty = G.dock.y; lock = !!pirate; }
-  else if (pirate) { tx = pirate.x; ty = pirate.y; stand = 260; lock = true; }
+  else if (close || (pirate && !fl.length)) { tx = pirate.x; ty = pirate.y; stand = 260; lock = true; }
+  else if (onConvoy) { tx = onConvoy.x; ty = onConvoy.y; stand = 260; lock = true; cap = Math.hypot(tx - s.x, ty - s.y) > 700 ? 520 : 380; }
+  else if (stuck && (run.cargo[stuck.need.ore] || 0) >= Math.min(5, stuck.need.n - stuck.need.got)) { tx = stuck.x; ty = stuck.y; stand = 90; cap = 300; }
+  else if (stuck && full) { tx = G.dock.x; ty = G.dock.y; cap = 300; }
+  else if (stuck && nearest(G.rocks, s, r => r.ore === stuck.need.ore && !r.volatile)) {
+    const rock = nearest(G.rocks, s, r => r.ore === stuck.need.ore && !r.volatile);
+    tx = rock.x; ty = rock.y; stand = rock.r + 150; fire = true;
+  }
+  else if (guard) { tx = guard.x + guard.vx; ty = guard.y + guard.vy; stand = 180; cap = 300; }
   else if (full || (run.cargoUsed > 0 && !nearest(G.rocks, s, r => r.ore, 1800))) { tx = G.dock.x; ty = G.dock.y; }
   else if (nugget) { tx = nugget.x; ty = nugget.y; }
   else if (special || geode) { const t = special || geode; tx = t.x; ty = t.y; stand = (t.r || 60) + 150; fire = true; }
@@ -78,7 +94,7 @@ function pilot(fights) {
      for a rock in the way */
   const ux = (tx - s.x) / (d || 1), uy = (ty - s.y) / (d || 1);
   const closing = s.vx * ux + s.vy * uy, speed = Math.hypot(s.vx, s.vy);
-  const want = Math.max(0, Math.min(200, (d - stand) * 0.9));
+  const want = Math.max(0, Math.min(cap, (d - stand) * 0.9));
   let blocked = false;
   if (speed > 90) for (const r of G.rocks) {
     if (!r.alive || r.kind !== 'rock') continue;
@@ -86,7 +102,7 @@ function pilot(fights) {
     const ahead = (rx * s.vx + ry * s.vy) / speed;
     if (ahead > 0 && ahead < 170 + r.r && Math.abs(rx * s.vy - ry * s.vx) / speed < r.r + 30 && Math.hypot(rx, ry) < d - 20) { blocked = true; break; }
   }
-  const brake = blocked || closing > want + 40 || speed > 230;
+  const brake = blocked || closing > want + 40 || speed > cap + 30;
   inp.keys.KeyS = brake;
   inp.rightDown = !brake && d > stand && closing < want;
   /* never drill through a volatile rock */
@@ -102,6 +118,13 @@ function pilot(fights) {
   }
 }
 
+/* how far a freighter is from the next choke point no ambush has sprung yet */
+function nextChoke(f) {
+  const p = G.posts.find(q => q.id === f.to);
+  const c = p && p.chokes.find(k => !k.sprung && k.d > f.d - 300);
+  return c ? c.d - f.d : 1e9;
+}
+
 /* between operations, like a player at the station: sell the warehouse, research drones for the
    Drone Bay, then shields and point defense, and spend credits on hull, laser and hold */
 function shop(save, op, fights) {
@@ -109,10 +132,27 @@ function shop(save, op, fights) {
   const research = op.id === 'k_drones' ? ['a_drone'] : fights ? ['a_drone', 'f_shield', 'f_turret', 'f_shield', 'd_focus', 'f_turret', 'd_focus'] :
     ['a_drone', 'd_focus', 'd_yield', 'd_focus', 'l_hold'];
   for (const id of research) NS.rules.buyNode(save, id);
+  if (op.zone === 'amber') {
+    NS.rules.buyLicense(save, 1);
+    /* a fighting pilot saves up for the Wasp and its flak, a miner for a bigger hold */
+    if (fights) {
+      NS.rules.buyHull(save, 'wasp');
+      if (save.hull === 'wasp') for (const id of ['flak', 'missile']) NS.combat.buy(save, id);
+      if (save.hull !== 'wasp') return;
+    }
+  }
   for (let guard = 0; guard < 40; ++guard) {
     const id = ['hull', 'laser', 'cargo', 'hull', 'laser', 'thrust'].sort((a, b) => NS.rules.upgradeCost(save, a) - NS.rules.upgradeCost(save, b))[0];
     if (!NS.rules.buyUpgrade(save, id)) break;
   }
+}
+
+/* the cargo the convoy delivered, as a share of what left the dock (null without freighters) */
+function cargoShare() {
+  if (!G.freighters.length) return null;
+  let n = 0;
+  for (const f of G.freighters) n += f.state === 'done' ? f.cargo : 0;
+  return Math.round(n / G.freighters.length * 100);
 }
 
 /* plays one operation to its end (or `cap` seconds) and returns what happened */
@@ -134,45 +174,115 @@ function play(op, fights, cap) {
   }
   const o = G.run && G.run.op;
   const out = { id: op.id, mood: op.mood, won: !!o && o.status === 'won', time: Math.round(o ? o.t : t), hull: Math.round(hullLost),
-    waves: o ? o.waves : 0, peak: Math.max(0, ...trace), mean: trace.length ? trace.reduce((a, b) => a + b, 0) / trace.length : 0 };
+    waves: o ? o.waves : 0, peak: Math.max(0, ...trace), mean: trace.length ? trace.reduce((a, b) => a + b, 0) / trace.length : 0,
+    cargo: cargoShare(), fate: G.freighters.map(f => f.state[0] + (f.state === 'fly' || f.state === 'need' ? Math.round(f.hp) + '/' + Math.round(f.cargo * 100) : '')).join('') };
+  if (process.env.FATE) console.log('  ' + op.id + (out.won ? ' won ' : ' lost ') + out.fate);
   if (G.run) NS.trip.endTrip('dock');
   for (let i = 0; i < 10 && G.cine; ++i) NS.cinematics.skip();
   return out;
 }
 
-function campaign(fights, label) {
-  G.save = NS.rules.freshSave();
-  G.save.seenIntro = G.save.seenHelp = true;
-  NS.save.refreshStats();
+function table(label, rows) {
+  console.log('\n' + label);
+  console.log('op          mood  won  try  rate  time  hull  waves  peak  mean  cargo');
+  for (const r of rows)
+    console.log(r.id.padEnd(12) + r.mood.padEnd(6) + (r.won ? 'yes' : 'no').padEnd(5) + String(r.tries).padEnd(4) + (r.rate !== undefined ? r.rate.toFixed(2) : '  - ').padStart(5) + String(r.time).padStart(6) + String(r.hull).padStart(6) +
+      String(r.waves).padStart(7) + r.peak.toFixed(2).padStart(6) + r.mean.toFixed(2).padStart(6) + (r.cargo !== null ? String(r.cargo).padStart(6) + '%' : ''));
+}
+
+/* plays a belt's operations in order; a competent bot stops at its first loss, a weak one plays on */
+function belt(zone, fights, label, reps) {
   const rows = [];
-  for (const op of O.zoneOps('kessler')) {
+  for (const op of O.zoneOps(zone)) {
     shop(G.save, op, fights);
     NS.save.refreshStats();
-    rows.push(play(op, fights, 600));
-    if (!rows[rows.length - 1].won && fights) break;
+    if (G.save.licenses.indexOf(op.zone) < 0) break;
+    const before = JSON.stringify(G.save);
+    let r = play(op, fights, 600), tries = 1;
+    /* a competent pilot shops and tries a lost operation again */
+    while (!r.won && fights && tries < 3) {
+      shop(G.save, op, fights);
+      NS.save.refreshStats();
+      r = play(op, fights, 600);
+      ++tries;
+    }
+    r.tries = tries;
+    /* the same operation flown again from the save it started with: the win rate and the mean
+       tension over every run */
+    if (reps > 1) {
+      const after = JSON.stringify(G.save);
+      const runs = [r];
+      for (let k = 1; k < reps; ++k) {
+        G.save = JSON.parse(before);
+        NS.save.refreshStats();
+        runs.push(play(op, fights, 600));
+      }
+      G.save = JSON.parse(after);
+      NS.save.refreshStats();
+      const first = runs.slice(1).concat(r.tries === 1 ? [r] : []);
+      r.rate = first.filter(x => x.won).length / first.length;
+      r.mean = runs.reduce((a, x) => a + x.mean, 0) / runs.length;
+      r.peak = runs.reduce((a, x) => a + x.peak, 0) / runs.length;
+      r.cargo = Math.round(runs.reduce((a, x) => a + (x.cargo || 0), 0) / runs.length);
+    }
+    rows.push(r);
+    if (!r.won && fights) break;
   }
-  console.log('\n' + label + ' bot - Kessler Drift');
-  console.log('op          mood  won   time  hull  waves  peak  mean');
-  for (const r of rows)
-    console.log(r.id.padEnd(12) + r.mood.padEnd(6) + (r.won ? 'yes' : 'no').padEnd(6) + String(r.time).padStart(4) + String(r.hull).padStart(6) +
-      String(r.waves).padStart(7) + r.peak.toFixed(2).padStart(6) + r.mean.toFixed(2).padStart(6));
+  table(label, rows);
   return rows;
 }
 
-const pro = campaign(true, 'Competent');
+function campaign(fights, label, zones, reps) {
+  G.save = NS.rules.freshSave();
+  G.save.seenIntro = G.save.seenHelp = true;
+  NS.save.refreshStats();
+  let rows = [];
+  for (const z of zones) rows = rows.concat(belt(z, fights, label + ' bot - ' + NS.ores.ZONE_BY_ID[z].name, reps && reps[z]));
+  return rows;
+}
+
+const REPS = 3;
+const pro = campaign(true, 'Competent', ['kessler', 'amber'], { amber: REPS });
 const by = id => pro.find(r => r.id === id);
-check('the competent bot clears all six Kessler operations', pro.length === 6 && pro.every(r => r.won), JSON.stringify(pro.map(r => r.id + ':' + r.won)));
-check('the capstone opens the Amber licence (with the earnings)', O.licenceReady(G.save, 1));
+const kes = pro.filter(r => r.id[0] === 'k'), amb = pro.filter(r => r.id[0] === 'a');
+check('the competent bot clears all six Kessler operations at the first try', kes.length === 6 && kes.every(r => r.won && r.tries === 1), JSON.stringify(kes.map(r => r.id + ':' + r.won)));
+check('the capstone opens the Amber licence (with the earnings)', O.licenceReady(G.save, 1) && G.save.licenses.indexOf('amber') >= 0);
 check('the mining operations send no pirates', ['k_haul', 'k_copper', 'k_drones', 'k_geode'].every(id => by(id) && by(id).waves === 0 && by(id).peak < 0.05));
 const jump = by('k_jumpers'), charter = by('k_charter');
 check('Claim Jumpers raises the tension well above the mining operations', jump && jump.peak > 0.3 && jump.waves >= 3);
 check('the capstone runs hotter than the operation before it', jump && charter && charter.mean > jump.mean * 0.9 && charter.hull >= jump.hull * 0.5);
 check('peaks never stay at full tension the whole way', pro.every(r => r.mean < 0.8));
 
-const weak = campaign(false, 'Weak');
+/* the Amber Reach: win rates over the runs from the same save */
+check('the competent bot clears all nine Amber escorts (retries allowed)', amb.length === 9 && amb.every(r => r.won), JSON.stringify(amb.map(r => r.id + ':' + r.won)));
+check('the Long Haul opens the Verdant licence', O.licenceReady(G.save, 2));
+const aby = id => amb.find(r => r.id === id) || { mean: 0, peak: 0, cargo: 0, waves: 0, rate: 0 };
+const moodRate = m => { const l = amb.filter(r => r.mood === m); return l.reduce((a, r) => a + r.rate, 0) / Math.max(1, l.length); };
+check('the challenge and the breathers are won almost always', ['C', 'E'].every(m => moodRate(m) >= 0.75), ['C', 'E'].map(moodRate).join());
+check('the harder escorts are won more often than not', moodRate('H') >= 0.5 && moodRate('S') >= 0.5, ['H', 'S'].map(moodRate).join());
+check('the peaks cost tries but can be won', ['W', 'N'].every(m => moodRate(m) >= 0.2 && moodRate(m) <= moodRate('E')), ['W', 'N', 'E'].map(moodRate).join());
+check('the escorts ambush every run', amb.every(r => r.waves >= 1));
+check('the breathers run cooler than the operation before them', aby('a_long').mean < aby('a_first').mean + 0.05 && aby('a_wing').mean < aby('a_twin').mean);
+check('the peaks run hotter than the start of the belt and the breathers', ['a_three', 'a_haul'].every(id => aby(id).mean > Math.max(aby('a_first').mean, aby('a_long').mean, aby('a_wing').mean)));
+check('the nightmare is among the hardest escorts of the belt', aby('a_haul').mean >= Math.max(...amb.map(r => r.mean)) * 0.8);
+check('a careful escort delivers most of the cargo on the breathers', aby('a_long').cargo >= 70 && aby('a_wing').cargo >= 70);
+
+const weak = campaign(false, 'Weak', ['kessler']);
 const wby = id => weak.find(r => r.id === id);
 check('a bot that never fights still clears the breathers', ['k_haul', 'k_copper', 'k_drones'].every(id => wby(id) && wby(id).won));
 check('a bot that never fights cannot clear Claim Jumpers', wby('k_jumpers') && !wby('k_jumpers').won);
 check('a bot that never fights takes more hull damage on the capstone', !wby('k_charter') || !wby('k_charter').won || wby('k_charter').hull > charter.hull);
+
+/* a pilot who never fights, let into the Amber Reach anyway: shadowing alone does not save a convoy */
+for (const op of O.zoneOps('kessler')) O.finish(G.save, op, true, 60);
+G.save.credits += 1e5;
+G.save.stats.earned += 1e5;
+const wam = belt('amber', false, 'Weak bot - Amber Reach (licence handed over)', REPS);
+const wa = id => wam.find(r => r.id === id) || { rate: 1 };
+const wRate = m => { const l = wam.filter(r => r.mood === m); return l.reduce((a, r) => a + r.rate, 0) / Math.max(1, l.length); };
+check('a bot that never fights still gets the first freighter through', wa('a_first').rate >= 0.5);
+check('a bot that never fights loses more cargo than the competent one', wam.reduce((a, r) => a + r.cargo, 0) < amb.reduce((a, r) => a + r.cargo, 0));
+check('a bot that never fights wins the peaks no more often', wRate('W') + wRate('N') <= moodRate('W') + moodRate('N'), ['W', 'N'].map(m => wRate(m) + '/' + moodRate(m)).join());
+check('a bot that never fights wins the harder escorts less often', wRate('H') + wRate('W') + wRate('N') < moodRate('H') + moodRate('W') + moodRate('N'));
 
 done();

@@ -163,7 +163,7 @@
   function progress() {
     para([
       'Research data buys the tech tree: Drilling, Engines, Logistics, Automation (mining drones), Defense and Science. Open it from the title, the station or the pause menu - it takes effect at once.',
-      'Licences open the next belt once your total earnings are high enough. Each belt has its own look, ore and hazards. Geodes and derelicts hide in them; somewhere in the Void Crown waits the Crown Heart.',
+      'Operations on the belt map teach each belt: the capstone and your earnings open the next licence. The Amber Reach adds escorts - freighters fly marked lanes to trading posts and get ambushed at choke points. Shoot down skimmers to win back their cargo (under half and the contract is void) and keep raiders off the hull.',
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
     const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill the ore nearest the nose'], ['Enter (docked)', 'Return home, end the trip'],

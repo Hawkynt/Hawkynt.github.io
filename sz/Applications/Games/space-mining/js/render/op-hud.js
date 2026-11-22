@@ -1,5 +1,6 @@
 /* The operation tracker in flight, under the radar: the operation's name and mood, each
-   objective with its progress, the clock of a timed one and, once decided, the outcome. */
+   objective with its progress, the clock of a timed one, the convoy of an escort (each freighter's
+   post, cargo and hull) and, once decided, the outcome. */
 ;(function() {
   'use strict';
 
@@ -24,7 +25,8 @@
     const prog = NS.operation.progress();
     /* left of the ability column under the radar */
     const x = v.x1 - W - 112, y = v.y0 + RADAR_R * 2 + 36;
-    const h = 40 + prog.length * 30 + (o.status !== 'active' ? 22 : 0);
+    const fr = G.freighters;
+    const h = 40 + prog.length * 30 + fr.length * 18 + (fr.length ? 6 : 0) + (o.status !== 'active' ? 22 : 0);
     const mood = MOODS[op.mood];
     kit.panel(x, y, W, h, { alpha: 0.82, radius: 8, brackets: false, accent: mood.color });
     kit.fitText(op.name.toUpperCase(), x + 12, y + 14, W - 90, 13, { weight: 'bold', color: '#ffffff' });
@@ -42,6 +44,19 @@
       kit.bar(x + 12, yy + 9, W - 24, 5, p.have / p.n, p.done ? UI.good : mood.color);
       yy += 30;
     }
+    /* the convoy: each freighter's post, cargo and hull, or how it ended */
+    for (let i = 0; i < fr.length; ++i) {
+      const f = fr[i];
+      const p = G.posts.find(q => q.id === f.to);
+      const st = f.state === 'done' ? '✓ ' + f.paid + ' cr' : f.state === 'lost' ? 'LOST' : f.state === 'short' ? 'VOID' : f.state === 'wait' ? 'in ' + Math.max(0, Math.ceil(f.wait)) + 's' :
+        f.state === 'need' ? 'NEEDS ORE' : Math.round(f.cargo * 100) + '%';
+      const col = f.state === 'lost' || f.state === 'short' ? UI.bad : f.state === 'done' ? UI.good : f.hitT > 0 ? UI.bad : f.state === 'need' ? UI.warn : UI.text;
+      kit.fitText(f.name.slice(-1) + ' > ' + (p ? p.name : '?'), x + 12, yy - 6, W - 140, 11, { color: col });
+      kit.text(st, x + W - 12, yy - 6, 11, col, { align: 'right' });
+      if (f.alive && f.state !== 'wait') kit.bar(x + W - 118, yy - 9, 50, 5, f.hp / f.maxHp, f.hp / f.maxHp > 0.4 ? UI.good : UI.bad);
+      yy += 18;
+    }
+    if (fr.length) yy += 6;
     if (o.status === 'won') kit.text('COMPLETE' + (o.first ? ' - reward paid' : ''), x + 12, yy, 12, UI.good, { weight: 'bold' });
     else if (o.status === 'failed') kit.text('FAILED', x + 12, yy, 12, UI.bad, { weight: 'bold' });
   }

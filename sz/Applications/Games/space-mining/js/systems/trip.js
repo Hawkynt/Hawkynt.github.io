@@ -76,6 +76,7 @@
     NS.fx.clear();
     NS.mining.clear();
     NS.pirates.clear();
+    NS.freighters.clear();
     NS.units.clear();
     NS.enemies.clear();
     NS.command.reset();

@@ -8,7 +8,9 @@
    Verdant Shoals installs a press, packs ore and builds with ore from the hold; the Supply tab
    buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
    loads more; a flak tower gets its ingots smelted from the hold's iron; the soundtrack starts calm and switches to the battle arrangement when a raider
-   closes in; the Shipyard's Hardpoints page takes the Pulse Cannon and holding 1 fires it. */
+   closes in; the Shipyard's Hardpoints page takes the Pulse Cannon and holding 1 fires it; the
+   Amber Reach's first escort launches from the map, its freighter is ambushed at a choke point
+   and docks at its trading post. */
 exports.ns = 'SpaceMining';
 
 exports.run = async (t) => {
@@ -189,4 +191,54 @@ exports.run = async (t) => {
   await t.wait(300);
   await t.shot('13-report-verdant');
   t.check('the Verdant trip ends with the copper banked', await t.state("G.screen === 'results' && G.ui.results.hold.copper === 36"));
+  /* the Amber Reach: real clicks launch the first escort; a freighter undocks, gets ambushed at
+     its choke point and docks at its trading post */
+  await t.run((NS, G) => {
+    for (const o of NS.ops.zoneOps('kessler')) NS.ops.finish(G.save, o, true, 60);
+    if (G.save.licenses.indexOf('amber') < 0) G.save.licenses.push('amber');
+    NS.screens.setScreen('map');
+  });
+  await t.wait(300);
+  /* the pointer and the keyboard cursor off every planet (either selects one), then the Amber Reach */
+  await t.clickAt(640, 160);
+  await t.run((NS, G) => { G.ui.mapSel = 1; G.ui.mapTab = 'ops'; G.menuCursor = -1; });
+  await t.wait(300);
+  await t.shot('18-map-amber');
+  t.check('the map lists the nine Amber escorts', await t.state("NS.ops.zoneOps('amber').every(o => G.hitAreas.some(a => a.id === 'op_' + o.id))"));
+  await t.hit('op_a_first');
+  await t.hit('go_op');
+  for (let i = 0; i < 12 && await t.state("!!G.cine || G.screen !== 'playing'"); ++i) { await t.run((NS) => NS.cinematics.skip()); await t.wait(300); }
+  t.check('One Freighter lays out four trading posts and a freighter at the dock', await t.state("G.run.op.id === 'a_first' && G.posts.length === 4 && G.freighters.length === 1"));
+  await t.run((NS, G) => {
+    G.ship.maxHull = G.ship.hull = 1e6;
+    /* nothing left to discover on the way, so no cinematic cuts in */
+    for (const r of G.rocks) r.found = true;
+    for (const o of G.specials) o.found = true;
+    const f = G.freighters[0];
+    f.wait = 0;
+  });
+  await t.waitFor("G.freighters[0].state === 'fly'", 5000);
+  await t.run((NS, G) => {
+    const f = G.freighters[0], p = G.posts.find(q => q.id === f.to);
+    f.d = p.chokes[0].d - 300;
+    NS.escort.at(p.path, f.d, f);
+    G.ship.x = f.x - 200; G.ship.y = f.y + 120; G.ship.vx = G.ship.vy = 0;
+    NS.camera.snap(f.x, f.y);
+  });
+  await t.waitFor("G.run.op.ambushes === 1", 5000);
+  await t.wait(1500);
+  await t.shot('19-escort-ambush');
+  t.check('pirates ambush the freighter at its choke point', await t.state("G.run.op.ambushes === 1 && G.pirates.some(p => p.prey === G.freighters[0] || p.latch === G.freighters[0] || (p.loot && p.loot.f === G.freighters[0]))"));
+  await t.run((NS, G) => {
+    for (const p of G.pirates) p.alive = false;
+    const f = G.freighters[0], p = G.posts.find(q => q.id === f.to);
+    f.d = p.len - 30;
+    NS.escort.at(p.path, f.d, f);
+    G.ship.x = f.x - 200; G.ship.y = f.y + 120;
+    NS.camera.snap(p.x, p.y);
+  });
+  await t.waitFor("G.freighters[0].state === 'done'", 5000);
+  await t.wait(300);
+  await t.shot('20-escort-delivered');
+  t.check('the freighter docks at its post and wins the operation', await t.state("G.run.op.status === 'won' && G.save.ops.a_first.done && G.freighters[0].paid > 0"));
 };

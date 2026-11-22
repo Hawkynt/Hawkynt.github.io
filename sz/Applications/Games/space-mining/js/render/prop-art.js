@@ -1,5 +1,5 @@
 /* Prop art, painted once per key: the belt dock (an outpost ring with pylons and pads), pirate
-   craft (skimmer, raider, gunship), the derelict freighter, the gravity-well accretion disc,
+   craft (skimmer, raider, gunship), the convoy freighter, the trading post, the derelict freighter, the gravity-well accretion disc,
    radiation haze, the seismic charge, and the cached vector icon set every menu uses.
    Pure painting into cached canvases (icons may also draw straight into a context). */
 ;(function() {
@@ -138,6 +138,94 @@
       g.fill();
       g.fillStyle = '#ff3a2a';
       g.fillRect(c + S * 0.12, c - 1, 2, 2);
+    });
+  }
+
+  /* The convoy freighter, facing +x: a cab, a spine with three container blocks, the engine
+     block with twin nozzles */
+  function freighter() {
+    return K.sprite('freighter', 120, 60, (g, w, h) => {
+      const cy = h / 2;
+      const box = (x0, y0, x1, y1, col) => {
+        g.fillStyle = metal(g, x0, y0, x0, y1, col);
+        g.fillRect(x0, y0, x1 - x0, y1 - y0);
+        g.strokeStyle = 'rgba(0,0,0,0.65)';
+        g.lineWidth = 1;
+        g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      };
+      /* nozzles and engine block */
+      box(4, cy - 16, 12, cy - 6, '#3a3e48');
+      box(4, cy + 6, 12, cy + 16, '#3a3e48');
+      box(10, cy - 18, 26, cy + 18, '#6a7280');
+      /* spine */
+      box(24, cy - 4, 98, cy + 4, '#4a505a');
+      /* containers */
+      const cols = ['#c87a2a', '#2a8a9a', '#b8a040'];
+      for (let i = 0; i < 3; ++i) {
+        const x0 = 30 + i * 22;
+        box(x0, cy - 17, x0 + 19, cy - 2, cols[i]);
+        box(x0, cy + 2, x0 + 19, cy + 17, cols[(i + 1) % 3]);
+        g.fillStyle = 'rgba(0,0,0,0.25)';
+        for (let k = 0; k < 3; ++k) { g.fillRect(x0 + 3 + k * 5, cy - 15, 1.5, 11); g.fillRect(x0 + 3 + k * 5, cy + 4, 1.5, 11); }
+      }
+      /* cab */
+      K.poly(g, [[96, cy - 10], [108, cy - 8], [116, cy], [108, cy + 8], [96, cy + 10]]);
+      g.fillStyle = metal(g, 96, cy - 10, 96, cy + 10, '#c8ccd4');
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.7)';
+      g.stroke();
+      g.fillStyle = '#7cf0ff';
+      g.fillRect(106, cy - 4, 5, 8);
+      /* guild stripe and running lights */
+      g.fillStyle = '#ffb44a';
+      g.fillRect(12, cy - 2, 12, 4);
+      g.fillStyle = '#ff4a4a';
+      g.fillRect(28, cy - 19, 2, 2);
+      g.fillStyle = '#5cff9a';
+      g.fillRect(28, cy + 17, 2, 2);
+    });
+  }
+
+  /* A trading post at the belt edge: a hex hub on struts, a docking pad, a mast with a beacon */
+  function post() {
+    return K.sprite('tradepost', 180, 180, (g, w) => {
+      const c = w / 2;
+      for (let i = 0; i < 3; ++i) {
+        const a = i * TAU / 3 + 0.5;
+        g.save();
+        g.translate(c, c);
+        g.rotate(a);
+        g.fillStyle = metal(g, 0, -6, 0, 6, '#5a6270');
+        g.fillRect(30, -6, 50, 12);
+        g.strokeStyle = 'rgba(0,0,0,0.6)';
+        g.strokeRect(30, -6, 50, 12);
+        g.fillStyle = metal(g, 70, -16, 70, 16, '#8a7a5a');
+        g.fillRect(70, -16, 18, 32);
+        g.strokeRect(70, -16, 18, 32);
+        g.restore();
+      }
+      const hex = [];
+      for (let i = 0; i < 6; ++i) hex.push([c + Math.cos(i * TAU / 6) * 40, c + Math.sin(i * TAU / 6) * 40]);
+      K.poly(g, hex);
+      g.fillStyle = metal(g, c - 40, c - 40, c + 40, c + 40, '#8a909c');
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.7)';
+      g.lineWidth = 2;
+      g.stroke();
+      g.fillStyle = 'rgba(20,24,34,0.8)';
+      g.beginPath();
+      g.arc(c, c, 24, 0, TAU);
+      g.fill();
+      g.strokeStyle = 'rgba(255,180,74,0.7)';
+      g.lineWidth = 2;
+      g.setLineDash([6, 5]);
+      g.beginPath();
+      g.arc(c, c, 24, 0, TAU);
+      g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = '#ffb44a';
+      g.fillRect(c - 2, c - 12, 4, 24);
+      g.fillRect(c - 12, c - 2, 24, 4);
     });
   }
 
@@ -325,6 +413,6 @@
   }
 
   Object.assign(NS.propArt, {
-    dock, pirate, derelict, well, radCloud, charge, iconSprite, icon, ICONS
+    dock, pirate, freighter, post, derelict, well, radCloud, charge, iconSprite, icon, ICONS
   });
 })();

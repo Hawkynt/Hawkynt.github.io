@@ -1,8 +1,9 @@
 /* The operation of a career trip, launched from the belt map: it keeps the statistics its goals
    watch at the start, lays out the specials it needs, checks the objectives every step, runs
    its clock, sends pirates at the pace of the director (the beat of its timeline and the
-   tension from the hull lost and the threats round the ship) and pays its reward the moment it
-   is won. A won or failed operation leaves the trip running as free mining; returning home
+   tension from the hull lost and the threats round the ship; in an escort round a freighter),
+   counts the freighters delivered and lost, forces the storm an operation asks for and pays
+   its reward the moment it is won. A won or failed operation leaves the trip running as free mining; returning home
    settles one still running. Owns G.run.op. */
 ;(function() {
   'use strict';
@@ -20,6 +21,7 @@
     time: 'The clock ran out - the trip goes on',
     lost: 'The ship was lost',
     home: 'You returned home before it was done',
+    convoy: 'Too many freighters were lost',
   };
 
   function def() {
@@ -34,15 +36,20 @@
     run.op = {
       id: id, t: 0, status: 'active', why: '', first: false, base: O.snapshot(op, G.save.stats),
       waveT: op.threat ? op.threat.first : 0, beat: 'build', pace: PC.create(), hull: G.ship ? G.ship.hull : 0, waves: 0,
+      delivered: 0, lost: 0, paid: 0, ambushes: 0,
     };
-    if (op.force) for (const kind in op.force) for (let i = 0; i < op.force[kind]; ++i) NS.trip.addSpecial(kind, R, true);
+    if (op.force) for (const kind in op.force) {
+      if (kind === 'storm') NS.hazards.forceStorm(op.force.storm);
+      else for (let i = 0; i < op.force[kind]; ++i) NS.trip.addSpecial(kind, R, true);
+    }
+    if (op.convoy) NS.freighters.setup(op);
     return run.op;
   }
 
   /* what the trip measured so far; `extra` adds the hold settled on the way home */
   function measured(o, extra) {
     const run = G.run;
-    const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base };
+    const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base, delivered: o.delivered || 0 };
     if (extra) {
       m.units += extra.units;
       for (const id in extra.hold) m.banked[id] = (m.banked[id] || 0) + extra.hold[id];
@@ -61,6 +68,16 @@
     return n;
   }
 
+  /* the convoy's health: hull and cargo shares of every freighter summed (a lost one counts 0) */
+  function convoyHealth() {
+    let h = 0;
+    for (let i = 0; i < G.freighters.length; ++i) {
+      const f = G.freighters[i];
+      if (f.state !== 'lost' && f.state !== 'short') h += f.state === 'done' ? 2 : f.hp / f.maxHp + f.cargo;
+    }
+    return h;
+  }
+
   function update(dt) {
     const o = G.run && G.run.op;
     if (!o || o.status !== 'active') return;
@@ -68,11 +85,18 @@
     o.t += dt;
     const s = G.ship;
     if (s && s.alive) {
-      const lost = Math.max(0, o.hull - s.hull) / Math.max(1, s.maxHull);
+      let lost = Math.max(0, o.hull - s.hull) / Math.max(1, s.maxHull);
       o.hull = s.hull;
+      /* in an escort the convoy's hull and cargo hurt as much as the ship's */
+      if (op.convoy) {
+        const h = convoyHealth();
+        if (o.convoyH !== undefined) lost += Math.max(0, o.convoyH - h) * 0.5;
+        o.convoyH = h;
+      }
       PC.track(o.pace, { hullLost: lost, threats: threats(), cap: op.threat ? op.threat.cap : 8 }, dt);
     }
     if (O.complete(op, measured(o))) return win();
+    if (op.convoy && (o.lost || 0) > op.convoy.loss) return fail('convoy');
     if (op.time && o.t >= op.time) return fail('time');
     if (op.threat) director(op, o, dt);
   }
@@ -103,7 +127,7 @@
   }
 
   function send(kinds, n, beat) {
-    const s = G.ship;
+    const s = (G.freighters.length && NS.freighters.anyFlying()) || G.ship;
     const a = R() * TAU;
     for (let i = 0; i < n; ++i) {
       const aa = a + (R() - 0.5) * 0.8;
@@ -135,7 +159,7 @@
     o.why = why;
     O.finish(G.save, op, false, o.t);
     NS.music.cue('lose');
-    if (why === 'time') NS.trip.banner('OPERATION FAILED', WHY.time, MOODS.W.color);
+    if (why === 'time' || why === 'convoy') NS.trip.banner('OPERATION FAILED', WHY[why], MOODS.W.color);
     NS.save.writeSave();
   }
 
@@ -148,7 +172,8 @@
       if (reason !== 'destroyed' && O.complete(op, measured(o, { hold: hold, units: units }))) win();
       else fail(reason === 'destroyed' ? 'lost' : 'home');
     }
-    return { id: o.id, name: op.name, mood: op.mood, status: o.status, why: WHY[o.why] || '', first: o.first, reward: o.first ? op.reward : null };
+    return { id: o.id, name: op.name, mood: op.mood, status: o.status, why: WHY[o.why] || '', first: o.first, reward: o.first ? op.reward : null,
+      convoy: op.convoy ? { delivered: o.delivered || 0, lost: o.lost || 0, paid: o.paid || 0 } : null };
   }
 
   Object.assign(NS.operation, {
