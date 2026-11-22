@@ -12,7 +12,7 @@
   // between songs, follows the shared sound switch and has its own music
   // switch (remembered in the browser, shared by every game).
   //
-  //   SZ.GameMusic.play(song)          start or crossfade to a song
+  //   SZ.GameMusic.play(song)          start or crossfade to a song (opts: onBar, from, fade)
   //   SZ.GameMusic.play(song, { onBar: true, from: 'build' })  switch on the next bar line,
   //                                    entering the song at a section
   //   SZ.GameMusic.play(null)          fade out
@@ -1058,8 +1058,9 @@
       /* on the bar: the new song takes over where the old one's next bar would begin */
       const onBar = !!(wantedOpts.onBar && current);
       const at = onBar ? Math.max(current.nextAt, ctx.currentTime + 0.02) : ctx.currentTime + 0.08;
-      const fadeIn = onBar ? 0.15 : 1.2;
-      if (current) stopCurrent(ctx, onBar ? 0.3 : 1.2, onBar ? at : 0);
+      const xf = wantedOpts.fade || 1.2;
+      const fadeIn = onBar ? 0.15 : xf;
+      if (current) stopCurrent(ctx, onBar ? 0.3 : xf, onBar ? at : 0);
       if (wanted.style) {
         const R = resolve(wanted);
         current = makeChain(ctx, SZ.GameAudio.bus('music'), R, wanted.volume);
@@ -1101,7 +1102,8 @@
   }
 
   /* opts: { onBar } switches on the next bar line instead of crossfading now, { from } enters
-     the song at the first section of that name (intro, groove, build, drop, break) */
+     the song at the first section of that name (intro, groove, build, drop, break), { fade }
+     the crossfade in seconds (1.2 by default) */
   function play(song, opts) {
     wanted = song || null;
     wantedOpts = opts || {};
