@@ -7,7 +7,9 @@
    In flight the theme follows the mood read from the game (calm, explore, tension, combat,
    boss), each mood an arrangement of the same theme in the calm, song or war style; the music
    climbs at once but calms only after quiet seconds, and changes land on the next bar line.
-   Pause-and-plan thins the band. */
+   Calm and explore are the quiet pair: the music trades between them only after a piece has
+   played two and a half minutes, and a quiet stretch that long crossfades to another variation
+   of the same mood (three each). Pause-and-plan thins the band. */
 ;(function() {
   'use strict';
 
@@ -39,6 +41,10 @@
   const RANK = { calm: 0, explore: 1, tension: 2, combat: 3, boss: 4 };
   /* seconds a quieter mood must last before the music steps down from this one */
   const HOLD = { calm: 5, explore: 5, tension: 8, combat: 8, boss: 8 };
+  /* the quiet pair: the least a piece plays before trading places or moving on to the next
+     variation, the variations per quiet mood and the crossfade between them */
+  const QUIET = 150, PIECES = 3, XFADE = 4;
+  const quiet = (m) => m === 'calm' || m === 'explore';
   const NEAR = 1500, CONTACT = 3000;
 
   /* the calm, explore, war and boss arrangements of one theme: same key, chords and motif */
@@ -55,6 +61,12 @@
       war: mk('war', 'fm16war', Math.round(b * 1.18)),
       boss: mk('boss', 'fm16war', Math.round(b * 1.06), { scale: 'phrygian' }),
     };
+    /* the quiet moods' variations: the arrangement, then pieces of its own drawn from it */
+    const V = SZ.GameMusic && SZ.GameMusic.variant;
+    for (const k of ['calm', 'explore']) {
+      s[k + 'V'] = [s[k]];
+      for (let i = 1; i < PIECES; ++i) s[k + 'V'].push(V ? V(s[k], 'piece' + i) : s[k]);
+    }
     if (sets.size > 64) sets.clear();
     sets.set(base, s);
     return s;
@@ -123,16 +135,29 @@
   }
 
   function newMood() {
-    return { cur: 'calm', want: '', wait: 0 };
+    return { cur: 'calm', want: '', wait: 0, since: 0, piece: 0 };
   }
 
-  /* climb at once; step down only when the quieter mood has lasted HOLD seconds */
+  function enter(m, target) {
+    m.cur = target; m.want = ''; m.wait = 0; m.since = 0;
+    return m.cur;
+  }
+
+  /* climb at once; step down only when the quieter mood has lasted HOLD seconds; calm and
+     explore trade places only after QUIET seconds of the current piece, and a quiet piece that
+     has played that long hands over to the next variation */
   function step(m, target, dt) {
-    if (target === m.cur) { m.want = ''; m.wait = 0; return m.cur; }
-    if (RANK[target] > RANK[m.cur]) { m.cur = target; m.want = ''; m.wait = 0; return m.cur; }
+    m.since = (m.since || 0) + dt;
+    if (target === m.cur) {
+      m.want = ''; m.wait = 0;
+      if (quiet(m.cur) && m.since >= QUIET) { m.piece = ((m.piece || 0) + 1) % PIECES; m.since = 0; }
+      return m.cur;
+    }
+    if (quiet(m.cur) && quiet(target)) return m.since >= QUIET ? enter(m, target) : m.cur;
+    if (RANK[target] > RANK[m.cur]) return enter(m, target);
     if (m.want !== target) { m.want = target; m.wait = 0; }
     m.wait += dt;
-    if (m.wait >= HOLD[m.cur]) { m.cur = target; m.want = ''; m.wait = 0; }
+    if (m.wait >= HOLD[m.cur]) enter(m, target);
     return m.cur;
   }
 
@@ -156,11 +181,14 @@
       const set = songsFor();
       if (G.screen === 'playing') step(mood, decide(signals()), elapsed);
       const a = ARRANGE[mood.cur];
-      song = set[a.song];
+      song = quiet(mood.cur) ? set[mood.cur + 'V'][(mood.piece || 0) % PIECES] : set[a.song];
       intensity = G.cmd.on && G.cmd.plan ? 0.2 : a.intensity;
       const cur = Mu.current;
-      /* within the trip's songs a change waits for the bar line and enters at the mood's section */
-      if (cur && (cur === set.calm || cur === set.explore || cur === set.war || cur === set.boss)) opts = { onBar: true, from: a.from };
+      const quietNow = cur && (set.calmV.indexOf(cur) >= 0 || set.exploreV.indexOf(cur) >= 0);
+      /* quiet pieces crossfade slowly into each other; anything else within the trip's songs
+         waits for the bar line and enters at the mood's section */
+      if (quietNow && quiet(mood.cur)) opts = { fade: XFADE, from: a.from };
+      else if (cur && (quietNow || cur === set.war || cur === set.boss)) opts = { onBar: true, from: a.from };
     } else {
       mood.cur = 'calm';
       mood.want = '';
@@ -184,7 +212,7 @@
   }
 
   Object.assign(NS.music, {
-    BELTS, STATION, MENU, RUSH, SIEGE, ARRANGE, moodSongs, songsFor, themeFor, signals, decide, newMood, step, update, cue,
+    BELTS, STATION, MENU, RUSH, SIEGE, ARRANGE, QUIET, PIECES, moodSongs, songsFor, themeFor, signals, decide, newMood, step, update, cue,
     state: () => mood
   });
 })();

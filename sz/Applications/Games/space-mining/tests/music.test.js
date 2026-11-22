@@ -2,7 +2,8 @@
 
 /* The soundtrack follows the game: the mood from what is happening (mining, cruising, a wave or
    an ambush coming, a storm warned, pirates and invaders close, the outpost under attack, a
-   mothership), climbing at once and calming down only after quiet seconds, one theme across all
+   mothership), climbing at once and calming down only after quiet seconds, the quiet pair (calm,
+   explore) holding a piece two and a half minutes and rotating through variations, one theme across all
    moods in the 16-bit FM styles, switches on the bar line in flight and crossfades between
    screens, and the themes of the station, the menus and the modes. */
 const path = require('path');
@@ -51,11 +52,22 @@ check('it waits a few quiet seconds before it calms', m.cur === 'combat');
 for (let i = 0; i < 4; ++i) MU.step(m, 'calm', 1);
 check('then it calms down', m.cur === 'calm');
 m = MU.newMood();
-MU.step(m, 'explore', 1);
-for (let i = 0; i < 2; ++i) MU.step(m, 'calm', 1);
-check('mining and cruising trade places without flapping', m.cur === 'explore');
-for (let i = 0; i < 6; ++i) MU.step(m, 'calm', 1);
-check('but they do trade places', m.cur === 'calm');
+for (let i = 0; i < 60; ++i) MU.step(m, i % 20 < 10 ? 'explore' : 'calm', 1);
+check('mining and cruising do not toss the quiet music around', m.cur === 'calm' && m.since >= 59);
+for (let i = 0; i < MU.QUIET; ++i) MU.step(m, 'explore', 1);
+check('a quiet piece plays two and a half minutes before the music trades places', m.cur === 'explore');
+m = MU.newMood();
+for (let i = 0; i < MU.QUIET - 1; ++i) MU.step(m, 'calm', 1);
+check('a quiet stretch stays with its piece for two and a half minutes', m.piece === 0);
+MU.step(m, 'calm', 1);
+check('then it moves on to the next variation of the mood', m.piece === 1 && m.since === 0);
+for (let i = 0; i < MU.QUIET * 2; ++i) MU.step(m, 'calm', 1);
+check('and round the variations', m.piece === 0);
+MU.step(m, 'combat', 0.5);
+check('a fight still cuts in at once', m.cur === 'combat');
+const vs = MU.moodSongs(MU.BELTS[1]);
+check('each quiet mood has three pieces in its own style, each a different song', vs.calmV.length === MU.PIECES && vs.exploreV.length === MU.PIECES &&
+  vs.calmV.every(v => v.style === 'fm16calm') && new Set(vs.calmV.map(v => v.id)).size === 3 && vs.calmV[0] === vs.calm);
 
 check('each mood names its arrangement, entry and intensity', MU.ARRANGE.calm.song === 'calm' && MU.ARRANGE.tension.song === 'war' && MU.ARRANGE.combat.song === 'war' &&
   MU.ARRANGE.boss.song === 'boss' && MU.ARRANGE.combat.intensity > MU.ARRANGE.tension.intensity && MU.ARRANGE.tension.intensity > MU.ARRANGE.calm.intensity);
@@ -84,7 +96,11 @@ G.pirates.length = 0;
 step(60 * 3);
 check('it keeps fighting a moment after the last kill', MU.state().cur === 'combat');
 step(60 * 9);
-check('and calms down after the quiet', MU.state().cur === 'calm' && GM.current === trip.calm);
+check('and calms down after the quiet', MU.state().cur === 'calm' && trip.calmV.indexOf(GM.current) >= 0);
+MU.state().since = MU.QUIET;
+step(30);
+const xf = calls[calls.length - 1];
+check('a long quiet crossfades slowly to the next piece', trip.calmV.indexOf(GM.current) >= 0 && xf.opts.fade >= 3 && !xf.opts.onBar && xf.song !== trip.calmV[0]);
 G.cmd.on = G.cmd.plan = true;
 MU.update(1);
 check('pause-and-plan thins the band', GM.intensity < 0.3);
