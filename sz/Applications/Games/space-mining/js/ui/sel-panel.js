@@ -1,7 +1,7 @@
 /* The selection panel of the command view. A building: name, level, hit points, status (under
    construction, online, unpowered, understaffed, infected, corrupted, hijacked, quarantined),
    what it makes, and its actions (upgrade, demolish, quarantine, sterilise, purge, recipe,
-   unit production with the queue, crew, EMP, reclaim). Units: counts by type (click one to keep
+   unit production with the queue, crew, supply freighters, EMP, reclaim). Units: counts by type (click one to keep
    only that type), a single unit's rank and kills, the four formations and the orders (attack-
    move, patrol, escort, return, hold). Nothing: the controls. */
 ;(function() {
@@ -110,6 +110,21 @@
       let p = row(100);
       btn('recruit', p.x, p.y, 100, 32, { icon: 'crew', label: 'Crew +2', sub: '200 cr', px: 12, color: UI.gold, disabled: b.data.crew + 2 > C.housing(b.data),
         action: () => { if (!B.recruit()) NS.command.say('Needs 200 credits and free housing', '#ff6a5c'); }, tip: { title: 'Recruit crew', text: 'Hire two crew for 200 credits. Habitats raise the housing limit.' } });
+      /* a supply freighter from the station: the pack, then the order */
+      const packs = NS.supply.PACKS;
+      const pack = NS.supply.PACK_BY_ID[G.ui.shipPack] || packs[0];
+      const price = NS.supply.packPrice(G.save, G.stats, pack);
+      const flying = NS.freighters.shipments();
+      p = row(112);
+      btn('ship_pack', p.x, p.y, 112, 32, { icon: 'cargo', label: pack.name, sub: 'supply pack', px: 11, color: UI.cyan,
+        action: () => { G.ui.shipPack = packs[(packs.indexOf(pack) + 1) % packs.length].id; },
+        tip: { title: 'Supply pack', text: 'Click to pick what the next supply freighter brings.', lines: packLines(pack) } });
+      p = row(112);
+      btn('ship_order', p.x, p.y, 112, 32, { icon: 'launch', label: flying ? 'Order  ' + flying + '/' + NS.supply.SHIP_MAX : 'Order', sub: NS.kit.group(price) + ' cr', px: 11, color: UI.cyan,
+        disabled: flying >= NS.supply.SHIP_MAX || B.wallet().credits < price,
+        action: () => { if (!NS.freighters.order(pack.id)) NS.command.say('Needs ' + NS.kit.group(price) + ' credits and at most ' + NS.supply.SHIP_MAX + ' shipments under way', '#ff6a5c'); },
+        tip: { title: 'Order a supply freighter', text: 'It undocks at the station and flies to the hub - pirates may jump it on the way. What arrives goes into the stock.',
+          lines: packLines(pack).concat([['Station supply prices + ' + NS.supply.FREIGHT_FEE + ' cr freight', UI.textDim]]) } });
       if (G.stats.blockPress && B.cargoHub()) {
         const lvl = b.data.blockRank;
         const cost = NS.ships.MODULE_BY_ID.blockPress.costs[lvl];
@@ -157,6 +172,16 @@
       btn('demo', p.x, p.y, 42, 32, { icon: 'demolish', color: UI.bad, action: () => { B.demolish(o); G.cmd.selB = null; },
         tip: { title: 'Demolish (Delete)', text: 'Half the cost comes back.' } });
     }
+  }
+
+  /* what a supply pack holds, one line per ore or bar */
+  function packLines(pack) {
+    const out = [];
+    for (const kind of ['bar', 'ore']) {
+      const part = pack.load[kind] || {};
+      for (const id in part) out.push([part[id] + ' ' + NS.ores.ORE_BY_ID[id].name + (kind === 'bar' ? ' Ingot' : ''), UI.text]);
+    }
+    return out;
   }
 
   function recipeText(r) {

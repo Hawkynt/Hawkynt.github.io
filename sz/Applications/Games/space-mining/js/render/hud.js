@@ -178,7 +178,7 @@
       const h = NS.base.hub();
       blip(cx, cy, k, s, h ? h.x : G.base.site.cx, h ? h.y : G.base.site.cy, 3.5, h ? '#7cf0ff' : G.base.zone.theme.accent, 0, true, true);
     }
-    for (let i = 0; i < G.posts.length; ++i) if (G.posts[i].path) blip(cx, cy, k, s, G.posts[i].x, G.posts[i].y, 3, '#ffb44a', 0, true, true);
+    for (let i = 0; i < G.posts.length; ++i) if (G.posts[i].path && !G.posts[i].hub) blip(cx, cy, k, s, G.posts[i].x, G.posts[i].y, 3, '#ffb44a', 0, true, true);
     for (let i = 0; i < G.freighters.length; ++i) {
       const f = G.freighters[i];
       if (NS.freighters.flying(f)) blip(cx, cy, k, s, f.x, f.y, 4, f.hitT > 0 && Math.sin(G.time * 10) > 0 ? '#ff5c6c' : '#7cf0ff', 0, true);

@@ -34,6 +34,8 @@ Each belt has an outpost site: a 20 x 16 grid of 48 px cells with seeded ore, ga
 
 The outer belts carry little or none of the iron, copper and ice that buildings need, so outposts there are supplied from home. The station's Supply tab sells iron, copper and ice as ore and as bars at a markup over the market price, straight into the warehouse, and holds the cargo manifest: a standing order of ore, bars and components loaded from the warehouse into the hold at every career launch, as far as the hold and the warehouse allow. Docked mid-trip, the Supplies button opens the same list to load or unload on the spot (the trip waits). Supplies ride apart from mined ore: they take hold space (ore packs as usual, a bar or component takes one slot), docking never banks them and they never count as a haul or toward an operation. Flying over a hub unloads them into the outpost stock with the ore, and a building, upgrade or unit takes what the stock lacks from the supplies first, then from mined ore. Whatever is still aboard when the trip ends goes back to the warehouse - half of it after a tow, none of it if the ship is lost.
 
+The hub also orders supply freighters: pick a pack on the hub's panel - iron bars, copper bars or a builder's mix of both with ice - and pay the station's supply prices plus a freight fee. A freighter undocks at the station and flies a lane to the hub, at most two at a time; in belts with pirates one ambush waits along the way, and skimmers drain the load as they would any freighter. What arrives goes into the outpost stock, scaled by the cargo still aboard; a freighter that is shot down is lost with its load, and one still on its way when the trip ends turns back and puts its load into the station warehouse.
+
 ### Weapons and the combat model
 
 Beside the mining laser every hull carries weapon hardpoints - one on the Prospector, two on the Wasp and the Hauler, three on the Leviathan - fired with 1, 2 and 3 in the pilot view (or their touch buttons). Nine weapons fill them, each with three levels (more damage, shorter cooldown): the Pulse Cannon (energy bolts, handed out by Claim Jumpers), and with the Amber Reach the Scatter Flak (a cone of pellets), the Missile Rack (homing salvos that burst) and the Tether Tow (grabs a rock behind the ship and flings it into the enemy); with the Verdant Shoals the Rail Lance (hold to charge, pierces everything in line) and the EMP Mine (strips shields, stuns, scrambles the Lattice); with the Crimson Maw the Gravity Net (holds enemies in place) and the Cloak Field (pirates and invaders lose you until you fire); with the Void Crown the Drone Swarm (four attack drones for a while). Pulse, flak and missiles fire while their key is held, the lance charges while held and fires on release, the rest act on a press. The Shipyard's Hardpoints page buys, levels and mounts them.
@@ -76,7 +78,7 @@ Core (`js/core/`):
 - **`data-events.js`** -- Belt events, seasons, weekly anomalies and the seven captain's log chapters
 - **`rules.js`** -- Pure progression rules: the save shape and its migration, tree, upgrade, hull, module and licence purchases, derived ship and colony stats, the Daily loadout, hold space, achievements, high scores
 - **`escort.js`** -- Pure escort rules: the trading posts at the belt edges, lanes with bends, points along a lane, choke points, where each freighter of a schedule goes, the pay for a delivery, the cargo latched skimmers drain
-- **`supply.js`** -- Pure supply rules: what the station sells and at what markup, buying, the cargo manifest and its repair, hold slots of supplies, fitting a manifest into the hold, moving supplies between warehouse and hold
+- **`supply.js`** -- Pure supply rules: what the station sells and at what markup, the supply freighter packs and their price, buying, the cargo manifest and its repair, hold slots of supplies, fitting a manifest into the hold, moving supplies between warehouse and hold
 - **`economy.js`** -- Pure market rules: prices, saturation, selling ore, bars and components, refining, contracts (ore, bars, components, waves), the daily and weekly contracts and the streak, the market cycle with news and history, forecasts, the service bill
 - **`colony.js`** -- Pure outpost rules: sites and deposits, the saved outpost and its repair, placement, the link network, power, crew, storage, housing and supply, costs and upgrades (paid from stock, the hold covering missing ore), value, upkeep, wave scaling and composition
 - **`production.js`** -- Pure production chains per step, the while-away yield and the market cycle of every outpost (upkeep, scavengers, hives)
@@ -101,7 +103,7 @@ Systems (`js/systems/`), one simulation concern each:
 - **`ship.js`** -- The mining ship: inertia flight, boost, banking, fuel, edges, bouncing off rocks with impact damage, shield and hull, blasts, exhaust
 - **`mining.js`** -- The laser cone, its lock and the ray cast, fault cracks, the split beam, nuggets and salvage, the tractor beam, the hold, the scanner pulse, seismic charges
 - **`hazards.js`** -- Radiation fields, gravity wells with infall, solar storms with warning and front
-- **`freighters.js`** -- Escort in a trip: the trading posts and lanes, freighters undocking, following their lane, ambushes at choke points, reactor stops, hull damage, delivery and pay, the hired wing
+- **`freighters.js`** -- Escort in a trip: the trading posts and lanes, freighters undocking, following their lane, ambushes at choke points, reactor stops, hull damage, delivery and pay, supply freighters to the hub, the hired wing
 - **`pirates.js`** -- Pirate waves, skimmers that steal ore or latch onto freighters, raiders and gunships that shoot, rock avoidance, bolts, the point-defense turret, loot
 - **`drones.js`** -- Mining drones: launch, target choice (Prospector AI), drilling, sweeping, returning, unloading, hauling to the station when the hold is full, rebuilding
 - **`formations.js`** -- Formation slots (line, wedge, box, circle), rotation, matching units to slots, group speed
@@ -252,6 +254,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can buy iron, copper and ice (ore and bars) at the station to build outposts in belts that have none
 - [x] As a player, I can set a cargo manifest that loads ore, bars and components from the warehouse at every launch, and change the load while docked
 - [x] As a player, I can unload supplies at my hub, build straight from them, and get what I did not use back at the end of the trip
+- [x] As a player, I can order supply freighters from my hub and escort them from the station to the outpost
 
 ### Weapons
 - [x] As a player, I can mount up to three weapons beside the mining laser and fire them with 1, 2 and 3: Pulse Cannon, Scatter Flak, Missile Rack, Tether Tow, Rail Lance, EMP Mine, Gravity Net, Cloak Field and Drone Swarm

@@ -42,6 +42,7 @@
           ctx.stroke();
         }
       }
+      if (p.hub) continue;
       K.blitRot(ctx, PA.post(), p.x, p.y, G.time * 0.1, p.path ? 1 : 0.8);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.5 + Math.sin(G.time * 3 + i) * 0.3;

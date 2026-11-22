@@ -5,8 +5,8 @@
    the Amber Reach operations, and freighters in the running game - undocking on schedule,
    following the lane, an ambush at a choke point, skimmers draining cargo and giving it back
    when shot down, hull damage and losses failing the operation, delivery paying by cargo, the
-   reactor stop that takes ore from the hold, storms slowing the convoy, the hired wing and the
-   autosave. */
+   reactor stop that takes ore from the hold, storms slowing the convoy, the hired wing, the
+   autosave, and supply freighters the hub orders to the outpost. */
 const H = require('./harness');
 H.installEnv();
 const NS = H.load();
@@ -237,6 +237,44 @@ launch('a_convoy');
 check('once unlocked the wing flies with every convoy', G.wing.length === 2);
 check('free trips have no freighters', (NS.trip.endTrip('dock'), NS.trip.startTrip('career', 1), G.freighters.length === 0 && G.posts.length === 0 && G.wing.length === 0));
 NS.trip.endTrip('dock');
+
+/* ── supply freighters ── */
+const SU = NS.supply;
+check('three supply packs: iron bars, copper bars and a builder\'s mix', SU.PACKS.length === 3 && SU.PACKS.map(k => k.id).join() === 'iron,copper,mix');
+const priceIron = SU.packPrice(G.save, G.stats, SU.PACK_BY_ID.iron);
+check('a pack costs the station\'s supply prices plus the freight fee', priceIron === SU.FREIGHT_FEE + SU.PACK_BY_ID.iron.load.bar.iron * SU.buyPrice(G.save, G.stats, 'bar', 'iron'));
+check('a load scales down with the cargo still aboard', JSON.stringify(SU.scaleLoad(SU.PACK_BY_ID.mix.load, 0.5)) === JSON.stringify({ ore: { ice: 10 }, bar: { iron: 5, copper: 4 }, comp: {} }));
+G.save.licenses.push('verdant');
+NS.trip.startTrip('career', 2);
+NS.cinematics.skip();
+G.cine = null;
+G.screen = 'playing';
+G.ship.maxHull = G.ship.hull = 1e6;
+G.run.pirateT = 1e9;
+check('no shipment without a hub', !NS.freighters.order('iron'));
+const shub = NS.base.grant('hub', G.base.site.hubX, G.base.site.hubY);
+G.save.credits = 10;
+check('no shipment without the credits', !NS.freighters.order('iron') && !G.freighters.length);
+G.save.credits = 1e6;
+const bars0 = G.base.data.stock.bar.iron || 0;
+check('the hub orders a shipment and pays for it', NS.freighters.order('iron') && G.save.credits === 1e6 - priceIron && G.freighters.length === 1 && G.freighters[0].kind === 'supply');
+check('at most two shipments at a time', NS.freighters.order('mix') && !NS.freighters.order('copper') && G.freighters.length === 2);
+const sf = G.freighters[0];
+const hubLane = G.posts.find(q => q.id === sf.to);
+check('it flies a lane from the dock to the hub', hubLane && hubLane.hub && Math.hypot(hubLane.path[hubLane.path.length - 1].x - shub.x, hubLane.path[hubLane.path.length - 1].y - shub.y) < 150 &&
+  Math.hypot(hubLane.path[0].x - G.dock.x, hubLane.path[0].y - G.dock.y) < 250);
+check('a belt with pirates lays one ambush on the way', sf.chokes && sf.chokes.length === 1 && sf.ambush);
+G.ship.x = 300; G.ship.y = 300;
+steps(60 * 4);
+check('it undocks after a moment', sf.state === 'fly');
+sf.cargo = 0.5;
+sf.d = hubLane.len - 5;
+steps(10);
+check('what arrives goes into the outpost stock, scaled by the cargo aboard', sf.state === 'done' && G.base.data.stock.bar.iron === bars0 + 10);
+check('a shipment counts toward no operation', !G.run.op);
+const store0 = G.save.store.bar.iron || 0, storeIce = G.save.store.ore.ice || 0;
+NS.trip.endTrip('dock');
+check('a shipment still on its way at the end of the trip puts its load into the warehouse', (G.save.store.bar.iron || 0) === store0 + 10 && (G.save.store.ore.ice || 0) === storeIce + 20);
 
 /* drawing */
 launch('a_three');

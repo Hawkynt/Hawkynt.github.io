@@ -493,6 +493,7 @@
         const n = Math.floor(run.freight[kind][id] * keep);
         if (n > 0) save.store[kind][id] = (save.store[kind][id] || 0) + n;
       }
+    NS.freighters.settle();
     const all = Object.assign({}, hold);
     for (const id in run.banked) all[id] = (all[id] || 0) + run.banked[id];
     const res = { mode: run.mode, reason: reason, zone: run.zone, hold: all, units: units + run.bankedUnits, lost: run.units - units - run.bankedUnits, rd: run.rd,

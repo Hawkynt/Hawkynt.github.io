@@ -95,7 +95,7 @@
       stationTab: 'market', yardPage: 'hulls',
       shipyardTab: 'upgrades',
       marketSel: 'iron',
-      mapSel: 0, mapTab: 'ops', opSel: '',
+      mapSel: 0, mapTab: 'ops', opSel: '', shipPack: 'iron',
       treeSel: 'd_focus',
       treePage: 0,
       logSel: 0,

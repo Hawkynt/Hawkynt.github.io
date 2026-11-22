@@ -3,8 +3,10 @@
    active storm), ambushes sprung at choke points as the first freighter nears them, reactor
    stops that wait for ore from the ship's hold, hull damage, cargo drained by latched skimmers
    and won back, delivery with pay by the cargo still aboard (under half voids the contract and
-   counts as a loss), losses, and the hired wing of two
-   fighters that guards the ship and dives on attackers of a freighter.
+   counts as a loss), losses, supply freighters the hub orders (a lane from the dock to the
+   hub, one ambush in a belt with pirates, the load into the outpost stock, back to the
+   warehouse when the trip ends first), and the hired wing of two fighters that guards the ship
+   and dives on attackers of a freighter.
    Owns G.posts, G.freighters and G.wing. */
 ;(function() {
   'use strict';
@@ -173,6 +175,83 @@
     NS.fx.text(x, y - 30, '+' + Math.round(amount * 100) + '% CARGO', '#ffd25a', 15, 1.3);
   }
 
+  /* ── supply freighters ── */
+  function wallet() {
+    return G.run.mode === 'siege' ? G.run : G.save;
+  }
+
+  function shipments() {
+    let n = 0;
+    for (let i = 0; i < G.freighters.length; ++i) if (G.freighters[i].alive && G.freighters[i].kind === 'supply') ++n;
+    return n;
+  }
+
+  /* the lane from the dock to the hub, laid once per trip */
+  function hubLane(hub) {
+    let p = post('hub');
+    if (p) return p;
+    p = { id: 'hub', name: 'the outpost', hub: true, x: hub.x, y: hub.y, chokes: [] };
+    p.path = E.lane(G.dock, p, R);
+    p.len = E.length(p.path);
+    G.posts.push(p);
+    clearLane(p.path);
+    return p;
+  }
+
+  /* the hub orders a pack: paid now, flown from the dock; false when it cannot */
+  function order(packId) {
+    const pack = NS.supply.PACK_BY_ID[packId];
+    const hub = G.base && NS.base.hub();
+    const run = G.run;
+    if (!pack || !hub || !run || (run.mode !== 'career' && run.mode !== 'siege') || shipments() >= NS.supply.SHIP_MAX) return false;
+    const price = NS.supply.packPrice(G.save, G.stats, pack);
+    const w = wallet();
+    if (w.credits < price) return false;
+    w.credits -= price;
+    const p = hubLane(hub);
+    const z = run.zone;
+    E.at(p.path, 0, pt);
+    let n = 0;
+    for (let i = 0; i < G.freighters.length; ++i) if (G.freighters[i].kind === 'supply') ++n;
+    G.freighters.push({
+      alive: true, id: G.freighters.length + 1, kind: 'supply', name: 'Supply ' + LETTERS[n % LETTERS.length], to: 'hub', state: 'wait', wait: 3, d: 0, x: pt.x, y: pt.y,
+      vx: 0, vy: 0, angle: pt.angle, r: F.r, hp: F.hp, maxHp: F.hp, cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0, need: null, pack: pack.id,
+      load: JSON.parse(JSON.stringify(pack.load)),
+      chokes: z.pirates > 0 ? E.chokes(p.path, 1, R).map(c => ({ d: c.d, x: c.x, y: c.y, sprung: false })) : [],
+      ambush: z.pirates > 0 ? { kinds: { skimmer: 2, raider: 1 + Math.floor(z.danger / 2) }, size: [1 + Math.floor(z.danger / 3), 2 + Math.floor(z.danger / 3)], chokes: 1 } : null,
+    });
+    NS.audio.sfx('coin', { volume: 0.5 });
+    NS.screens.toast(pack.name + ' ordered - a supply freighter undocks at the station', '#7cf0ff');
+    return true;
+  }
+
+  /* a supply freighter at the hub: the load that is left goes into the stock */
+  function unload(f) {
+    f.state = 'done';
+    f.alive = false;
+    const got = NS.supply.scaleLoad(f.load, f.cargo);
+    const st = G.base && G.base.data.stock;
+    let n = 0;
+    if (st) for (const kind of ['ore', 'bar', 'comp']) for (const id in got[kind]) { st[kind][id] = (st[kind][id] || 0) + got[kind][id]; n += got[kind][id]; }
+    if (G.base) NS.base.refresh();
+    NS.fx.text(f.x, f.y - 60, 'SUPPLIES +' + n, '#7cf0ff', 20, 2);
+    NS.fx.ring(f.x, f.y, 30, 200, 0.6, '#7cf0ff', 6);
+    NS.audio.sfx('coin', { volume: 0.5 });
+    NS.trip.banner('SUPPLIES DELIVERED', f.name + ' unloaded ' + n + ' units at the hub', '#5cff9a');
+  }
+
+  /* the trip ends: shipments still on their way turn back to the station warehouse (career) */
+  function settle() {
+    if (!G.run || G.run.mode !== 'career') return;
+    for (let i = 0; i < G.freighters.length; ++i) {
+      const f = G.freighters[i];
+      if (f.kind !== 'supply' || !f.alive) continue;
+      const got = NS.supply.scaleLoad(f.load, f.cargo);
+      for (const kind of ['ore', 'bar', 'comp']) for (const id in got[kind]) G.save.store[kind][id] = (G.save.store[kind][id] || 0) + got[kind][id];
+      f.alive = false;
+    }
+  }
+
   function lose(f) {
     f.state = 'lost';
     f.alive = false;
@@ -182,10 +261,11 @@
     NS.trip.banner('FREIGHTER LOST', f.name + ' broke apart', '#ff5c6c');
     for (let i = 0; i < G.pirates.length; ++i) if (G.pirates[i].latch === f) NS.pirates.unlatch(G.pirates[i]);
     const o = G.run.op;
-    if (o) o.lost = (o.lost || 0) + 1;
+    if (o && f.kind !== 'supply') o.lost = (o.lost || 0) + 1;
   }
 
   function deliver(f, cv) {
+    if (f.kind === 'supply') { unload(f); return; }
     f.alive = false;
     const p = post(f.to);
     const o = G.run.op;
@@ -257,9 +337,10 @@
     f.vy = (f.y - y0) / dt;
     f.angle += clamp(angleDiff(f.angle, pt.angle), -1.2 * dt, 1.2 * dt);
     shove(f);
-    for (let k = 0; k < p.chokes.length; ++k) {
-      const c = p.chokes[k];
-      if (!c.sprung && f.d >= c.d - 260) spring(c, f, cv, p);
+    const chokes = f.chokes || p.chokes;
+    for (let k = 0; k < chokes.length; ++k) {
+      const c = chokes[k];
+      if (!c.sprung && f.d >= c.d - 260) spring(c, f, f.ambush || (cv && cv.ambush), p);
     }
     f.exT -= dt;
     if (f.exT <= 0) {
@@ -305,9 +386,8 @@
   }
 
   /* pirates jump the first freighter to near a choke point, from the side of the lane */
-  function spring(c, f, cv, p) {
+  function spring(c, f, amb, p) {
     c.sprung = true;
-    const amb = cv && cv.ambush;
     if (!amb) return;
     const n = amb.size[0] + Math.floor(R() * (amb.size[1] - amb.size[0] + 1));
     const side = R() < 0.5 ? -1 : 1;
@@ -332,7 +412,7 @@
       }
     }
     const o = G.run.op;
-    if (o) { o.waves += 1; o.ambushes = (o.ambushes || 0) + 1; }
+    if (o && f.kind !== 'supply') { o.waves += 1; o.ambushes = (o.ambushes || 0) + 1; }
     NS.trip.banner('AMBUSH', 'Pirates jump ' + f.name + ' on the way to ' + p.name, '#ff5c6c');
     NS.audio.sfx('zap', { volume: 0.7, pitch: 0.4 });
   }
@@ -434,6 +514,6 @@
   }
 
   Object.assign(NS.freighters, {
-    WING, clear, setup, flying, nearest, hitAt, wingAt, anyFlying, active, hurt, hurtWing, drain, recover, update, capture, restore, commonOre
+    WING, clear, setup, order, shipments, settle, flying, nearest, hitAt, wingAt, anyFlying, active, hurt, hurtWing, drain, recover, update, capture, restore, commonOre
   });
 })();

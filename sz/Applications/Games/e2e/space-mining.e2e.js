@@ -5,7 +5,8 @@
    drills the ore nearest the nose with a bent beam, docking banks the hold and the flight goes
    on with the Return home button, which ends the trip only when pressed; the belt map lists
    the Kessler operations and launches First Haul, which banking wins; an outpost in the
-   Verdant Shoals installs a press, packs ore and builds with ore from the hold; the Supply tab
+   Verdant Shoals installs a press, packs ore, orders a supply freighter and builds with ore
+   from the hold; the Supply tab
    buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
    loads more; a flak tower gets its ingots smelted from the hold's iron; the soundtrack starts calm and switches to the battle arrangement when a raider
    closes in; the Shipyard's Hardpoints page takes the Pulse Cannon and holding 1 fires it; the
@@ -142,6 +143,14 @@ exports.run = async (t) => {
   await t.hit('loadOre');
   t.check('the hub loads 40 copper into 10 packed slots', await t.state('G.run.cargo.copper === 40 && NS.mining.cargoSpace("copper", 40) === 10 && !G.base.data.stock.ore.copper'));
   await t.shot('08-packed-ore');
+  /* the hub orders a supply freighter with real clicks: copper bars from the station */
+  const cr0 = await t.state('G.save.credits');
+  await t.hit('ship_pack');
+  await t.hit('ship_order');
+  await t.wait(200);
+  await t.shot('08a-supply-order');
+  t.check('real clicks order a supply freighter of copper bars from the hub', await t.state("G.freighters.length === 1 && G.freighters[0].kind === 'supply' && G.freighters[0].pack === 'copper' && G.save.credits === " +
+    cr0 + " - NS.supply.packPrice(G.save, G.stats, NS.supply.PACK_BY_ID.copper)"));
   /* the stock is empty now: a relay is paid with copper from the ship's hold */
   const spot = await t.run((NS, G) => {
     NS.command.startPlace('relay');

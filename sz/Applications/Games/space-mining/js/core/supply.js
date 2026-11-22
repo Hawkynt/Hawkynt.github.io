@@ -2,7 +2,8 @@
    copper as bars) at a markup over the market, buying them into the warehouse, the cargo manifest
    (a standing order of ore, bars and components loaded at every career launch) and its repair,
    the hold slots supplies take (ore packs as usual, a bar or component takes one), fitting a
-   manifest into the hold and moving supplies between the warehouse and the hold.
+   manifest into the hold, moving supplies between the warehouse and the hold, and the packs a
+   hub orders by supply freighter with their price and the load that arrives.
    No DOM, no state access. */
 ;(function() {
   'use strict';
@@ -18,6 +19,16 @@
   ];
   const MARKUP = 1.6;
   const KINDS = ['comp', 'bar', 'ore'];
+  /* supply freighters: the packs, the flat freight fee and how many fly at once */
+  const PACKS = [
+    { id: 'iron', name: 'Iron bars', icon: 'cargo', load: { bar: { iron: 20 } } },
+    { id: 'copper', name: 'Copper bars', icon: 'cargo', load: { bar: { copper: 16 } } },
+    { id: 'mix', name: 'Builder\'s mix', icon: 'cargo', load: { bar: { iron: 10, copper: 8 }, ore: { ice: 20 } } },
+  ];
+  const PACK_BY_ID = {};
+  for (let i = 0; i < PACKS.length; ++i) PACK_BY_ID[PACKS[i].id] = PACKS[i];
+  const FREIGHT_FEE = 250;
+  const SHIP_MAX = 2;
 
   function onSale(kind, id) {
     return BUY.some(b => b.kind === kind && b.id === id);
@@ -113,7 +124,30 @@
     return n;
   }
 
+  /* a pack at the station's supply prices plus the freight fee */
+  function packPrice(save, stats, pack) {
+    let n = FREIGHT_FEE;
+    for (const kind of KINDS) {
+      const part = pack.load[kind] || {};
+      for (const id in part) n += part[id] * buyPrice(save, stats, kind, id);
+    }
+    return n;
+  }
+
+  /* a load cut down to the share k that arrived (whole units) */
+  function scaleLoad(load, k) {
+    const out = blank();
+    for (const kind of KINDS) {
+      const part = load[kind] || {};
+      for (const id in part) {
+        const n = Math.floor(part[id] * Math.max(0, Math.min(1, k)));
+        if (n > 0) out[kind][id] = n;
+      }
+    }
+    return out;
+  }
+
   Object.assign(NS.supply, {
-    BUY, MARKUP, onSale, buyPrice, buy, blank, repair, slots, fit, move, count
+    BUY, MARKUP, PACKS, PACK_BY_ID, FREIGHT_FEE, SHIP_MAX, onSale, buyPrice, buy, blank, repair, slots, fit, move, count, packPrice, scaleLoad
   });
 })();

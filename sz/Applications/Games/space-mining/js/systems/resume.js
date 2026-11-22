@@ -96,7 +96,7 @@
     run.bankedUnits = +snap.run.bankedUnits || 0;
     const op = snap.run.op;
     run.op = op && NS.opsData.OP_BY_ID[op.id] && op.pace && typeof op.t === 'number' ? op : null;
-    NS.freighters.restore(run.op ? snap.escort : null);
+    NS.freighters.restore(snap.escort);
     run.service = +snap.run.service || 0;
     const s = G.ship, p = snap.ship;
     s.x = p.x; s.y = p.y; s.vx = p.vx; s.vy = p.vy; s.angle = p.angle;
