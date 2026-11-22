@@ -8,7 +8,8 @@
    Verdant Shoals installs a press, packs ore, orders a supply freighter and builds with ore
    from the hold; the Supply tab
    buys iron and puts it on the manifest, the launch loads it and the docked Supplies screen
-   loads more; a flak tower gets its ingots smelted from the hold's iron; the soundtrack starts calm and switches to the battle arrangement when a raider
+   loads more; a flak tower gets its ingots smelted from the hold's iron and the defense tab
+   offers the Tesla Coil and the Stasis Beam; the soundtrack starts calm and switches to the battle arrangement when a raider
    closes in; the Shipyard's Hardpoints page takes the Pulse Cannon and holding 1 fires it; the
    Amber Reach's first escort launches from the map, its freighter is ambushed at a choke point
    and docks at its trading post. */
@@ -177,6 +178,12 @@ exports.run = async (t) => {
   await t.wait(300);
   await t.shot('08c-flak-from-hold');
   t.check('a flak tower is built from hold iron, its ingots smelted on the spot', await t.state("G.base.data.buildings.some(b => b.type === 'flak') && !G.run.cargo.iron"));
+  /* the defense tab offers the Tesla Coil and the Stasis Beam */
+  await t.run((NS, G) => { G.cmd.selB = null; G.cmd.place = null; });
+  await t.hit('cat_defense');
+  await t.wait(200);
+  await t.shot('08d-defense-tab');
+  t.check('a real click on the defense tab shows the Tesla Coil and the Stasis Beam', await t.state("G.hitAreas.some(a => a.id === 'b_tesla') && G.hitAreas.some(a => a.id === 'b_stasis')"));
   await t.page.key('Tab', 'Tab', 9);
   await t.run((NS, G) => {
     G.ship.x = G.dock.x + 30; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;

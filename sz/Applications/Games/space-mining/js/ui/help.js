@@ -163,7 +163,7 @@
   function progress() {
     para([
       'Research data buys the tech tree: Drilling, Engines, Logistics, Automation (mining drones), Defense and Science. Open it from the title, the station or the pause menu - it takes effect at once.',
-      'Operations on the belt map teach each belt: the capstone and your earnings open the next licence. The Amber Reach adds escorts - freighters fly marked lanes to trading posts and get ambushed at choke points. Shoot down skimmers to win back their cargo (under half and the contract is void) and keep raiders off the hull.',
+      'Operations on the belt map teach each belt: the capstone and your earnings open the next licence. The Amber Reach adds escorts - freighters fly marked lanes to trading posts and get ambushed at choke points. Shoot down skimmers to win back their cargo (under half and the contract is void) and keep raiders off the hull. The Verdant Shoals turn your outpost into a tower defense: watch the wave bearings on the minimap.',
       'Gold Rush: five minutes in your best belt, sell at the dock as often as you like. Daily Belt: one seeded belt a day with the same standard rig for everyone.',
     ], 90, 140, 520);
     const rows = [['W / S (Up / Down)', 'Thrust forward / reverse'], ['A / D (Left / Right)', 'Turn the ship'], ['Right mouse', 'Fly toward the cursor'], ['Left mouse', 'Drill at the cursor'], ['Space', 'Drill the ore nearest the nose'], ['Enter (docked)', 'Return home, end the trip'],
@@ -203,7 +203,7 @@
   function fleet() {
     const FA = NS.fleetArt;
     para([
-      'While you are in a belt with an outpost, attack waves come on a timer: pirate raids, alien swarms and the Lattice, bigger with every wave, the belt and what the outpost is worth. A Sensor Array shows the next wave early. Wave 8 brings a hive mothership.',
+      'While you are in a belt with an outpost, attack waves come on a timer: pirate raids, alien swarms and the Lattice, bigger with every wave, the belt and what the outpost is worth. A Sensor Array shows the next wave and its bearing early. Wave 8 brings a hive mothership. Tesla Coils chain lightning through swarms, Stasis Beams slow the heavies.',
       'Shipyard and drone factory build units. In the command view: left click or drag to select, double-click for a type, right click to move, attack, escort, mine or repair, Shift to queue waypoints, Ctrl+1-9 groups, Z X C V for line, wedge, box and circle. Space pauses to plan. In flight: G escort me, R return, E attack where I aim, Shift+1-9 recall a group.',
     ], 90, 140, 1100);
     const units = ['fighter', 'gunboat', 'escort', 'transport', 'miner', 'mender', 'purger'];

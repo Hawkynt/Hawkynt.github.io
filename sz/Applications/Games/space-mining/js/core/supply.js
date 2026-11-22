@@ -21,9 +21,9 @@
   const KINDS = ['comp', 'bar', 'ore'];
   /* supply freighters: the packs, the flat freight fee and how many fly at once */
   const PACKS = [
-    { id: 'iron', name: 'Iron bars', icon: 'cargo', load: { bar: { iron: 20 } } },
-    { id: 'copper', name: 'Copper bars', icon: 'cargo', load: { bar: { copper: 16 } } },
-    { id: 'mix', name: 'Builder\'s mix', icon: 'cargo', load: { bar: { iron: 10, copper: 8 }, ore: { ice: 20 } } },
+    { id: 'iron', name: 'Iron', icon: 'cargo', load: { ore: { iron: 40 }, bar: { iron: 8 } } },
+    { id: 'copper', name: 'Copper', icon: 'cargo', load: { ore: { copper: 30 }, bar: { copper: 8 } } },
+    { id: 'mix', name: 'Builder\'s mix', icon: 'cargo', load: { ore: { iron: 24, copper: 14, ice: 20 }, bar: { iron: 4, copper: 4 } } },
   ];
   const PACK_BY_ID = {};
   for (let i = 0; i < PACKS.length; ++i) PACK_BY_ID[PACKS[i].id] = PACKS[i];

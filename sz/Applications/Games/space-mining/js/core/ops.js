@@ -60,7 +60,9 @@
 
   /* ── progress ──
      m: { units (banked), banked: { ore: units }, stats (career statistics now), base (at the start),
-          delivered (freighters docked at their post) } */
+          delivered (freighters docked at their post), waves (repelled this trip), outpost (a
+          finished hub in the belt), built (finished buildings by type), clean (an outbreak the
+          operation started is over) } */
   function measure(g, m) {
     if (g.type === 'bank') return m.units || 0;
     if (g.type === 'ore') return (m.banked && m.banked[g.ore]) || 0;
@@ -71,6 +73,17 @@
     }
     if (g.type === 'record') return (m.stats && m.stats[g.stat]) || 0;
     if (g.type === 'deliver') return m.delivered || 0;
+    if (g.type === 'waves') return m.waves || 0;
+    if (g.type === 'outpost') return m.outpost ? 1 : 0;
+    if (g.type === 'clean') return m.clean ? 1 : 0;
+    if (g.type === 'build') {
+      let n = 0;
+      for (const t in m.built || {}) {
+        const d = NS.colonyData.BUILDING_BY_ID[t];
+        if (d && (g.of ? g.of.indexOf(t) >= 0 : d.cat === g.cat)) n += m.built[t];
+      }
+      return n;
+    }
     let n = 0;
     for (let i = 0; i < g.stats.length; ++i) n += ((m.stats && m.stats[g.stats[i]]) || 0) - ((m.base && m.base[g.stats[i]]) || 0);
     return n;

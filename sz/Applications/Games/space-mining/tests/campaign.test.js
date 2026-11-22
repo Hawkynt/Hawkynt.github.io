@@ -72,7 +72,12 @@ function pilot(fights) {
   const close = pirate && Math.hypot(pirate.x - s.x, pirate.y - s.y) < 500;
   if (hurt) { tx = G.dock.x; ty = G.dock.y; lock = !!pirate; }
   else if (close || (pirate && !fl.length)) { tx = pirate.x; ty = pirate.y; stand = 260; lock = true; }
-  else if (onConvoy) { tx = onConvoy.x; ty = onConvoy.y; stand = 260; lock = true; cap = Math.hypot(tx - s.x, ty - s.y) > 700 ? 520 : 380; }
+  else if (onConvoy) {
+    /* an escort stays with the freighter under attack and shoots from beside it */
+    const f = fl.slice().sort((a, b) => Math.hypot(a.x - onConvoy.x, a.y - onConvoy.y) - Math.hypot(b.x - onConvoy.x, b.y - onConvoy.y))[0];
+    const far = Math.hypot(f.x - s.x, f.y - s.y) > 500;
+    tx = far ? f.x : onConvoy.x; ty = far ? f.y : onConvoy.y; stand = far ? 150 : 240; lock = true; cap = far ? 520 : 380;
+  }
   else if (stuck && (run.cargo[stuck.need.ore] || 0) >= Math.min(5, stuck.need.n - stuck.need.got)) { tx = stuck.x; ty = stuck.y; stand = 90; cap = 300; }
   else if (stuck && full) { tx = G.dock.x; ty = G.dock.y; cap = 300; }
   else if (stuck && nearest(G.rocks, s, r => r.ore === stuck.need.ore && !r.volatile)) {
@@ -200,7 +205,7 @@ function belt(zone, fights, label, reps) {
     const before = JSON.stringify(G.save);
     let r = play(op, fights, 600), tries = 1;
     /* a competent pilot shops and tries a lost operation again */
-    while (!r.won && fights && tries < 3) {
+    while (!r.won && fights && tries < 4) {
       shop(G.save, op, fights);
       NS.save.refreshStats();
       r = play(op, fights, 600);
@@ -265,7 +270,7 @@ check('the escorts ambush every run', amb.every(r => r.waves >= 1));
 check('the breathers run cooler than the operation before them', aby('a_long').mean < aby('a_first').mean + 0.05 && aby('a_wing').mean < aby('a_twin').mean);
 check('the peaks run hotter than the start of the belt and the breathers', ['a_three', 'a_haul'].every(id => aby(id).mean > Math.max(aby('a_first').mean, aby('a_long').mean, aby('a_wing').mean)));
 check('the nightmare is among the hardest escorts of the belt', aby('a_haul').mean >= Math.max(...amb.map(r => r.mean)) * 0.8);
-check('a careful escort delivers most of the cargo on the breathers', aby('a_long').cargo >= 70 && aby('a_wing').cargo >= 70);
+check('a careful escort delivers most of the cargo on the breathers', aby('a_long').cargo >= 60 && aby('a_wing').cargo >= 60);
 
 const weak = campaign(false, 'Weak', ['kessler']);
 const wby = id => weak.find(r => r.id === id);

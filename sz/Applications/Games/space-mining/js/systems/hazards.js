@@ -1,7 +1,8 @@
-/* Belt hazards: radiation fields (hull burn inside, uranium-rich), gravity wells (pull the ship,
+/* Belt hazards: radiation fields (hull burn inside, uranium-rich, clear of the outpost site), gravity wells (pull the ship,
    ore and small rocks, crush at the core, spiral infall), and solar storms on a schedule
    (warning, then a sweeping front that burns hull and shoves the ship). Lead Lining and the
-   shield soak the damage. Owns G.radZones, G.wells and G.storm. */
+   shield soak the damage; an operation's radiation season drifting over the outpost. Owns
+   G.radZones, G.wells and G.storm. */
 ;(function() {
   'use strict';
 
@@ -24,10 +25,15 @@
     G.storm = null;
     const w = G.world.w, h = G.world.h;
     const nRad = zone.hazards.radiation || 0;
+    const site = NS.colony.site(zone.index, w, h);
     for (let i = 0, tries = 0; i < nRad && tries < 200; ++tries) {
       const x = 500 + rng() * (w - 1000), y = 500 + rng() * (h - 1000);
+      const r = 300 + rng() * 200, sd = Math.floor(rng() * 1e6), ph = rng() * TAU;
       if (!farFromDock(x, y, 900)) continue;
-      G.radZones.push({ x: x, y: y, r: 300 + rng() * 200, seed: Math.floor(rng() * 1e6), phase: rng() * TAU });
+      /* the clouds keep clear of the outpost site, as the rocks do */
+      const dx = Math.max(site.x0 - x, 0, x - site.x0 - site.w), dy = Math.max(site.y0 - y, 0, y - site.y0 - site.h);
+      if (Math.hypot(dx, dy) < r + 150) continue;
+      G.radZones.push({ x: x, y: y, r: r, seed: sd, phase: ph });
       ++i;
     }
     const nWell = zone.hazards.gravity || 0;
@@ -48,15 +54,17 @@
     const s = G.ship;
     const st = G.stats;
     if (!s || !s.alive) return;
-    /* radiation */
+    /* radiation; a season's clouds drift to and fro over the outpost site, a thin haze that
+       burns a hull at a third of a field's strength */
     G.run.inRad = 0;
     for (let i = 0; i < G.radZones.length; ++i) {
       const z = G.radZones[i];
+      if (z.season) drift(z, dt);
       const dx = s.x - z.x, dy = s.y - z.y;
       const d2 = dx * dx + dy * dy;
       if (d2 > z.r * z.r) continue;
       const k = 1 - Math.sqrt(d2) / z.r;
-      G.run.inRad = Math.max(G.run.inRad, 0.35 + k * 0.65);
+      G.run.inRad = Math.max(G.run.inRad, (0.35 + k * 0.65) * (z.season ? 0.33 : 1));
     }
     if (G.run.inRad > 0) {
       NS.ship.hurt(6 * G.run.inRad * (1 - st.radResist) * dt, 'radiation');
@@ -150,6 +158,34 @@
     }
   }
 
+  /* a radiation season: n clouds over the outpost site, drifting across it */
+  function season(site, n) {
+    for (let i = 0; i < n; ++i) {
+      const a = R() * TAU;
+      G.radZones.push({ x: site.x0 + R() * site.w, y: site.y0 + R() * site.h, r: 190 + R() * 70, seed: Math.floor(R() * 1e6), phase: R() * TAU,
+        season: true, vx: Math.cos(a) * 26, vy: Math.sin(a) * 26, box: { x0: site.x0, y0: site.y0, x1: site.x0 + site.w, y1: site.y0 + site.h } });
+    }
+  }
+
+  function drift(z, dt) {
+    z.x += z.vx * dt;
+    z.y += z.vy * dt;
+    if (z.x < z.box.x0 || z.x > z.box.x1) z.vx = -z.vx;
+    if (z.y < z.box.y0 || z.y > z.box.y1) z.vy = -z.vy;
+  }
+
+  /* how deep a point sits in a season's radiation (0 outside, up to 1 at a cloud's heart) */
+  function seasonAt(x, y) {
+    let k = 0;
+    for (let i = 0; i < G.radZones.length; ++i) {
+      const z = G.radZones[i];
+      if (!z.season) continue;
+      const d = Math.hypot(x - z.x, y - z.y);
+      if (d < z.r) k = Math.max(k, 0.5 + 0.5 * (1 - d / z.r));
+    }
+    return k;
+  }
+
   /* an operation's storm: warned in `secs`, in any belt (one with none of its own gets one) */
   function forceStorm(secs) {
     if (!G.storm) G.storm = { phase: 'calm', t: secs, angle: R() * TAU, front: 0, freq: 0.5 };
@@ -158,6 +194,6 @@
   }
 
   Object.assign(NS.hazards, {
-    setup, update, forceStorm
+    setup, update, forceStorm, season, seasonAt
   });
 })();

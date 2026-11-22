@@ -72,6 +72,27 @@
     return best;
   }
 
+  /* slowed to k of its speed for secs (the strongest hold wins); motherships shrug off half */
+  function slow(e, k, secs) {
+    if (!e || !e.alive || e.cx !== undefined || e === G.ship) return;
+    if (e.def && e.def.boss) k = 1 - (1 - k) * 0.5;
+    e.slowK = e.slowT > 0 ? Math.min(e.slowK, k) : k;
+    e.slowT = Math.max(e.slowT || 0, secs);
+  }
+
+  /* the nearest hostile within range that is not in the list */
+  function nearestExcept(x, y, range, skip) {
+    const list = grid.query(x, y, range, near);
+    let best = null, bd = range * range;
+    for (let i = 0; i < list.length; ++i) {
+      const e = list[i];
+      if (!e.alive || e.dormant || skip.indexOf(e) >= 0) continue;
+      const q = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
+      if (q < bd) { bd = q; best = e; }
+    }
+    return best;
+  }
+
   function queryHostile(x, y, r, out) {
     return grid.query(x, y, r, out || near);
   }
@@ -319,7 +340,11 @@
   function pickTarget(e) {
     const d = e.def;
     if (d.target === 'units' || d.target === 'any') {
-      const u = NS.units.nearestPlayer(e.x, e.y, d.target === 'units' ? 700 : 520, true);
+      /* a wave's swarmers go for the outpost and its fleet; the ship only when it comes close */
+      const shipToo = d.target === 'units' || !e.wave;
+      let u = NS.units.nearestPlayer(e.x, e.y, d.target === 'units' ? 700 : 520, shipToo);
+      const s = G.ship;
+      if (!shipToo && s && s.alive && !s.hidden && !(s.cloak > 0) && (s.x - e.x) * (s.x - e.x) + (s.y - e.y) * (s.y - e.y) < 260 * 260) u = s;
       if (u && (!e.wave || nearOutpost(u, 900) || (u.x - e.x) * (u.x - e.x) + (u.y - e.y) * (u.y - e.y) < 320 * 320)) return u;
     }
     return nearestBuilding(e.x, e.y, e.type === 'bomber') || (G.ship && G.ship.alive && !(G.ship.cloak > 0) ? G.ship : null);
@@ -363,7 +388,14 @@
         e.y += e.vy * dt;
         continue;
       }
+      const x0 = e.x, y0 = e.y;
       think(e, dt);
+      /* a stasis beam holds it back: only part of each step's way is made */
+      if (e.slowT > 0) {
+        e.slowT -= dt;
+        e.x = x0 + (e.x - x0) * e.slowK;
+        e.y = y0 + (e.y - y0) * e.slowK;
+      }
       e.x = clamp(e.x, -200, G.world.w + 200);
       e.y = clamp(e.y, -200, G.world.h + 200);
       exhaust(e, dt);
@@ -491,8 +523,9 @@
       e.fireT = e.def.rof;
       hitTarget(t, e.def.dmg, 'enemy', e);
       NS.fx.sparks(t.x, t.y, a + Math.PI, 1.2, 4, '#e0a0ff', 200, 0.25);
-      /* Bloom swarmers carry spores into what they bite */
-      if (t.cx !== undefined && G.run.zone.life > 0 && R() < 0.12 * G.run.zone.life * (1 - (G.stats.vaccine || 0))) {
+      /* Bloom swarmers carry spores into what they bite (not before an operation lets the Bloom in) */
+      const cfg = NS.operation.waveCfg();
+      if (t.cx !== undefined && G.run.zone.life > 0 && !(cfg && cfg.spores === false) && R() < 0.06 * G.run.zone.life * (1 - (G.stats.vaccine || 0))) {
         const fresh = !(t.inf > 0);
         NS.outbreak.seedInfection(t, 0.06);
         if (fresh) NS.events.infected(t);
@@ -588,6 +621,6 @@
   }
 
   Object.assign(NS.enemies, {
-    spawn, nearest, queryHostile, nearestBuilding, hitTarget, damage, wake, fire, update, emp, clear, count, retreat
+    spawn, nearest, nearestExcept, queryHostile, nearestBuilding, hitTarget, damage, wake, fire, update, emp, slow, clear, count, retreat
   });
 })();

@@ -48,9 +48,10 @@
     NS.audio.sfx('zap', { volume: 0.6, pitch: 0.4 });
   }
 
+  /* the belt's own pirate packs; an operation in progress sends its own threats instead */
   function schedule(dt) {
     const run = G.run;
-    if (!run.zone.pirates) return;
+    if (!run.zone.pirates || (run.op && run.op.status === 'active')) return;
     run.pirateT -= dt;
     if (run.pirateT <= 0) {
       run.pirateT = (75 + R() * 50) / run.zone.pirates;

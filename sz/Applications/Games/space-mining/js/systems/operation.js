@@ -22,6 +22,7 @@
     lost: 'The ship was lost',
     home: 'You returned home before it was done',
     convoy: 'Too many freighters were lost',
+    outpost: 'The outpost fell',
   };
 
   function def() {
@@ -36,20 +37,36 @@
     run.op = {
       id: id, t: 0, status: 'active', why: '', first: false, base: O.snapshot(op, G.save.stats),
       waveT: op.threat ? op.threat.first : 0, beat: 'build', pace: PC.create(), hull: G.ship ? G.ship.hull : 0, waves: 0,
-      delivered: 0, lost: 0, paid: 0, ambushes: 0,
+      delivered: 0, lost: 0, paid: 0, ambushes: 0, hadHub: false, seeded: false, rad: false,
     };
     if (op.force) for (const kind in op.force) {
       if (kind === 'storm') NS.hazards.forceStorm(op.force.storm);
-      else for (let i = 0; i < op.force[kind]; ++i) NS.trip.addSpecial(kind, R, true);
+      else if (kind === 'geode' || kind === 'derelict') for (let i = 0; i < op.force[kind]; ++i) NS.trip.addSpecial(kind, R, true);
     }
     if (op.convoy) NS.freighters.setup(op);
+    /* an outpost already standing takes the operation's wave pace at once */
+    if (op.waves && G.base && NS.base.claimed()) NS.waves.arm(true);
     return run.op;
+  }
+
+  /* the outpost as the goals see it: a finished hub, finished buildings by type */
+  function outpost(m) {
+    const h = G.base && NS.base.hub();
+    m.outpost = !!(h && h.prog >= 1);
+    m.built = {};
+    if (G.base) for (const b of G.base.data.buildings) if (b.prog >= 1 && !b.rogue) m.built[b.type] = (m.built[b.type] || 0) + 1;
+  }
+
+  function infected() {
+    return !!G.base && G.base.data.buildings.some(b => (b.inf || 0) > 0.01);
   }
 
   /* what the trip measured so far; `extra` adds the hold settled on the way home */
   function measured(o, extra) {
     const run = G.run;
-    const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base, delivered: o.delivered || 0 };
+    const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base, delivered: o.delivered || 0,
+      waves: run.waves || 0, clean: o.seeded && !!(G.base && NS.base.hub()) && !infected() };
+    outpost(m);
     if (extra) {
       m.units += extra.units;
       for (const id in extra.hold) m.banked[id] = (m.banked[id] || 0) + extra.hold[id];
@@ -62,10 +79,23 @@
     return o ? O.progress(OP_BY_ID[o.id], measured(o)) : [];
   }
 
-  function threats() {
+  /* pirates, and in an outpost operation the invaders closing on the outpost */
+  function threats(op) {
     let n = 0;
     for (let i = 0; i < G.pirates.length; ++i) if (G.pirates[i].alive) ++n;
+    const h = op && op.waves && G.base ? NS.base.hub() : null;
+    if (h) for (let i = 0; i < G.enemies.length; ++i) {
+      const e = G.enemies[i];
+      if (e.alive && !e.dormant && e.type !== 'hive' && Math.hypot(e.x - h.x, e.y - h.y) < 1400) ++n;
+    }
     return n;
+  }
+
+  /* the outpost's hit points, all buildings summed */
+  function outpostHp() {
+    let hp = 0;
+    if (G.base) for (const b of G.base.data.buildings) hp += Math.max(0, b.hp || 0);
+    return hp;
   }
 
   /* the convoy's health: hull and cargo shares of every freighter summed (a lost one counts 0) */
@@ -93,12 +123,51 @@
         if (o.convoyH !== undefined) lost += Math.max(0, o.convoyH - h) * 0.5;
         o.convoyH = h;
       }
-      PC.track(o.pace, { hullLost: lost, threats: threats(), cap: op.threat ? op.threat.cap : 8 }, dt);
+      /* in an outpost operation the buildings' hit points hurt too (a fall in the total, as a
+         share of the outpost, counts four times; repairs do not count back) */
+      if (op.waves) {
+        const hp = outpostHp(), n = G.base ? G.base.data.buildings.length : 0;
+        if (o.baseHp !== undefined && n) lost += Math.max(0, o.baseHp - hp) / Math.max(1, hp + 1) * 4;
+        o.baseHp = hp;
+      }
+      PC.track(o.pace, { hullLost: lost, threats: threats(op), cap: op.threat ? op.threat.cap : op.waves ? 24 : 8 }, dt);
     }
+    if (op.waves) outbreaks(op, o, dt);
+    if (op.waves && o.hadHub && !NS.base.hub()) return fail('outpost');
     if (O.complete(op, measured(o))) return win();
     if (op.convoy && (o.lost || 0) > op.convoy.loss) return fail('convoy');
     if (op.time && o.t >= op.time) return fail('time');
     if (op.threat) director(op, o, dt);
+  }
+
+  /* the outpost side of an operation: the hub seen standing, the forced outbreak and the
+     radiation season once the outpost is there */
+  function outbreaks(op, o, dt) {
+    const h = G.base && NS.base.hub();
+    if (h && h.prog >= 1) o.hadHub = true;
+    if (!o.hadHub) return;
+    o.since = (o.since || 0) + dt;
+    const f = op.force || {};
+    if (f.outbreak && !o.seeded && o.since >= f.outbreak) {
+      const crew = G.base.data.buildings.filter(b => b.prog >= 1 && b.type !== 'hub' && NS.colonyData.BUILDING_BY_ID[b.type].crew > 0 && !b.rogue);
+      const b = crew.length ? crew[Math.floor(R() * crew.length)] : h;
+      NS.outbreak.seedInfection(b, 0.3);
+      o.seeded = true;
+      NS.trip.banner('OUTBREAK', 'The Bloom has broken out in the ' + NS.colonyData.BUILDING_BY_ID[b.type].name, '#9ae04a');
+      NS.audio.sfx('zap', { volume: 0.6, pitch: 0.6 });
+    }
+    if (f.radiation && !o.rad && o.since >= f.radiation.at) {
+      o.rad = true;
+      NS.hazards.season(G.base.site, f.radiation.n);
+      NS.trip.banner('RADIATION SEASON', 'Clouds drift over the outpost - shield domes keep the buildings under them working', '#7cff4a');
+    }
+  }
+
+  /* the wave pace of the running operation (null without one) */
+  function waveCfg() {
+    const o = G.run && G.run.op;
+    const op = o && o.status === 'active' ? OP_BY_ID[o.id] : null;
+    return op && op.waves ? op.waves : null;
   }
 
   /* the pirates the director sends: each beat sets the pace, a peak or a surprise brings the
@@ -114,7 +183,7 @@
     if (G.cine || G.run.docked || !G.ship || !G.ship.alive) { o.waveT = 3; return; }
     const nx = PC.next(op.threat, beat, o.pace.tension);
     o.waveT = nx.wait;
-    const n = Math.min(nx.size, op.threat.cap - threats());
+    const n = Math.min(nx.size, op.threat.cap - threats(op));
     if (n > 0) send(op.threat.kinds, n, beat);
   }
 
@@ -177,6 +246,6 @@
   }
 
   Object.assign(NS.operation, {
-    WHY, def, start, progress, update, settle
+    WHY, def, start, progress, update, settle, waveCfg
   });
 })();

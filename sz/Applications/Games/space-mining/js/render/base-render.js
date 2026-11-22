@@ -193,7 +193,14 @@
   function parts(o, def, b) {
     const t = G.time;
     const on = !dim(o, b);
-    if (o.type === 'laser' || o.type === 'flak') K.blitRot(ctx, A.head(o.type), o.x, o.y, o._ang || 0, o.type === 'flak' ? 1 : 0.9);
+    if (o.type === 'laser' || o.type === 'flak' || o.type === 'stasis') K.blitRot(ctx, A.head(o.type), o.x, o.y, o._ang || 0, o.type === 'flak' ? 1 : 0.9);
+    else if (o.type === 'tesla' && on) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 + Math.sin(t * 9 + o.id) * 0.25;
+      K.blit(ctx, K.glow('#7cd8ff'), o.x, o.y, 0.6);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
     else if (o.type === 'radar') K.blitRot(ctx, A.head('radar'), o.x, o.y, on ? t * 1.6 + o.id : o.id, 0.9);
     else if (o.type === 'rig') K.blitRot(ctx, A.head('drill'), o.x, o.y, on && !o._blocked ? t * 6 : 0, 1.2);
     else if (o.type === 'fusion' && on && G.base.fuel[o.id] !== false) {
@@ -385,7 +392,18 @@
       const bm = G.tbeams[i];
       ctx.strokeStyle = K.rgba(bm.color, bm.soft ? 0.25 : 0.35);
       ctx.lineWidth = bm.soft ? 5 : 7;
-      ctx.beginPath(); ctx.moveTo(bm.x0, bm.y0); ctx.lineTo(bm.x1, bm.y1); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bm.x0, bm.y0);
+      if (bm.zig) {
+        /* lightning: a jagged path that flickers every frame */
+        const dx = bm.x1 - bm.x0, dy = bm.y1 - bm.y0, len = Math.hypot(dx, dy) || 1;
+        for (let k = 1; k < 6; ++k) {
+          const j = Math.sin(G.time * 97 + k * 12.9 + i * 3.1) * Math.min(18, len * 0.12);
+          ctx.lineTo(bm.x0 + dx * k / 6 - dy / len * j, bm.y0 + dy * k / 6 + dx / len * j);
+        }
+      }
+      ctx.lineTo(bm.x1, bm.y1);
+      ctx.stroke();
       ctx.strokeStyle = bm.soft ? K.rgba('#ffffff', 0.4) : '#ffffff';
       ctx.lineWidth = bm.soft ? 1.2 : 1.8;
       ctx.stroke();

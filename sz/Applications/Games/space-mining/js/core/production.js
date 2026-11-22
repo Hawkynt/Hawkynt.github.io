@@ -21,6 +21,7 @@
     e *= staff[b.id] === undefined ? 1 : staff[b.id];
     e *= 1 - 0.5 * (b.inf || 0);
     e *= 1 - 0.6 * (b.cor || 0);
+    e *= 1 - 0.65 * (b._rad || 0);
     return e;
   }
 

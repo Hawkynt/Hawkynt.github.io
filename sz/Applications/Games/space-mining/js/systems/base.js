@@ -2,8 +2,8 @@
    life (world positions, hit points, turrets, shields), founding with the command hub,
    placing, upgrading, demolishing, quarantining, sterilising and purging buildings,
    construction (two sites at a time), the link network, crew, power and production refreshed
-   on a short beat, infection and corruption, turrets (rogue ones fire on you), shield domes,
-   repair bays, factory queues, the trade depot, unloading the ship at the hub, paying from
+   on a short beat, infection and corruption, the turrets, domes and bays run each step (see
+   turrets.js), factory queues, the trade depot, unloading the ship at the hub, paying from
    the ship's hold, damage and the loss of the hub, cargo pods and alerts. Owns G.base and G.pods. */
 ;(function() {
   'use strict';
@@ -18,6 +18,7 @@
   const C = NS.colony;
   const P = NS.production;
   const OB = NS.outbreak;
+  const T = NS.turrets;
   const rules = NS.rules;
   const R = NS.rng.fx;
   const BEAT = 0.25;
@@ -190,7 +191,8 @@
       rules.bump(G.save, 'bases', 1);
       NS.cinematics.play('founded', { x: rec.x, y: rec.y, zone: b.zone });
     }
-    b.waveT = C.waveInterval(b.zone, b.mode) + (b.mode === 'siege' ? -20 : 60);
+    const cfg = NS.operation.waveCfg();
+    b.waveT = cfg ? cfg.first : C.waveInterval(b.zone, b.mode) + (b.mode === 'siege' ? -20 : 60);
   }
 
   function upgrade(rec) {
@@ -470,8 +472,9 @@
       NS.audio.sfx('coin', { volume: 0.5, pitch: 0.8 });
     } else if (C.stockCount(b.data.stock, b.data) >= cap) NS.fx.text(h.x, h.y - 50, 'STORAGE FULL', '#ff6a5c', 18, 1.4);
     /* contaminated cargo: a scan catches it, else the spores get in */
+    const cfg = NS.operation.waveCfg();
     if (run.contam > 0 && units) {
-      const scanned = G.stats.cargoScan || b.data.buildings.some(o => (o.type === 'radar' || o.type === 'medbay') && o.prog >= 1 && !o.rogue);
+      const scanned = (cfg && cfg.spores === false) || G.stats.cargoScan || b.data.buildings.some(o => (o.type === 'radar' || o.type === 'medbay') && o.prog >= 1 && !o.rogue);
       if (scanned) NS.fx.text(h.x, h.y - 90, 'CARGO SCAN: spores purged', '#9ae04a', 16, 2);
       else {
         OB.seedInfection(h, Math.min(0.5, 0.12 + run.contam * 0.01));
@@ -561,9 +564,9 @@
       if (o._stun > 0) o._stun -= dt;
       if (o.prog < 1) continue;
       const def = BUILDING_BY_ID[o.type];
-      if (def.range) turret(o, def, dt);
-      else if (o.type === 'shield') shieldGen(o, def, dt);
-      else if (o.type === 'repairbay') repairBay(o, def, dt);
+      if (def.range) T.turret(o, def, dt);
+      else if (o.type === 'shield') T.shieldGen(o, def, dt);
+      else if (o.type === 'repairbay') T.repairBay(o, def, dt);
       else if (def.makes) factory(o, dt);
     }
     shipAtHub(dt);
@@ -574,6 +577,7 @@
     const b = G.base;
     refresh();
     if (b.data.abandoned) { alerts(); return; }
+    radiation(b);
     const ev = P.step({ base: b.data, deps: b.deps, zone: b.zone, stats: G.stats, net: b.net, pw: b.pw, staff: b.staff, dt: dt, fuel: b.fuel, mods: b.mods });
     flows(ev);
     const w = { base: b.data, net: b.net, stats: G.stats, dt: dt };
@@ -582,6 +586,22 @@
     const ke = OB.corruptionStep(w);
     NS.events.outbreakEvents(ie.concat(ke, ce));
     alerts();
+  }
+
+  /* a radiation season slows the plants and labs in its clouds that no powered shield dome
+     covers (turrets, power and the core keep working) */
+  function radiation(b) {
+    const list = b.data.buildings;
+    for (let i = 0; i < list.length; ++i) {
+      const o = list[i];
+      const cat = BUILDING_BY_ID[o.type].cat;
+      let k = cat === 'industry' || cat === 'science' ? NS.hazards.seasonAt(o.x, o.y) : 0;
+      if (k > 0) for (let j = 0; j < list.length; ++j) {
+        const d = list[j];
+        if (d.type === 'shield' && powered(d) && !d.rogue && Math.hypot(d.x - o.x, d.y - o.y) < BUILDING_BY_ID.shield.radius) { k = 0; break; }
+      }
+      o._rad = k;
+    }
   }
 
   function construct(dt) {
@@ -610,79 +630,6 @@
 
   function powered(o) {
     return (o._eff || 0) > 0.05;
-  }
-
-  /* turrets: nearest invader in range (rogue turrets fire at you); lasers, flak, missiles */
-  function turret(o, def, dt) {
-    if (!o.rogue && !powered(o)) return;
-    const rangeMul = G.stats.turretRange * (radarNear(o) ? 1.1 : 1);
-    const range = def.range * rangeMul * (1 + (o.lvl - 1) * 0.12);
-    o._fireT -= dt * (o.rogue ? 1 : Math.max(0.25, o._eff));
-    let t = o._target;
-    if (o._side !== o.rogue) { t = null; o._side = o.rogue; }
-    if (!t || !t.alive || (t.x - o.x) * (t.x - o.x) + (t.y - o.y) * (t.y - o.y) > range * range) {
-      t = o.rogue ? NS.units.nearestHostileToBase(o.x, o.y, range) : NS.enemies.nearest(o.x, o.y, range, def.id === 'missile' ? 'big' : def.id === 'flak' ? 'swarm' : 'small');
-      o._target = t;
-    }
-    if (!t) return;
-    o._ang += NS.rng.clamp(NS.rng.angleDiff(o._ang, Math.atan2(t.y - o.y, t.x - o.x)), -6 * dt, 6 * dt);
-    if (o._fireT > 0) return;
-    o._fireT = def.rof;
-    const dmg = def.dmg * C.levelMul(o.lvl) * (o.rogue ? 0.6 : G.stats.turretDmg);
-    const side = o.rogue ? 'enemy' : 'player';
-    const mx = o.x + Math.cos(o._ang) * o.r * 0.7, my = o.y + Math.sin(o._ang) * o.r * 0.7;
-    if (def.id === 'laser') {
-      NS.enemies.hitTarget(t, dmg, side, null, def.dtype);
-      G.tbeams.push({ x0: mx, y0: my, x1: t.x, y1: t.y, t: 0.09, color: o.rogue ? '#3affd0' : '#ff6a3a' });
-      NS.audio.sfxAt('laser', o.x, o.y, { volume: 0.12, pitch: 1.6 });
-    } else if (def.id === 'flak') {
-      NS.enemies.fire(side, 'flak', mx, my, t, dmg, 620, { splash: def.splash });
-      NS.audio.sfxAt('shoot', o.x, o.y, { volume: 0.25, pitch: 0.6 });
-    } else {
-      NS.enemies.fire(side, 'missile', mx, my, t, dmg, 420, { turn: 3.2 });
-      NS.enemies.fire(side, 'missile', mx, my, t, dmg, 400, { turn: 3, delay: 0.2 });
-      NS.audio.sfxAt('whoosh', o.x, o.y, { volume: 0.3, pitch: 1.4 });
-    }
-    NS.fx.muzzle(mx, my, o._ang, o.rogue ? '#3affd0' : '#ffb070');
-  }
-
-  function radarNear(o) {
-    const list = G.base.data.buildings;
-    for (let i = 0; i < list.length; ++i) {
-      const r = list[i];
-      if (r.type === 'radar' && r.prog >= 1 && !r.rogue && Math.abs(r.cx - o.cx) <= 6 && Math.abs(r.cy - o.cy) <= 6) return true;
-    }
-    return false;
-  }
-
-  function shieldGen(o, def, dt) {
-    if (o._hit > 0) o._hit -= dt;
-    if (o._down > 0) { o._down -= dt; return; }
-    const cap = def.cap * C.levelMul(o.lvl) * G.stats.shieldMul;
-    const regen = def.regen * C.levelMul(o.lvl) * (G.base.mods ? G.base.mods.shieldRegen : 1);
-    if (powered(o) && !o.rogue) o._shield = Math.min(cap, (o._shield || 0) + regen * o._eff * dt);
-    else o._shield = Math.max(0, (o._shield || 0) - regen * dt);
-  }
-
-  function repairBay(o, def, dt) {
-    if (!powered(o) || o.rogue) return;
-    const heal = def.heal * C.levelMul(o.lvl) * G.stats.repairMul * o._eff * dt;
-    const rad = def.radius;
-    let n = 0;
-    const list = G.base.data.buildings;
-    for (let i = 0; i < list.length && n < 3; ++i) {
-      const t = list[i];
-      if (t.hp >= t.maxHp || t.prog < 1 || (t.x - o.x) * (t.x - o.x) + (t.y - o.y) * (t.y - o.y) > rad * rad) continue;
-      t.hp = Math.min(t.maxHp, t.hp + heal * 3);
-      ++n;
-      if (R() < dt * 6) G.tbeams.push({ x0: o.x, y0: o.y, x1: t.x, y1: t.y, t: 0.15, color: '#7cff9a', soft: true });
-    }
-    n += NS.units.healNear(o.x, o.y, rad, heal * 2, 3 - n);
-    const s = G.ship;
-    if (s && s.alive && s.hull < s.maxHull && (s.x - o.x) * (s.x - o.x) + (s.y - o.y) * (s.y - o.y) < rad * rad) {
-      s.hull = Math.min(s.maxHull, s.hull + heal * 1.5);
-      if (R() < dt * 6) G.tbeams.push({ x0: o.x, y0: o.y, x1: s.x, y1: s.y, t: 0.15, color: '#7cff9a', soft: true });
-    }
   }
 
   /* factories: build the first queued unit; rogue factories turn out Lattice drones */
@@ -784,6 +731,6 @@
 
   Object.assign(NS.base, {
     wallet, hold, lack, affordable, spend, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, upgradePress, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
-    setRecipe, queueUnit, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, ZONES
+    setRecipe, queueUnit, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, powered, ZONES
   });
 })();

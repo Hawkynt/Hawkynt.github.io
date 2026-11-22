@@ -184,6 +184,8 @@
       if (NS.freighters.flying(f)) blip(cx, cy, k, s, f.x, f.y, 4, f.hitT > 0 && Math.sin(G.time * 10) > 0 ? '#ff5c6c' : '#7cf0ff', 0, true);
     }
     for (let i = 0; i < G.wing.length; ++i) if (G.wing[i].alive) blip(cx, cy, k, s, G.wing[i].x, G.wing[i].y, 1.8, '#5cff9a', 0);
+    const brg = NS.waves.bearings();
+    for (let i = 0; i < brg.length; ++i) blip(cx, cy, k, s, brg[i].x, brg[i].y, 4, Math.sin(G.time * 6) > 0 ? '#ff4a4a' : '#8a2a2a', 0, true);
     if (G.distress && G.distress.state !== 'rescued') blip(cx, cy, k, s, G.distress.x, G.distress.y, 3.5, Math.sin(G.time * 6) > 0 ? '#ffd25a' : '#8a6a20', 0, true, true);
     blip(cx, cy, k, s, G.dock.x, G.dock.y, 4, UI.gold, 0, true, true);
     ctx.save();

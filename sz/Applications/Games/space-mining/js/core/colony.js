@@ -513,7 +513,10 @@
     return waveNo >= BOSS_WAVE && !bossDone && waveNo % BOSS_WAVE === 0;
   }
 
-  /* A wave: faction and groups of invaders bought with the budget (pure, seeded) */
+  /* A wave: faction and groups of invaders bought with the budget (pure, seeded). opts: mode,
+     bossDone, mul, nano, army (the outpost's damage mix), and from an operation: favor (invader
+     ids that join the pool and are picked four times as often), forceBoss (the mothership comes
+     now) and split (the wave comes from a second bearing too) */
   function composeWave(waveNo, zone, value, seed, opts) {
     opts = opts || {};
     const r = seededRng((seed ^ (waveNo * 2654435761)) >>> 0);
@@ -529,16 +532,18 @@
       pool.push(id);
     }
     if (faction === 'lattice') pool.push('nanodrone');
+    if (opts.favor) for (let i = 0; i < opts.favor.length; ++i) if (pool.indexOf(opts.favor[i]) < 0 && ENEMY_BY_ID[opts.favor[i]]) pool.push(opts.favor[i]);
     if (!pool.length) pool.push('raider');
     const groups = {};
     let left = budget;
-    const boss = isBossWave(waveNo, opts.mode, opts.bossDone);
+    const boss = !!opts.forceBoss || isBossWave(waveNo, opts.mode, opts.bossDone);
     if (boss) left = Math.max(6, Math.round(left * 0.4));
     let guard = 0, total = 0;
     const MAX = 60;
     /* from wave 5 on the composer leans toward what resists the outpost's guns (one draw per pick
        either way, so waves without an army compose exactly as before) */
-    const counter = opts.army && waveNo >= 5 ? pool.map(id => NS.combat.counterWeight(opts.army, ENEMY_BY_ID[id].armour)) : null;
+    let counter = opts.army && waveNo >= 5 ? pool.map(id => NS.combat.counterWeight(opts.army, ENEMY_BY_ID[id].armour)) : null;
+    if (opts.favor) counter = pool.map((id, i) => (counter ? counter[i] : 1) * (opts.favor.indexOf(id) >= 0 ? 4 : 1));
     let wsum = 0;
     if (counter) for (let i = 0; i < counter.length; ++i) wsum += counter[i];
     const pick = () => {
@@ -565,7 +570,10 @@
     if (boss) list.push({ type: 'mothership', n: 1 });
     let count = 0;
     for (let i = 0; i < list.length; ++i) count += list[i].n;
-    return { wave: waveNo, faction: boss ? 'alien' : faction, groups: list, boss: boss, budget: budget, count: count, angle: r() * Math.PI * 2 };
+    const angle = r() * Math.PI * 2;
+    const out = { wave: waveNo, faction: boss ? 'alien' : faction, groups: list, boss: boss, budget: budget, count: count, angle: angle };
+    if (opts.split) out.angle2 = angle + 1.9 + r() * 1.2;
+    return out;
   }
 
   /* the stock most worth shipping home: bars and components by value */

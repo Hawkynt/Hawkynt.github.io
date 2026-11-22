@@ -29,7 +29,9 @@
 
   /* goals: bank (units banked), ore (units of one ore banked), value (credits' worth banked),
        stat (rise of career statistics, summed), record (a career statistic reached),
-       deliver (freighters docked at their post)
+       deliver (freighters docked at their post), waves (repelled this trip), outpost (a finished
+       hub), build (finished buildings, of: types or cat: a build category), clean (the
+       outbreak the operation started is over)
      time: seconds (0 = none); threat: pirate kinds by weight, first wave, seconds between
        waves, wave size and the most pirates at once; beats: [seconds, beat] from the start;
      force: specials laid out for the operation (storm: seconds until a storm is warned);
@@ -37,6 +39,14 @@
        when it undocks, need: a stop at a share of the lane for n of the belt's commonest ore),
        the ambush at choke points per lane (kinds, size, chokes, lead: an armoured leader) and
        wing: the hired wing flies along (it does on every convoy once 'wing' is unlocked);
+     waves: the outpost's waves in the operation - from (the wave strength its first wave
+       has, the ones after it count up from there), first (seconds until the first), every
+       (between waves), mul (budget), favor (invaders to lead with), split (two bearings),
+       boss (the wave of the trip that brings the mothership), nano (the Lattice's share of the
+       waves, 0 keeps it out), spores: false (the Bloom has not
+       reached the outpost: no spores from bites, belt outbreaks or cargo yet);
+     force.outbreak: seconds until an outbreak in a crew building; force.radiation: { at, n }
+       radiation clouds that drift over the outpost;
      reward: credits, research, unlock ids */
   const OPS = [
     { id: 'k_haul', zone: 'kessler', name: 'First Haul', mood: 'C', time: 0,
@@ -127,6 +137,51 @@
       threat: { kinds: { skimmer: 1, raider: 2, gunship: 1 }, first: 70, every: 36, size: [2, 3], cap: 9 },
       beats: [[0, 'build'], [45, 'peak'], [90, 'relief'], [120, 'surprise'], [160, 'peak'], [210, 'relief']],
       reward: { cr: 5000, rd: 10 } },
+
+    /* the Verdant Shoals: the outpost and tower defense */
+    { id: 'v_found', zone: 'verdant', name: 'Found the Outpost', mood: 'C', time: 0,
+      brief: 'The Shoals have no iron to speak of - bring bars from the station (the Supply tab and the manifest) or order a supply freighter. Found a hub on the site, put up two turrets and hold the first wave.',
+      goals: [{ type: 'outpost', n: 1, text: 'Found the outpost' }, { type: 'build', cat: 'defense', n: 2, text: 'Finish turrets' }, { type: 'waves', n: 1, text: 'Hold waves' }],
+      waves: { from: 1, nano: 0, spores: false, first: 100, every: 100 },
+      reward: { cr: 2500, rd: 6 } },
+    { id: 'v_hold', zone: 'verdant', name: 'Hold the Line', mood: 'E', time: 0,
+      brief: 'Raiders and swarms have found the outpost. Four waves, one after another - the turrets do the work, you fill the gaps.',
+      goals: [{ type: 'waves', n: 4, text: 'Hold waves' }],
+      waves: { from: 2, nano: 0, spores: false, first: 50, every: 75 },
+      reward: { cr: 2600, rd: 6 } },
+    { id: 'v_rad', zone: 'verdant', name: 'Radiation Season', mood: 'S', time: 0,
+      brief: 'The shoals\' sun flares: radiation clouds drift over the outpost and slow every plant a powered shield dome does not cover. The smelters still owe twenty bars - and the waves keep coming.',
+      goals: [{ type: 'stat', stats: ['bars'], n: 20, text: 'Smelt bars at the outpost' }, { type: 'waves', n: 2, text: 'Hold waves' }],
+      force: { radiation: { at: 20, n: 3 } },
+      waves: { from: 4, nano: 0, spores: false, first: 70, every: 85 },
+      reward: { cr: 2800, rd: 7 } },
+    { id: 'v_bloom', zone: 'verdant', name: 'First Bloom', mood: 'H', time: 0,
+      brief: 'A crew building has caught the Bloom. Quarantine, sterilise, a medical bay or purge tenders - end the outbreak before it spreads, while three waves come in.',
+      goals: [{ type: 'clean', n: 1, text: 'End the outbreak' }, { type: 'waves', n: 3, text: 'Hold waves' }],
+      force: { outbreak: 25 },
+      waves: { from: 5, nano: 0, first: 60, every: 75 },
+      reward: { cr: 3000, rd: 7 } },
+    { id: 'v_siege', zone: 'verdant', name: 'Siege Breakers', mood: 'H', time: 0,
+      brief: 'Bombers and siege ships lead the waves now - armour that shrugs off lasers and guns that outrange them. Flak and missiles, walls of buildings, and your ship on the siege ships.',
+      goals: [{ type: 'build', of: ['flak', 'missile'], n: 2, text: 'Finish flak or missiles' }, { type: 'waves', n: 3, text: 'Hold waves' }],
+      waves: { from: 5, nano: 0, first: 60, every: 75, favor: ['bomber', 'siege'], mul: 0.8 },
+      reward: { cr: 3200, rd: 8 } },
+    { id: 'v_split', zone: 'verdant', name: 'Split Front', mood: 'W', time: 0,
+      brief: 'The raiders have learned: every wave now splits and strikes from two bearings at once. Watch the minimap and cover both sides.',
+      goals: [{ type: 'waves', n: 5, text: 'Hold waves' }],
+      waves: { from: 6, nano: 0, first: 50, every: 65, split: true, mul: 1.15 },
+      reward: { cr: 3800, rd: 9 } },
+    { id: 'v_supply', zone: 'verdant', name: 'Supply Run', mood: 'S', time: 0,
+      brief: 'Two supply freighters are on their way to your hub - through an ambush, while the waves keep coming. Their cargo is yours if they make it.',
+      goals: [{ type: 'deliver', n: 2, text: 'Bring the freighters in' }, { type: 'waves', n: 2, text: 'Hold waves' }],
+      convoy: { fee: 0, loss: 0, list: [{ to: 'hub', at: 10, pack: 'mix' }, { to: 'hub', at: 45, pack: 'iron' }], ambush: { kinds: { skimmer: 2, raider: 2 }, size: [2, 3], chokes: 1 } },
+      waves: { from: 7, nano: 0, first: 40, every: 75 },
+      reward: { cr: 3200, rd: 7 } },
+    { id: 'v_mother', zone: 'verdant', name: 'Mothership', mood: 'N', time: 0, capstone: true,
+      brief: 'The hive has tracked the outpost. Two waves to dig in - the third brings the mothership, its broods and its guns. Bring it down and the Crimson Maw charter is yours.',
+      goals: [{ type: 'stat', stats: ['bosses'], n: 1, text: 'Destroy the mothership' }],
+      waves: { from: 8, nano: 0, first: 60, every: 75, boss: 3 },
+      reward: { cr: 6000, rd: 12 } },
   ];
 
   const OP_BY_ID = {};

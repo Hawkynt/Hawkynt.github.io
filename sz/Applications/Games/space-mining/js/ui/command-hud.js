@@ -1,7 +1,8 @@
 /* The command view HUD in view-plane coordinates, pinned to the visible edges: the resource bar
    (credits, research, power, storage, crew and infection, fleet supply), the outpost stock
    strip for every resource, the wave clock with its preview, the boss bar, alerts, the minimap
-   (terrain, outpost, fleets, threats, the view frame - click to look there), view buttons, the
+   (terrain, outpost, fleets, threats, the next wave's bearings, the view frame - click to look
+   there), view buttons, the
    build menu and selection panel (their own modules), hints and messages; plus the compact
    outpost widget of the pilot view. Also the flat buttons every strategy panel uses. */
 ;(function() {
@@ -248,6 +249,25 @@
       ctx.fillStyle = e.dormant ? '#8a4a7a' : e.def.faction === 'lattice' ? '#3affd0' : '#ff4a4a';
       const sz = e.def.boss ? 5 : e.r > 30 ? 3 : 2;
       ctx.fillRect(x + e.x * kx - sz / 2, y + e.y * ky - sz / 2, sz, sz);
+    }
+    /* where the next wave comes from: a pulsing line from the hub out along each bearing */
+    const hb = NS.base.hub(), brg = NS.waves.bearings();
+    if (hb) for (let i = 0; i < brg.length; ++i) {
+      const p = brg[i];
+      const a = Math.atan2(p.y - hb.y, p.x - hb.x);
+      const ex = x + p.x * kx, ey = y + p.y * ky;
+      ctx.strokeStyle = K.rgba('#ff4a4a', 0.55 + Math.sin(G.time * 6) * 0.3);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(x + hb.x * kx, y + hb.y * ky); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff4a4a';
+      ctx.beginPath();
+      ctx.moveTo(ex - Math.cos(a) * 7, ey - Math.sin(a) * 7);
+      ctx.lineTo(ex + Math.cos(a + 2.5) * 6, ey + Math.sin(a + 2.5) * 6);
+      ctx.lineTo(ex + Math.cos(a - 2.5) * 6, ey + Math.sin(a - 2.5) * 6);
+      ctx.closePath();
+      ctx.fill();
     }
     const sh = G.ship;
     if (sh && sh.alive) {

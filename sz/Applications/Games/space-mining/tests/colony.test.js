@@ -14,7 +14,7 @@ const { BUILDINGS, BUILDING_BY_ID, COMPONENTS } = NS.colonyData;
 
 check('22 resources and 7 components', ORES.length === 22 && COMPONENTS.length === 7);
 check('every resource kind is present', ['bulk', 'precious', 'gas', 'crystal', 'exotic', 'salvage', 'bio'].every(k => ORES.some(o => o.kind === k)));
-check('23 buildings in 6 categories, all distinct', BUILDINGS.length === 23 && new Set(BUILDINGS.map(b => b.id)).size === 23 && new Set(BUILDINGS.map(b => b.cat)).size === 6);
+check('25 buildings in 6 categories, all distinct', BUILDINGS.length === 25 && new Set(BUILDINGS.map(b => b.id)).size === 25 && new Set(BUILDINGS.map(b => b.cat)).size === 6);
 check('every belt ore is known', ZONES.every(z => Object.keys(z.ores).concat(Object.keys(z.gases)).every(id => NS.ores.ORE_BY_ID[id])));
 
 /* sites and deposits */

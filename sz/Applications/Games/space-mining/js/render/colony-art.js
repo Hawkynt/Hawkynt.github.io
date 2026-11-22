@@ -384,6 +384,24 @@
         }
       hazard(g, 6, S - 10, S - 12, 4);
     },
+    tesla(g, S, c, lvl, col) {
+      disc(g, c, c, S / 2 - 4, MID);
+      hazard(g, c - 14, c + S / 2 - 9, 28, 4);
+      /* the coil: stacked copper rings round a spire with a glass ball on top */
+      for (let i = 0; i < 4; ++i) disc(g, c, c, 15 - i * 3, i % 2 ? '#b8743a' : '#d8944a');
+      for (let i = 0; i < 3; ++i) {
+        const a = i * TAU / 3 + 0.4;
+        g.fillStyle = '#3a4048';
+        g.fillRect(c + Math.cos(a) * 17 - 2, c + Math.sin(a) * 17 - 2, 4, 4);
+      }
+      glass(g, c, c, 5, col);
+    },
+    stasis(g, S, c, lvl, col) {
+      plate(g, 4, 4, S - 8, S - 8, MID, 8);
+      hazard(g, 6, S - 10, S - 12, 4);
+      disc(g, c, c, 15, '#3a3448');
+      for (let i = 0; i < 4; ++i) light(g, i % 2 ? S - 9 : 9, i < 2 ? 9 : S - 9, 1.4, col);
+    },
     shield(g, S, c, lvl, col) {
       disc(g, c, c, S / 2 - 6, MID);
       for (let i = 0; i < 3; ++i) {
@@ -529,6 +547,13 @@
         plate(g, c, c + 3, 20, 4, '#8a94a4', 1);
         disc(g, c, c, 11, '#7a6a4a');
         hazard(g, c - 6, c - 2, 10, 4);
+      } else if (kind === 'stasis') {
+        /* an emitter fork with a violet lens */
+        plate(g, c + 2, c - 8, 16, 4, '#8a94a4', 1);
+        plate(g, c + 2, c + 4, 16, 4, '#8a94a4', 1);
+        disc(g, c, c, 10, '#5a5070');
+        glass(g, c + 16, c, 3.5, '#b48aff');
+        glass(g, c, c, 4, '#b48aff');
       } else if (kind === 'radar') {
         g.fillStyle = metal(g, c - 18, c - 6, c + 4, c + 6, '#c8d0dc');
         g.beginPath();

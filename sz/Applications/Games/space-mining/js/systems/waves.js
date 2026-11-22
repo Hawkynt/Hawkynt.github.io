@@ -1,6 +1,8 @@
 /* Attack waves on the outpost while you are in its belt: the wave timer, the next wave
    composed ahead of time against the outpost's damage mix (the Sensor Array shows it early,
-   everyone sees it in the last 25 seconds), the siren and banner, invaders arriving in clusters from one bearing, the boss
+   everyone sees it in the last 25 seconds), the siren and banner, invaders arriving in clusters
+   from one bearing or, split, from two (and where they come from for the minimap), the pace an
+   operation sets, the boss
    mothership with its cinematic, clearing a wave (reward, counters, the first-wave
    cinematic), Siege victory after the last wave, and the mothership's fall. Reads and writes
    the wave fields of G.base. */
@@ -36,9 +38,12 @@
 
   function compose() {
     const b = G.base;
-    const no = b.data.wave + 1;
     const m = b.mods || NS.calendar.NEUTRAL;
-    b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: b.data.bossDone, mul: m.waves, nano: m.nano, army: army() });
+    const cfg = NS.operation.waveCfg();
+    /* an operation's waves have the strength it was designed for, not the outpost's history */
+    const no = cfg ? cfg.from + (G.run.waves || 0) : b.data.wave + 1;
+    b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: cfg ? true : b.data.bossDone, mul: m.waves * (cfg && cfg.mul || 1), nano: cfg && cfg.nano !== undefined ? cfg.nano : m.nano, army: army(),
+      favor: cfg && cfg.favor, split: cfg && cfg.split, forceBoss: !!(cfg && cfg.boss && (G.run.waves || 0) + 1 === cfg.boss) });
     b.warned = false;
   }
 
@@ -47,7 +52,8 @@
     const b = G.base;
     if (!b) return;
     const iv = C.waveInterval(b.zone, b.mode);
-    b.waveT = b.mode === 'siege' ? (first ? 50 : iv) : first ? iv * 0.85 : iv;
+    const cfg = NS.operation.waveCfg();
+    b.waveT = cfg ? (first ? cfg.first : cfg.every) : b.mode === 'siege' ? (first ? 50 : iv) : first ? iv * 0.85 : iv;
     b.active = false;
     b.spawnQ = [];
     compose();
@@ -101,17 +107,21 @@
     b.waveNo = w.wave;
     b.spawnQ = [];
     const at = entry(w.angle);
+    const at2 = w.angle2 !== undefined ? entry(w.angle2) : null;
     b.entryX = at.x;
     b.entryY = at.y;
-    let t = 0;
+    let t = 0, n = 0;
     for (let i = 0; i < w.groups.length; ++i) {
       const g = w.groups[i];
       if (g.type === 'mothership') continue;
       for (let k = 0; k < g.n; ++k) {
-        b.spawnQ.push({ type: g.type, t: t, x: at.x + (R() - 0.5) * 260, y: at.y + (R() - 0.5) * 260 });
+        /* a split wave sends every other invader from its second bearing */
+        const p = at2 && n++ % 2 ? at2 : at;
+        b.spawnQ.push({ type: g.type, t: t, x: p.x + (R() - 0.5) * 260, y: p.y + (R() - 0.5) * 260 });
         t += g.type === 'swarmer' ? 0.08 : 0.35;
       }
     }
+    b.bearings = at2 ? [at, at2] : [at];
     if (w.boss) {
       const p = entry(w.angle + 0.5);
       const e = NS.enemies.spawn('mothership', p.x, p.y, { wave: w.wave, hpMul: 1 + b.zone.index * 0.35 + (b.mode === 'siege' && w.wave > 10 ? 0.6 : 0) });
@@ -142,7 +152,7 @@
     const b = G.base;
     const run = G.run;
     b.active = false;
-    b.data.wave = b.waveNo;
+    b.data.wave = NS.operation.waveCfg() ? b.data.wave + 1 : b.waveNo;
     const reward = Math.round(70 * b.waveNo * (0.6 + b.zone.danger * 0.4) * (b.mods ? b.mods.reward : 1) / 10) * 10;
     NS.base.wallet().credits += reward;
     if (run.mode === 'career') {
@@ -165,7 +175,8 @@
       NS.trip.finish('victory', 3);
       return;
     }
-    b.waveT = C.waveInterval(b.zone, b.mode);
+    const cfg = NS.operation.waveCfg();
+    b.waveT = cfg ? cfg.every : C.waveInterval(b.zone, b.mode);
     compose();
   }
 
@@ -198,7 +209,18 @@
     return radar || b.waveT <= WARN ? b.next : { wave: b.next.wave, hidden: true, boss: b.next.boss, count: b.next.count };
   }
 
+  /* where the next wave (or the one under way) comes from, once it is known: one point per
+     bearing, an empty list while the next one is still hidden */
+  function bearings() {
+    const b = G.base;
+    if (!b || !NS.base.hub()) return [];
+    if (b.active) return b.bearings || [];
+    const p = preview();
+    if (!p || p.hidden) return [];
+    return p.angle2 !== undefined ? [entry(p.angle), entry(p.angle2)] : [entry(p.angle)];
+  }
+
   Object.assign(NS.waves, {
-    WARN, compose, arm, update, describe, launch, cleared, bossDown, preview, TAU
+    WARN, compose, arm, update, describe, launch, cleared, bossDown, preview, bearings, TAU
   });
 })();

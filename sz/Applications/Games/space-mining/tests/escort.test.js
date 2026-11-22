@@ -240,10 +240,11 @@ NS.trip.endTrip('dock');
 
 /* ── supply freighters ── */
 const SU = NS.supply;
-check('three supply packs: iron bars, copper bars and a builder\'s mix', SU.PACKS.length === 3 && SU.PACKS.map(k => k.id).join() === 'iron,copper,mix');
+check('three supply packs: iron, copper and a builder\'s mix', SU.PACKS.length === 3 && SU.PACKS.map(k => k.id).join() === 'iron,copper,mix');
 const priceIron = SU.packPrice(G.save, G.stats, SU.PACK_BY_ID.iron);
-check('a pack costs the station\'s supply prices plus the freight fee', priceIron === SU.FREIGHT_FEE + SU.PACK_BY_ID.iron.load.bar.iron * SU.buyPrice(G.save, G.stats, 'bar', 'iron'));
-check('a load scales down with the cargo still aboard', JSON.stringify(SU.scaleLoad(SU.PACK_BY_ID.mix.load, 0.5)) === JSON.stringify({ ore: { ice: 10 }, bar: { iron: 5, copper: 4 }, comp: {} }));
+check('a pack costs the station\'s supply prices plus the freight fee', priceIron === SU.FREIGHT_FEE + SU.PACK_BY_ID.iron.load.bar.iron * SU.buyPrice(G.save, G.stats, 'bar', 'iron') +
+  SU.PACK_BY_ID.iron.load.ore.iron * SU.buyPrice(G.save, G.stats, 'ore', 'iron'));
+check('a load scales down with the cargo still aboard', JSON.stringify(SU.scaleLoad(SU.PACK_BY_ID.mix.load, 0.5)) === JSON.stringify({ ore: { iron: 12, copper: 7, ice: 10 }, bar: { iron: 2, copper: 2 }, comp: {} }));
 G.save.licenses.push('verdant');
 NS.trip.startTrip('career', 2);
 NS.cinematics.skip();
@@ -263,18 +264,18 @@ const sf = G.freighters[0];
 const hubLane = G.posts.find(q => q.id === sf.to);
 check('it flies a lane from the dock to the hub', hubLane && hubLane.hub && Math.hypot(hubLane.path[hubLane.path.length - 1].x - shub.x, hubLane.path[hubLane.path.length - 1].y - shub.y) < 150 &&
   Math.hypot(hubLane.path[0].x - G.dock.x, hubLane.path[0].y - G.dock.y) < 250);
-check('a belt with pirates lays one ambush on the way', sf.chokes && sf.chokes.length === 1 && sf.ambush);
+check('a belt with pirates may lay an ambush on the way', sf.chokes && sf.chokes.length <= 1 && !!sf.ambush === (sf.chokes.length === 1));
 G.ship.x = 300; G.ship.y = 300;
 steps(60 * 4);
 check('it undocks after a moment', sf.state === 'fly');
 sf.cargo = 0.5;
 sf.d = hubLane.len - 5;
 steps(10);
-check('what arrives goes into the outpost stock, scaled by the cargo aboard', sf.state === 'done' && G.base.data.stock.bar.iron === bars0 + 10);
+check('what arrives goes into the outpost stock, scaled by the cargo aboard', sf.state === 'done' && G.base.data.stock.bar.iron === bars0 + 4);
 check('a shipment counts toward no operation', !G.run.op);
 const store0 = G.save.store.bar.iron || 0, storeIce = G.save.store.ore.ice || 0;
 NS.trip.endTrip('dock');
-check('a shipment still on its way at the end of the trip puts its load into the warehouse', (G.save.store.bar.iron || 0) === store0 + 10 && (G.save.store.ore.ice || 0) === storeIce + 20);
+check('a shipment still on its way at the end of the trip puts its load into the warehouse', (G.save.store.bar.iron || 0) === store0 + 4 && (G.save.store.ore.ice || 0) === storeIce + 20);
 
 /* drawing */
 launch('a_three');

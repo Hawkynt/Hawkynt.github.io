@@ -56,7 +56,11 @@
     const list = E.posts(r, G.world.w, G.world.h, G.dock);
     for (let i = 0; i < list.length; ++i) G.posts.push(list[i]);
     const dests = E.resolve(cv.list.map(c => c.to), list, G.dock);
+    /* freighters for the outpost fly to its hub (or the site, while there is none) */
+    const home = cv.list.some(c => c.to === 'hub') && G.base ? hubLane(NS.base.hub() || { x: G.base.site.cx, y: G.base.site.cy }) : null;
+    if (home) home.chokes = E.chokes(home.path, cv.ambush ? cv.ambush.chokes : 0, r).map(c => ({ d: c.d, x: c.x, y: c.y, sprung: false }));
     for (let i = 0; i < dests.length; ++i) {
+      if (cv.list[i].to === 'hub' && home) dests[i] = home;
       const p = dests[i];
       if (p.path) continue;
       p.path = E.lane(G.dock, p, r);
@@ -68,11 +72,14 @@
     for (let i = 0; i < cv.list.length; ++i) {
       const c = cv.list[i], p = dests[i];
       E.at(p.path, 0, pt);
-      G.freighters.push({
+      const f = {
         alive: true, id: i + 1, name: 'Freighter ' + LETTERS[i], to: p.id, state: 'wait', wait: c.at, d: 0, x: pt.x, y: pt.y, vx: 0, vy: 0,
         angle: pt.angle, r: F.r, hp: F.hp, maxHp: F.hp, cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0,
         need: c.need ? { d: p.len * c.need.at, n: c.need.n, ore: ore, got: 0, done: false } : null,
-      });
+      };
+      /* an operation's supply freighter: it unloads at the hub and counts for the operation */
+      if (p.hub) Object.assign(f, { kind: 'supply', op: true, name: 'Supply ' + LETTERS[i], pack: c.pack, load: JSON.parse(JSON.stringify(NS.supply.PACK_BY_ID[c.pack || 'mix'].load)) });
+      G.freighters.push(f);
     }
     if (cv.wing || G.save.unlocks.indexOf('wing') >= 0) hireWing();
   }
@@ -182,7 +189,7 @@
 
   function shipments() {
     let n = 0;
-    for (let i = 0; i < G.freighters.length; ++i) if (G.freighters[i].alive && G.freighters[i].kind === 'supply') ++n;
+    for (let i = 0; i < G.freighters.length; ++i) if (G.freighters[i].alive && G.freighters[i].kind === 'supply' && !G.freighters[i].op) ++n;
     return n;
   }
 
@@ -213,12 +220,14 @@
     E.at(p.path, 0, pt);
     let n = 0;
     for (let i = 0; i < G.freighters.length; ++i) if (G.freighters[i].kind === 'supply') ++n;
+    /* pirates wait for some shipments: the more pirates the belt has, the likelier */
+    const jumped = z.pirates > 0 && R() < Math.min(0.8, z.pirates);
     G.freighters.push({
       alive: true, id: G.freighters.length + 1, kind: 'supply', name: 'Supply ' + LETTERS[n % LETTERS.length], to: 'hub', state: 'wait', wait: 3, d: 0, x: pt.x, y: pt.y,
       vx: 0, vy: 0, angle: pt.angle, r: F.r, hp: F.hp, maxHp: F.hp, cargo: 1, hitT: 0, flash: 0, exT: 0, paid: 0, need: null, pack: pack.id,
       load: JSON.parse(JSON.stringify(pack.load)),
-      chokes: z.pirates > 0 ? E.chokes(p.path, 1, R).map(c => ({ d: c.d, x: c.x, y: c.y, sprung: false })) : [],
-      ambush: z.pirates > 0 ? { kinds: { skimmer: 2, raider: 1 + Math.floor(z.danger / 2) }, size: [1 + Math.floor(z.danger / 3), 2 + Math.floor(z.danger / 3)], chokes: 1 } : null,
+      chokes: jumped ? E.chokes(p.path, 1, R).map(c => ({ d: c.d, x: c.x, y: c.y, sprung: false })) : [],
+      ambush: jumped ? { kinds: { skimmer: 2, raider: 1 + Math.floor(z.danger / 2) }, size: [1 + Math.floor(z.danger / 3), 2 + Math.floor(z.danger / 3)], chokes: 1 } : null,
     });
     NS.audio.sfx('coin', { volume: 0.5 });
     NS.screens.toast(pack.name + ' ordered - a supply freighter undocks at the station', '#7cf0ff');
@@ -229,6 +238,8 @@
   function unload(f) {
     f.state = 'done';
     f.alive = false;
+    const o = G.run.op;
+    if (f.op && o) o.delivered = (o.delivered || 0) + 1;
     const got = NS.supply.scaleLoad(f.load, f.cargo);
     const st = G.base && G.base.data.stock;
     let n = 0;
@@ -261,7 +272,7 @@
     NS.trip.banner('FREIGHTER LOST', f.name + ' broke apart', '#ff5c6c');
     for (let i = 0; i < G.pirates.length; ++i) if (G.pirates[i].latch === f) NS.pirates.unlatch(G.pirates[i]);
     const o = G.run.op;
-    if (o && f.kind !== 'supply') o.lost = (o.lost || 0) + 1;
+    if (o && (f.kind !== 'supply' || f.op)) o.lost = (o.lost || 0) + 1;
   }
 
   function deliver(f, cv) {
@@ -412,7 +423,7 @@
       }
     }
     const o = G.run.op;
-    if (o && f.kind !== 'supply') { o.waves += 1; o.ambushes = (o.ambushes || 0) + 1; }
+    if (o && (f.kind !== 'supply' || f.op)) { o.waves += 1; o.ambushes = (o.ambushes || 0) + 1; }
     NS.trip.banner('AMBUSH', 'Pirates jump ' + f.name + ' on the way to ' + p.name, '#ff5c6c');
     NS.audio.sfx('zap', { volume: 0.7, pitch: 0.4 });
   }
