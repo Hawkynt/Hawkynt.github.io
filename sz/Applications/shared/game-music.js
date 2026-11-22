@@ -161,8 +161,8 @@
   // with an intro, then groove, build-up, drop and breakdown; every pass picks
   // a new verse melody, sometimes new harmony, a longer groove, a second drop
   // melody, a half-time drop or a key change, while the hook stays, so the
-  // song is recognisable without looping (the 16-bit styles run long passes of about three
-  // minutes, every section with a verse, chords or key of its own). Gameplay intensity colours it: calm
+  // song is recognisable without looping (the 16-bit styles are composed: theme, restatement,
+  // bridge, return, build-up, chorus, coda, with two themes taking turns). Gameplay intensity colours it: calm
   // play thins the layers, at full intensity breakdowns are skipped and a
   // groove jumps into a build-up and on into the drop.
 
@@ -299,21 +299,28 @@
     const base = { prog: progA, transpose: transpose, verse: verse };
     const S = (name, bars, e0, e1, extra) => Object.assign({ name: name, bars: bars, e0: e0, e1: e1 }, base, extra || {});
     const out = [];
-    /* the long forms (the 16-bit styles): some three minutes of sections that each bring a
-       verse, a chord sequence or a key of their own before a pass ends */
+    /* the long forms (the 16-bit styles) are composed like a game piece: a theme stated and
+       stated again, a bridge on other chords, the theme's return, a build-up into the chorus,
+       a second bridge and a coda leading round. The theme stays the piece's own; passes swap
+       between it and a second theme so the music runs some five minutes before it repeats */
     const progC = R.long ? pick(progB) : null;
+    const theme = hash((R.id || '') + ':theme') % 100000 + (cycle % 2 ? 7 : 0);
     if (R.long && R.form === 'calm') {
-      out.push(S('groove', 8, 0.3, 0.35), S('groove', 8, 0.42, 0.48, { prog: progB, verse: verse + 1 }), S('break', 8, 0.2, 0.22, { prog: progB, brk: 'bells' }),
-        S('groove', 8, 0.38, 0.45, { prog: progC, verse: verse + 2 }), S('groove', 8, 0.45, 0.5, { prog: progC, verse: verse + 3, transpose: transpose + 2 }),
-        S('break', 8, 0.25, 0.25, { prog: progA, brk: 'melodic', transpose: transpose + 2 }), S('groove', 8, 0.4, 0.46, { verse: verse + 4 }),
-        S('groove', 8, 0.35, 0.4, { prog: progB, verse: verse + 5 }));
+      const T = { verse: theme };
+      out.push(S('groove', 8, 0.3, 0.36, T), S('groove', 8, 0.42, 0.48, T),
+        S('break', 8, 0.22, 0.25, { prog: progB, brk: 'bells', bridge: true }),
+        S('groove', 8, 0.4, 0.46, T),
+        S('groove', 8, 0.45, 0.5, { prog: progC, verse: theme + 3 }),
+        S('groove', 8, 0.32, 0.3, Object.assign({ coda: true }, T)));
     } else if (R.long && R.form === 'song') {
-      if (cycle === 0) out.push(S('intro', 4, 0.2, 0.35));
-      out.push(S('groove', 8, 0.5, 0.6), S('groove', 8, 0.55, 0.62, { prog: progB, verse: verse + 1 }), S('build', 4, 0.65, 0.8, { lite: true }),
-        S('drop', 8, 0.95, 1), S('break', 8, 0.3, 0.35, { prog: progB, lite: true, brk: 'melodic' }),
-        S('groove', 8, 0.5, 0.6, { prog: progC, verse: verse + 2, transpose: transpose + 2 }), S('build', 4, 0.65, 0.8, { lite: true, transpose: transpose + 2 }),
-        S('drop', 16, 0.95, 1, { dropB: true, lift: cycle % 2 === 1, transpose: transpose + 2 }), S('break', 8, 0.3, 0.35, { prog: progC, lite: true, brk: 'bells' }),
-        S('groove', 8, 0.5, 0.58, { verse: verse + 3 }));
+      const T = { verse: theme };
+      if (cycle === 0) out.push(S('intro', 4, 0.2, 0.35, T));
+      out.push(S('groove', 8, 0.5, 0.58, T), S('groove', 8, 0.56, 0.64, T),
+        S('break', 8, 0.32, 0.36, { prog: progB, lite: true, brk: 'melodic', bridge: true }),
+        S('groove', 8, 0.55, 0.62, T), S('build', 4, 0.65, 0.85, { lite: true }),
+        S('drop', 8, 0.95, 1, T), S('drop', 8, 0.97, 1, Object.assign({ dropB: true, lift: cycle % 2 === 1 }, T)),
+        S('break', 8, 0.3, 0.34, { prog: progC, lite: true, brk: 'bells', bridge: true }),
+        S('groove', 4, 0.45, 0.4, Object.assign({ lite: true, coda: true }, T)));
     } else if (R.form === 'calm') {
       out.push(S('groove', 8, 0.3, 0.35), S('groove', 8, 0.45, 0.5, { prog: progB, verse: verse + 1 }), S('groove', 8, 0.38, 0.42), S('break', 8, 0.2, 0.2, { prog: progB, brk: 'bells' }));
     } else if (R.form === 'song') {

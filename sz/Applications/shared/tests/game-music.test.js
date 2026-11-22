@@ -211,9 +211,14 @@ for (const st of ['fm16calm', 'fm16', 'fm16war']) {
   const R = M.resolve(song);
   const bars = M.planCycle(song, 1).reduce((a, sec) => a + sec.bars, 0);
   const secs = bars * 4 * 60 / R.bpm;
-  const grooves = M.planCycle(song, 1).filter(sec => sec.name === 'groove').map(sec => sec.verse + ':' + sec.transpose);
-  check(st + ' runs a pass of about three minutes before it comes round (' + Math.round(secs) + ' s)', secs >= 130 && secs <= 240);
-  check(st + ' gives every groove of a pass its own verse', new Set(grooves).size === grooves.length);
+  const plan = M.planCycle(song, 1);
+  const themed = plan.filter(sec => sec.verse === plan[0].verse).length;
+  const bridge = plan.findIndex(sec => sec.bridge);
+  check(st + ' runs a pass of two to three minutes (' + Math.round(secs) + ' s)', secs >= 110 && secs <= 240);
+  check(st + ' is composed: the theme comes back at least three times, with a bridge on other chords between', themed >= 3 && bridge > 0 &&
+    plan[bridge].prog.join() !== plan[0].prog.join() && plan.slice(bridge + 1).some(sec => sec.verse === plan[0].verse));
+  check(st + ' takes turns with a second theme from pass to pass', M.planCycle(song, 2)[0].verse !== plan[0].verse);
+  if (st !== 'fm16calm') check(st + ' builds up into its chorus', plan.some((sec, i) => sec.name === 'build' && plan[i + 1] && plan[i + 1].name === 'drop'));
 }
 check('three Mega Drive styles: calm, song and war', ['fm16calm', 'fm16', 'fm16war'].every(st => M.STYLES[st]), Object.keys(M.STYLES).join());
 const fmWaves = new Set();
