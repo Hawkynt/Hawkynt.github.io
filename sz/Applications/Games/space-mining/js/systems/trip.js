@@ -59,8 +59,9 @@
     const r = rng.makeRng(seed);
     const strategic = mode === 'career' || mode === 'siege';
     const mods = strategic ? NS.calendar.mods(new Date(), zone.index) : Object.assign({}, NS.calendar.NEUTRAL);
-    G.world.w = C.WORLD_W;
-    G.world.h = C.WORLD_H;
+    const size = NS.fuel.worldSize(zone, mode);
+    G.world.w = size.w;
+    G.world.h = size.h;
     G.dock = { x: G.world.w / 2, y: G.world.h / 2, angle: 0, lights: 0 };
     G.run = {
       mode: mode, zone: zone, zoneIndex: zone.index, seed: seed, t: 0,
@@ -77,6 +78,7 @@
     NS.mining.clear();
     NS.pirates.clear();
     NS.freighters.clear();
+    NS.refuel.clear();
     NS.units.clear();
     NS.abilities.clear();
     NS.aiBase.clear();
@@ -147,10 +149,11 @@
     B.refresh();
   }
 
+  /* a spot out toward the rim: at least `min` of the way from the dock to the edge */
   function farSpot(r, min) {
-    for (let i = 0; i < 80; ++i) {
+    for (let i = 0; i < 120; ++i) {
       const x = 400 + r() * (G.world.w - 800), y = 400 + r() * (G.world.h - 800);
-      if (Math.abs(x - G.dock.x) + Math.abs(y - G.dock.y) > min) return { x: x, y: y };
+      if (NS.fuel.reach(x, y, G.dock, G.world.w, G.world.h) >= min) return { x: x, y: y };
     }
     return { x: 500, y: 500 };
   }
@@ -159,13 +162,13 @@
   function addSpecial(kind, r, known) {
     const zone = G.run.zone, stats = G.stats;
     if (kind === 'geode') {
-      const p = farSpot(r, 1400);
+      const p = farSpot(r, 0.55);
       const ore = zone.index >= 3 ? 'voidCrystal' : zone.index >= 1 ? 'gold' : 'silver';
       const g = NS.asteroids.special('geode', p.x, p.y, ore);
       g.known = known || stats.scanner >= 3;
       return g;
     }
-    const p = farSpot(r, 1600);
+    const p = farSpot(r, 0.6);
     const d = { alive: true, kind: 'derelict', x: p.x, y: p.y, r: 86, angle: r() * TAU, hp: 260 * zone.hardness, maxHp: 260 * zone.hardness,
       known: known || stats.scanner >= 3, found: false, variant: Math.floor(r() * 2), sparkT: 0 };
     G.specials.push(d);
@@ -244,6 +247,11 @@
     if (s.fuel <= 0 && !run.towT) {
       run.towT = 6;
       banner(G.stats.jump ? 'EMERGENCY JUMP' : 'OUT OF FUEL', G.stats.jump ? 'Spinning up the jump drive...' : 'A tow is on its way - half the hold pays for it', '#ff5c6c');
+    }
+    /* fuel found while the tow is on its way (a post, the hub, a cell, a gas pocket) calls it off */
+    if (run.towT > 0 && s.fuel > 0.5 && s.hull > 0) {
+      run.towT = 0;
+      banner('TOW CALLED OFF', 'Fuel aboard again - fly on', '#ffc84a');
     }
     if (run.towT > 0) {
       run.towT -= dt;

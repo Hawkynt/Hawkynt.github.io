@@ -1,5 +1,5 @@
 /* Pure supply rules: the basics Kessler Station sells (iron, copper and ice as ore, iron and
-   copper as bars, alloy and circuits) at a markup over the market, buying them into the warehouse, the cargo manifest
+   copper as bars, alloy, circuits and fuel cells) at a markup over the market, buying them into the warehouse, the cargo manifest
    (a standing order of ore, bars and components loaded at every career launch) and its repair,
    the hold slots supplies take (ore packs as usual, a bar or component takes one), fitting a
    manifest into the hold, moving supplies between the warehouse and the hold, and the packs a
@@ -16,7 +16,7 @@
   const BUY = [
     { kind: 'ore', id: 'iron' }, { kind: 'ore', id: 'copper' }, { kind: 'ore', id: 'ice' },
     { kind: 'bar', id: 'iron' }, { kind: 'bar', id: 'copper' },
-    { kind: 'comp', id: 'alloy' }, { kind: 'comp', id: 'circuit' },
+    { kind: 'comp', id: 'alloy' }, { kind: 'comp', id: 'circuit' }, { kind: 'comp', id: 'fuelcell' },
   ];
   const MARKUP = 1.6;
   const KINDS = ['comp', 'bar', 'ore'];

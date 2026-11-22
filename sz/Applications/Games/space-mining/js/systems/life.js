@@ -1,4 +1,5 @@
-/* Life and gas in the belts: nebula gas pockets the ship scoops by flying through them,
+/* Life and gas in the belts: nebula gas pockets the ship scoops by flying through them (the
+   Ramscoop turns the gas into fuel while the tank is not full), lying mostly out toward the rim,
    drifting Bloom biomass clouds (rich, but they contaminate the hold), spore-crusted and
    crystalline living rocks that burst when disturbed (crystal ones shed swarmers), and
    dormant hive nests in hollow rocks. Contaminated cargo can carry the Bloom into an outpost.
@@ -19,9 +20,13 @@
     return true;
   }
 
-  function spot(rng, r) {
-    for (let i = 0; i < 60; ++i) {
+  /* a clear spot, likelier out toward the rim; `away` keeps it that far from the outpost site */
+  function spot(rng, r, away) {
+    const site = G.base && G.base.site;
+    for (let i = 0; i < 80; ++i) {
       const p = { x: 300 + rng() * (G.world.w - 600), y: 300 + rng() * (G.world.h - 600) };
+      if (rng() > NS.fuel.density(NS.fuel.reach(p.x, p.y, G.dock, G.world.w, G.world.h))) continue;
+      if (away && site && (p.x - site.cx) * (p.x - site.cx) + (p.y - site.cy) * (p.y - site.cy) < away * away) continue;
       if (clear(p, r)) return p;
     }
     return null;
@@ -62,7 +67,8 @@
     }
     const hives = life >= 0.25 ? 1 + Math.floor(life * 2.5) : 0;
     for (let i = 0; i < hives; ++i) {
-      const p = spot(rng, 300);
+      /* nests sleep well away from the outpost site, which lies out at the rim too */
+      const p = spot(rng, 300, 2200);
       if (p) NS.enemies.spawn('hive', p.x, p.y, { dormant: true, angle: rng() * TAU });
     }
   }
@@ -86,13 +92,22 @@
       const dx = s.x - c.x, dy = s.y - c.y;
       if (dx * dx + dy * dy > c.r * c.r * 0.8) continue;
       const sp = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
-      if (sp < 20 || !NS.mining.fits(c.res, 1)) continue;
+      /* the Ramscoop fills the tank first, then the gas goes into the hold */
+      const ram = !c.bio && NS.fuel.scoopFuel(G.stats.scoop || 0, c.res) > 0 && s.fuel < s.maxFuel - 0.01;
+      if (sp < 20 || (!ram && !NS.mining.fits(c.res, 1))) continue;
       c.acc += dt * (2 + sp / 160);
-      while (c.acc >= 1 && c.amount > 0 && NS.mining.fits(c.res, 1)) {
+      while (c.acc >= 1 && c.amount > 0) {
+        const o = ORE_BY_ID[c.res];
+        const fuel = c.bio ? 0 : NS.refuel.scoop(c.res);
+        if (!fuel && !NS.mining.fits(c.res, 1)) break;
         c.acc -= 1;
         --c.amount;
+        if (fuel) {
+          NS.fx.glow(s.x, s.y, 20, '#ffc84a', 0.25);
+          if (R() < 0.3) NS.fx.text(s.x, s.y - 40, '+' + Math.round(fuel) + ' FUEL', '#ffc84a', 13, 0.8);
+          continue;
+        }
         NS.mining.addCargo(c.res, 1);
-        const o = ORE_BY_ID[c.res];
         NS.fx.glow(s.x, s.y, 20, o.color, 0.25);
         if (R() < 0.3) NS.fx.text(s.x, s.y - 40, '+1 ' + o.name, o.glow, 13, 0.8);
       }

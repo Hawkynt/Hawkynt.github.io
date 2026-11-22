@@ -22,7 +22,7 @@
     WORLD_H: 4600,
     GRID_CELL: 192,
     MAX_PARTICLES: 2600,
-    MAX_ROCKS: 460,
+    MAX_ROCKS: 560,
     ROCK_RADII: [0, 16, 30, 52, 84],
 
     /* flight */

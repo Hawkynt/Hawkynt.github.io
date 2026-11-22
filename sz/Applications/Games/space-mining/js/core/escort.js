@@ -21,6 +21,12 @@
      a post accepts - one that docks with less voids its contract */
   const FREIGHTER = { hp: 320, speed: 48, r: 34, drain: 0.05, take: 0.15, storm: 0.5, reach: 170, slow: 140, margin: 380, min: 0.5 };
 
+  /* cruising speed in a belt of width w: the lanes grow with the belt, so freighters fly faster
+     and a run takes as long as in the classic sector */
+  function pace(w) {
+    return FREIGHTER.speed * Math.max(1, (w || 6400) / 6400);
+  }
+
   function posts(rnd, w, h, dock) {
     const m = FREIGHTER.margin;
     return POSTS.map(p => {
@@ -125,6 +131,6 @@
   }
 
   Object.assign(NS.escort, {
-    POSTS, FREIGHTER, posts, lane, length, at, distance, chokes, resolve, pay, accepted, drain
+    POSTS, FREIGHTER, pace, posts, lane, length, at, distance, chokes, resolve, pay, accepted, drain
   });
 })();

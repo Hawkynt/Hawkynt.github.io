@@ -395,6 +395,7 @@
     back(g) { g.beginPath(); g.moveTo(14, 6); g.lineTo(4, 16); g.lineTo(14, 26); g.moveTo(4, 16); g.lineTo(28, 16); g.stroke(); },
     trophy(g) { g.beginPath(); g.moveTo(9, 5); g.lineTo(23, 5); g.lineTo(21, 16); g.quadraticCurveTo(16, 21, 11, 16); g.closePath(); g.fill(); g.fillRect(14, 18, 4, 6); g.fillRect(9, 24, 14, 4); },
     coin(g) { g.beginPath(); g.arc(16, 16, 11, 0, TAU); g.fill(); },
+    gas(g) { g.beginPath(); g.arc(11, 12, 6, 0, TAU); g.arc(20, 10, 7, 0, TAU); g.arc(24, 17, 5, 0, TAU); g.fill(); g.beginPath(); g.moveTo(8, 29); g.lineTo(14, 21); g.lineTo(20, 21); g.lineTo(26, 29); g.stroke(); },
   };
 
   function iconSprite(kind, color) {

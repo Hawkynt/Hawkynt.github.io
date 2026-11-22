@@ -10,22 +10,22 @@
   const HULLS = [
     {
       id: 'prospector', name: 'Prospector', cost: 0, desc: 'A sturdy starter rig. Balanced, forgiving, slow to fill.',
-      thrust: 520, maxSpeed: 430, laser: 26, cargo: 30, fuel: 100, hull: 100, drones: 0, scale: 1,
+      thrust: 520, maxSpeed: 430, laser: 26, cargo: 30, fuel: 100, hull: 100, burn: 1, drones: 0, scale: 1,
       colors: { hull: '#c8ccd4', trim: '#ff9a3a', dark: '#3a404c', glow: '#ffb060', glass: '#7ad8ff' },
     },
     {
       id: 'wasp', name: 'Wasp', cost: 7500, desc: 'A nimble cutter with a hot laser. Small hold, quick hands.',
-      thrust: 700, maxSpeed: 540, laser: 34, cargo: 28, fuel: 120, hull: 90, drones: 0, scale: 0.95,
+      thrust: 700, maxSpeed: 540, laser: 34, cargo: 28, fuel: 120, hull: 90, burn: 0.9, drones: 0, scale: 0.95,
       colors: { hull: '#f0d040', trim: '#22262e', dark: '#4a3a10', glow: '#7ae0ff', glass: '#ff8a3a' },
     },
     {
       id: 'hauler', name: 'Hauler', cost: 19000, desc: 'A flying warehouse. Huge hold and armour, ponderous turns.',
-      thrust: 430, maxSpeed: 380, laser: 30, cargo: 72, fuel: 160, hull: 170, drones: 1, scale: 1.2,
+      thrust: 430, maxSpeed: 380, laser: 30, cargo: 72, fuel: 160, hull: 170, burn: 1.25, drones: 1, scale: 1.2,
       colors: { hull: '#6a8a6a', trim: '#e8d8a0', dark: '#2a3426', glow: '#ffd070', glass: '#a0ffd0' },
     },
     {
       id: 'leviathan', name: 'Leviathan', cost: 85000, desc: 'A deep-belt mining cruiser: twin lasers, drone racks, a fortress hull.',
-      thrust: 560, maxSpeed: 470, laser: 48, cargo: 110, fuel: 220, hull: 260, drones: 1, scale: 1.35,
+      thrust: 560, maxSpeed: 470, laser: 48, cargo: 110, fuel: 220, hull: 260, burn: 1.45, drones: 1, scale: 1.35,
       colors: { hull: '#5a4a8a', trim: '#e8c8ff', dark: '#1e1834', glow: '#c88aff', glass: '#ffd25a' },
     },
   ];
@@ -37,7 +37,7 @@
   const UPGRADES = [
     { id: 'laser', name: 'Mining Laser', icon: 'laser', stat: 'laser', per: 0.18, base: 260, growth: 1.55, max: 10, fmt: '+{p}% laser power' },
     { id: 'cargo', name: 'Cargo Racks', icon: 'cargo', stat: 'cargo', per: 0.14, base: 220, growth: 1.55, max: 10, fmt: '+{p}% hold space' },
-    { id: 'fuel', name: 'Fuel Tanks', icon: 'fuel', stat: 'fuel', per: 0.16, base: 160, growth: 1.5, max: 10, fmt: '+{p}% fuel' },
+    { id: 'fuel', name: 'Fuel Tanks', icon: 'fuel', stat: 'fuel', per: 0.08, base: 160, growth: 1.5, max: 10, fmt: '+{p}% fuel' },
     { id: 'hull', name: 'Hull Plating', icon: 'hull', stat: 'hull', per: 0.16, base: 220, growth: 1.55, max: 10, fmt: '+{p}% hull' },
     { id: 'thrust', name: 'Thrusters', icon: 'engine', stat: 'thrust', per: 0.07, base: 200, growth: 1.55, max: 10, fmt: '+{p}% thrust and speed' },
     { id: 'tractor', name: 'Tractor Beam', icon: 'tractor', stat: 'tractor', per: 0.12, base: 180, growth: 1.5, max: 10, fmt: '+{p}% tractor reach and pull' },

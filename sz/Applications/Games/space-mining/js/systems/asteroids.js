@@ -1,4 +1,5 @@
-/* Asteroids: the seeded belt layout of a zone (noise-banded density, clear space round the dock,
+/* Asteroids: the seeded belt layout of a zone (noise-banded density, thin and poor near the dock
+   and thick and rich at the rim, clear space round the dock,
    ore picked by the zone mix), rock hit points and ore richness, damage with heat and fault
    cracks, fracture into smaller rocks plus ore nuggets with chunks, dust and shockwaves,
    volatile rocks that explode in chains, drift, and quiet respawning off screen.
@@ -82,19 +83,20 @@
     const w = G.world.w, h = G.world.h;
     const dock = G.dock;
     G.rocks.length = 0;
-    const target = Math.round(300 * zone.density);
+    const target = NS.fuel.rockTarget(zone, w, h, C.MAX_ROCKS);
     let tries = 0;
     while (G.rocks.length < target && tries < target * 30) {
       ++tries;
       const x = 120 + rng() * (w - 240), y = 120 + rng() * (h - 240);
       const dd = (x - dock.x) * (x - dock.x) + (y - dock.y) * (y - dock.y);
       if (dd < 420 * 420 || NS.base.blocks(x, y, 120)) continue;
-      if (rng() > density(noise, x, y, w, h)) continue;
+      const out = NS.fuel.reach(x, y, dock, w, h);
+      if (rng() > density(noise, x, y, w, h) * NS.fuel.density(out)) continue;
       const roll = rng();
       const tier = roll < 0.26 ? 1 : roll < 0.6 ? 2 : roll < 0.88 ? 3 : 4;
       const bias = inRadiation(x, y) ? 'uranium' : null;
-      const ore = pickOre(zone, rng, stats.rare, bias);
-      const rock = makeRock(x, y, tier, ore, 0.45 + rng() * 0.55, rng);
+      const ore = pickOre(zone, rng, stats.rare + NS.fuel.rareBoost(out), bias);
+      const rock = makeRock(x, y, tier, ore, (0.45 + rng() * 0.55) * NS.fuel.richness(out), rng);
       if (overlaps(rock)) continue;
       const drift = G.run.mods ? G.run.mods.drift : 1;
       rock.vx *= drift;
@@ -315,8 +317,11 @@
     const a = R() * TAU, d = 1100 + R() * 900;
     const x = Math.max(200, Math.min(G.world.w - 200, s.x + Math.cos(a) * d));
     const y = Math.max(200, Math.min(G.world.h - 200, s.y + Math.sin(a) * d));
+    /* the belt keeps its shape: rocks near the dock grow back seldom and poor */
+    const out = NS.fuel.reach(x, y, G.dock, G.world.w, G.world.h);
+    if (R() > NS.fuel.density(out)) return;
     const tier = R() < 0.6 ? 3 : 2 + (R() < 0.3 ? 2 : 0);
-    const rock = makeRock(x, y, Math.min(4, tier), pickOre(run.zone, R, stats.rare, null), 0.5 + R() * 0.5, R);
+    const rock = makeRock(x, y, Math.min(4, tier), pickOre(run.zone, R, stats.rare + NS.fuel.rareBoost(out), null), (0.5 + R() * 0.5) * NS.fuel.richness(out), R);
     if (overlaps(rock) || NS.base.blocks(x, y, 120)) return;
     rock.fade = 0;
     G.rocks.push(rock);

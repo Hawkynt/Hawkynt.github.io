@@ -1,6 +1,6 @@
 /* Static tech tree data on two pages: the ship (Drilling, Engines, Logistics, Automation,
    Defense, Science) and the colony (Construction, Fortification, Fleet, Biosecurity, Industry),
-   52 nodes bought with research data, with level costs, prerequisites, grid placement and the
+   56 nodes bought with research data, with level costs, prerequisites, grid placement and the
    stat each level adds (see rules.computeStats). Pure data. */
 ;(function() {
   'use strict';
@@ -37,10 +37,12 @@
 
     /* Engines */
     { id: 'e_thrust', branch: 'engines', name: 'Ion Injectors', icon: 'engine', row: 0, lane: 0, stat: 'thrustMul', per: 0.08, fmt: '+{p}% thrust and top speed', costs: [2, 3, 5, 8, 12], req: [] },
-    { id: 'e_eff', branch: 'engines', name: 'Lean Burn', icon: 'fuel', row: 0, lane: 1, stat: 'fuelEff', per: 0.1, fmt: '-{p}% fuel burned', costs: [2, 4, 7, 11], req: [] },
+    { id: 'e_eff', branch: 'engines', name: 'Lean Burn', icon: 'fuel', row: 0, lane: 1, stat: 'fuelEff', per: 0.06, fmt: '-{p}% fuel burned', costs: [2, 4, 7, 11], req: [] },
     { id: 'e_boost', branch: 'engines', name: 'Afterburner', icon: 'flame', row: 1, lane: 0, stat: 'boost', per: 1, fmt: 'Shift boosts; level {v} burns cooler', costs: [3, 6, 10], req: [['e_thrust', 1]] },
     { id: 'e_grip', branch: 'engines', name: 'Vector Vanes', icon: 'vector', row: 1, lane: 1, stat: 'grip', per: 0.25, fmt: '+{p}% braking and grip', costs: [3, 5, 9], req: [['e_eff', 1]] },
     { id: 'e_warp', branch: 'engines', name: 'Emergency Jump', icon: 'warp', row: 2, lane: 0.5, stat: 'jump', per: 1, fmt: 'Out of fuel or hull, jump home with 85% of the hold', costs: [14], req: [['e_boost', 1], ['e_grip', 1]] },
+    { id: 'e_scoop', branch: 'engines', name: 'Ramscoop', icon: 'gas', row: 3, lane: 0, stat: 'scoop', per: 1, fmt: 'Gas pockets refuel the ship: level 1 hydrogen, 2 helium-3, 3 xenon', costs: [4, 8, 13], req: [['e_grip', 1]] },
+    { id: 'e_cells', branch: 'engines', name: 'Cell Injector', icon: 'fuel', row: 3, lane: 1, stat: 'cells', per: 0.5, fmt: '+{p}% fuel from every fuel cell', costs: [3, 7], req: [['e_eff', 1]] },
 
     /* Logistics */
     { id: 'l_hold', branch: 'logistics', name: 'Bulk Holds', icon: 'cargo', row: 0, lane: 0, stat: 'cargoMul', per: 0.1, fmt: '+{p}% hold space', costs: [2, 3, 5, 8, 12], req: [] },

@@ -334,7 +334,7 @@
     if (f.state === 'need') { handover(f); return; }
     const storm = G.storm && G.storm.phase === 'active';
     const x0 = f.x, y0 = f.y;
-    f.d += F.speed * (storm ? F.storm : 1) * dt;
+    f.d += E.pace(G.world.w) * (storm ? F.storm : 1) * dt;
     if (f.need && !f.need.done && f.d >= f.need.d) {
       f.d = f.need.d;
       f.state = 'need';

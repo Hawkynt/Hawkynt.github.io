@@ -61,6 +61,8 @@
     }
     for (const kind of ['bar', 'comp'])
       for (const id in f[kind]) {
+        /* fuel cells stay aboard for the tank */
+        if (kind === 'comp' && id === 'fuelcell') continue;
         const n = NS.supply.move(f, d.stock, kind, id, Math.min(f[kind][id], NS.colony.stockRoom(d, G.stats, kind, id)));
         for (let k = 0; k < Math.min(3, n); ++k) NS.base.pod(s.x, s.y, h.x, h.y, color(kind, id), 0.4 + k * 0.12);
         units += n;

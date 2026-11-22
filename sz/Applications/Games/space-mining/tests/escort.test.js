@@ -88,7 +88,8 @@ steps(60 * 7);
 check('it undocks on schedule', f.state === 'fly' && f.d > 0);
 const d0 = f.d;
 steps(60);
-check('it follows its lane at its pace', Math.abs(f.d - d0 - E.FREIGHTER.speed) < 2 && E.distance(p.path, f.x, f.y) < 1);
+check('freighters cruise faster in the wider belts, so a run takes as long', E.pace(6400) === E.FREIGHTER.speed && Math.abs(E.pace(9200) / E.pace(6400) - 9200 / 6400) < 1e-9);
+check('it follows its lane at its pace', Math.abs(f.d - d0 - E.pace(G.world.w)) < 2 && E.distance(p.path, f.x, f.y) < 1);
 /* fly it to the choke */
 f.d = p.chokes[0].d - 300;
 steps(60 * 2);
@@ -199,7 +200,7 @@ G.storm.phase = 'active';
 G.storm.t = 100;
 const ds = fr[0].d;
 steps(60);
-check('a storm halves a freighter\'s speed', Math.abs(fr[0].d - ds - E.FREIGHTER.speed * E.FREIGHTER.storm) < 2);
+check('a storm halves a freighter\'s speed', Math.abs(fr[0].d - ds - E.pace(G.world.w) * E.FREIGHTER.storm) < 2);
 NS.trip.endTrip('dock');
 
 /* several directions */

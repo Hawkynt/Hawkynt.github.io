@@ -66,10 +66,10 @@
       const acc = st.thrust * (s.boosting ? BOOST_MUL : 1);
       s.vx += mx * acc * dt;
       s.vy += my * acc * dt;
-      const burn = (s.boosting ? 3.6 - st.boost * 0.5 : 1) * Math.min(1, ml) * st.fuelEff;
-      s.fuel = Math.max(0, s.fuel - burn * dt);
+      const zone = G.run && G.run.zone;
+      s.fuel = Math.max(0, s.fuel - NS.fuel.rate(st, zone, Math.min(1, ml), NS.refuel.fill(), s.boosting) * dt);
     }
-    s.fuel = Math.max(0, s.fuel - 0.06 * dt * st.fuelEff);
+    s.fuel = Math.max(0, s.fuel - NS.fuel.idle(st, G.run && G.run.zone) * dt);
     /* drag: space is slippery, vanes add grip, letting go brakes harder */
     const drag = (want ? SHIP_DRAG * 0.4 : SHIP_DRAG * 1.6) * st.grip;
     const k = Math.max(0, 1 - drag * dt);

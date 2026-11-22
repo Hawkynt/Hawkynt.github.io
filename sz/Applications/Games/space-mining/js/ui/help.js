@@ -96,7 +96,7 @@
       'Fly like a ship: W (or Up) thrusts along the nose, S brakes and backs off, A/D (or Left/Right) turn - or hold the right mouse button to thrust toward the cursor. Space has inertia: let go to drift, the engines brake gently.',
       'The laser fires along the nose and bends up to about 35 degrees to either side: aim with the mouse and hold the left button, or hold Space to lock onto the ore closest to the nose - the ship only turns slowly toward a lock. The laser heats a rock until it cracks into smaller rocks and ore nuggets; the smallest crumble completely.',
       'The tractor beam pulls nearby nuggets into the hold. Shift boosts once you have researched the Afterburner.',
-      'Fly slowly into the DOCK ring to bank the hold at the station and refuel - then fly on. Return home (Enter in the ring, or the pause menu) ends the trip. Drones with no room in the hold haul to the station themselves.',
+      'Fly slowly into the DOCK ring to bank the hold at the station and refuel - then fly on. The belts grow and burn more fuel the farther from home; the rich rocks lie out at the rim. Return home (Enter in the ring, or the pause menu) ends the trip. Drones with no room in the hold haul to the station themselves.',
     ], 90, 140, 520);
   }
 
@@ -147,7 +147,7 @@
       ['Pirates', 'Skimmers steal ore from your hold, raiders and gunships shoot. Your laser cuts hulls too.', (x, y) => {
         K.blitRot(ctx, PA.pirate('raider'), x, y, -0.4, 1.2);
       }],
-      ['Fuel and hull', 'Out of fuel, a tow takes half your hold. Lose the hull and the hold is gone.', (x, y) => {
+      ['Fuel and hull', 'Turn back at the red bingo mark. Refuel at the dock, trading posts, your hub, fuel cells or gas (Ramscoop). Dry, a tow takes half the hold.', (x, y) => {
         kit.icon('fuel', x - 14, y, 30, UI.fuel);
         kit.icon('hull', x + 18, y, 30, UI.hull);
       }],

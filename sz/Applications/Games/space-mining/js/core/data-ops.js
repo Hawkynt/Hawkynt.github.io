@@ -81,7 +81,7 @@
     { id: 'k_charter', zone: 'kessler', name: 'Kessler Charter', mood: 'W', time: 480, capstone: true,
       brief: 'The charter board wants proof before it licenses the Amber Reach: bank ore worth 3,000 credits in eight minutes - while claim jumpers raid the lanes.',
       goals: [{ type: 'value', n: 3000, text: 'Bank ore worth credits' }],
-      threat: { kinds: { skimmer: 3, raider: 2 }, first: 40, every: 38, size: [2, 4], cap: 8 },
+      threat: { kinds: { skimmer: 3, raider: 2 }, first: 35, every: 30, size: [2, 4], cap: 8 },
       beats: [[0, 'build'], [110, 'peak'], [190, 'relief'], [250, 'surprise'], [320, 'peak'], [420, 'relief']],
       reward: { cr: 1500, rd: 6 } },
 

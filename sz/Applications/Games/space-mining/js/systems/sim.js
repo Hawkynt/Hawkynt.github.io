@@ -64,6 +64,7 @@
     NS.freighters.update(s);
     NS.operation.update(s);
     NS.life.update(s);
+    NS.refuel.update(s);
     NS.base.update(s);
     NS.units.update(s);
     NS.abilities.update(s);

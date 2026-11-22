@@ -181,7 +181,7 @@ check('Gold Rush sells the drone basket on landing without warehouse deposits',
   const pIron = SP.buyPrice(sv, plain, 'ore', 'iron');
   check('the station sells basics at a markup over the market', pIron >= Math.ceil(NS.economy.price(sv, plain, 'iron') * 1.5) &&
     SP.buyPrice(sv, plain, 'bar', 'copper') > SP.buyPrice(sv, plain, 'ore', 'copper') * 3);
-  check('only iron, copper and ice, alloy and circuits are on sale', SP.BUY.every(b => ['iron', 'copper', 'ice', 'alloy', 'circuit'].indexOf(b.id) >= 0) && SP.buy(sv, plain, 'ore', 'gold', 5) === 0);
+  check('only iron, copper and ice, alloy, circuits and fuel cells are on sale', SP.BUY.every(b => ['iron', 'copper', 'ice', 'alloy', 'circuit', 'fuelcell'].indexOf(b.id) >= 0) && SP.buy(sv, plain, 'ore', 'gold', 5) === 0);
   check('components cost their value plus the markup', SP.buyPrice(sv, plain, 'comp', 'alloy') === Math.ceil(NS.colonyData.COMP_BY_ID.alloy.value * SP.MARKUP));
   const c0 = sv.credits, i0 = sv.store.ore.iron || 0;
   check('buying fills the warehouse and costs credits', SP.buy(sv, plain, 'ore', 'iron', 50) === 50 && sv.store.ore.iron === i0 + 50 && sv.credits === c0 - 50 * pIron);

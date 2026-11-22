@@ -47,7 +47,7 @@
      unlock: lifetime credits earned before the licence can be bought, and its fee */
   const ZONES = [
     {
-      id: 'kessler', name: 'Kessler Drift', sub: 'The home belt', danger: 1, hardness: 1,
+      id: 'kessler', name: 'Kessler Drift', sub: 'The home belt', danger: 1, hardness: 1, size: [8000, 5600], burn: 1,
       ores: { iron: 6, ice: 4, copper: 3, carbon: 3, nickel: 2.5, silver: 0.8 },
       gases: { hydrogen: 2 }, life: 0, nano: 0,
       hazards: { volatile: 0.03 }, pirates: 0, density: 1,
@@ -62,7 +62,7 @@
       },
     },
     {
-      id: 'amber', name: 'Amber Reach', sub: 'Dust of a dead sun', danger: 2, hardness: 1.25,
+      id: 'amber', name: 'Amber Reach', sub: 'Dust of a dead sun', danger: 2, hardness: 1.25, size: [9200, 6400], burn: 1.35,
       ores: { copper: 4, silver: 3.5, gold: 2.5, titanium: 2, iron: 2, quartz: 1.5, nickel: 1, ice: 1 },
       gases: { hydrogen: 2, helium3: 0.6 }, life: 0.15, nano: 0,
       hazards: { volatile: 0.06, storm: 1 }, pirates: 0.25, density: 1.05,
@@ -77,7 +77,7 @@
       },
     },
     {
-      id: 'verdant', name: 'Verdant Shoals', sub: 'A glowing graveyard', danger: 3, hardness: 1.6,
+      id: 'verdant', name: 'Verdant Shoals', sub: 'A glowing graveyard', danger: 3, hardness: 1.6, size: [10400, 7200], burn: 1.55,
       ores: { cobalt: 3.5, gold: 2.5, uranium: 2.2, silver: 2, verdite: 1.6, titanium: 1.5, iron: 1 },
       gases: { helium3: 2, hydrogen: 1 }, life: 0.45, nano: 0.1,
       hazards: { volatile: 0.07, radiation: 4 }, pirates: 0.55, density: 1.1,
@@ -92,7 +92,7 @@
       },
     },
     {
-      id: 'crimson', name: 'Crimson Maw', sub: 'Around the hungry dark', danger: 4, hardness: 2.1,
+      id: 'crimson', name: 'Crimson Maw', sub: 'Around the hungry dark', danger: 4, hardness: 2.1, size: [11600, 8000], burn: 1.8,
       ores: { platinum: 3, cobalt: 2, uranium: 1.6, iridium: 1.5, gold: 1.4, titanium: 1, exotic: 0.5 },
       gases: { xenon: 1.5, helium3: 1 }, life: 0.3, nano: 0.35,
       hazards: { volatile: 0.09, gravity: 3, storm: 0.7 }, pirates: 0.8, density: 1.15,
@@ -107,7 +107,7 @@
       },
     },
     {
-      id: 'void', name: 'Void Crown', sub: 'Where the crystal sings', danger: 5, hardness: 2.8,
+      id: 'void', name: 'Void Crown', sub: 'Where the crystal sings', danger: 5, hardness: 2.8, size: [12800, 8800], burn: 2.05,
       ores: { iridium: 2.6, platinum: 2.2, voidCrystal: 1.2, exotic: 1, uranium: 1, cobalt: 1, verdite: 0.6 },
       gases: { xenon: 2 }, life: 0.55, nano: 0.6,
       hazards: { volatile: 0.1, radiation: 2, gravity: 2, storm: 1 }, pirates: 1, density: 1.2,

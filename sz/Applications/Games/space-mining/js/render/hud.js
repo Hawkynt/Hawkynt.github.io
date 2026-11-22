@@ -1,5 +1,5 @@
 /* The flight HUD in view-plane coordinates, pinned to the visible edges at any aspect: hull,
-   shield and fuel gauges, the segmented ore hold with its value, the belt name and mode clock,
+   shield and fuel gauges (with the bingo mark), the segmented ore hold with its value, the belt name and mode clock,
    the scanner radar (rocks by ore, pirates, hazards, wrecks, the dock), the off-screen dock
    arrow, ability slots, hazard warnings, banners, the tow countdown, first-trip hints, the
    aim reticle, plus the screen flash, toasts and achievement pop-ups shared by every screen. */
@@ -58,6 +58,13 @@
       yy += 20;
     }
     gauge(x, yy, 190, 'FUEL', s.fuel, s.maxFuel, UI.fuel, 'fuel', true);
+    /* the bingo mark: the fuel it takes to reach the nearest place to refuel */
+    if (G.run && G.run.mode !== 'rush') {
+      const k = Math.min(1, NS.refuel.home().cost / s.maxFuel);
+      const bx = x + 24 + 190 * k;
+      ctx.fillStyle = NS.refuel.bingo() && Math.sin(G.time * 10) > 0 ? '#ffffff' : '#ff5c6c';
+      ctx.fillRect(bx - 1, yy - 2, 2, 16);
+    }
   }
 
   /* the hold: one segment per ore, in value order, with the hold's worth */
@@ -289,7 +296,8 @@
     if (run.inWell > 0.35) warn('GRAVITY WELL  -  burn away', '#ff9a6a');
     if (G.storm && G.storm.phase === 'warn') warn('SOLAR STORM IN ' + Math.ceil(G.storm.t), UI.warn);
     if (G.storm && G.storm.phase === 'active') warn('SOLAR STORM', '#ffd08a');
-    if (s.fuel > 0 && s.fuel / s.maxFuel < 0.2) warn('FUEL LOW  -  head for the dock', UI.fuel);
+    if (s.fuel > 0 && NS.refuel.bingo()) warn('BINGO FUEL  -  turn for ' + NS.refuel.home().name, UI.fuel);
+    else if (s.fuel > 0 && s.fuel / s.maxFuel < 0.2) warn('FUEL LOW  -  head for the dock', UI.fuel);
     if (run.towT > 0) warn((G.stats.jump ? 'JUMPING HOME IN ' : 'TOW ARRIVES IN ') + Math.ceil(run.towT), UI.bad);
   }
 
