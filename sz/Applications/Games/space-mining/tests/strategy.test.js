@@ -2,7 +2,7 @@
 
 /* The strategy layer in the running game, played by a bot through the command layer: unload
    the hold at an outpost, found it, build an economy and defences, raise a fleet, move it in
-   formation, survive attack waves, an outbreak and a Lattice hijack, autosave and continue,
+   formation, survive attack waves (sending the fleet at siege ships, brood carriers and frigates shelling the outpost), an outbreak and a Lattice hijack, autosave and continue,
    a round of Siege, and the frame cost of a big battle. */
 const H = require('./harness');
 /* a fixed clock seeds the cosmetic randomness too, so every run plays the same battle */
@@ -159,13 +159,22 @@ check('escorts form up on the ship', alive.every(u => u.orders[0] && u.orders[0]
 P.order('return', 0, 0, null, false);
 steps(60 * 12);
 
-/* waves */
+/* waves: waves two to six, however many came while building (siege ships join from the seventh) */
+if (!G.base.active && G.base.data.wave > 1) { G.base.data.wave = 1; G.base.next = null; }
 let cleared = 0;
 const wave0 = G.base.data.wave;
 for (let w = 0; w < 5; ++w) {
   G.base.waveT = 1;
   steps(60 * 2);
-  for (let t = 0; t < 150 && G.base.active; ++t) { steps(60, 30); skipCine(); }
+  for (let t = 0; t < 150 && G.base.active; ++t) {
+    /* siege ships and brood carriers outrange the turrets, frigates shell from close by: the fleet goes for them, then comes home */
+    const far = G.enemies.find(e => e.alive && (e.type === 'carrier' || e.type === 'siege' || (e.type === 'frigate' && Math.hypot(e.x - hub.x, e.y - hub.y) < 800)));
+    const fleet = G.units.filter(u => u.alive && u.side === 'player' && u.def.dmg > 0);
+    if (far) P.order('attack', far.x, far.y, far, false, fleet);
+    else if (fleet.some(u => u.orders[0] && u.orders[0].kind === 'attack')) P.order('return', 0, 0, null, false, fleet);
+    steps(60, 30);
+    skipCine();
+  }
   if (!G.base.active && G.base.data.wave > wave0 + w) ++cleared;
   skipCine();
 }
