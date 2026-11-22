@@ -106,6 +106,25 @@
       kit.text('NEWS  ' + save.news, 40, 96, 13, UI.warn, { weight: 'bold' });
       ctx.globalAlpha = 1;
     }
+    nextOp(save);
+  }
+
+  /* the next operation, plainly: its belt, name and first goal, and a button straight to it */
+  function nextOp(save) {
+    const op = NS.ops.nextOp(save);
+    if (!op) return;
+    const z = NS.ores.ZONE_BY_ID[op.zone], mood = NS.opsData.MOODS[op.mood];
+    const x = 40, y = 122, w = 520;
+    kit.panel(x, y, w, 58, { alpha: 0.85, radius: 8, brackets: false, accent: mood.color });
+    kit.text('NEXT OPERATION', x + 14, y + 16, 11, mood.color, { weight: 'bold' });
+    kit.fitText(z.name + '  -  ' + op.name, x + 14, y + 36, w - 160, 16, { weight: 'bold', color: '#ffffff' });
+    kit.fitText(op.goals.map(g => g.text + ' ' + kit.group(g.n)).join('  -  '), x + 140, y + 16, w - 290, 11, { color: UI.textDim });
+    W.button('next_op', 'Fly it', x + w - 120, y + 12, 106, 34, { accent: mood.color, icon: 'launch', action: () => {
+      G.ui.mapSel = z.index;
+      G.ui.mapTab = 'ops';
+      G.ui.opSel = op.id;
+      scr.setScreen('map');
+    } });
   }
 
   function tabs() {

@@ -126,7 +126,7 @@
     if (save.resume && NS.resume.valid(save.resume))
       items.push({ id: 'continue', label: 'Continue', sub: MODES[save.resume.mode].name + ' - ' + ZONES[save.resume.zone].name, icon: 'launch', accent: UI.good, action: () => scr.continueRun() });
     items.push(
-      { id: 'career', label: MODES.career.name, sub: save.stats.trips ? 'Continue - ' + kit.group(save.credits) + ' credits' : MODES.career.desc, icon: 'station', accent: MODES.career.color, action: () => scr.career() },
+      { id: 'career', label: MODES.career.name, sub: save.stats.trips ? (NS.ops.nextOp(save) ? 'Next: ' + NS.ops.nextOp(save).name + '  -  ' : 'Continue - ') + kit.group(save.credits) + ' credits' : MODES.career.desc, icon: 'station', accent: MODES.career.color, action: () => scr.career() },
       { id: 'rush', label: MODES.rush.name, sub: MODES.rush.desc, icon: 'clock', accent: MODES.rush.color, action: () => scr.launch('rush', bestZone()) },
       { id: 'daily', label: MODES.daily.name, sub: MODES.daily.desc, icon: 'calendar', accent: MODES.daily.color, action: () => scr.launch('daily', 0) },
       { id: 'siege', label: MODES.siege.name, sub: MODES.siege.desc, icon: 'turret', accent: MODES.siege.color, action: () => scr.launch('siege', siegeZone()) },

@@ -14,7 +14,7 @@ const { ZONES, ORE_BY_ID } = NS.ores;
 
 /* the data */
 check('every operation names a real belt, mood and goal type', OPS.every(o => NS.ores.ZONE_BY_ID[o.zone] && MOODS[o.mood] && o.goals.length &&
-  o.goals.every(g => ['bank', 'ore', 'value', 'stat', 'record', 'deliver', 'waves', 'outpost', 'build', 'clean'].indexOf(g.type) >= 0)));
+  o.goals.every(g => ['bank', 'ore', 'value', 'stat', 'record', 'deliver', 'waves', 'outpost', 'build', 'clean', 'raze', 'scout', 'repel'].indexOf(g.type) >= 0)));
 check('the Kessler Drift has six operations ending in its capstone', O.zoneOps('kessler').length === 6 && O.capstoneOf('kessler').id === 'k_charter' &&
   O.zoneOps('kessler').filter(o => o.capstone).length === 1);
 check('every threat names real pirates', OPS.every(o => !o.threat || Object.keys(o.threat.kinds).every(k => NS.ships.PIRATES[k])));
@@ -50,8 +50,22 @@ check('after the Long Haul it can be bought', O.licenceReady(s, 2) && R.zoneStat
 check('the Crimson licence waits for the Verdant capstone', (s.licenses.push('verdant'), !O.licenceReady(s, 3) && R.zoneState(s, 3) === 'locked'));
 for (const o of O.zoneOps('verdant')) O.finish(s, o, true, 60);
 check('after the Mothership it can be bought', O.licenceReady(s, 3) && R.zoneState(s, 3) === 'buyable');
-check('a belt without operations yet does not hold the next licence back', (s.licenses.push('crimson'), O.licenceReady(s, 4) && R.zoneState(s, 4) === 'buyable'));
+check('the Void licence waits for the Crimson capstone', (s.licenses.push('crimson'), !O.licenceReady(s, 4) && R.zoneState(s, 4) === 'locked'));
+for (const o of O.zoneOps('crimson')) O.finish(s, o, true, 60);
+check('after the Citadel it can be bought', O.licenceReady(s, 4) && R.zoneState(s, 4) === 'buyable');
 check('earnings still count', (s.stats.earned = 0, R.zoneState(s, 4) === 'locked'));
+
+/* the next operation */
+{
+  const n = R.freshSave();
+  check('a new pilot\'s next operation is First Haul', O.nextOp(n).id === 'k_haul');
+  O.finish(n, OP_BY_ID.k_haul, true, 50);
+  check('then the next in the chain', O.nextOp(n).id === 'k_copper');
+  for (const o of O.zoneOps('kessler')) O.finish(n, o, true, 50);
+  check('with the belt done and no new licence there is none', O.nextOp(n) === null);
+  n.licenses.push('amber');
+  check('a new licence brings its first operation', O.nextOp(n).id === 'a_first');
+}
 
 /* progress */
 const jump = OP_BY_ID.k_jumpers, haul = OP_BY_ID.k_haul, charter = OP_BY_ID.k_charter, drones = OP_BY_ID.k_drones;

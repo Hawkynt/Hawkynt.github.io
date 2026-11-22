@@ -50,6 +50,17 @@
     return k <= 0 || done(save, list[k - 1].id) ? 'open' : 'locked';
   }
 
+  /* the operation to fly next: the first open one in the licensed belts, the newest belt first;
+     null when every licensed belt's chain is done */
+  function nextOp(save) {
+    for (let i = ZONES.length - 1; i >= 0; --i) {
+      if (save.licenses.indexOf(ZONES[i].id) < 0) continue;
+      const list = zoneOps(ZONES[i].id);
+      for (let k = 0; k < list.length; ++k) if (state(save, list[k].id) === 'open') return list[k];
+    }
+    return null;
+  }
+
   /* The licence of belt `zoneIndex` needs the capstone of the belt before it, once that has one */
   function licenceReady(save, zoneIndex) {
     const prev = ZONES[zoneIndex - 1];
@@ -62,7 +73,7 @@
      m: { units (banked), banked: { ore: units }, stats (career statistics now), base (at the start),
           delivered (freighters docked at their post), waves (repelled this trip), outpost (a
           finished hub in the belt), built (finished buildings by type), clean (an outbreak the
-          operation started is over) } */
+          operation started is over), razed (Syndicate kills by type), scouted, repelled } */
   function measure(g, m) {
     if (g.type === 'bank') return m.units || 0;
     if (g.type === 'ore') return (m.banked && m.banked[g.ore]) || 0;
@@ -76,6 +87,13 @@
     if (g.type === 'waves') return m.waves || 0;
     if (g.type === 'outpost') return m.outpost ? 1 : 0;
     if (g.type === 'clean') return m.clean ? 1 : 0;
+    if (g.type === 'scout') return m.scouted ? 1 : 0;
+    if (g.type === 'repel') return m.repelled || 0;
+    if (g.type === 'raze') {
+      let n = 0;
+      for (let i = 0; i < g.of.length; ++i) n += (m.razed && m.razed[g.of[i]]) || 0;
+      return n;
+    }
     if (g.type === 'build') {
       let n = 0;
       for (const t in m.built || {}) {
@@ -153,6 +171,6 @@
   }
 
   Object.assign(NS.ops, {
-    MOODS, LOOPS, zoneOps, capstoneOf, allows, loopOf, done, state, licenceReady, progress, complete, snapshot, finish, moodsOk, repair
+    MOODS, LOOPS, zoneOps, capstoneOf, allows, loopOf, done, state, nextOp, licenceReady, progress, complete, snapshot, finish, moodsOk, repair
   });
 })();
