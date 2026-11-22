@@ -120,6 +120,7 @@
       case 'KeyE': if (c.sel.length && G.ship) P.order('escort', 0, 0, G.ship, false); return true;
       case 'KeyR': if (c.sel.length) P.order('return', 0, 0, null, false); return true;
       case 'KeyG': if (c.sel.length) P.hold(); return true;
+      case 'KeyT': castAll(NS.camera.toWorld(G.input.mouseX, G.input.mouseY, {})); return true;
       case 'KeyB': NS.buildMenu.cycle(e.shiftKey ? -1 : 1); return true;
       case 'KeyU': if (c.selB) { const r = NS.base.upgrade(c.selB); if (!r.ok) P.say(r.reason, '#ff6a5c'); } return true;
       case 'Delete': case 'Backspace': if (c.selB && c.selB.type !== 'hub') { NS.base.demolish(c.selB); c.selB = null; } return true;
@@ -151,6 +152,7 @@
       else if (P.recallGroup(n)) P.say('Group ' + n + ' - G escort, R return, E attack where you aim');
       return true;
     }
+    if (code === 'KeyT') return castAll({ x: G.input.aimWX, y: G.input.aimWY }) >= 0;
     if (code === 'KeyG') return P.escortShip();
     if (code === 'KeyR') return P.returnHome();
     if (code === 'KeyE') {
@@ -158,6 +160,15 @@
       return true;
     }
     return false;
+  }
+
+  /* T: every selected craft with its ability ready casts it (a herd or barrage at the point) */
+  function castAll(p) {
+    const sel = P.liveSel();
+    if (!sel.length) return -1;
+    const n = NS.abilities.castSelected(sel, null, p);
+    P.say(n ? n + ' abilities cast' : sel.some(u => u.def.ability) ? 'Abilities still recharging' : 'No abilities in the selection', n ? '#7cf0ff' : '#ff6a5c');
+    return n;
   }
 
   /* a cursor that tells what a right click would do */

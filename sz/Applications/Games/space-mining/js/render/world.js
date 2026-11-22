@@ -64,6 +64,7 @@
     drawPirates();
     NS.escortRender.drawShips();
     NS.fleetRender.draw();
+    NS.abilityRender.draw();
     drawBolts();
     NS.weaponRender.draw();
     if (s && s.alive && !s.hidden && !(s.cloak > 0)) drawShip(s);

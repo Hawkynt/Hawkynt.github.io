@@ -1,6 +1,6 @@
 /* One fixed simulation step: clocks and UI timers, the running cinematic, then in flight the
    input intent and the command camera (pause-and-plan stops here), hit-stop and slow motion,
-   ship, rocks, mining, drones, pirates, freighters and the wing, life and gas, the outpost, units, invaders, waves and
+   ship, rocks, mining, drones, pirates, freighters and the wing, life and gas, the outpost, units and their abilities, invaders, waves and
    belt events, hazards, belt respawn, the trip rules, effects and the camera, in that order.
    Menu screens only advance clocks and effects. Owns G.time and the step measurement. */
 ;(function() {
@@ -66,6 +66,7 @@
     NS.life.update(s);
     NS.base.update(s);
     NS.units.update(s);
+    NS.abilities.update(s);
     NS.enemies.update(s);
     NS.hardpoints.update(s);
     if (G.base) {

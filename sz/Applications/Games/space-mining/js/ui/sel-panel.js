@@ -2,8 +2,9 @@
    construction, online, unpowered, understaffed, infected, corrupted, hijacked, quarantined),
    what it makes, and its actions (upgrade, demolish, quarantine, sterilise, purge, recipe,
    unit production with the queue, crew, supply freighters, EMP, reclaim). Units: counts by type (click one to keep
-   only that type), a single unit's rank and kills, the four formations and the orders (attack-
-   move, patrol, escort, return, hold). Nothing: the controls. */
+   only that type), a single unit's rank and kills, the four formations, the orders (attack-
+   move, patrol, escort, return, hold) and the abilities with their auto-cast. Nothing: the
+   controls. */
 ;(function() {
   'use strict';
 
@@ -87,9 +88,11 @@
       for (let i = 0; i < def.makes.length; ++i) {
         const u = UNIT_BY_ID[def.makes[i]];
         const p = row(84);
-        const ok = B.affordable(u.cost);
-        btn('mk_' + u.id, p.x, p.y, 84, 32, { icon: u.icon, label: u.name.split(' ').pop(), sub: NS.kit.group(u.cost.cr) + ' cr', color: ok ? u.color : UI.textMute, px: 11,
-          action: () => result(B.queueUnit(o, u.id)), tip: { title: u.name, text: u.role, lines: NS.buildMenu.costLines(u.cost, b.data.stock, B.wallet(), B.hold()).concat([[u.supply + ' supply  -  ' + u.build + 's to build', UI.textDim]]), color: u.color } });
+        const open = B.unitOpen(u);
+        const ok = open && B.affordable(u.cost);
+        btn('mk_' + u.id, p.x, p.y, 84, 32, { icon: u.icon, label: u.name.split(' ').pop(), sub: open ? NS.kit.group(u.cost.cr) + ' cr' : 'locked', color: ok ? u.color : UI.textMute, px: 11,
+          action: () => result(B.queueUnit(o, u.id)), tip: { title: u.name, text: u.role + (u.ability ? '. Ability: ' + NS.fleetData.ABILITIES[u.ability].name + ' - ' + NS.fleetData.ABILITIES[u.ability].desc : ''),
+            lines: (open ? [] : [['Needs the ' + NS.ores.ZONE_BY_ID[u.licence].name + ' licence', UI.bad]]).concat(NS.buildMenu.costLines(u.cost, b.data.stock, B.wallet(), B.hold()), [[u.supply + ' supply  -  ' + u.build + 's to build', UI.textDim]]), color: u.color } });
       }
       if (o.queue && o.queue.length) {
         const p = row(84);
@@ -249,8 +252,33 @@
       btn('ord_' + o[0], a.x + 14 + i * 74, oy, 70, 32, { icon: o[1], label: o[2], sub: o[3], px: 11, color: i === 0 ? UI.bad : UI.accent, on: G.cmd.pending === o[0],
         action: o[4], tip: { title: o[2] + ' (' + o[3] + ')', text: o[5] + '. Right-click orders a move; Shift queues waypoints.' } });
     }
+    abilityRow(a, sel, btn);
     if (sel.length === 1) return;
     kit.fitText(sel.some(u => u.type === 'miner') ? 'Right-click a rock to mine it' : 'Right-click: invader attacks, ship escorts', a.x + a.w - 14, fy, 190, 10, { color: UI.textMute, align: 'right' });
+  }
+
+  /* one button per ability in the selection (ready count or the shortest wait) and its auto toggle */
+  function abilityRow(a, sel, btn) {
+    const AB = NS.fleetData.ABILITIES;
+    const kinds = [];
+    for (const u of sel) if (u.def.ability && kinds.indexOf(u.type) < 0) kinds.push(u.type);
+    let x = a.x + 14;
+    const y = a.y + a.h - 36;
+    for (const type of kinds) {
+      const units = sel.filter(u => u.type === type), ab = AB[units[0].def.ability];
+      const ready = units.filter(u => NS.abilities.ready(u)).length;
+      const wait = Math.min(...units.map(u => Math.max(0, u.abCd || 0)));
+      const auto = units.every(u => NS.abilities.autoOn(u));
+      btn('ab_' + type, x, y, 112, 28, { icon: ab.icon, label: ab.name + ' [T]', sub: ready ? ready + '/' + units.length + ' ready' : Math.ceil(wait) + 's', px: 11, color: ready ? units[0].def.color : UI.textMute,
+        action: () => {
+          const p = NS.camera.toWorld(G.input.mouseX, G.input.mouseY, {});
+          NS.abilities.castSelected(units, type, type === 'herder' || type === 'bulwark' ? null : p);
+        }, tip: { title: ab.name, text: ab.desc + '. T casts every ready ability in the selection (a herd or barrage at the cursor).' } });
+      btn('abauto_' + type, x + 114, y, 30, 28, { label: 'A', px: 11, color: auto ? UI.good : UI.textMute, on: auto,
+        action: () => { for (const u of units) u.auto = !auto; }, tip: { title: 'Auto-cast ' + (auto ? 'on' : 'off'), text: 'Lets these craft use ' + ab.name + ' on their own when it pays off.' } });
+      x += 150;
+      if (x + 144 > a.x + a.w) break;
+    }
   }
 
   function K() {

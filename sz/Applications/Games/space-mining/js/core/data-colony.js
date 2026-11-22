@@ -118,10 +118,10 @@
       desc: 'A dome that soaks damage for every building under it and recharges when powered.' },
 
     { id: 'dronefactory', name: 'Drone Factory', cat: 'fleet', icon: 'drone', size: 2, hp: 620, build: 12, power: -4, crew: 2, upkeep: 6, prio: 4,
-      cost: { cr: 380, ore: { iron: 10 }, bar: { copper: 3 } }, makes: ['miner', 'mender', 'purger'], color: '#5cff9a',
+      cost: { cr: 380, ore: { iron: 10 }, bar: { copper: 3 } }, makes: ['miner', 'mender', 'purger', 'herder', 'minelayer'], color: '#5cff9a',
       desc: 'Builds mining drones that bring rocks home, repair drones and purge tenders.' },
     { id: 'shipyard', name: 'Shipyard', cat: 'fleet', icon: 'engine', size: 3, hp: 1100, build: 18, power: -8, crew: 3, upkeep: 10, prio: 4,
-      cost: { cr: 900, bar: { iron: 10, titanium: 4 }, comp: { alloy: 2 } }, makes: ['fighter', 'gunboat', 'escort', 'transport'], color: '#4fd8ff',
+      cost: { cr: 900, bar: { iron: 10, titanium: 4 }, comp: { alloy: 2 } }, makes: ['fighter', 'gunboat', 'escort', 'transport', 'aegis', 'phantom', 'lancer', 'bulwark'], color: '#4fd8ff',
       desc: 'Builds fighters, gunboats, escort frigates and transports.' },
     { id: 'repairbay', name: 'Repair Bay', cat: 'fleet', icon: 'wrench', size: 2, hp: 560, build: 10, power: -4, crew: 1, upkeep: 4, prio: 5,
       cost: { cr: 320, ore: { iron: 10 }, bar: { iron: 3 } }, radius: 240, heal: 14, color: '#7cff9a',

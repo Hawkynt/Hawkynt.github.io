@@ -113,6 +113,61 @@
       g.fillStyle = 'rgba(0,0,0,0.3)';
       for (let x = -14; x < 8; x += 6) g.fillRect(c + x, c - 8, 1, 16);
     },
+    herder(g, c, col) {
+      /* a stubby tug with a tether ring on the bow */
+      part(g, c, [[-14, -10], [6, -10], [10, -5], [10, 5], [6, 10], [-14, 10]], '#8a7a5a');
+      part(g, c, [[-16, -6], [-12, -6], [-12, 6], [-16, 6]], DARK);
+      g.strokeStyle = col;
+      g.lineWidth = 2.4;
+      g.beginPath(); g.arc(c + 13, c, 5, 0, TAU); g.stroke();
+      canopy(g, c - 2, c, 4, 3, '#ffe0a0');
+      g.fillStyle = '#ffb44a';
+      g.fillRect(c - 12, c - 10, 14, 2);
+    },
+    minelayer(g, c, col) {
+      part(g, c, [[-14, -8], [8, -8], [13, 0], [8, 8], [-14, 8]], STEEL);
+      for (let i = 0; i < 3; ++i) dot(g, c - 9 + i * 6, c, 2.2, col);
+      part(g, c, [[-10, -12], [2, -12], [2, -8], [-10, -8]], DARK);
+      part(g, c, [[-10, 12], [2, 12], [2, 8], [-10, 8]], DARK);
+      canopy(g, c + 7, c, 3, 2.4, '#ffd8a0');
+    },
+    aegis(g, c, col) {
+      part(g, c, [[-16, -12], [8, -12], [18, 0], [8, 12], [-16, 12], [-19, 0]], '#8a94a4');
+      g.strokeStyle = K.rgba(col, 0.9);
+      g.lineWidth = 2;
+      g.beginPath(); g.arc(c - 2, c, 9, 0, TAU); g.stroke();
+      g.fillStyle = K.rgba(col, 0.5);
+      g.beginPath(); g.arc(c - 2, c, 5, 0, TAU); g.fill();
+      canopy(g, c + 11, c, 4, 3, col);
+    },
+    phantom(g, c, col) {
+      part(g, c, [[-13, -9], [10, -2], [15, 0], [10, 2], [-13, 9], [-9, 0]], '#4a505c');
+      part(g, c, [[-11, -6], [6, -1.5], [6, 1.5], [-11, 6], [-8, 0]], '#6a7488');
+      g.fillStyle = K.rgba(col, 0.8);
+      g.fillRect(c - 10, c - 0.8, 18, 1.6);
+      canopy(g, c + 5, c, 3, 1.6, '#c8d8f0');
+    },
+    lancer(g, c, col) {
+      part(g, c, [[-14, -8], [4, -8], [10, -4], [10, 4], [4, 8], [-14, 8]], STEEL);
+      g.fillStyle = metal(g, c, c - 2, c + 24, c + 2, '#c8d0dc');
+      g.fillRect(c, c - 2, 26, 4);
+      g.fillStyle = col;
+      g.fillRect(c + 22, c - 1, 4, 2);
+      part(g, c, [[-10, -12], [0, -12], [2, -8], [-10, -8]], DARK);
+      part(g, c, [[-10, 12], [0, 12], [2, 8], [-10, 8]], DARK);
+    },
+    bulwark(g, c, col) {
+      part(g, c, [[-20, -14], [10, -14], [20, -6], [20, 6], [10, 14], [-20, 14], [-24, 0]], '#5a606c');
+      part(g, c, [[-14, -10], [6, -10], [6, 10], [-14, 10]], DARK);
+      g.beginPath(); g.arc(c - 4, c, 8, 0, TAU);
+      g.fillStyle = metal(g, c - 12, c - 8, c + 4, c + 8, '#8a94a4');
+      g.fill();
+      g.fillStyle = metal(g, c, c - 3, c + 22, c + 3, '#9aa4b4');
+      g.fillRect(c - 2, c - 3, 22, 6);
+      g.fillStyle = col;
+      g.fillRect(c - 18, c - 14, 22, 2.5);
+      g.fillRect(c - 18, c + 11.5, 22, 2.5);
+    },
     transport(g, c, col) {
       part(g, c, [[-22, -12], [14, -12], [22, -5], [22, 5], [14, 12], [-22, 12]], '#6a6a72');
       for (let i = 0; i < 3; ++i)

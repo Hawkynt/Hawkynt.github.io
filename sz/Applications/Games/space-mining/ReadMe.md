@@ -51,6 +51,10 @@ Every hit the player's side lands - the laser, the hardpoints, units, turrets an
 
 While you are in a belt with an outpost a wave timer runs; the next wave is composed ahead from a point budget that grows with the wave number, the belt's danger and what the outpost is worth, and the Sensor Array shows it early. Waves come from one bearing in clusters: swarmers that bite, raiders that strafe, bombers that dive on soft buildings, shielded frigates, siege ships that shell from beyond turret range, brood carriers, Lattice swarms that corrupt what they touch, and at wave 8 a hive mothership. Turrets (laser, flak, missiles) take targets by preference, shield domes soak damage for the buildings under them, repair bays and repair drones mend. Units are built in the shipyard and drone factory: fighters, gunboats, escort frigates, transports, mining drones, repair drones and purge tenders. Orders - move, attack-move, attack, escort, patrol, hold, mine, repair, purge, return - are shaped into a line, wedge, box or circle facing the way the group travels, units take the nearest slots, the group keeps its slowest member's speed, Shift queues waypoints, factories have rally points, idle units guard their post, and kills earn veterancy ranks. Units and invaders use their own spatial grids; target picking is throttled.
 
+### Units with abilities
+
+Six craft carry an ability on a cooldown. From the drone factory, with the Verdant Shoals licence: the Herder Tug (its gravity tether pulls the loose rocks around a point into a tight clump - a wall in a wave's path or a mining cluster by the hub) and the Minelayer (drops a ring of six contact mines that blast and stun what touches them, at most eighteen of its own at once); from the shipyard, the Aegis (keeps to the middle of the combat craft round it and projects a bubble that soaks damage for every allied craft and your ship inside it until it breaks) with the Verdant licence, and with the Crimson Maw licence the Phantom (cloaks itself and the allies around it - invaders lose them for a while), the Lancer (a long-range rail gun against armour whose Overcharge pierces everything on a line) and the Bulwark (slow siege artillery against structures and heavies whose Barrage drops six shells on its target). Select them and press T or the ability button to cast: every selected craft of that kind with its ability ready casts at once. With auto-cast on (the default, toggled with the small button beside the ability) the combat abilities fire on their own when it makes sense - the Aegis when allies near it are under fire, the Phantom when its group is hurt, the Lancer when two invaders line up, the Bulwark at a heavy target, the Minelayer when invaders come close; the Herder only herds when told.
+
 ### Life, infection and the Lattice
 
 Gas pockets and Bloom clouds drift in the belts (fly through to scoop them); living rocks burst with spores when drilled, crystalline ones shed swarmers, hive nests sleep in hollow rocks. Bio-matter contaminates the hold. Unloaded at a hub without a cargo scan it seeds infection, which grows logistically in staffed buildings, spreads along links, slows work and kills crew - when the last crew dies the outpost is abandoned, scavengers strip it and after three cycles it becomes a hive. Quarantine cuts a building from the links, the medical bay treats nearby crew (and with serum vaccinates the outpost), sterilising kills the spores and some crew. Lattice corruption replicates inside a building and spreads along links; at 100% the building turns: turrets fire on your fleet, factories make Lattice drones, reactors drain the grid, and corrupted units desert. Purges (a circuit each), purge tenders and the hub's EMP clean it; vaccine and firewall research slow both. Distress calls lead to silent stations guarded by a hive or Lattice drones; clear them, dock, and bring the survivors to an outpost as crew. Seasons (by local date), a weekly anomaly belt with its own rules and pay, the daily and weekly contracts with a streak, and seven captain's log chapters played as cinematics complete the loop.
@@ -117,6 +121,7 @@ Systems (`js/systems/`), one simulation concern each:
 - **`base.js`** -- The outpost in a trip: founding, placing, upgrading, demolishing, quarantine, sterilise, purge, EMP, construction, the beat (network, crew, power, production, outbreak, a radiation season over the plants), factories, unloading at the hub, damage, alerts, cargo pods
 - **`turrets.js`** -- The outpost's defences each step: laser, flak and missile turrets, the Tesla Coil's chain lightning, the Stasis Beam's slow, shield domes, repair bays
 - **`hardpoints.js`** -- The ship's weapons in flight: triggers, cooldowns and charge, bolts, pellets, missiles and slugs, the tether, mines, nets, the cloak and the drone swarm, hits through the combat model
+- **`abilities.js`** -- Unit abilities: casting by hand and auto-cast, herding rocks, mines, shield bubbles, cloaks, the Lancer's overcharge and the Bulwark's barrage
 - **`units.js`** -- Units: spawning, ranks, steering with separation and rock avoidance, orders, auto-engagement, mining, repair, purge and transport jobs, desertion, rogue units
 - **`enemies.js`** -- Invaders and every shot: behaviours per type, guards, migrations, the hostile grid and target picking, bolts, shells, flak, missiles, artillery, bombs, damage, loot, the EMP
 - **`waves.js`** -- The wave timer, preview, warning, arrival in clusters, the mothership, clearing, retreat of stragglers, Siege victory
@@ -139,7 +144,7 @@ Render (`js/render/`):
 - **`station-art.js`** -- Kessler Station in parts: hub, turning ring, and module arms that grow with their level
 - **`backdrop-art.js`** -- Belt nebula layers, planets, moons, suns, the black hole, star tiles, the far rubble tile
 - **`colony-art.js`** -- The 25 buildings per level, dark and hijacked variants, turret heads, dish, drill and torus, deposits, the strategy icons
-- **`fleet-art.js`** -- The seven unit types and their deserter look, the ten hostile types, gas and Bloom clouds, the silent station
+- **`fleet-art.js`** -- The thirteen unit types and their deserter look, the ten hostile types, gas and Bloom clouds, the silent station
 - **`backdrop.js`** -- The per-frame parallax backdrop for the current belt and the speed-streaked dust
 - **`fx-render.js`** -- Particles, sparks, rings and floating texts from cached sprites
 - **`world.js`** -- The belt in draw order with culling: hazards, clouds, dock, outpost, rocks with glow and heat (cheaper zoomed out), wrecks, nuggets and tractor beams, drones, charges, pirates, fleets, bolts, the ship, lasers, domes and pods, the command overlay, the pulse, the storm
@@ -147,6 +152,7 @@ Render (`js/render/`):
 - **`fleet-render.js`** -- Clouds, units, invaders, shots, team rings, selection, order paths, markers, the drag box
 - **`op-hud.js`** -- The operation tracker in flight: name, mood, objectives with progress, the clock, the convoy's cargo and hull, and the outcome
 - **`escort-render.js`** -- The lanes, the trading posts, freighters with their cargo and hull bars, the hired wing, edge arrows toward freighters
+- **`ability-render.js`** -- Herd tethers, mines, Aegis bubbles, cloak shimmer, rail lines and barrage marks
 - **`weapon-render.js`** -- Weapon shots, mines, nets, the tether line, swarm drones and the cloak shimmer
 - **`hud.js`** -- Gauges, the ore hold, belt and clock, radar, ability slots, warnings, the dock arrow, hints, banners, reticle, letterbox, flash, toasts, achievement pop-ups
 - **`cine-render.js`** -- The intro, launch, new belt, ending and captain's log sequences; arrival, docking, discovery and outpost overlays
@@ -279,6 +285,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can defend an outpost against waves of pirates, alien swarms and the Lattice that grow with the outpost and the belt, with a warning and a preview
 - [x] As a player, I can face swarmers, raiders, bombers, shielded frigates, siege ships, brood carriers, nanoprobe swarms, Lattice drones and a hive mothership per belt
 - [x] As a player, I can build fighters, gunboats, escort frigates, transports, mining drones, repair drones and purge tenders
+- [x] As a player, I can build Herder Tugs, Minelayers, Aegis, Phantoms, Lancers and Bulwarks and cast their abilities with T or a button, or let them auto-cast
 - [x] As a player, I can select units by click, drag box, double-click and groups 1-9, and order them to move, attack-move, attack, escort, patrol, hold, mine, repair, purge or return
 - [x] As a player, I can move units in line, wedge, box or circle formation with waypoints and rally points, and see them earn veterancy
 - [x] As a player, I can switch between the pilot view and a zoomed-out command view with a minimap, build menu, selection panel, alerts and pause-and-plan, and command my fleet from the cockpit
@@ -349,6 +356,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | Right click | Move, attack, escort, mine, repair, rally (Shift queues) |
 | Z / X / C / V | Line, wedge, box, circle formation |
 | F / Q / E / R / G | Attack-move, patrol, escort, return, hold (command view) |
+| T | Selected craft cast their abilities - a herd or barrage at the cursor (command view and pilot view) |
 | 1 / 2 / 3 | Fire hardpoint 1, 2, 3 (pilot view; hold for pulse, flak, missiles, hold and release for the lance) |
 | Shift+1-9 | Recall a control group (pilot view) |
 | 1-9 / Ctrl+1-9 | Recall / set a control group (command view) |

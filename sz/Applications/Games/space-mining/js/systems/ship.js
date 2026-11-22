@@ -159,6 +159,8 @@
     const s = G.ship;
     if (!s || !s.alive || amount <= 0 || G.cine) return;
     if (kind === 'bolt' && s.iframes > 0) return;
+    amount = NS.abilities.absorb(s, amount);
+    if (amount <= 0) return;
     s.shieldT = 3;
     if (s.shield > 0) {
       const a = Math.min(s.shield, amount);

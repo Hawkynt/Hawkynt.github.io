@@ -85,7 +85,7 @@
     let best = null, bd = range * range;
     for (let i = 0; i < list.length; ++i) {
       const u = list[i];
-      if (!u.alive) continue;
+      if (!u.alive || u.cloakT > 0) continue;
       const d = (u.x - x) * (u.x - x) + (u.y - y) * (u.y - y);
       if (d < bd) { bd = d; best = u; }
     }
@@ -119,6 +119,8 @@
   /* ── damage, corruption ── */
   function damage(u, amount, by) {
     if (!u.alive || amount <= 0) return;
+    if (u.side === 'player') amount = NS.abilities.absorb(u, amount);
+    if (amount <= 0) return;
     u.hp -= amount;
     u.flash = 0.1;
     if (u.hp > 0) return;
@@ -193,7 +195,8 @@
     u.retarget -= 1;
     if (u.target && u.target.alive && u.retarget > 0) return u.target;
     u.retarget = 12;
-    u.target = u.side === 'rogue' ? nearestPlayer(u.x, u.y, reach, true) : NS.enemies.nearest(u.x, u.y, reach, u.type === 'fighter' ? 'small' : u.type === 'gunboat' ? 'big' : 'any');
+    const pref = u.type === 'fighter' || u.type === 'phantom' ? 'small' : u.type === 'gunboat' || u.type === 'lancer' || u.type === 'bulwark' ? 'big' : 'any';
+    u.target = u.side === 'rogue' ? nearestPlayer(u.x, u.y, reach, true) : NS.enemies.nearest(u.x, u.y, reach, pref);
     return u.target;
   }
 
@@ -207,6 +210,17 @@
     if (u.type === 'gunboat') {
       NS.enemies.fire(side, 'shell', mx, my, t, u.dmg, 640, { from: u });
       NS.audio.sfxAt('shoot', u.x, u.y, { volume: 0.25, pitch: 0.7 });
+    } else if (u.type === 'lancer') {
+      /* a rail slug lands at once; an overcharged one pierces the whole line */
+      if (u.charged && side === 'player') NS.abilities.rail(u, t, u.dmg, side);
+      else {
+        NS.enemies.hitTarget(t, u.dmg, side, u, u.def.dtype);
+        G.tbeams.push({ x0: mx, y0: my, x1: t.x, y1: t.y, t: 0.12, color: side === 'enemy' ? '#3affd0' : '#e0e8ff' });
+        NS.audio.sfxAt('laser', u.x, u.y, { volume: 0.25, pitch: 0.6 });
+      }
+    } else if (u.type === 'bulwark') {
+      NS.enemies.fire(side, 'artillery', mx, my, t, u.dmg, 380, { splash: u.def.splash, from: u });
+      NS.audio.sfxAt('explode', u.x, u.y, { volume: 0.2, pitch: 1.6 });
     } else if (u.type === 'escort') {
       NS.enemies.hitTarget(t, u.dmg, side, u, u.def.dtype);
       G.tbeams.push({ x0: mx, y0: my, x1: t.x, y1: t.y, t: 0.06, color: side === 'enemy' ? '#3affd0' : '#9ac4ff' });
@@ -304,8 +318,23 @@
       case 'mender': { const t = findRepair(u); if (t) support(u, t, dt); else drift(u, dt); break; }
       case 'purger': { const t = findPurge(u); if (t) support(u, t, dt); else drift(u, dt); break; }
       case 'transport': haul(u, dt); break;
+      case 'aegis': if (!shepherd(u, dt)) drift(u, dt); break;
       default: drift(u, dt);
     }
+  }
+
+  /* the Aegis keeps to the middle of the combat craft round it, so its bubble covers them */
+  function shepherd(u, dt) {
+    let x = 0, y = 0, n = 0;
+    const list = grid.query(u.x, u.y, 600, near2);
+    for (let i = 0; i < list.length; ++i) {
+      const o = list[i];
+      if (o === u || !o.alive || !o.def.dmg) continue;
+      x += o.x; y += o.y; ++n;
+    }
+    if (!n) return false;
+    steer(u, x / n, y / n, u.speed, dt, 40);
+    return true;
   }
 
   function drift(u, dt) {

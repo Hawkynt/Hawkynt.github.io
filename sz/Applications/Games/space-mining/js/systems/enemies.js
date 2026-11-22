@@ -420,8 +420,9 @@
       e.target = e.guard ? NS.units.nearestPlayer(e.x, e.y, 460, true) : pickTarget(e);
       if (e.target && e.guard && (e.target.x - e.guard.x) * (e.target.x - e.guard.x) + (e.target.y - e.guard.y) * (e.target.y - e.guard.y) > 650 * 650) e.target = null;
     }
-    /* a cloaked ship slips away */
+    /* a cloaked ship or craft slips away */
     if (e.target === G.ship && G.ship.cloak > 0) e.target = null;
+    if (e.target && e.target.cloakT > 0) e.target = null;
     if (e.guard && !e.target) {
       e.wob += dt * 0.6;
       steer(e, e.guard.x + Math.cos(e.wob) * 170, e.guard.y + Math.sin(e.wob) * 170, e.speed * 0.4, dt, 0);

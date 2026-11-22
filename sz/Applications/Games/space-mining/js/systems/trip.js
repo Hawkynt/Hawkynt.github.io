@@ -78,6 +78,7 @@
     NS.pirates.clear();
     NS.freighters.clear();
     NS.units.clear();
+    NS.abilities.clear();
     NS.enemies.clear();
     NS.command.reset();
     NS.base.prepare(zone, mode);
@@ -564,6 +565,7 @@
     G.run = null;
     G.base = null;
     NS.units.clear();
+    NS.abilities.clear();
     NS.enemies.clear();
     NS.command.reset();
     G.distress = null;

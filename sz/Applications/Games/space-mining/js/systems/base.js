@@ -274,11 +274,17 @@
   }
 
   /* Queue a unit at a factory: paid now, built in turn */
+  /* a unit that needs a licence opens with it in the career (Siege has them all) */
+  function unitOpen(def) {
+    return !def.licence || G.run.mode !== 'career' || G.save.licenses.indexOf(def.licence) >= 0;
+  }
+
   function queueUnit(rec, type) {
     const b = G.base;
     const def = UNIT_BY_ID[type];
     if (!def || !BUILDING_BY_ID[rec.type].makes || BUILDING_BY_ID[rec.type].makes.indexOf(type) < 0) return { ok: false, reason: 'Wrong factory' };
     if (rec.prog < 1 || rec.rogue) return { ok: false, reason: 'Factory offline' };
+    if (!unitOpen(def)) return { ok: false, reason: 'Needs the ' + ZONES.find(z => z.id === def.licence).name + ' licence' };
     if (rec.queue.length >= 6) return { ok: false, reason: 'Queue full' };
     if (supplyUsed() + def.supply > C.supplyCap(b.data, G.stats)) return { ok: false, reason: 'Not enough fleet supply - build habitats' };
     const miss = lack(def.cost);
@@ -731,6 +737,6 @@
 
   Object.assign(NS.base, {
     wallet, hold, lack, affordable, spend, prepare, blocks, claimed, hub, cargoHub, oreRoom, receiveOre, upgradePress, canLoadOre, loadOre, wake, refresh, place, grant, findSpot, adopt, missName, upgrade, demolish, quarantine, sterilize, purge, empPulse,
-    setRecipe, queueUnit, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, powered, ZONES
+    setRecipe, queueUnit, unitOpen, supplyUsed, recruit, reclaim, damage, destroy, update, pod, sync, muster, buildingAt, cellAt, powered, ZONES
   });
 })();

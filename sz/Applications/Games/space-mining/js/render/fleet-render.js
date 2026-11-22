@@ -83,7 +83,10 @@
       }
       let jx = 0;
       if (rogue || u.cor > 0.5) jx = Math.sin(G.time * 83 + u.id) > 0.8 ? 2 : 0;
-      K.blitRot(ctx, FA.unit(u.type, rogue), u.x + jx, u.y, u.angle, lod ? 1.4 : 1, 1 - Math.abs(u.bank) * 0.15);
+      /* a cloaked craft is a faint, wavering ghost */
+      if (u.cloakT > 0) ctx.globalAlpha = 0.25 + Math.sin(G.time * 13 + u.id) * 0.06;
+      K.blitRot(ctx, FA.unit(u.type, rogue), u.x + jx + (u.cloakT > 0 ? Math.sin(G.time * 31 + u.id) * 1.5 : 0), u.y, u.angle, lod ? 1.4 : 1, 1 - Math.abs(u.bank) * 0.15);
+      ctx.globalAlpha = 1;
       if (u.flash > 0) {
         ctx.globalCompositeOperation = 'lighter';
         K.blit(ctx, K.glow('#ffffff'), u.x, u.y, u.r / 24);
