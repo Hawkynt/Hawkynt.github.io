@@ -58,17 +58,15 @@
       x, y + 34 + SP.BUY.length * ROW, w, 11, 15, UI.textMute);
   }
 
-  /* the rows of the list: what is ordered or aboard first, then the rest of the warehouse */
+  /* the rows of the list: everything ordered, aboard or in the warehouse, in a fixed catalogue
+     order (components, bars, ore) - rows never move when a number changes, so the row under the
+     pointer stays the same while you click */
   function rows(target) {
     const store = G.save.store, out = [];
-    const seen = {};
-    const add = (kind, id) => {
-      if (seen[kind + id]) return;
-      seen[kind + id] = 1;
-      out.push({ kind: kind, id: id });
-    };
-    for (const kind of ['comp', 'bar', 'ore']) for (const id in target[kind]) add(kind, id);
-    for (const kind of ['comp', 'bar', 'ore']) for (const id in store[kind]) if (store[kind][id] > 0) add(kind, id);
+    const order = { comp: NS.colonyData.COMPONENTS.map(c => c.id), bar: NS.ores.ORES.map(o => o.id), ore: NS.ores.ORES.map(o => o.id) };
+    for (const kind of ['comp', 'bar', 'ore'])
+      for (const id of order[kind])
+        if ((target[kind][id] || 0) > 0 || (store[kind][id] || 0) > 0) out.push({ kind: kind, id: id });
     return out;
   }
 
@@ -153,6 +151,6 @@
   }
 
   Object.assign(NS.supplyUi, {
-    draw, drawScreen, open, close
+    draw, drawScreen, open, close, rows
   });
 })();

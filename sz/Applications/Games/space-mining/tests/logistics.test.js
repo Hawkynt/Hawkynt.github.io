@@ -174,6 +174,18 @@ check('Gold Rush sells the drone basket on landing without warehouse deposits',
 /* ── supplies: basics from the station, the cargo manifest, supplies apart from the haul ── */
 {
   const SP = NS.supply;
+{
+  /* the Supply list keeps its rows in place while numbers change (no rows jumping under the pointer) */
+  const sv = NS.state.save;
+  const keepStore = JSON.stringify(sv.store), keepMan = JSON.stringify(sv.manifest);
+  sv.store = { ore: { iron: 50, copper: 20 }, bar: { iron: 5 }, comp: { alloy: 2 } };
+  sv.manifest = { ore: {}, bar: {}, comp: {} };
+  const before = NS.supplyUi.rows(sv.manifest).map(r => r.kind + r.id).join();
+  sv.manifest.ore.copper = 10;
+  const after = NS.supplyUi.rows(sv.manifest).map(r => r.kind + r.id).join();
+  check('ordering an item does not move its row in the Supply list', before === after && before === 'compalloy,bariron,oreiron,orecopper');
+  sv.store = JSON.parse(keepStore); sv.manifest = JSON.parse(keepMan);
+}
   const R = NS.rules;
   const sv = G.save;
   const plain = R.computeStats(R.freshSave());
