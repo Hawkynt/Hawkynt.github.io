@@ -111,8 +111,12 @@
         K.blitRot(ctx, K.silhouette('freighter', PA.freighter()), f.x, f.y, f.angle, 1);
         ctx.globalAlpha = 1;
       }
-      if (f.state === 'wait') continue;
+      if (f.state === 'wait') {
+        if (f.due > 0) kit.text('WAITING FOR ESCORT  ' + Math.max(0, Math.ceil(NS.escort.FREIGHTER.patience - f.due)), f.x, f.y + 58, 13, Math.sin(G.time * 6) > 0 ? '#ffb44a' : '#ff5c6c', { align: 'center', weight: 'bold' });
+        continue;
+      }
       if (f.jam > 0) kit.text('JAMMED', f.x, f.y + 58, 13, '#7af0ff', { align: 'center', weight: 'bold' });
+      else if (f.alone > 0 && f.state === 'fly') kit.text('WAITING FOR ESCORT', f.x, f.y + 58, 13, Math.sin(G.time * 6) > 0 ? '#ffb44a' : '#ff5c6c', { align: 'center', weight: 'bold' });
       kit.text(f.name.toUpperCase(), f.x, f.y - 66, 12, f.hitT > 0 ? UI.bad : '#bfe8ff', { align: 'center', weight: 'bold' });
       bar(f.x, f.y - 56, 80, f.cargo, '#ffd25a');
       bar(f.x, f.y - 49, 80, f.hp / f.maxHp, f.hp / f.maxHp > 0.4 ? '#5cff9a' : '#ff5c6c');

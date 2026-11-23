@@ -72,6 +72,8 @@
 
   /* Dust motes in world space (call inside the world transform): they streak with speed */
   function drawDust(r, vx, vy) {
+    /* the drifting dust is the first detail the frame budget drops */
+    if (NS.state.quality === 0) return;
     const cell = 220;
     const c0 = Math.floor(r.x0 / cell), r0 = Math.floor(r.y0 / cell);
     const c1 = Math.floor(r.x1 / cell), r1 = Math.floor(r.y1 / cell);

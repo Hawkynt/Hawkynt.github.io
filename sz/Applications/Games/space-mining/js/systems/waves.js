@@ -42,7 +42,7 @@
     const cfg = NS.operation.wavePace();
     /* an operation's waves have the strength it was designed for, not the outpost's history */
     const no = cfg ? cfg.from + (G.run.waves || 0) : b.data.wave + 1;
-    b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: cfg ? true : b.data.bossDone, mul: m.waves * (cfg && cfg.mul || 1), nano: cfg && cfg.nano !== undefined ? cfg.nano : m.nano, army: army(),
+    b.next = C.composeWave(no, b.zone, b.value, G.run.seed, { mode: b.mode, bossDone: cfg ? true : b.data.bossDone, mul: m.waves * (cfg && cfg.mul || 1) * NS.operation.dm().size, nano: cfg && cfg.nano !== undefined ? cfg.nano : m.nano, army: army(),
       favor: cfg && cfg.favor, split: cfg && cfg.split, forceBoss: !!(cfg && cfg.boss && (G.run.waves || 0) + 1 === cfg.boss) });
     b.warned = false;
   }

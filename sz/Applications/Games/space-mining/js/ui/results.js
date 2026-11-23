@@ -73,8 +73,11 @@
     const tail = won ? (rw ? '  -  +' + kit.group(rw.cr || 0) + ' cr, +' + (rw.rd || 0) + ' research, +' + NS.ops.intelFor(op) + ' intel' + (rw.unlock ? ', unlock' : '') : '  -  cleared again') :
       (op.why ? '  -  ' + op.why : '');
     const many = op.cleared > 1 ? '  (' + op.cleared + ' operations this trip)' : '';
-    const tier = op.weekly ? ' (WEEKLY NIGHTMARE' + (op.score ? ', ' + kit.group(op.score) + ' POINTS' : '') + ')' : op.tier && op.tier !== 'normal' ? ' (' + op.tier.toUpperCase() + ')' : '';
-    kit.fitText('OPERATION ' + op.name.toUpperCase() + tier + ': ' + (won ? 'COMPLETE' : 'FAILED') + tail + many, 640, y, 640, 14,
+    const tier = op.weekly ? ' (WEEKLY NIGHTMARE' + (op.wscore ? ', ' + kit.group(op.wscore) + ' POINTS' : '') + ')' : op.tier && op.tier !== 'normal' ? ' (' + op.tier.toUpperCase() + ')' : '';
+    /* the mission score and where it moved the difficulty */
+    const lv = op.level || 1, d = op.diff || 1;
+    const score = op.score !== undefined ? '  -  SCORE ' + op.score + ', DIFFICULTY ' + lv.toFixed(2) + (op.weekly ? '' : lv > d + 0.005 ? ' (UP)' : lv < d - 0.005 ? ' (DOWN)' : '') : '';
+    kit.fitText('OPERATION ' + op.name.toUpperCase() + tier + ': ' + (won ? 'COMPLETE' : 'FAILED') + tail + many + score, 640, y, 700, 14,
       { align: 'center', weight: 'bold', color: won ? UI.good : UI.bad });
   }
 

@@ -76,7 +76,7 @@
     jammer: { armour: 'light', name: 'Jammer', hp: 90, speed: 280, accel: 380, r: 18, fire: 0, dmg: 0, loot: 200, jam: 380 },
     layer: { armour: 'light', name: 'Minelayer', hp: 100, speed: 300, accel: 420, r: 19, fire: 0, dmg: 0, loot: 180, mines: 3 },
     mine: { armour: 'light', name: 'Mine', hp: 12, speed: 0, accel: 0, r: 12, fire: 0, dmg: 70, loot: 0, still: true },
-    battery: { armour: 'structure', name: 'Gun Battery', hp: 420, speed: 0, accel: 0, r: 30, fire: 1.1, dmg: 14, loot: 600, still: true, range: 520 },
+    battery: { armour: 'structure', name: 'Gun Battery', hp: 420, speed: 0, accel: 0, r: 30, fire: 1.1, dmg: 20, loot: 600, still: true, range: 520 },
   };
 
   Object.assign(NS.ships, {

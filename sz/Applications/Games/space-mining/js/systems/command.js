@@ -251,6 +251,7 @@
     const units = list || liveSel();
     if (!units.length) return false;
     const home = NS.base.hub();
+    NS.skill.act();
     O.issue(units, kind, { x: x, y: y, target: target, queue: queue, formation: G.cmd.form, home: home ? { x: home.x, y: home.y + home.r + 60 } : null });
     mark(target ? target.x : kind === 'return' && home ? home.x : x, target ? target.y : kind === 'return' && home ? home.y : y,
       kind === 'attack' || kind === 'amove' ? '#ff5c6c' : kind === 'patrol' ? '#ffd25a' : kind === 'escort' ? '#4fd8ff' : '#5cff9a');

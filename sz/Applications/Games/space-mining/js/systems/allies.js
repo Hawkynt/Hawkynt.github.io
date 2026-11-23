@@ -101,6 +101,7 @@
     for (const k of kinds) tot += f.kinds[k];
     let n = f.size[0] + Math.floor(R() * (f.size[1] - f.size[0] + 1));
     if (NS.operation.mod('swarm')) n = Math.ceil(n * 1.5);
+    n = NS.operation.sized(n);
     for (let i = 0; i < n; ++i) {
       let roll = R() * tot, kind = kinds[0];
       for (const k of kinds) if ((roll -= f.kinds[k]) < 0) { kind = k; break; }

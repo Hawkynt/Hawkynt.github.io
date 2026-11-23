@@ -37,14 +37,14 @@ The Amber Reach adds freighters. Four trading posts sit at the edges of the belt
 
 Every Amber escort turns on its own twist, so no two play alike:
 - **One Freighter** (C) - one freighter, one ambush: the basics.
-- **Courier Run** (E) - a courier flies the long lane at well over twice a freighter's speed; keeping up takes speed and fuel, and fast skimmers try to catch it.
-- **Glass Cargo** (S) - a freighter with a cracked hull - a single hit point - crosses a solar storm: any bolt, mine or blast destroys it, so raiders must die before they fire.
+- **Courier Run** (E) - a courier flies the long lane at well over twice a freighter's speed; keeping up takes speed and fuel, and its ambush waits ahead on the lane to meet it head on.
+- **Glass Cargo** (S) - a freighter with a cracked hull - a single hit point - crosses a solar storm: any bolt, mine or blast destroys it; skimmer packs try to drain it, and a raider comes with every raid while it waits alone.
 - **Pirate Tide** (H) - two freighters on one lane against swarms of eight to ten skimmers per ambush: wide guns (flak) and a hired wing pay off.
 - **Hired Wing** (E) - the guild's two fighters fly with you from now on.
 - **Gun Run** (H) - the lane passes a pirate outpost: three gun batteries stand beside it and shell any freighter (or the ship) within 520 px. The freighters leave late enough to raze them first.
-- **Three Directions** (W) - three freighters to three posts, the ambushes led by Jammers: a Jammer's EMP beam stops a freighter dead while it stays within 380 px.
+- **Jammed Lanes** (W) - three freighters on two lanes (a pair to the near post, then one across the belt), the ambushes led by Jammers: a Jammer's EMP beam stops a freighter dead while it stays within 380 px.
 - **Reactor Trouble** (S) - the freighter stops halfway and asks for ore.
-- **Long Haul** (N) - four freighters to all four posts through a storm; gunships join the ambushes and Minelayers fly ahead of the freighters seeding their lanes with mines (a mine that a freighter touches deals 70 damage; the laser, the weapons and the wing shoot them).
+- **Long Haul** (N) - four freighters in two pairs to opposite posts through a storm; gunships join the ambushes and Minelayers fly ahead of the freighters seeding their lanes with mines (a mine that a freighter touches deals 70 damage; the laser, the weapons and the wing shoot them).
 
 The Long Haul opens the Verdant Shoals licence. An escort operation fails once more freighters are lost than it allows.
 
@@ -80,7 +80,7 @@ The Crimson Maw adds an enemy that builds. A Syndicate base grows round its Comm
 
 Two craft answer it, both with the Crimson Maw licence: the Sporecaster from the Medical Bay seeds Bloom spores into the enemy structures round its target - they rot for a while, infected factories stop producing and towers fire at half rate, and the spores jump to the next structure - and the Spike from the Research Lab hijacks the nearest enemy tower or battery for twenty seconds, turning its guns on the Syndicate.
 
-The Crimson Maw operations: Scout the Syndicate (challenging: find the base and take out two harvesters, with Stalkers about), Harvester Raid (breather: four harvesters), Counter-Attack (surprise: found an outpost and repel three attack groups - tower defense comes back), Lattice Outpost (harder: a base overrun by the Lattice sends nanoprobes - raze its core), Contested Deposits (harder: the Syndicate expands toward the fields between you; raze three relays and three harvesters in ten minutes), Cut Their Freighters (surprise: shoot down five haulers before four get away), Two Fronts (worse than you think: two bases, both cores), and the capstone, the Syndicate Citadel (nightmare: a shielded citadel behind pylons and batteries, Juggernauts at the gate), which opens the Void Crown licence.
+The Crimson Maw operations: Scout the Syndicate (challenging: find a mining outpost that neither builds nor fires its core gun and take out two harvesters, with Stalkers about), Harvester Raid (breather: four harvesters), Counter-Attack (surprise: found an outpost and repel three attack groups - tower defense comes back), Lattice Outpost (harder: a base overrun by the Lattice sends nanoprobes - raze its core), Contested Deposits (harder: the Syndicate expands toward the fields between you; raze three relays and three harvesters in ten minutes), Cut Their Freighters (surprise: shoot down five haulers before four get away), Two Fronts (worse than you think: two bases, both cores), and the capstone, the Syndicate Citadel (nightmare: a shielded citadel behind pylons and batteries, Juggernauts at the gate), which opens the Void Crown licence.
 
 ### Units with abilities
 
@@ -104,6 +104,22 @@ The Void Crown operations:
 - **Survivors** (S) - escort two freighters of survivors to the far posts through Lattice space: Lattice drones and nanoprobe swarms ambush them.
 - **Three-Front War** (H) - the Syndicate dug in, the Hive and the Lattice coming from the rim, all three feuding: raze the Syndicate core and hold out five minutes.
 - **The Crown** (N, capstone) - shatter the Crown Heart while all three factions converge on you and an allied station; then the career ending plays.
+
+### Mission score and adaptive difficulty
+
+Every operation that is decided gets a **mission score** from 0 to 100, kept internally and shown in the trip report:
+- a win counts 50, plus up to 15 for the hull kept and up to 15 for what you were guarding kept (the convoy's hull and cargo, the outpost's buildings, an allied station), plus up to 20 for activity;
+- a loss counts up to 25 for how far the goals got, plus up to 10 for activity.
+
+**Activity** is actions per second: every change of the controls in flight counts - a new thrust direction, turning, the afterburner, starting or stopping the laser, a lock, a weapon trigger - and so does every order, ability, building or upgrade in the command view. One action a second or more is full activity; a pilot who sits still scores none.
+
+The score moves the career's **difficulty level** (1.0 at the start, never below 0.6 or above 2.5): after each decided operation it moves 0.006 for every point the score lies above or below what the operation's mood expects (85 for a challenge, 90 for a breather, 75 for a surprise, 65 for a harder one, 55 for a peak, 50 for a nightmare), at most 0.15 at a time: aced breathers say little, a lost breather or a well-flown nightmare a lot. Good play makes the next operation harder by itself, struggling eases it. The level scales what you face:
+- pirates' and enemies' hull: x(1 + 0.5 (level - 1)), and what they deal: x(1 + 0.3 (level - 1)) (pirates never less than their base, so an unopposed ambush stays deadly);
+- ambushes, pirate threats, fronts and invader waves: x(1 + 0.6 (level - 1)) as many (ambushes and raids on freighters never fewer than their base, so an unopposed one always ruins a freighter);
+- threats come x(1 + 0.4 (level - 1)) as often; the Syndicate earns x(1 + 0.5 (level - 1)).
+The weekly Nightmare Op is scored but leaves the level alone, so it stays the same for everyone.
+
+**Escorts need you there.** A freighter due to leave waits at the dock until the ship comes within 1,200 px and every freighter already in flight is within its reach and bound for the same post - for two minutes at most (counted only while none is in flight), then it leaves alone. A flying freighter moves only while the ship is within 1,200 px of it (the hired wing does not count); without its escort it holds where it is, marked WAITING FOR ESCORT. Twelve seconds unescorted, pirates raid it - skimmers and a raider, sized by the difficulty - and again every twenty seconds while it waits. Every ambush is strong enough that, left unopposed, it drains a freighter below half its cargo or wrecks its hull: a pilot who only mines, or only flies alongside without fighting, loses the escorts.
 
 ### Hard and Nightmare tiers, the weekly Nightmare Op
 
@@ -148,6 +164,7 @@ The code lives in `js/` as plain scripts on the `SZ.SpaceMining` namespace, load
 Core (`js/core/`):
 
 - **`namespace.js`** -- The `SZ.SpaceMining` namespace with one object per module, so modules can call modules that load after them
+- **`skill.js`** -- The mission score (outcome, what was kept, progress, activity), the difficulty level it moves and the multipliers the level gives
 - **`tiers.js`** -- Hard and Nightmare tiers: the modifiers, which ones an operation draws, unlocking, first-clear rewards, medals, the weekly Nightmare Op, its score and streak
 - **`fuel.js`** -- Belt sizes, how far out a point lies, rock density and richness by distance, burn rates, the bingo cost home, fuel cells and the Ramscoop
 - **`constants.js`** -- View plane, simulation clock, world, grid and pool sizes, rock radii, flight, laser, tractor and dock tuning, feel timings, UI palette
@@ -272,7 +289,9 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 - **`harness.js`** -- A recording fake canvas, minimal DOM and storage, a loader that runs the game scripts in `index.html` order, a stepper
 - **`ops.test.js`** -- The operation chains and their moods, opening, the capstone gate, loops per belt, objective progress, results and rewards, the pacing director
-- **`campaign.test.js`** -- Bots play the Kessler and Amber operations in the running game and print the measured tension, the fuel stops and tows per operation; a careful pilot is never towed, a careless one that ignores the fuel gauge is
+- **`campaign.test.js`** -- Bots play the Kessler and Amber operations in the running game with the difficulty adapting as they go, and print tension, fuel stops, tows, the mission score and the level per operation; a careful pilot is never towed, a careless one runs dry, a pilot who only mines or never fights loses every escort, and the better pilot ends at the higher level
+- **`skill.test.js`** -- The mission score, the difficulty level and its multipliers in the running game, actions counted from control changes, the weekly run leaving the level alone, freighters that wait for their escort, hold without it and get raided
+- **`budget.test.js`** -- The frame budget stepping the visual detail down and up, the particle share per level, the caps on pirates and enemies
 - **`music.test.js`** -- The moods from what is happening, climbing at once and calming slowly, one theme across moods, switches on the bar line, the themes per screen and mode
 - **`combat.test.js`** -- The damage table, shot kinds, army mixes, the counter-pick and its waves, weapons in the save, buying, levelling, mounting and unlocks
 - **`weapons.test.js`** -- Every weapon in flight against pirates and invaders, the keys and their modes, the combat model on units and turrets
@@ -337,6 +356,8 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 ### Escort
 - [x] As a player, I can escort freighters from the dock along lanes to trading posts at the belt edges and get paid by the cargo they deliver
+- [x] As a player, I get a mission score after every operation and the next ones grow harder when I play well and easier when I struggle
+- [x] As a player, I must stay with and fight for my freighters: unescorted they wait and get raided, unopposed ambushes ruin them
 - [x] As a player, I replay cleared operations on Hard and Nightmare with modifiers, for medals, Intel and tokens
 - [x] As a player, I fly the weekly Nightmare Op for a score, a streak and a place in the High Scores
 - [x] As a player, I protect allied stations and fight three factions that also fight each other in the Void Crown, ending with The Crown

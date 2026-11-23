@@ -79,6 +79,7 @@
 
   /* every selected craft of the kind (all kinds when none given) with its ability ready */
   function castSelected(sel, kind, p) {
+    NS.skill.act();
     let n = 0;
     for (let i = 0; i < sel.length; ++i) if ((!kind || sel[i].type === kind) && cast(sel[i], p)) ++n;
     return n;

@@ -18,8 +18,10 @@
   /* hp, speed in px/s, radius; drain: cargo share per second per latched skimmer, take: what
      one skimmer carries off; storm: speed factor in an active storm; reach and slow: how close
      and how slow the ship hands over ore; margin: posts from the belt edge; min: the cargo share
-     a post accepts - one that docks with less voids its contract */
-  const FREIGHTER = { hp: 320, speed: 48, r: 34, drain: 0.05, take: 0.15, storm: 0.5, reach: 170, slow: 140, margin: 380, min: 0.5 };
+     a post accepts - one that docks with less voids its contract; leash: how close the ship must
+     be for a freighter to fly on; raidFirst, raidEvery: seconds alone before pirates raid it;
+     patience: seconds a due freighter waits at the dock for its escort before it leaves alone */
+  const FREIGHTER = { hp: 320, speed: 48, r: 34, drain: 0.05, take: 0.15, storm: 0.5, reach: 170, slow: 140, margin: 380, min: 0.5, leash: 1200, raidFirst: 12, raidEvery: 20, patience: 120 };
 
   /* cruising speed in a belt of width w: the lanes grow with the belt, so freighters fly faster
      and a run takes as long as in the classic sector */

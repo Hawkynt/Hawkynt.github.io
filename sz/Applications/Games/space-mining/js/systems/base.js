@@ -128,6 +128,7 @@
     rec.hp = rec.maxHp * 0.1;
     if (type === 'hub') found(rec);
     refresh();
+    NS.skill.act();
     NS.audio.sfx('thud', { volume: 0.5 });
     NS.fx.ring(rec.x, rec.y, 10, rec.r * 2, 0.5, '#7cf0ff', 3);
     return { ok: true, b: rec };
@@ -205,6 +206,7 @@
     spend(cost, rec.x, rec.y);
     rec.lvl += 1;
     rec.prog = 0.4;
+    NS.skill.act();
     const k = rec.hp / rec.maxHp;
     wake(rec);
     rec.hp = rec.maxHp * k;

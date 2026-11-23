@@ -26,8 +26,11 @@
   function spawn(type, x, y, opts) {
     opts = opts || {};
     const def = ENEMY_BY_ID[type];
+    /* past the cap a spawn is a dud (structures and bosses always come) */
+    if (!def.structure && !def.boss && G.enemies.length >= NS.budget.CAPS.enemies && G.enemies.filter(e => e.alive).length >= NS.budget.CAPS.enemies)
+      return { alive: false, type: type, def: def, x: x, y: y, hp: 0, maxHp: 0, vx: 0, vy: 0, r: def.r };
     const zone = G.run ? G.run.zone : { danger: 1 };
-    const hpMul = (1 + 0.3 * (zone.danger - 1)) * (opts.hpMul || 1) * (NS.operation.mod('veteran') ? 1.5 : 1);
+    const hpMul = (1 + 0.3 * (zone.danger - 1)) * (opts.hpMul || 1) * (NS.operation.mod('veteran') ? 1.5 : 1) * NS.operation.dm().hp;
     const e = {
       alive: true, id: nextId++, type: type, def: def, x: x, y: y, vx: 0, vy: 0, angle: opts.angle || 0, r: def.r,
       hp: def.hp * hpMul, maxHp: def.hp * hpMul, shield: (def.shield || 0) * hpMul, maxShield: (def.shield || 0) * hpMul, shieldT: 0,
@@ -135,6 +138,8 @@
   /* type: the damage type of the hit (combat model), counted against an invader's armour */
   function hitTarget(t, dmg, side, by, type) {
     if (!t || !t.alive) return;
+    /* the difficulty level scales what the hostiles deal */
+    if (side === 'enemy') dmg *= NS.operation.dm().dmg;
     if (t === G.ship) { NS.ship.hurt(dmg, 'bolt'); return; }
     if (t.cx !== undefined) {
       if (side === 'player' && !t.rogue) return;
@@ -265,7 +270,7 @@
       if (b) for (let i = 0; i < b.data.buildings.length; ++i) {
         const o = b.data.buildings[i];
         const d = Math.sqrt((o.x - s.x) * (o.x - s.x) + (o.y - s.y) * (o.y - s.y));
-        if (o.alive && !o.rogue && d < r + o.r) NS.base.damage(o, s.dmg * (1 - 0.5 * d / (r + o.r)), 'blast');
+        if (o.alive && !o.rogue && d < r + o.r) NS.base.damage(o, s.dmg * NS.operation.dm().dmg * (1 - 0.5 * d / (r + o.r)), 'blast');
       }
       const list = NS.units.queryPlayer(s.x, s.y, r);
       for (let i = 0; i < list.length; ++i) {
@@ -559,7 +564,7 @@
             fire('enemy', 'artillery', mx, my, t, d.dmg, 340, { splash: 70 });
             NS.audio.sfxAt('explode', e.x, e.y, { volume: 0.25, pitch: 1.8 });
           } else if (e.type === 'frigate' || e.type === 'juggernaut') fire('enemy', 'shell', mx, my, t, d.dmg, 560);
-          if (d.cloaked) e.seenT = Math.max(e.seenT || 0, 1);
+          if (d.cloaked) e.seenT = Math.max(e.seenT || 0, 2.5);
           else fire('enemy', e.type === 'nanodrone' ? 'nanobolt' : 'bolt', mx, my, t, d.dmg, 640, { corrupt: d.corrupt || 0 });
           NS.fx.muzzle(mx, my, a, d.color);
         }

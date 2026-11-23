@@ -6,7 +6,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.SpaceMining || (SZ.SpaceMining = {});
 
-  const MODULES = ['constants', 'rng', 'ores', 'ships', 'treeData', 'goals', 'colonyData', 'fleetData', 'eventData', 'opsData', 'weaponData', 'syndicateData', 'ops', 'tiers', 'pacing', 'combat', 'fuel', 'escort', 'syndicate', 'rules',
+  const MODULES = ['constants', 'rng', 'ores', 'ships', 'treeData', 'goals', 'colonyData', 'fleetData', 'eventData', 'opsData', 'weaponData', 'syndicateData', 'ops', 'tiers', 'skill', 'budget', 'pacing', 'combat', 'fuel', 'escort', 'syndicate', 'rules',
     'economy', 'supply', 'colony', 'production', 'outbreak', 'calendar', 'cosmeticData', 'cosmetics', 'save', 'saveFile', 'audio', 'music',
     'grid', 'fx', 'camera', 'ship', 'asteroids', 'mining', 'hazards', 'pirates', 'drones', 'formations', 'orders', 'base',
     'supplies', 'turrets', 'hardpoints', 'freighters', 'units', 'abilities', 'aiBase', 'allies', 'enemies', 'waves', 'life', 'refuel', 'events', 'operation', 'command', 'resume', 'trip', 'cinematics', 'sim',

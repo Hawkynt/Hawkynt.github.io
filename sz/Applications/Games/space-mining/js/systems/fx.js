@@ -28,7 +28,7 @@
 
   /* One particle; returns it (or null when the budget is full) */
   function spawn(kind, x, y, vx, vy, life, size, color) {
-    if (count() >= MAX_PARTICLES) return null;
+    if (count() >= MAX_PARTICLES * NS.budget.particles(G.quality)) return null;
     const p = pool.get();
     p.alive = true;
     p.kind = kind;

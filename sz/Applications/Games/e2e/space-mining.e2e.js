@@ -275,4 +275,24 @@ exports.run = async (t) => {
   await t.wait(400);
   await t.shot('23-station-weekly');
   t.check('the station shows the weekly Nightmare Op', await t.state("G.hitAreas.some(a => a.id === 'weekly_op')"));
+
+  /* no lag in a big battle: a Syndicate base, all three factions, pirates, mines and a fleet */
+  await t.run((NS, G) => {
+    G.save.licenses = ['kessler', 'amber', 'verdant', 'crimson', 'void'];
+    NS.trip.startTrip('career', 4, { op: 'vc_war' });
+    NS.cinematics.skip(); G.cine = null; NS.screens.setScreen('playing');
+    G.ship.maxHull = G.ship.hull = 1e9; G.ship.maxFuel = G.ship.fuel = 1e9;
+    for (const r of G.rocks) if (r.kind !== 'rock') r.found = true;
+    const s = G.ship;
+    for (let i = 0; i < 80; ++i) NS.enemies.spawn(['swarmer', 'nanodrone', 'syn_fighter', 'raider'][i % 4], s.x + (Math.random() - 0.5) * 1600, s.y + (Math.random() - 0.5) * 1600, {});
+    for (let i = 0; i < 30; ++i) NS.pirates.spawn(['skimmer', 'raider', 'gunship', 'mine'][i % 4], s.x + (Math.random() - 0.5) * 1400, s.y + (Math.random() - 0.5) * 1400);
+    for (let i = 0; i < 16; ++i) NS.units.spawn(['fighter', 'gunboat'][i % 2], s.x + (Math.random() - 0.5) * 400, s.y + (Math.random() - 0.5) * 400, 'player');
+    NS.camera.snap(s.x, s.y);
+  });
+  await t.wait(5000);
+  await t.shot('24-big-battle');
+  const perf = await t.state("JSON.stringify({ avg: NS.app.budget.avg, q: G.quality, enemies: G.enemies.filter(e => e.alive).length, fx: NS.fx.count() })");
+  console.log('    big battle: ' + perf);
+  t.check('a big battle stays within the frame budget (the detail steps down if it must)', await t.state("NS.app.budget.avg < 16 || G.quality < 2"));
+  t.check('and even then a frame costs under 33 ms', await t.state("NS.app.budget.avg < 33"));
 };

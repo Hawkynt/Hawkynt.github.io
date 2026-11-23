@@ -37,6 +37,48 @@
     return !!(o && o.status === 'active' && o.mods && o.mods.indexOf(id) >= 0);
   }
 
+  /* the difficulty multipliers of the running operation (level 1 outside one) */
+  function dm() {
+    const o = G.run && G.run.op;
+    return NS.skill.diff(o && o.status === 'active' ? o.diff : 1);
+  }
+
+  /* how many of a group the difficulty sends; floor: never fewer than the base (ambushes, raids) */
+  function sized(n, floor) {
+    const k = dm().size;
+    return Math.max(1, Math.round(n * (floor ? Math.max(1, k) : k)));
+  }
+
+  /* every change of the flight controls is an action */
+  function actions(o) {
+    const inp = G.input, s = G.ship, k = inp.keys || {};
+    let aim = '';
+    if (inp.rightDown && s) aim = Math.round(Math.atan2(inp.aimWY - s.y, inp.aimWX - s.x) / (Math.PI / 4));
+    const held = NS.hardpoints.state().held || [];
+    const sig = Math.sign(inp.moveX || 0) + ',' + Math.sign(inp.moveY || 0) + ',' + (inp.thrustAxis || 0) + ',' + (inp.turn || 0) + ',' + (inp.boost ? 1 : 0) + ',' +
+      (inp.firing || inp.mouseDown ? 1 : 0) + ',' + (inp.rightDown ? 1 : 0) + aim + ',' + (k.Space ? 1 : 0) + ',' + (k.KeyS ? 1 : 0) + ',' + (held[0] ? 1 : 0) + (held[1] ? 1 : 0) + (held[2] ? 1 : 0);
+    if (o.sig !== undefined && sig !== o.sig) o.actions += 1;
+    o.sig = sig;
+  }
+
+  /* what the operation guards, kept: the convoy, the outpost, the allied stations (null: nothing) */
+  function kept(op, o) {
+    if (op.convoy && G.freighters.length) return convoyHealth() / (2 * G.freighters.length);
+    if (op.allies && G.allies.length) return G.allies.reduce((a, x) => a + (x.alive ? x.hp / x.maxHp : 0), 0) / G.allies.length;
+    if (op.waves && !op.waves.off && o.keptMax > 0) return outpostHp() / o.keptMax;
+    return null;
+  }
+
+  /* the mission score; it moves the difficulty level unless this is the weekly run */
+  function scoreIt(o, op, won) {
+    const s = G.ship;
+    const prog = O.progress(op, measured(o));
+    const progress = prog.length ? prog.reduce((a, p) => a + Math.min(1, p.have / p.n), 0) / prog.length : 0;
+    o.score = Math.round(NS.skill.score({ won: won, hull: s ? Math.max(0, s.hull) / s.maxHull : 0, kept: kept(op, o), progress: progress, aps: o.actions / Math.max(1, o.t) }));
+    if (!o.weekly) NS.skill.update(G.save.skill || (G.save.skill = NS.skill.blank()), o.score, op.mood);
+    o.level = (G.save.skill || {}).level || 1;
+  }
+
   function def() {
     const o = G.run && G.run.op;
     return o ? OP_BY_ID[o.id] : null;
@@ -53,6 +95,8 @@
       waveT: op.threat ? op.threat.first : 0, beat: 'build', pace: PC.create(), hull: G.ship ? G.ship.hull : 0, waves: 0,
       delivered: 0, lost: 0, paid: 0, ambushes: 0, hadHub: false, seeded: false, rad: false,
       tier: tier || 'normal', mods: mods ? mods.slice() : NS.tiers.modsFor(op, tier || 'normal'), weekly: !!weekly,
+      /* the difficulty level it flies at (the weekly run is the same for everyone) and the actions taken */
+      diff: weekly ? 1 : (G.save.skill || NS.skill.blank()).level, actions: 0, sig: undefined, keptMax: 0,
     };
     /* Dry tanks: the tank holds 60% */
     if (mod('dry') && G.ship) { G.ship.maxFuel *= 0.6; G.ship.fuel = Math.min(G.ship.fuel, G.ship.maxFuel); }
@@ -158,6 +202,8 @@
     if (!o) return;
     const op = OP_BY_ID[o.id];
     o.t += dt;
+    actions(o);
+    if (op.waves && !op.waves.off) o.keptMax = Math.max(o.keptMax || 0, outpostHp());
     const s = G.ship;
     if (s && s.alive) {
       let lost = Math.max(0, o.hull - s.hull) / Math.max(1, s.maxHull);
@@ -237,8 +283,8 @@
     if (o.waveT > 0) return;
     if (G.cine || G.run.docked || !G.ship || !G.ship.alive) { o.waveT = 3; return; }
     const nx = PC.next(op.threat, beat, o.pace.tension);
-    o.waveT = nx.wait;
-    const n = Math.min(nx.size, op.threat.cap - threats(op));
+    o.waveT = nx.wait / dm().pace;
+    const n = Math.min(sized(nx.size), Math.round(op.threat.cap * dm().size) - threats(op));
     if (n > 0) send(op.threat.kinds, n, beat);
   }
 
@@ -271,7 +317,8 @@
     const o = G.run.op, op = OP_BY_ID[o.id];
     o.status = 'won';
     const r = o.tier === 'normal' ? O.finish(G.save, op, true, o.t) : NS.tiers.finish(G.save, op, o.tier, true, o.t);
-    if (o.weekly) o.score = (NS.tiers.finishWeekly(G.save, new Date(Date.now()), true, o.t) || {}).score;
+    if (o.weekly) o.wscore = (NS.tiers.finishWeekly(G.save, new Date(Date.now()), true, o.t) || {}).score;
+    scoreIt(o, op, true);
     o.first = r.first;
     G.run.cleared = (G.run.cleared || 0) + 1;
     G.run.lastOp = report(o, op);
@@ -287,6 +334,7 @@
     o.why = why;
     if (o.tier === 'normal') O.finish(G.save, op, false, o.t);
     else NS.tiers.finish(G.save, op, o.tier, false, o.t);
+    scoreIt(o, op, false);
     NS.music.cue('lose');
     if (why === 'time' || why === 'convoy' || why === 'escaped' || why === 'ally') NS.trip.banner('OPERATION FAILED', WHY[why], MOODS.W.color);
     NS.save.writeSave();
@@ -309,10 +357,10 @@
   function report(o, op) {
     return { id: o.id, name: op.name, mood: op.mood, status: o.status, why: WHY[o.why] || '', first: o.first, reward: o.first ? op.reward : null,
       convoy: op.convoy ? { delivered: o.delivered || 0, lost: o.lost || 0, paid: o.paid || 0 } : null, cleared: G.run.cleared || 0,
-      tier: o.tier || 'normal', mods: o.mods || [], weekly: !!o.weekly, score: o.score || 0 };
+      tier: o.tier || 'normal', mods: o.mods || [], weekly: !!o.weekly, wscore: o.wscore || 0, score: o.score || 0, level: o.level || 1, diff: o.diff || 1 };
   }
 
   Object.assign(NS.operation, {
-    WHY, NEXT_IN, def, mod, start, progress, update, settle, waveCfg, wavePace, upNext
+    WHY, NEXT_IN, def, mod, dm, sized, start, progress, update, settle, waveCfg, wavePace, upNext
   });
 })();

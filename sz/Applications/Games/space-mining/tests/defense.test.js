@@ -9,6 +9,8 @@
 const H = require('./harness');
 H.installEnv();
 const NS = H.load();
+/* these checks watch freighters with the ship parked away; the escort leash has its own (skill.test.js) */
+NS.escort.FREIGHTER.leash = 1e9;
 const { check, done } = H;
 const G = NS.state;
 const B = NS.base;

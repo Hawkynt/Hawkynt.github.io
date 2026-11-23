@@ -12,6 +12,8 @@ const G = NS.state;
 const T = NS.tiers;
 const O = NS.ops;
 const { OPS, OP_BY_ID } = NS.opsData;
+/* these checks watch freighters with the ship parked away; the escort leash has its own (skill.test.js) */
+NS.escort.FREIGHTER.leash = 1e9;
 
 /* ── which modifiers ── */
 check('seven modifiers', Object.keys(T.MODS).length === 7);
@@ -73,6 +75,8 @@ check('the weekly record survives the save repair', NS.rules.migrateSave(JSON.pa
 /* ── modifiers in the running game ── */
 const steps = n => H.run(NS, n);
 function launch(id, tier, mods, zone) {
+  /* modifiers alone, at difficulty level 1 */
+  G.save.skill = NS.skill.blank();
   G.save.licenses = ['kessler', 'amber', 'verdant', 'crimson', 'void'];
   NS.trip.startTrip('career', NS.ores.ZONE_BY_ID[OP_BY_ID[id].zone].index, { op: id, tier: tier, mods: mods });
   NS.cinematics.skip();

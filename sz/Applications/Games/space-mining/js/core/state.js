@@ -51,6 +51,8 @@
     posts: [],
     freighters: [],
     allies: [],
+    /* visual detail 0..2, set by the frame budget */
+    quality: 2,
     wing: [],
     pods: [],
     tbeams: [],

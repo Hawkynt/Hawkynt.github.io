@@ -15,6 +15,9 @@
   let last = 0;
   let acc = 0;
   let warm = 0;
+  const budget = NS.budget.create();
+  /* the frame budget, readable from outside (the browser checks) */
+  NS.app.budget = budget;
 
   function loop(ts) {
     if (!last) last = ts;
@@ -22,11 +25,14 @@
     last = ts;
     if (Math.abs(elapsed - STEP_MS) < STEP_SNAP_MS) elapsed = STEP_MS;
     acc = Math.min(acc + elapsed, STEP_MS * MAX_STEPS);
+    const w0 = performance.now();
     while (acc >= STEP_MS) {
       acc -= STEP_MS;
       NS.sim.update(STEP);
     }
     NS.frame.draw();
+    /* the frame budget: heavy frames lower the visual detail, calm ones raise it again */
+    G.quality = NS.budget.step(budget, performance.now() - w0, elapsed / 1000);
     NS.statusBar.tick(elapsed / 1000);
     NS.music.update(elapsed / 1000);
     prewarm();

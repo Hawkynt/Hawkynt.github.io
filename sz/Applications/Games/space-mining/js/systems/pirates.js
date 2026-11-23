@@ -23,7 +23,9 @@
 
   function spawn(kind, x, y) {
     const d = PIRATES[kind];
-    const hpMul = (1 + 0.35 * (G.run.zone.danger - 1)) * (NS.operation.mod('veteran') ? 1.5 : 1);
+    /* past the cap a spawn is a dud the caller can still touch (mines and guns always come) */
+    if (!d.still && G.pirates.length >= NS.budget.CAPS.pirates && G.pirates.filter(p => p.alive).length >= NS.budget.CAPS.pirates) return { alive: false, kind: kind, x: x, y: y, hp: 0, maxHp: 0 };
+    const hpMul = (1 + 0.35 * (G.run.zone.danger - 1)) * (NS.operation.mod('veteran') ? 1.5 : 1) * NS.operation.dm().hp;
     const p = {
       alive: true, kind: kind, x: x, y: y, vx: 0, vy: 0, angle: 0, r: d.r, hp: d.hp * hpMul, maxHp: d.hp * hpMul,
       fireT: 1 + R() * 2, burst: 0, orbit: R() < 0.5 ? 1 : -1, stolen: null, flee: 0, hitFlash: 0, exhaustT: 0, bank: 0,
@@ -103,7 +105,7 @@
     const lead = Math.sqrt((target.x - p.x) * (target.x - p.x) + (target.y - p.y) * (target.y - p.y)) / speed;
     const tx = target.x + (target.vx || 0) * lead * 0.7, ty = target.y + (target.vy || 0) * lead * 0.7;
     const a = Math.atan2(ty - p.y, tx - p.x) + (R() - 0.5) * 0.08;
-    G.bolts.push({ alive: true, friendly: false, x: p.x + Math.cos(a) * p.r, y: p.y + Math.sin(a) * p.r, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: 1.6, dmg: dmg, angle: a });
+    G.bolts.push({ alive: true, friendly: false, x: p.x + Math.cos(a) * p.r, y: p.y + Math.sin(a) * p.r, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: 1.6, dmg: dmg * Math.max(1, NS.operation.dm().dmg), angle: a });
     NS.fx.muzzle(p.x + Math.cos(a) * p.r, p.y + Math.sin(a) * p.r, a, '#ff5a3a');
     NS.audio.sfxAt('shoot', p.x, p.y, { volume: 0.3, pitch: 0.8 });
   }

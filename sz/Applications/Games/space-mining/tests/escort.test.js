@@ -15,6 +15,8 @@ const NS = H.load();
 const { check, done } = H;
 const G = NS.state;
 const E = NS.escort;
+/* these checks watch freighters with the ship parked away; the escort leash has its own (skill.test.js) */
+NS.escort.FREIGHTER.leash = 1e9;
 const O = NS.ops;
 const { OP_BY_ID } = NS.opsData;
 
@@ -96,11 +98,11 @@ check('it follows its lane at its pace', Math.abs(f.d - d0 - E.pace(G.world.w)) 
 f.d = p.chokes[0].d - 300;
 steps(60 * 2);
 const amb = G.pirates.filter(q => q.prey === f);
-check('pirates jump it near the choke point', p.chokes[0].sprung && amb.length === 2 && G.run.op.ambushes === 1);
+check('pirates jump it near the choke point', p.chokes[0].sprung && amb.length === OP_BY_ID.a_first.convoy.ambush.size[0] && G.run.op.ambushes === 1);
 /* a skimmer latches and drains */
 const sk = amb[0];
 sk.x = f.x + 40; sk.y = f.y; sk.vx = sk.vy = 0;
-amb[1].alive = false;
+for (const q of amb.slice(1)) q.alive = false;
 steps(10);
 check('a skimmer that reaches it latches on', sk.latch === f);
 steps(60 * 2);
@@ -207,7 +209,7 @@ NS.trip.endTrip('dock');
 
 /* several directions */
 fr = launch('a_three');
-check('Three Directions sends three freighters to three different posts', fr.length === 3 && new Set(fr.map(x => x.to)).size === 3);
+check('Jammed Lanes sends three freighters on two lanes: a pair, then one across the belt', fr.length === 3 && fr[0].to === fr[1].to && fr[2].to !== fr[0].to);
 NS.trip.endTrip('dock');
 
 /* the wing */
@@ -363,7 +365,7 @@ check('a Jammer within reach stops its freighter dead', Math.abs(fr[0].d - dj) <
 jam.alive = false;
 steps(60);
 check('shot down, the freighter flies on', fr[0].d > dj + 10);
-check('Three Directions\' ambushes are led by Jammers', OP_BY_ID.a_three.convoy.ambush.lead === 'jammer');
+check('Jammed Lanes\' ambushes are led by Jammers', OP_BY_ID.a_three.convoy.ambush.lead === 'jammer');
 NS.trip.endTrip('dock');
 
 /* mines on the lane */

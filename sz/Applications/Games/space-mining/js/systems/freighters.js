@@ -87,6 +87,30 @@
     if (cv.battery && dests[0]) batteries(dests[0].path, cv.battery.n, r);
   }
 
+  function leash(f, dt) {
+    const s = G.ship;
+    if (s && s.alive && Math.hypot(s.x - f.x, s.y - f.y) < F.leash) { f.alone = 0; return; }
+    if (!f.alone) f.raidT = F.raidFirst;
+    f.alone = (f.alone || 0) + dt;
+    f.raidT -= dt;
+    if (f.raidT > 0) return;
+    f.raidT = F.raidEvery;
+    raid(f);
+  }
+
+  /* pirates jump a freighter left alone: skimmers and a raider, sized by the difficulty */
+  function raid(f) {
+    const n = NS.operation.sized(3, true);
+    const a = R() * TAU;
+    for (let i = 0; i < n; ++i) {
+      const aa = a + (R() - 0.5) * 0.8, d = 850 + R() * 150;
+      const p = NS.pirates.spawn(i === 0 ? 'raider' : 'skimmer', clamp(f.x + Math.cos(aa) * d, 60, G.world.w - 60), clamp(f.y + Math.sin(aa) * d, 60, G.world.h - 60));
+      p.prey = f;
+    }
+    NS.trip.banner('RAID', f.name + ' waits alone - pirates close in', '#ff5c6c');
+    NS.audio.sfx('zap', { volume: 0.6, pitch: 0.4 });
+  }
+
   /* a pirate outpost beside the lane: gun batteries at even spacing, alternating sides */
   function batteries(path, n, r) {
     const len = E.length(path);
@@ -358,19 +382,32 @@
     if (f.state === 'wait') {
       if (G.cine) return;
       f.wait -= dt;
-      if (f.wait <= 0) {
-        f.state = 'fly';
-        NS.trip.banner('FREIGHTER UNDOCKS', f.name + ' for ' + p.name + ' - escort it', '#7cf0ff');
-        NS.audio.sfx('whoosh', { volume: 0.5, pitch: 0.6 });
+      if (f.wait > 0) return;
+      /* due: an escort's freighter undocks once the ship is close - or, its patience gone, alone */
+      /* one escort covers one lane: it waits while the ship is away, or a freighter in flight is
+         beyond the ship's reach or bound for another post; patience runs only while none flies */
+      const s = G.ship, mine = f.kind !== 'supply' || f.op;
+      const flying2 = G.freighters.filter(o => o !== f && flying(o) && (o.kind !== 'supply' || o.op));
+      const near = (a) => s && s.alive && Math.hypot(s.x - a.x, s.y - a.y) < F.leash;
+      const escorted = !mine || (near(f) && flying2.every(o => near(o) && o.to === f.to));
+      if (!escorted) {
+        if (!f.due) NS.trip.banner('FREIGHTER READY', f.name + ' waits at the dock for its escort', '#ffb44a');
+        f.due = (f.due || 0) + (flying2.length ? 0 : dt) + 1e-6;
+        if (f.due < F.patience) return;
       }
+      f.state = 'fly';
+      NS.trip.banner(escorted ? 'FREIGHTER UNDOCKS' : 'FREIGHTER LEAVES ALONE', f.name + ' for ' + p.name + (escorted ? ' - escort it' : ' - no escort came'), escorted ? '#7cf0ff' : '#ff5c6c');
+      NS.audio.sfx('whoosh', { volume: 0.5, pitch: 0.6 });
       return;
     }
     if (f.state === 'need') { handover(f); return; }
     const storm = G.storm && G.storm.phase === 'active';
     const x0 = f.x, y0 = f.y;
+    /* an escort's freighter flies only with the ship close by; alone it waits and gets raided */
+    if (f.kind !== 'supply' || f.op) leash(f, dt);
     /* a jammer's beam holds it dead in space */
     if (f.jam > 0) f.jam -= dt;
-    else f.d += speed() * (f.pace || 1) * (storm ? F.storm : 1) * dt;
+    else if (!f.alone) f.d += speed() * (f.pace || 1) * (storm ? F.storm : 1) * dt;
     if (f.need && !f.need.done && f.d >= f.need.d) {
       f.d = f.need.d;
       f.state = 'need';
@@ -438,6 +475,7 @@
     if (!amb) return;
     let n = amb.size[0] + Math.floor(R() * (amb.size[1] - amb.size[0] + 1));
     if (NS.operation.mod('swarm')) n = Math.ceil(n * 1.5);
+    n = NS.operation.sized(n, true);
     const side = R() < 0.5 ? -1 : 1;
     const a = f.angle + side * Math.PI / 2;
     const kinds = Object.keys(amb.kinds);
@@ -450,8 +488,10 @@
         let roll = R() * tot;
         for (let k = 0; k < kinds.length; ++k) if ((roll -= amb.kinds[kinds[k]]) < 0) { kind = kinds[k]; break; }
       }
-      const aa = a + (R() - 0.5) * 0.9, d = 820 + R() * 200;
-      const x = clamp(c.x + Math.cos(aa) * d, 60, G.world.w - 60), y = clamp(c.y + Math.sin(aa) * d, 60, G.world.h - 60);
+      /* a fast courier is met head on: the ambush waits ahead of it on its lane */
+      const at = (f.pace || 1) > 1.5 ? ahead(f, 900) : c;
+      const aa = a + (R() - 0.5) * 0.9, d = (f.pace || 1) > 1.5 ? 150 + R() * 150 : 820 + R() * 200;
+      const x = clamp(at.x + Math.cos(aa) * d, 60, G.world.w - 60), y = clamp(at.y + Math.sin(aa) * d, 60, G.world.h - 60);
       /* pirate kinds come from the pirate clans; anything else (Lattice drones) from the factions */
       const pr = NS.ships.PIRATES[kind] ? NS.pirates.spawn(kind, x, y) : NS.enemies.spawn(kind, x, y, {});
       pr.prey = f;

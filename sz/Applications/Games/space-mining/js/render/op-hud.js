@@ -34,7 +34,7 @@
       const left = op.time - o.t;
       const warn = left < 30 && Math.sin(G.time * 8) > 0;
       kit.text(clock(left), x + W - 12, y + 14, 14, warn ? UI.bad : UI.gold, { align: 'right', weight: 'bold' });
-    } else kit.text(mood.name, x + W - 12, y + 14, 11, mood.color, { align: 'right' });
+    } else kit.text(mood.name + '  ' + (o.diff || 1).toFixed(2), x + W - 12, y + 14, 11, mood.color, { align: 'right' });
     let yy = y + 36;
     for (let i = 0; i < prog.length; ++i) {
       const p = prog[i];

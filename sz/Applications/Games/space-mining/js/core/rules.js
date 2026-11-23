@@ -34,7 +34,7 @@
       seenIntro: false, seenHelp: false, crownDone: false,
       bases: {}, log: [], logSeen: [], daily: { day: '', streak: 0, last: '', week: '' }, cine: {}, resume: null,
       cosmetics: NS.cosmetics.blank(), festival: { event: '', tokens: 0, claimed: 0 },
-      ops: {}, weekly: null, unlocks: [], notices: [], manifest: { ore: {}, bar: {}, comp: {} }, weapons: { owned: {}, slots: [] },
+      ops: {}, weekly: null, skill: NS.skill.blank(), unlocks: [], notices: [], manifest: { ore: {}, bar: {}, comp: {} }, weapons: { owned: {}, slots: [] },
     };
   }
 
@@ -61,6 +61,7 @@
       s.rd = Math.floor(num(src.rd, 0, 1e6, s.rd));
       s.intel = Math.floor(num(src.intel, 0, 1e6, 0));
       s.weekly = NS.tiers.repairWeekly(src.weekly);
+      s.skill = NS.skill.repair(src.skill);
       if (Array.isArray(src.hulls)) s.hulls = ['prospector'].concat(src.hulls.filter(h => HULL_BY_ID[h] && h !== 'prospector'));
       s.hull = HULL_BY_ID[src.hull] && s.hulls.indexOf(src.hull) >= 0 ? src.hull : 'prospector';
       for (let i = 0; i < UPGRADES.length; ++i) {

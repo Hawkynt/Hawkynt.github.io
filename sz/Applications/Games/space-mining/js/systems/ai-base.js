@@ -64,7 +64,9 @@
         base.toward = { x: (p.x + site.cx) / 2, y: (p.y + site.cy) / 2 };
       }
       B.bases.push(base);
-      structure(base, bs.citadel ? 'citadel' : 'syn_core', p.x, p.y, 1);
+      const core = structure(base, bs.citadel ? 'citadel' : 'syn_core', p.x, p.y, 1);
+      /* quiet: the core's gun stays silent (an outpost that only mines) */
+      if (bs.quiet) core.quiet = true;
       for (const t of bs.start || []) place(base, t, 1);
       for (const t in bs.guards || {}) for (let k = 0; k < bs.guards[t]; ++k) unit(base, t, null);
     }
@@ -141,7 +143,7 @@
         NS.trip.banner('SYNDICATE BASE SPOTTED', 'Their core is marked on your radar', '#ff5a3a');
       }
       const list = structures(base);
-      base.credits += S.income(list) * dt;
+      base.credits += S.income(list) * NS.operation.dm().income * dt;
       let building = 0;
       for (const e of list) if (e.built < 1) {
         ++building;
@@ -160,7 +162,8 @@
   }
 
   function build(base, list, building) {
-    if (building || list.length >= D.MAX_STRUCTURES) return;
+    /* hold: a base that keeps what it has and builds nothing */
+    if (base.spec.hold || building || list.length >= D.MAX_STRUCTURES) return;
     const type = S.nextBuild(base.spec.order, base.k);
     const cost = D.BUILD[type].cost;
     if (base.credits < cost) return;
@@ -263,7 +266,7 @@
     const d = e.def;
     if (e.sporeT > 0) spores(e, dt);
     if (e.hijackT > 0) e.hijackT -= dt;
-    if (e.built < 1 || !d.dmg) return;
+    if (e.built < 1 || !d.dmg || e.quiet) return;
     e.fireT -= dt * (e.sporeT > 0 ? 0.5 : 1);
     if (e.fireT > 0) return;
     let t = null;
