@@ -1,3 +1,46 @@
+Main: 6.34
+by Hawkynt 23.11.2026
+* Space Mining: every belt adds a loop of its own and keeps the earlier ones running - mining in the Kessler Drift, escorts in the Amber Reach, tower defense in the Verdant Shoals, Syndicate bases in the Crimson Maw, everything at once in the Void Crown
++ Space Mining: 38 operations picked on the belt map, each with its own twist (a fast courier, a one-hit-point freighter, skimmer swarms, a pirate gun outpost, Jammers, Minelayers, radiation seasons, the Bloom, the Lattice, enemy bases, allied stations, the Crown); operations chain within one trip and the station names the next one
++ Space Mining: a mission score after every operation and a difficulty level that follows it - play well and the next operations grow harder, struggle and they ease
+* Space Mining: freighters need their escort - they wait at the dock, hold when left alone and get raided; unopposed ambushes ruin them
++ Space Mining: weapon hardpoints (Pulse Cannon, Scatter Flak, Missile Rack, Rail Lance, EMP Mine, Gravity Net, Tether Tow, Cloak Field, Drone Swarm) and damage types against armour
++ Space Mining: Syndicate bases that mine, build, defend and attack; cloaked Stalkers, Juggernauts and the Citadel; Sporecaster and Spike craft that rot and hijack their structures
++ Space Mining: craft with abilities - Herder Tug, Minelayer, Aegis, Phantom, Lancer, Bulwark - cast from the selection panel or with T
++ Space Mining: the Void Crown with allied stations to protect and three factions (Syndicate, Hive, Lattice) that fight you and each other
++ Space Mining: the Arsenal - a third tech-tree page bought with Intel from operations (Weapons, Convoy, Tactics, Warfare, Xeno, Drive)
++ Space Mining: Hard and Nightmare tiers of every cleared operation with modifiers and medals, and a weekly Nightmare Op with a score, a streak and High Scores
+* Space Mining: belts grow toward the Void Crown, rich at the rim and poor near the station; fuel matters all career with a bingo mark, refuelling at trading posts and the hub, fuel cells and the Ramscoop - until the best ship carries the Fusion Drive
++ Space Mining: supplies - the station sells basics and a cargo manifest loads them at launch; outposts build from the ship's hold and order supply freighters
++ Space Mining: a 16-bit FM soundtrack that follows the game (calm, cruising, tension, battle, boss) with composed pieces of about three minutes
++ Space Mining: Save Data - export the career to an encrypted, signed file, import it in another browser, reset it
++ Space Mining: keyboard building (B, 1-9, arrows, Enter) and U to upgrade
++ Space Mining: packed ore, Mining Fortune and Block Press ranks
+* Space Mining: big battles stay smooth - the game lowers its visual detail when frames get heavy
+# Space Mining: rows of the Supply list stay in place while you change their numbers
++ Games: three 16-bit console music styles with composed long passes
+* Bomberman: a power-up under every 7th to 10th brick on every stage
+
+Main: 6.33
+by Hawkynt 15.11.2026
++ Games: soundtracks for every game in ten styles (house, trance, electro, drum and bass, dubstep, chip, synthwave, funk, epic, ambient) - a theme per world, realm or card family, with guardian and finale pieces
+* Games: all 30 game icons redrawn as one set
++ Games: stories, achievements, daily quests with a streak, real-date festivals and cosmetics in Tower Defense, Dome Keeper, Space Combat, Space Invaders, Platformer, Physics Puzzle, Fantasy Puzzle, Cooking Game, Space Racing, Space Farming and Card Games
++ Card Games: mastery of every family and all 72 games, and a story with the regulars of the Gilded Ace
++ Physics Puzzle: five Looking-Glass level packs with 39 mirrored remixes
++ Space Combat: missions autosave; Continue mission picks up where you left off
++ Space Farming: Relaxed farm, Harvest Rush and the Daily Farm
++ Space Racing: ghost replays and Time Trial against the ghost
++ Space Invaders: Zen mode with endless calm waves
++ Space Mining: the Hangar with 15 liveries, 11 mining beams and 11 thruster plumes; docking banks the hold and the trip goes on
++ Tetris: steers with WASD as well as the arrows
++ Start menu: long program lists flow into columns that fit the screen
+# Desktop: a game launched from the start menu or the taskbar gets the keyboard at once
+# Card Games: the table buttons no longer cover the piles; Memory turns an unmatched pair back after a second
+# Tower Defense: a battered tower no longer keeps flickering
+# Breakout, Bubble Bobble, Tetris: a wall no longer shows "WALL undefined", the co-op switch no longer covers the stars, new Pairs and Jewels pieces appear inside the well
+# Cipher: carries the repository's LGPL-3.0 licence text
+
 Main: 6.32
 by Hawkynt 08.11.2026
 + Cookie Clicker: the Sugar Garden with 17 plants that ripen in real time, give bonuses and breed mutations up to a Crystal Rose; six Sanctum Trials after ascending; save export and import
