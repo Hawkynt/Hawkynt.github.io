@@ -481,11 +481,11 @@ function campaign(fights, label, ops) {
 
 const pro = campaign(true, 'Competent bot - Crimson Maw');
 if (ONLY) check = () => {};
-const by = id => pro.find(r => r.id === id) || { mean: 0, won: false, tries: 9 };
+const by = id => pro.find(r => r.id === id) || { mean: 0, peak: 0, won: false, tries: 9 };
 check('the competent bot clears at least six Crimson operations (retries allowed), the challenge and the breather among them', pro.length === 8 && pro.filter(r => r.won).length >= 6 && by('c_scout').won && by('c_raid').won, JSON.stringify(pro.map(r => r.id + ':' + r.won + ':' + r.why)));
 check('the Citadel opens the Void Crown licence', O.licenceReady(G.save, 4));
 check('the challenge and the breather are won at the first try', by('c_scout').tries === 1 && by('c_raid').tries === 1);
-check('the peaks run hotter than the start of the belt', by('c_twin').mean > by('c_scout').mean && by('c_citadel').mean > by('c_scout').mean);
+check('the peaks run hotter than the start of the belt (peak tension: a siege gathers quietly between its battles)', by('c_twin').peak > by('c_scout').peak && by('c_citadel').peak > by('c_scout').peak);
 
 /* the Void Crown, flown on from the same career: the ship mines, escorts and drills the Crown Heart
    as the operation asks, the commander builds, defends and breaks bases */
