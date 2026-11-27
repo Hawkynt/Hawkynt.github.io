@@ -246,6 +246,8 @@ NS.trip.endTrip('dock');
 /* ── supply freighters ── */
 const SU = NS.supply;
 check('four supply packs: iron, copper, a builder\'s mix and parts', SU.PACKS.length === 4 && SU.PACKS.map(k => k.id).join() === 'iron,copper,mix,parts');
+const pp = SU.PACK_BY_ID.parts.load;
+check('parts are for the shipyard: ten titanium bars (heavy craft for two or three), a little iron, alloy and circuits', pp.bar.titanium === 10 && pp.bar.iron === 4 && pp.comp.alloy === 3 && pp.comp.circuit === 1);
 const priceIron = SU.packPrice(G.save, G.stats, SU.PACK_BY_ID.iron);
 check('a pack costs the station\'s supply prices plus the freight fee', priceIron === SU.FREIGHT_FEE + SU.PACK_BY_ID.iron.load.bar.iron * SU.buyPrice(G.save, G.stats, 'bar', 'iron') +
   SU.PACK_BY_ID.iron.load.ore.iron * SU.buyPrice(G.save, G.stats, 'ore', 'iron'));

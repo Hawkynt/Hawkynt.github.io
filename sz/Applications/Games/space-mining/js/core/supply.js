@@ -25,7 +25,7 @@
     { id: 'iron', name: 'Iron', icon: 'cargo', load: { ore: { iron: 40 }, bar: { iron: 8 } } },
     { id: 'copper', name: 'Copper', icon: 'cargo', load: { ore: { copper: 30 }, bar: { copper: 8 } } },
     { id: 'mix', name: 'Builder\'s mix', icon: 'cargo', load: { ore: { iron: 24, copper: 14, ice: 20 }, bar: { iron: 4, copper: 4 } } },
-    { id: 'parts', name: 'Parts', icon: 'chip', load: { bar: { iron: 8, titanium: 4 }, comp: { alloy: 6, circuit: 3 } } },
+    { id: 'parts', name: 'Parts', icon: 'chip', load: { bar: { iron: 4, titanium: 10 }, comp: { alloy: 3, circuit: 1 } } },
   ];
   const PACK_BY_ID = {};
   for (let i = 0; i < PACKS.length; ++i) PACK_BY_ID[PACKS[i].id] = PACKS[i];
