@@ -1,6 +1,7 @@
 /* Two station tabs. Colonies: today's daily contract with the streak it builds, this week's
    anomaly belt and the running season, and every belt's outpost at a glance (founded,
-   infected, abandoned, a hive; buildings, crew, waves held, fleet, stock) with a launch button.
+   infected, abandoned, a hive; buildings, crew, waves held, fleet, stock) with a launch button,
+   and an outpost's trade board: its stock at its own prices, sold there or shipped to another.
    Log: the captain's log - the chapters unlocked so far, their text, and replaying one. */
 ;(function() {
   'use strict';
@@ -64,8 +65,10 @@
     kit.wrap(an.def.text + '. Rewards x' + an.def.reward.toFixed(2) + '.', ax + 14, y + 54, aw - 28, 12, 16, UI.textDim);
     const se = cal.season();
     kit.text(se ? se.name + ': ' + se.text : 'No festival running', ax + 14, y + 104, 11, se ? se.color : UI.textMute);
-    /* the outposts */
+    /* the outposts, or one outpost's trade board */
     let ry = y + 136;
+    if (G.ui.tradeZone && NS.trade.open(save, G.ui.tradeZone)) { drawTrade(x, ry, pw - 32, py + ph - ry - 24); return; }
+    G.ui.tradeZone = null;
     kit.text('BELT', x + 40, ry, 11, UI.textMute, { weight: 'bold' });
     kit.text('OUTPOST', x + 190, ry, 11, UI.textMute, { weight: 'bold' });
     kit.text('BLDG', x + 330, ry, 11, UI.textMute, { weight: 'bold' });
@@ -100,9 +103,55 @@
         kit.text(String(b.wave), x + 432, ty + 23, 13, UI.text);
         kit.text(String(b.units.length), x + 486, ty + 23, 13, UI.text);
       }
+      if (NS.trade.open(save, z.id)) W.button('trade_' + z.id, 'Trade', x + pw - 170, ty + 7, 66, 32, { accent: UI.gold, px: 13, action: () => { G.ui.tradeZone = z.id; G.ui.tradeTo = null; } });
       if (open) W.button('go_' + z.id, 'Fly', x + pw - 98, ty + 7, 62, 32, { accent: z.theme.accent, px: 13, action: () => NS.screens.launch('career', i) });
     }
     kit.text('Outposts produce a little while you are away (upkeep is charged each cycle); waves only come while you are in the belt.', x, py + ph - 14, 11, UI.textMute);
+  }
+
+  /* an outpost's trade board: each ore and bar in stock at the local price against home, Sell 10
+     and Ship 10 to the outpost picked at the top */
+  function drawTrade(x, y, w, h) {
+    const save = G.save, st = G.stats, T = NS.trade, zid = G.ui.tradeZone, z = NS.ores.ZONE_BY_ID[zid], b = save.bases[zid];
+    const others = ZONES.filter(o => o.id !== zid && T.open(save, o.id)).map(o => o.id);
+    if (others.indexOf(G.ui.tradeTo) < 0) G.ui.tradeTo = others[0] || null;
+    const to = G.ui.tradeTo;
+    kit.text('TRADE  -  ' + z.name.toUpperCase() + ' OUTPOST', x, y + 4, 14, UI.gold, { weight: 'bold' });
+    W.button('trade_back', 'Back', x + w - 80, y - 10, 76, 28, { px: 12, action: () => { G.ui.tradeZone = null; } });
+    if (to) {
+      W.button('trade_to', 'Ship to: ' + NS.ores.ZONE_BY_ID[to].name, x + w - 330, y - 10, 240, 28, { px: 12, accent: NS.ores.ZONE_BY_ID[to].theme.accent,
+        action: () => { G.ui.tradeTo = others[(others.indexOf(to) + 1) % others.length]; } });
+    } else kit.text('Found a second outpost to ship between them', x + w - 330, y + 4, 11, UI.textMute);
+    let ry = y + 24;
+    kit.text('STOCK', x + 10, ry, 11, UI.textMute, { weight: 'bold' });
+    kit.text('HERE', x + 140, ry, 11, UI.textMute, { weight: 'bold' });
+    kit.text('HOME', x + 190, ry, 11, UI.textMute, { weight: 'bold' });
+    if (to) kit.text('THERE / FEE', x + 240, ry, 11, UI.textMute, { weight: 'bold' });
+    ry += 10;
+    const rows = [];
+    for (const kind of ['ore', 'bar']) for (const id in b.stock[kind]) if (b.stock[kind][id] > 0) rows.push({ kind: kind, id: id, n: b.stock[kind][id] });
+    if (!rows.length) kit.text('Nothing in stock to trade - the outpost\'s rigs and refineries fill it', x + 10, ry + 20, 13, UI.textDim);
+    const max = Math.max(1, Math.floor((h - 50) / 30));
+    for (let i = 0; i < rows.length && i < max; ++i) {
+      const r = rows[i], ore = ORE_BY_ID[r.id], ty = ry + i * 30;
+      ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.18)';
+      ctx.fillRect(x, ty, w, 28);
+      const here = T.price(save, st, zid, r.kind, r.id);
+      const home = r.kind === 'bar' ? eco.barPrice(save, st, r.id) : eco.price(save, st, r.id);
+      kit.fitText(kit.group(r.n) + '  ' + (r.kind === 'bar' ? ore.bar : ore.name), x + 10, ty + 14, 124, 13, { color: ore.color || '#ffffff', weight: 'bold' });
+      kit.text(String(here), x + 140, ty + 14, 13, here > home ? UI.good : here < home * 0.8 ? UI.bad : UI.text, { weight: 'bold' });
+      kit.text(String(home), x + 190, ty + 14, 12, UI.textDim);
+      if (to) kit.text(T.price(save, st, to, r.kind, r.id) + ' / ' + T.fee(zid, to, r.kind, r.id), x + 240, ty + 14, 12, UI.textDim);
+      W.button('tsell_' + r.kind + '_' + r.id, 'Sell 10', x + w - (to ? 150 : 76), ty + 2, 70, 24, { px: 11, accent: UI.gold, action: () => {
+        const got = T.sell(save, st, zid, r.kind, r.id, 10);
+        if (got) { sfx('coin', { volume: 0.5 }); NS.save.writeSave(); }
+      } });
+      if (to) W.button('tship_' + r.kind + '_' + r.id, 'Ship 10', x + w - 76, ty + 2, 70, 24, { px: 11, accent: UI.cyan, action: () => {
+        const res = T.ship(save, st, zid, to, r.kind, r.id, 10);
+        if (res.moved) { sfx('select', { volume: 0.5 }); NS.save.writeSave(); } else sfx('error');
+      } });
+    }
+    kit.fitText('Ore a belt is rich in sells cheap at its outpost; ore it lacks fetches a premium. Ship it where it is scarce.', x, y + h, w, 11, { color: UI.textMute });
   }
 
   function drawLog(px, py, pw, ph) {

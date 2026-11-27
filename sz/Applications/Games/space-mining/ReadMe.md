@@ -65,6 +65,10 @@ The outer belts carry little or none of the iron, copper and ice that buildings 
 
 The hub also orders supply freighters: pick a pack on the hub's panel - iron or copper, each as ore and some bars, a builder's mix of both with ice, or parts (alloy plates, circuits and bars for the shipyard) - and pay the station's supply prices plus a freight fee. A freighter undocks at the station and flies a lane to the hub, at most two at a time; in belts with pirates an ambush may wait along the way (the more pirates the belt has, the likelier, at most four shipments in five), and skimmers drain the load as they would any freighter. What arrives goes into the outpost stock, scaled by the cargo still aboard; a freighter that is shot down is lost with its load, and one still on its way when the trip ends turns back and puts its load into the station warehouse.
 
+### Outpost trade
+
+Every outpost buys and sells at its own prices. An ore its belt is rich in sells cheap there and an ore the belt lacks fetches a premium: the local factor is 1.5 minus 4.5 times the ore's share of the belt's ore mix, between 0.6 and 1.5, on the ore's base value (bars: three ore at 1.3 times). Selling at an outpost lowers its price a little for the next unit, as at home; the outpost's market recovers 40% of the way back every market cycle. The station's Colonies tab opens an outpost's trade board (Trade): sell its ore and bars there, or ship them to another of your outposts for a freight fee per unit of 1 credit plus 5% of the unit's base value per belt crossed - as much as the other outpost has room for and you can pay. Moving what one belt has plenty of to the belt that lacks it, and selling or building with it there, is the profit - and an income for a commander who has no time to mine. Abandoned and overrun outposts do not trade.
+
 ### Weapons and the combat model
 
 Beside the mining laser every hull carries weapon hardpoints - one on the Prospector, two on the Wasp and the Hauler, three on the Leviathan - fired with 1, 2 and 3 in the pilot view (or their touch buttons). Nine weapons fill them, each with three levels (more damage, shorter cooldown): the Pulse Cannon (energy bolts, handed out by Claim Jumpers), and with the Amber Reach the Scatter Flak (a cone of pellets), the Missile Rack (homing salvos that burst) and the Tether Tow (grabs a rock behind the ship and flings it into the enemy); with the Verdant Shoals the Rail Lance (hold to charge, pierces everything in line) and the EMP Mine (strips shields, stuns, scrambles the Lattice); with the Crimson Maw the Gravity Net (holds enemies in place) and the Cloak Field (pirates and invaders lose you until you fire); with the Void Crown the Drone Swarm (four attack drones for a while). Pulse, flak and missiles fire while their key is held, the lance charges while held and fires on release, the rest act on a press. The Shipyard's Hardpoints page buys, levels and mounts them.
@@ -185,6 +189,7 @@ Core (`js/core/`):
 - **`savefile.js`** -- Save files: the career signed (ECDSA P-256) and encrypted (AES-GCM under an ECDH P-256 key agreement), read back and refused when changed
 - **`supply.js`** -- Pure supply rules: what the station sells and at what markup, the supply freighter packs and their price, buying, the cargo manifest and its repair, hold slots of supplies, fitting a manifest into the hold, moving supplies between warehouse and hold
 - **`economy.js`** -- Pure market rules: prices, saturation, selling ore, bars and components, refining, contracts (ore, bars, components, waves), the daily and weekly contracts and the streak, the market cycle with news and history, forecasts, the service bill
+- **`trade.js`** -- Pure outpost trade rules: local price factors from a belt's ore mix, local saturation and its recovery, selling an outpost's stock, freight fees and shipping between outposts
 - **`colony.js`** -- Pure outpost rules: sites and deposits, the saved outpost and its repair, placement, the link network, power, crew, storage, housing and supply, costs and upgrades (paid from stock, the hold covering missing ore), value, upkeep, wave scaling and composition
 - **`production.js`** -- Pure production chains per step, the while-away yield and the market cycle of every outpost (upkeep, scavengers, hives)
 - **`outbreak.js`** -- Pure crew, infection and corruption model: arrivals, growth, spread, quarantine, treatment, deaths, abandonment, hijacking, purge, EMP, reclaiming
@@ -268,7 +273,7 @@ UI (`js/ui/`):
 - **`savedata.js`** -- The Save Data screen: export to a file, import a file, reset with a confirming second click
 - **`supply.js`** -- The Supply tab and the docked Supplies screen: buying basics, the manifest with load and unload buttons, the hold gauge
 - **`hangar.js`** -- The Hangar tab: liveries, beams and plumes with live previews, buying and equipping, the festival track
-- **`colonies.js`** -- The Colonies tab (daily contract and streak, anomaly, season, every outpost) and the Log tab
+- **`colonies.js`** -- The Colonies tab (daily contract and streak, anomaly, season, every outpost, an outpost's trade board) and the Log tab
 - **`shipyard.js`** -- The Shipyard tab (hulls, level-up upgrade cards) and the Modules tab
 - **`map.js`** -- The belt map with planets, lanes, details, the operations list and brief, launching and buying licences
 - **`tree.js`** -- The tech tree screen on three pages (Ship, Colony, Arsenal) with links, states, detail panel and research that applies mid-trip
@@ -300,6 +305,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - **`weapons.test.js`** -- Every weapon in flight against pirates and invaders, the keys and their modes, the combat model on units and turrets
 - **`rules.test.js`** -- Tree, upgrades, hulls, modules, licences, derived stats, the Daily loadout, hold space, achievements
 - **`economy.test.js`** -- Prices, saturation and recovery, drift bounds, news, history, refining, contracts, service costs
+- **`trade.test.js`** -- Local prices per belt, selling at an outpost and its saturation and recovery, freight fees, shipping limited by stock, room and credits, closed outposts, the save repair, the trade board in the Colonies tab
 - **`logistics.test.js`** -- Block presses and packed ore, loading the hold at a hub; buying basics, the manifest at launch, supplies apart from the haul, unloading them at a hub and building from them, their return home
 - **`save.test.js`** -- Migration of the old high scores and tutorial flag, repair of damaged saves, round trip, storage failures
 - **`fuel.test.js`** -- Belt sizes and burn, the range across the career, rubble thin near the dock and rich at the rim, the bingo mark, fuel cells, the Ramscoop, posts and the hub refuelling, a tow called off by fuel
@@ -344,6 +350,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can fulfil delivery contracts for credits and research data
 - [x] As a player, I can buy four hulls and six upgrades that level up ten times with rising costs
 - [x] As a player, I can build five station modules (refinery, drone bay, scanner array, trade hub, fuel depot) and see them on the station
+- [x] As a player, I can trade between my outposts with their own prices: sell an outpost's stock there, or ship it to another outpost for a freight fee
 
 ### Operations
 - [x] As a player, I can see each belt's operations on the belt map with their mood, objectives, limit and reward; a trip into a belt always runs its next open operation, and I can replay finished ones
@@ -447,6 +454,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can navigate every screen with the mouse or the keyboard
 - [x] As a player, I can read eight illustrated How to Play pages
 - [x] As a player, I can play on a touch screen with a fly stick, an aim-and-drill stick and ability buttons
+- [x] As a player, I can play the command view fully on a touch screen: a tap selects or orders, a drag boxes, a long press attack-moves, two fingers pan and pinch, and touch chips recall and set groups
 - [x] As a player, I can resize or maximize the window and keep exact click mapping, with the belt filling the extra space
 - [x] As a player, I can have the game pause when the tab is hidden
 
@@ -457,10 +465,6 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - [x] As a player, I can close the game mid-trip and Continue exactly where I was
 - [x] As a player, I can export my career to an encrypted, signed file, import it in this or another browser, and reset the career
 - [x] As a player, I can load a save from before the outposts and find every site waiting
-
-### Planned Features
-- [ ] As a player, I can trade between my outposts with their own prices
-- [x] As a player, I can play the command view fully on a touch screen: a tap selects or orders, a drag boxes, a long press attack-moves, two fingers pan and pinch, and touch chips recall and set groups
 
 ## Controls
 

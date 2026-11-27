@@ -106,6 +106,27 @@ exports.run = async (t) => {
   await t.hit('sup_more_ore_iron');
   t.check('a real click orders ten iron on the cargo manifest', await t.state('G.save.manifest.ore.iron === 10'));
   await t.shot('14-supply-tab');
+  /* outpost trade: two outposts, real clicks sell Kessler iron there and ship some to the Void */
+  await t.run((NS, G) => {
+    for (const z of ['kessler', 'void']) {
+      const b = NS.colony.newBase(z);
+      b.buildings.push({ id: 1, type: 'hub', cx: 9, cy: 7, prog: 1, hp: 1000, maxHp: 1000, lvl: 1 });
+      G.save.bases[z] = b;
+    }
+    G.save.bases.kessler.stock.ore.iron = 40;
+    G.ui.stationTab = 'colonies';
+  });
+  await t.wait(300);
+  await t.hit('trade_kessler');
+  await t.wait(200);
+  const tradeCr = await t.state('G.save.credits');
+  await t.hit('tsell_ore_iron');
+  t.check('a real click sells ten Kessler iron at the outpost', await t.state('G.save.bases.kessler.stock.ore.iron === 30 && G.save.credits > ' + tradeCr));
+  await t.hit('tship_ore_iron');
+  t.check('a real click ships ten to the Void outpost', await t.state('G.save.bases.void.stock.ore.iron === 10 && G.save.bases.kessler.stock.ore.iron === 20'));
+  await t.shot('14a-outpost-trade');
+  await t.hit('trade_back');
+  await t.run((NS, G) => { delete G.save.bases.kessler; delete G.save.bases.void; G.ui.tradeZone = null; });
   /* the Shipyard's Hardpoints page: Claim Jumpers handed out the Pulse Cannon, a real click takes it */
   await t.run((NS, G) => { G.save.unlocks.push('w_pulse'); G.ui.stationTab = 'shipyard'; G.ui.yardPage = 'hp'; });
   await t.wait(300);

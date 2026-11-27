@@ -2,7 +2,7 @@
    your own sales that recovers each cycle, booms and busts with a news line, price history),
    selling ore, bars and components, refining 3 ore into 1 bar, delivery contracts (ore, bars,
    components, waves held) and the daily contract with its streak, and the service bill for
-   fuel and repairs. A cycle passes every time the ship docks. No DOM, no state access. */
+   fuel and repairs. A cycle passes every time the ship docks (the outposts' markets recover with it). No DOM, no state access. */
 ;(function() {
   'use strict';
 
@@ -217,6 +217,8 @@
   function tickMarket(save, stats, rng) {
     initMarket(save);
     save.cycle += 1;
+    /* the outposts' own markets recover too */
+    NS.trade.recover(save);
     for (let i = 0; i < ORES.length; ++i) {
       const m = save.market[ORES[i].id];
       m.f += (1 - m.f) * 0.2 + (rng() - 0.5) * 0.24;

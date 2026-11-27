@@ -105,6 +105,7 @@
       base.hive = !!b.hive && base.abandoned;
       base.idleCycles = Math.floor(num(b.idleCycles, 0, 1e6, 0));
       base.infected = num(b.infected, 0, 1, 0);
+      base.sat = NS.trade.repairSat(b.sat);
       base.recipe = typeof b.recipe === 'string' && NS.colonyData.RECIPE_BY_ID[b.recipe] ? b.recipe : 'alloy';
       let next = 1;
       const used = {};
