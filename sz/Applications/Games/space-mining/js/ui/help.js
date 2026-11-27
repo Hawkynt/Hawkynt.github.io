@@ -204,6 +204,7 @@
     const FA = NS.fleetArt;
     para([
       'While you are in a belt with an outpost, attack waves come on a timer: pirate raids, alien swarms and the Lattice, bigger with every wave, the belt and what the outpost is worth. A Sensor Array shows the next wave and its bearing early. Wave 8 brings a hive mothership. Tesla Coils chain lightning through swarms, Stasis Beams slow the heavies.',
+      G.input.touch ? 'Shipyard and drone factory build units. The map button above the fly stick opens the command view, paused. Tap a craft to select it, double tap for its kind, drag a finger to box; tap open space, an enemy or the ship to move, attack or escort; hold to attack-move; two fingers pan and pinch; the chips at the left recall a group on a tap and set it on a hold. The selection panel gives the orders, formations and abilities.' :
       'Shipyard and drone factory build units. In the command view: left click or drag to select, double-click for a type, right click to move, attack, escort, mine or repair, Shift to queue waypoints, Ctrl+1-9 groups, Z X C V for line, wedge, box and circle, T casts the abilities of the selection, B opens build mode (1-9 pick, arrows move, Enter builds), U upgrades. Space pauses to plan. In flight: G escort me, R return, E attack where I aim, Shift+1-9 recall a group.',
     ], 90, 140, 1100);
     const units = ['fighter', 'gunboat', 'escort', 'transport', 'miner', 'mender', 'purger'];
