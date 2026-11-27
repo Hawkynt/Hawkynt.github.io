@@ -262,7 +262,7 @@ UI (`js/ui/`):
 - **`widgets.js`** -- Hit areas registered while drawing, hover and keyboard cursor, directional navigation, buttons with a selected state
 - **`screens.js`** -- Screen switching with return targets, pause and resume, starting the career and launches, toasts, achievement pop-ups
 - **`status-bar.js`** -- The window status bar and the High Scores dialog
-- **`touch.js`** -- Virtual fly and aim sticks and ability buttons for touch screens
+- **`touch.js`** -- Virtual fly and aim sticks, ability buttons and the command-view button for touch screens
 - **`title.js`** -- The animated title with a rig drilling a gold-veined rock, Continue, the mode menu, pilot record and preview
 - **`station.js`** -- The career hub: station art, header and news, the Market, Refinery and Contracts tabs, coin payouts
 - **`savedata.js`** -- The Save Data screen: export to a file, import a file, reset with a confirming second click
@@ -278,7 +278,7 @@ UI (`js/ui/`):
 - **`command-hud.js`** -- The command view HUD: resource bar, stock strip, wave clock and preview, boss bar, alerts, minimap, view buttons, tooltips; the pilot view's outpost widget
 - **`build-menu.js`** -- Build categories and tiles with costs and tooltips
 - **`sel-panel.js`** -- The selection panel: building status and actions, unit counts, formations and orders
-- **`command-input.js`** -- Mouse and keys of the command view and the fleet keys of the pilot view
+- **`command-input.js`** -- Mouse, keys and touch gestures of the command view (taps, box drag, long press, pan and pinch, group chips) and the fleet keys of the pilot view
 - **`input.js`** -- Keyboard, mouse and touch input, flight intent with keyboard auto-aim, cinematic skipping, menu navigation, auto-pause
 
 Bootstrap:
@@ -293,6 +293,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 - **`td-campaign.test.js`** -- Bots play the Verdant Shoals operations from a veteran save: a builder founds and defends the outpost, reclaims it when lost and is paid a mining trip between tries when short of money; the difficulty adapts
 - **`playtest/rts-campaign.js`** (a tool, not in the test run) -- A commander bot plays the Crimson Maw and then the Void Crown: it builds Bulwarks, Lancers and gunboats, gathers at home, marches to a staging point and takes a base apart (factories, batteries, towers, pylons, then the goal), chases haulers, purges or tears down corrupted turrets, mines, escorts and drills the Crown Heart as the operation asks; `ONLY=c_citadel,vc_crown` plays just those operations and `LVL=1.6` sets the starting difficulty level
 - **`skill.test.js`** -- The mission score, the difficulty level and its multipliers in the running game, actions counted from control changes, the weekly run leaving the level alone, freighters that wait for their escort, hold without it and get raided
+- **`touch.test.js`** -- The command view on a touch screen: tap to select or order, double tap for a kind, drag to box, long press to attack-move, two fingers to pan and pinch, group chips, the command-view button in flight
 - **`budget.test.js`** -- The frame budget stepping the visual detail down and up, the particle share per level, the caps on pirates and enemies
 - **`music.test.js`** -- The moods from what is happening, climbing at once and calming slowly, one theme across moods, switches on the bar line, the themes per screen and mode
 - **`combat.test.js`** -- The damage table, shot kinds, army mixes, the counter-pick and its waves, weapons in the save, buying, levelling, mounting and unlocks
@@ -459,7 +460,7 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 
 ### Planned Features
 - [ ] As a player, I can trade between my outposts with their own prices
-- [ ] As a player, I can play the command view fully on a touch screen (taps select and order; there are no touch gestures for box selection or groups yet)
+- [x] As a player, I can play the command view fully on a touch screen: a tap selects or orders, a drag boxes, a long press attack-moves, two fingers pan and pinch, and touch chips recall and set groups
 
 ## Controls
 
@@ -496,6 +497,19 @@ Tests (`tests/`, run with `node tests/<name>.test.js`):
 | B | Research the selected node |
 | Any key / click | Skip a cinematic |
 | F2 | Title screen |
+
+On a touch screen the map button above the fly stick opens the command view (paused to plan), and the command view takes gestures:
+
+| Touch | Action |
+|-------|--------|
+| Tap a craft or building | Select it; a double tap selects every craft of its kind in view |
+| Tap open space, an enemy or the ship (craft selected) | The smart order there: move, attack, escort, mine, repair; with a factory selected, its rally point |
+| Tap open space (nothing selected) | Clear the selection |
+| Drag one finger | Select the craft in the box |
+| Long press (craft selected) | Attack-move there |
+| Two fingers | Drag to pan, pinch to zoom |
+| Chips 1-5 at the left edge | Tap: recall the group (tap again to centre on it); long press: set it from the selection |
+| Chip X | Clear the selection |
 
 ## SEO Keywords
 

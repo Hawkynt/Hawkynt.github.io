@@ -168,7 +168,7 @@
     inp.mouseY = p.y;
     if (G.screen === 'playing' && G.cmd.on) {
       ++inp.mouseMoved;
-      NS.commandInput.move(p);
+      NS.commandInput.move(p, e);
       return;
     }
     if (e.pointerType === 'touch') {

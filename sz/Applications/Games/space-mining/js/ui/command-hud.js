@@ -64,6 +64,7 @@
     viewButtons(v);
     NS.buildMenu.draw(v);
     NS.selPanel.draw(v);
+    NS.commandInput.drawTouch();
     tip(v);
     message(v);
     if (G.cmd.plan) {

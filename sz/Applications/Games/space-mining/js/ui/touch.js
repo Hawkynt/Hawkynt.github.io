@@ -1,6 +1,7 @@
 /* Touch controls for flight: a floating move stick on the left half, an aim-and-drill stick on
    the right, and buttons for boost, scanner pulse, seismic charge, drones and the mounted
-   weapon hardpoints around the right stick (only the unlocked ones). Shown once the screen has been touched. Owns the touch
+   weapon hardpoints around the right stick (only the unlocked ones), and one that opens the
+   command view once there is an outpost. Shown once the screen has been touched. Owns the touch
    pointers; writes intents into G.input. */
 ;(function() {
   'use strict';
@@ -31,6 +32,8 @@
     if (st.scan) out.push({ id: 'pulse', icon: 'scan', x: bx - 70, y: by - 20, r: 32 });
     if (st.seismic) out.push({ id: 'charge', icon: 'blast', x: bx + 20, y: by - 60, r: 30 });
     if (G.drones.length) out.push({ id: 'drones', icon: 'drone', x: bx - 200, y: by - 40, r: 30 });
+    /* the command view, once there is an outpost to command */
+    if (NS.command.available()) out.push({ id: 'command', icon: 'map', x: v.x0 + 60, y: v.y1 - 330, r: 30 });
     const hp = NS.hardpoints.slots();
     for (let i = 0; i < hp.length; ++i)
       if (hp[i]) out.push({ id: 'hp' + i, icon: NS.weaponData.WEAPON_BY_ID[hp[i]].icon, x: bx - 250 + i * 74, y: by + 130, r: 30 });
@@ -47,6 +50,7 @@
         if (b.id === 'pulse') NS.mining.pulse();
         if (b.id === 'charge') NS.mining.dropCharge();
         if (b.id === 'drones') NS.drones.toggle();
+        if (b.id === 'command' && NS.command.toggle(true)) NS.command.plan(true);
         if (b.id.charAt(0) === 'h') NS.hardpoints.trigger(+b.id.charAt(2), true);
         return;
       }
@@ -140,6 +144,6 @@
   }
 
   Object.assign(NS.touch, {
-    active, down, move, up, sample, draw
+    active, buttons, down, move, up, sample, draw
   });
 })();

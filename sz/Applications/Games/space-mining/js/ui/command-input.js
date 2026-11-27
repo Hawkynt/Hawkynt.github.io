@@ -2,7 +2,9 @@
    the strategy panels, left click and drag to select (double-click for a type), right click for
    smart orders (Shift queues), placement clicks (Shift keeps placing), middle drag and the
    wheel move the view, the minimap; keys for pause-and-plan, formations, orders, groups,
-   categories, upgrade and demolish. In the pilot view a few keys command the fleet (escort,
+   categories, upgrade and demolish. On a touch screen: a tap selects or orders, a one-finger drag
+   boxes, a long press attack-moves, two fingers pan and pinch, and chips at the left edge recall
+   and set groups. In the pilot view a few keys command the fleet (escort,
    return, attack where you aim, groups). Called by NS.input. */
 ;(function() {
   'use strict';
@@ -25,6 +27,7 @@
 
   function down(e, p) {
     const c = G.cmd;
+    if (e.pointerType === 'touch') { touchDown(e, p); return; }
     if (e.button === 1) {
       pan = { x: p.x, y: p.y, cx: c.x, cy: c.y };
       return;
@@ -54,8 +57,9 @@
     drag = { sx: p.x, sy: p.y, x0: w.x, y0: w.y, add: e.shiftKey };
   }
 
-  function move(p) {
+  function move(p, e) {
     const c = G.cmd;
+    if (e && e.pointerType === 'touch') { touchMove(e, p); return; }
     c.kcell = null;
     if (pan) {
       c.x = pan.cx - (p.x - pan.x) / G.cam.zoom;
@@ -70,6 +74,7 @@
 
   function up(e, p) {
     const c = G.cmd;
+    if (e.pointerType === 'touch' && !e.fromTouch) { touchUp(e, p); return; }
     if (e.button === 1) { pan = null; return; }
     if (!drag) return;
     const d = drag;
@@ -93,6 +98,143 @@
     drag = null;
     pan = null;
     G.cmd.box = null;
+    for (const k in fingers) delete fingers[k];
+    one = two = null;
+  }
+
+  /* ── touch ── */
+  const LONG = 0.45, SLOP = 14;
+  const fingers = {};
+  /* one finger: { id, sx, sy, t, chip }; two fingers: { d, mx, my } */
+  let one = null, two = null;
+
+  /* the group chips at the left edge: 1-5 and 0 (clear the selection) */
+  function chips() {
+    const v = NS.view.visible();
+    const out = [];
+    for (let i = 0; i < 6; ++i) out.push({ n: (i + 1) % 6, x: v.x0 + 36, y: v.y0 + 136 + i * 58, r: 24 });
+    return out;
+  }
+
+  function chipAt(p) {
+    const list = chips();
+    for (let i = 0; i < list.length; ++i) {
+      const k = list[i];
+      if ((p.x - k.x) * (p.x - k.x) + (p.y - k.y) * (p.y - k.y) < k.r * k.r * 1.6) return k;
+    }
+    return null;
+  }
+
+  function span() {
+    const f = Object.keys(fingers).map(k => fingers[k]);
+    return { d: Math.max(1, Math.hypot(f[0].x - f[1].x, f[0].y - f[1].y)), mx: (f[0].x + f[1].x) / 2, my: (f[0].y + f[1].y) / 2 };
+  }
+
+  function touchDown(e, p) {
+    fingers[e.pointerId] = { x: p.x, y: p.y };
+    const n = Object.keys(fingers).length;
+    if (n === 2) {
+      /* a second finger turns the gesture into pan and pinch */
+      one = null;
+      drag = null;
+      G.cmd.box = null;
+      two = span();
+      return;
+    }
+    if (n > 2) return;
+    const k = chipAt(p);
+    if (k) { one = { id: e.pointerId, sx: p.x, sy: p.y, t: G.time, chip: k }; return; }
+    /* panels, the minimap and placing work as with a mouse */
+    if (W.hitAt(p.x, p.y) >= 0 || G.cmd.place) {
+      one = null;
+      down({ button: 0, shiftKey: false }, p);
+      drag = null;
+      return;
+    }
+    one = { id: e.pointerId, sx: p.x, sy: p.y, t: G.time, chip: null };
+    const w = world(p.x, p.y);
+    drag = { sx: p.x, sy: p.y, x0: w.x, y0: w.y, add: false };
+  }
+
+  function touchMove(e, p) {
+    const f = fingers[e.pointerId];
+    if (!f) return;
+    f.x = p.x;
+    f.y = p.y;
+    if (two) {
+      if (Object.keys(fingers).length !== 2) return;
+      const c = G.cmd, s = span();
+      c.x -= (s.mx - two.mx) / c.zoom;
+      c.y -= (s.my - two.my) / c.zoom;
+      two.mx = s.mx;
+      two.my = s.my;
+      if (s.d > two.d * 1.25) { P.zoomStep(1, s.mx, s.my); two.d = s.d; }
+      else if (s.d < two.d * 0.8) { P.zoomStep(-1, s.mx, s.my); two.d = s.d; }
+      return;
+    }
+    if (one && one.id === e.pointerId && !one.chip && Math.abs(p.x - one.sx) + Math.abs(p.y - one.sy) > SLOP) move(p);
+  }
+
+  function touchUp(e, p) {
+    if (!fingers[e.pointerId]) return;
+    delete fingers[e.pointerId];
+    if (two) {
+      if (!Object.keys(fingers).length) two = null;
+      return;
+    }
+    const g = one;
+    one = null;
+    if (!g || g.id !== e.pointerId) { drag = null; return; }
+    const long = G.time - g.t >= LONG;
+    const c = G.cmd;
+    if (g.chip) {
+      const n = g.chip.n;
+      if (!n) P.clearSel();
+      else if (long) { if (P.liveSel().length) P.setGroup(n); }
+      else if (!P.recallGroup(n)) P.say('Group ' + n + ' is empty - hold the chip to set it');
+      NS.audio.sfx('select', { volume: 0.5 });
+      return;
+    }
+    /* a drag: the box selects */
+    if (c.box) { up({ button: 0, fromTouch: true }, p); return; }
+    const w = world(p.x, p.y);
+    const own = P.unitAt(w.x, w.y, 'player');
+    const units = P.liveSel();
+    const b = own ? null : NS.base.buildingAt(w.x, w.y);
+    const rally = c.selB && NS.colonyData.BUILDING_BY_ID[c.selB.type].makes;
+    /* a building takes an order only when the selection has work there; else it is selected */
+    const work = b && units.length && (b.type === 'hub' || (b.hp < b.maxHp && units.some(u => u.type === 'mender')) || ((b.inf > 0 || b.cor > 0) && units.some(u => u.type === 'purger')));
+    if (own && !(units.length && !long && units.some(u => u.type === 'mender' || u.type === 'purger') && units.indexOf(own) < 0 && (own.hp < own.maxHp || own.cor > 0))) {
+      up({ button: 0, fromTouch: true, shiftKey: false }, p);
+      return;
+    }
+    drag = null;
+    if (b && !work) { P.clickSelect(w.x, w.y, false, false); return; }
+    if (!units.length && !rally) { if (!c.pending) P.clearSel(); return; }
+    if (long && units.length) c.pending = 'amove';
+    P.smartOrder(w.x, w.y, false);
+  }
+
+  /* the chips, drawn in the command view on a touch screen */
+  function drawTouch() {
+    if (!G.input.touch || !G.cmd.on) return;
+    const ctx = NS.view.ctx, list = chips();
+    for (let i = 0; i < list.length; ++i) {
+      const k = list[i], ids = k.n ? G.cmd.groups[k.n] : null;
+      const live = ids ? G.units.filter(u => u.alive && u.side === 'player' && ids.indexOf(u.id) >= 0).length : 0;
+      const pressed = one && one.chip && one.chip.n === k.n;
+      ctx.globalAlpha = pressed ? 0.95 : 0.7;
+      ctx.fillStyle = pressed ? 'rgba(200,120,40,0.7)' : live ? 'rgba(20,60,90,0.75)' : 'rgba(10,20,40,0.6)';
+      ctx.beginPath();
+      ctx.arc(k.x, k.y, k.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = NS.constants.UI.accent;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      NS.kit.text(k.n ? String(k.n) : 'X', k.x, k.y, 16, '#ffffff', { align: 'center', baseline: 'middle', weight: 'bold' });
+      if (live) NS.kit.text(String(live), k.x + k.r - 2, k.y + k.r - 4, 10, NS.constants.UI.textDim, { align: 'center' });
+    }
   }
 
   /* keys in the command view; returns true when used */
@@ -207,6 +349,6 @@
   }
 
   Object.assign(NS.commandInput, {
-    down, move, up, wheel, cancel, key, pilotKey, cursor
+    down, move, up, wheel, cancel, key, pilotKey, cursor, chips, drawTouch
   });
 })();

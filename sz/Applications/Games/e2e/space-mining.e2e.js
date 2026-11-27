@@ -184,6 +184,35 @@ exports.run = async (t) => {
   await t.wait(200);
   await t.shot('08d-defense-tab');
   t.check('a real click on the defense tab shows the Tesla Coil and the Stasis Beam', await t.state("G.hitAreas.some(a => a.id === 'b_tesla') && G.hitAreas.some(a => a.id === 'b_stasis')"));
+  /* real touches in the command view: a long press on a chip sets a group, two fingers pinch to zoom */
+  await t.page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  const touch = async (type, pts) => {
+    const list = [];
+    for (const q of pts) { const pp = await t.toPage(q.x, q.y); list.push({ x: pp.x, y: pp.y, id: q.id }); }
+    await t.page.send('Input.dispatchTouchEvent', { type: type, touchPoints: list });
+    await t.wait(60);
+  };
+  const fleetIds = await t.run((NS, G) => {
+    G.input.touch = true;
+    G.cmd.groups[3] = null;
+    const h = NS.base.hub();
+    const list = [NS.units.spawn('fighter', h.x + 200, h.y, 'player'), NS.units.spawn('fighter', h.x + 230, h.y + 20, 'player')];
+    NS.command.select(list, false);
+    return list.map(u => u.id);
+  });
+  const chip3 = await t.run((NS) => NS.commandInput.chips().find(k => k.n === 3));
+  await touch('touchStart', [{ x: chip3.x, y: chip3.y, id: 1 }]);
+  await t.wait(700);
+  await touch('touchEnd', []);
+  await t.shot('08e-touch-chips');
+  t.check('a real long press on chip 3 sets the group', await t.state('JSON.stringify(G.cmd.groups[3]) === ' + JSON.stringify(JSON.stringify(fleetIds))));
+  const z0 = await t.state('G.cmd.zoom');
+  await touch('touchStart', [{ x: 560, y: 380, id: 1 }, { x: 600, y: 380, id: 2 }]);
+  for (let k = 1; k <= 6; ++k) await touch('touchMove', [{ x: 560 - 25 * k, y: 380, id: 1 }, { x: 600 + 25 * k, y: 380, id: 2 }]);
+  await touch('touchEnd', []);
+  t.check('a real two-finger spread zooms the command view in', await t.state('G.cmd.zoom > ' + z0));
+  await t.page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await t.run((NS, G) => { G.input.touch = false; });
   await t.page.key('Tab', 'Tab', 9);
   await t.run((NS, G) => {
     G.ship.x = G.dock.x + 30; G.ship.y = G.dock.y; G.ship.vx = G.ship.vy = 0;

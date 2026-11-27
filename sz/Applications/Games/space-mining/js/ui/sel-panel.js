@@ -205,7 +205,7 @@
     if (o.type === 'fusion') return G.base.fuel[o.id] === false ? 'NO FUEL - needs hydrogen or helium-3' : 'Burning gas - ' + Math.round(C.buildingPower(o, b.zone, G.stats, true)) + ' power';
     if (o.type === 'shield') return 'Dome ' + Math.round(o._shield || 0) + ' / ' + Math.round(def.cap * C.levelMul(o.lvl) * G.stats.shieldMul);
     if (o.type === 'hub') return 'Crew ' + b.data.crew + ' / ' + C.housing(b.data) + '  -  storage ' + C.stockCount(b.data.stock, b.data) + ' / ' + C.storageCap(b.data, G.stats) + '  -  value ' + NS.kit.group(b.value);
-    if (def.makes) return 'Right-click the map to set a rally point';
+    if (def.makes) return (G.input.touch ? 'Tap' : 'Right-click') + ' the map to set a rally point';
     return def.desc;
   }
 
@@ -241,8 +241,8 @@
     const oy = fy + 46;
     const P = NS.command;
     const orders = [
-      ['amove', 'attack', 'Attack', 'F', () => { G.cmd.pending = 'amove'; P.say('Right-click where to attack-move'); }, 'Attack-move: engage everything on the way'],
-      ['patrol', 'patrol', 'Patrol', 'Q', () => { G.cmd.pending = 'patrol'; P.say('Right-click the far end of the patrol'); }, 'Patrol between here and a point, fighting what comes'],
+      ['amove', 'attack', 'Attack', 'F', () => { G.cmd.pending = 'amove'; P.say((G.input.touch ? 'Tap' : 'Right-click') + ' where to attack-move'); }, 'Attack-move: engage everything on the way'],
+      ['patrol', 'patrol', 'Patrol', 'Q', () => { G.cmd.pending = 'patrol'; P.say((G.input.touch ? 'Tap' : 'Right-click') + ' the far end of the patrol'); }, 'Patrol between here and a point, fighting what comes'],
       ['escort', 'escort', 'Escort', 'E', () => P.order('escort', 0, 0, G.ship, false), 'Form up on your ship and follow it'],
       ['return', 'home', 'Return', 'R', () => P.order('return', 0, 0, null, false), 'Back to the command hub'],
       ['hold', 'hold', 'Hold', 'G', () => P.hold(), 'Stop and hold position'],
@@ -254,7 +254,7 @@
     }
     abilityRow(a, sel, btn);
     if (sel.length === 1) return;
-    kit.fitText(sel.some(u => u.type === 'miner') ? 'Right-click a rock to mine it' : 'Right-click: invader attacks, ship escorts', a.x + a.w - 14, fy, 190, 10, { color: UI.textMute, align: 'right' });
+    kit.fitText((G.input.touch ? 'Tap' : 'Right-click') + (sel.some(u => u.type === 'miner') ? ' a rock to mine it' : ': invader attacks, ship escorts'), a.x + a.w - 14, fy, 190, 10, { color: UI.textMute, align: 'right' });
   }
 
   /* one button per ability in the selection (ready count or the shortest wait) and its auto toggle */
