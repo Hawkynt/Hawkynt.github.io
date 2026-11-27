@@ -237,4 +237,18 @@ NS.trip.endTrip('dock');
 check('with every base down, the raze goals are met', NS.ops.complete(OP_BY_ID.c_expand, { razed: { syn_relay: 1 }, basesDown: true }) && !NS.ops.complete(OP_BY_ID.c_expand, { razed: { syn_relay: 1 }, basesDown: false }));
 check('a hauler hunt too', NS.ops.complete(OP_BY_ID.c_freight, { razed: {}, basesDown: true }));
 
+/* a fleet battle is felt: craft under fire among hostiles raise the tension, the ship untouched */
+launch('c_twin');
+G.run.pirateT = 1e9;
+for (const e of G.enemies) if (!e.def.structure) e.alive = false;
+const fz = { x: G.dock.x + 2500, y: G.dock.y };
+const crew = [];
+for (let i = 0; i < 6; ++i) crew.push(NS.units.spawn('gunboat', fz.x + i * 30, fz.y, 'player'));
+H.run(NS, 60);
+const calm = G.run.op.pace.tension;
+for (let i = 0; i < 10; ++i) NS.enemies.spawn('syn_fighter', fz.x + 200 + i * 20, fz.y + 100, {});
+for (let k = 0; k < 6 * 20; ++k) { for (const u of crew) if (u.alive) u.hp = Math.max(1, u.hp - u.maxHp * 0.004); G.ship.x = G.dock.x; G.ship.y = G.dock.y + 200; H.run(NS, 3); }
+check('a fleet fighting hostiles raises the tension though the ship is untouched', G.run.op.pace.tension > calm + 0.3, calm.toFixed(2) + ' -> ' + G.run.op.pace.tension.toFixed(2));
+NS.trip.endTrip('dock');
+
 done();

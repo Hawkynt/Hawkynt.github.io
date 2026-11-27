@@ -162,6 +162,37 @@
     return n;
   }
 
+  /* the combat craft's hull: what they have and what they could have */
+  function fleetHp() {
+    let hp = 0, max = 0, n = 0;
+    for (let i = 0; i < G.units.length; ++i) {
+      const u = G.units[i];
+      if (u.side !== 'player' || !u.def.dmg) continue;
+      if (u.alive) { hp += Math.max(0, u.hp); max += u.maxHp; ++n; }
+    }
+    return { hp: hp, max: max, n: n };
+  }
+
+  /* hostile craft within 600 px of a combat craft, counted twice a second */
+  const seen = new Set();
+  function fleetThreats(o, dt) {
+    o.fleetT = (o.fleetT || 0) - dt;
+    if (o.fleetT > 0) return o.fleetN || 0;
+    o.fleetT = 0.5;
+    seen.clear();
+    for (let i = 0; i < G.units.length; ++i) {
+      const u = G.units[i];
+      if (!u.alive || u.side !== 'player' || !u.def.dmg) continue;
+      const list = NS.enemies.queryHostile(u.x, u.y, 600);
+      for (let k = 0; k < list.length; ++k) {
+        const e = list[k];
+        if (e.alive && !e.dormant && e.def && !e.def.structure && (u.x - e.x) * (u.x - e.x) + (u.y - e.y) * (u.y - e.y) < 360000) seen.add(e);
+      }
+    }
+    o.fleetN = seen.size;
+    return o.fleetN;
+  }
+
   /* the outpost's hit points, all buildings summed */
   function outpostHp() {
     let hp = 0;
@@ -226,7 +257,12 @@
         if (o.baseHp !== undefined && n) lost += Math.max(0, o.baseHp - hp) / Math.max(1, hp + 1) * 4;
         o.baseHp = hp;
       }
-      PC.track(o.pace, { hullLost: lost, threats: threats(op), cap: op.threat ? op.threat.cap : op.waves ? 24 : 8 }, dt);
+      /* the fleet's hull hurts too (a fall in its total, as a share of it, counts twice), and the
+         hostiles fighting round its craft press as the ones round the ship do */
+      const fh = fleetHp();
+      if (o.fleetHp !== undefined && fh.n) lost += Math.max(0, o.fleetHp - fh.hp) / Math.max(1, fh.max) * 2;
+      o.fleetHp = fh.hp;
+      PC.track(o.pace, { hullLost: lost, threats: threats(op) + fleetThreats(o, dt), cap: op.threat ? op.threat.cap : op.waves ? 24 : 8 }, dt);
     }
     if (op.waves) outbreaks(op, o, dt);
     if (((op.waves && !op.waves.off) || op.keep) && o.hadHub && !NS.base.hub()) return fail('outpost');
