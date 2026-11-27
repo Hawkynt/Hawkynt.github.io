@@ -9,7 +9,9 @@
    fleet. Each operation reports won, tries, time, kills and the tension the director measured.
    FATE=1 logs how each run ended. The difficulty level adapts as in a career (each loss eases the
    next try); an operation not cleared in five tries counts as cleared so the rest is still played.
-   After the Crimson Maw it flies the Void Crown's fighting operations. A playtest tool, not part of
+   After the Crimson Maw it flies the Void Crown: the ship mines, escorts or drills the Crown Heart
+   as each operation asks; the commander gathers an army (gunboats, Bulwarks, Lancers) at a staging
+   point and takes a base apart - factories, batteries, towers, pylons, then the goal. A playtest tool, not part of
    the test run (run: node tests/playtest/rts-campaign.js). */
 const H = require('../harness');
 Date.now = () => 1762300000000;
@@ -17,7 +19,8 @@ let seed = 31337;
 Math.random = () => { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; };
 H.installEnv();
 const NS = H.load();
-const { check, done } = H;
+const { done } = H;
+let check = H.check;
 const G = NS.state;
 const B = NS.base;
 const O = NS.ops;
@@ -68,6 +71,7 @@ function objective(op, from) {
 }
 
 const isCore = o => o.type === 'syn_core' || o.type === 'citadel';
+const goalOf = (op, type) => op.goals.find(g => g.type === type);
 
 /* the ship: haulers first in a freighter hunt, then threats to the outpost, then the objective */
 let tanking = false;
@@ -78,11 +82,18 @@ function pilot(op, fights) {
   inp.aimMode = 'mouse';
   if (!s || !s.alive || G.cine || !run || run.ending) return;
   /* an abandoned outpost is no home: it has gone to the Bloom */
-  const h = G.base && G.base.data.abandoned ? null : B.hub();
+  /* an abandoned outpost, or one whose turrets have turned on you, is no home */
+  const rogueGuns = G.base && G.base.data.buildings.some(o => o.rogue && NS.colonyData.BUILDING_BY_ID[o.type].range);
+  const h = G.base && (G.base.data.abandoned || rogueGuns) ? null : B.hub();
   const fleet = G.units.filter(u => u.alive && u.side === 'player' && u.def.dmg);
-  let tx, ty, stand = 260, cap = 300, lock = false;
+  let tx, ty, stand = 260, cap = 300, lock = false, fire = false;
+  const crown = G.rocks.find(r => r.kind === 'crown' && r.alive);
+  const fl = G.freighters.filter(f => NS.freighters.flying(f));
+  const guardF = fl.find(f => !f.alone) || fl.find(f => f.alone > 0);
+  const dueF = G.freighters.find(f => f.state === 'wait' && f.wait < 8);
   const hauler = nearest(G.enemies, s, o => o.type === 'hauler');
-  const raid = h ? nearest(G.enemies, h, o => !o.def.structure && o.wave > 5000 && (!o.def.cloaked || o.seenT > 0), 1200) : null;
+  /* raiders at home: attack groups, and pirates that jumped a supply freighter */
+  const raid = h ? nearest(G.enemies, h, o => !o.def.structure && o.wave > 5000 && (!o.def.cloaked || o.seenT > 0), 1200) || nearest(G.pirates, h, o => o.alive && o.kind !== 'mine', 1000) : null;
   const obj = objective(op, s);
   const hurt = s.hull < s.maxHull * 0.5;
   /* fuel: at the bingo mark (with a cushion) to the nearest place to refuel - the hub refuels free -
@@ -93,14 +104,47 @@ function pilot(op, fights) {
   /* low on hull: the dock repairs */
   if (hurt || (s.hull < s.maxHull * 0.8 && Math.hypot(s.x - G.dock.x, s.y - G.dock.y) < 300)) { tx = G.dock.x; ty = G.dock.y; stand = 0; cap = 260; lock = hurt; }
   else if (tanking) { tx = home.x; ty = home.y; stand = home.kind === 'dock' ? 0 : 70; cap = home.kind === 'dock' ? 260 : 200; lock = true; }
-  else if (hauler && op.goals.some(g => g.type === 'raze' && g.of.indexOf('hauler') >= 0)) { tx = hauler.x; ty = hauler.y; stand = 200; lock = true; cap = 520; }
+  else if (hauler && (op.goals.some(g => g.type === 'raze' && g.of.indexOf('hauler') >= 0) || (op.syndicate && op.syndicate.escape))) { tx = hauler.x; ty = hauler.y; stand = 200; lock = true; cap = 520; }
+  else if (goalOf(op, 'crown') && crown) {
+    /* drill the Crown Heart; turn on whatever closes in */
+    const foe = nearest(G.enemies, s, o => !o.dormant && !o.def.structure && (!o.def.cloaked || o.seenT > 0), 320);
+    if (foe) { tx = foe.x; ty = foe.y; stand = 200; lock = true; } else { tx = crown.x; ty = crown.y; stand = crown.r + 150; fire = true; }
+  }
+  else if (goalOf(op, 'hold') && G.allies.some(a => a.alive)) {
+    /* a station under siege: stand by it, shoot what closes in on it */
+    const st = nearest(G.allies, s, a => a.alive);
+    const foe = nearest(G.enemies.concat(G.pirates), st, o => o.alive && !o.dormant && (!o.def || !o.def.structure) && (!o.def || !o.def.cloaked || o.seenT > 0), 800);
+    if (foe) { tx = foe.x; ty = foe.y; stand = 220; lock = true; cap = 420; } else { tx = st.x; ty = st.y; stand = st.r + 160; cap = 320; }
+  }
+  else if (goalOf(op, 'deliver') && (guardF || dueF)) {
+    /* escort: stay with the freighter in flight, shoot what goes for it; be there when one is due */
+    const f = guardF || dueF;
+    const foe = nearest(G.enemies.concat(G.pirates), f, o => o.alive && !o.dormant && (!o.def || !o.def.structure), 700);
+    if (foe) { tx = foe.x; ty = foe.y; stand = 220; lock = true; cap = 420; } else { tx = f.x + (f.vx || 0); ty = f.y + (f.vy || 0); stand = 180; cap = 320; }
+  }
+  else if (goalOf(op, 'ore')) {
+    /* mine the ore the operation asks for; bank it when the hold is full */
+    const want = goalOf(op, 'ore').ore;
+    const foe = nearest(G.enemies.concat(G.pirates), s, o => o.alive && !o.dormant && (!o.def || !o.def.structure), 450);
+    const rock = nearest(G.rocks, s, r => r.kind === 'rock' && r.ore === want && !r.volatile) || nearest(G.rocks, s, r => r.kind === 'rock' && r.ore && !r.volatile);
+    const nug = nearest(G.nuggets || [], s, n => n.alive, 600);
+    if (foe) { tx = foe.x; ty = foe.y; stand = 220; lock = true; }
+    else if (run.cargoUsed >= run.cargoMax - 1) { tx = G.dock.x; ty = G.dock.y; stand = 0; cap = 260; }
+    else if (nug) { tx = nug.x; ty = nug.y; stand = 0; cap = 220; }
+    else if (rock) { tx = rock.x; ty = rock.y; stand = rock.r + 150; fire = true; }
+  }
   else if (raid && fights) { tx = raid.x; ty = raid.y; lock = true; }
-  else if (obj && (fights ? fleet.filter(u => u.orders.length).length >= 3 || (!NS.aiBase.scouted() && op.goals.some(g => g.type === 'scout')) : true)) {
+  else if (obj && (fights ? fleet.filter(u => u.orders.length).length >= 3 || (!NS.aiBase.scouted() && op.goals.some(g => g.type === 'scout')) || (!isCore(obj) && defenders(obj) === 0) : true)) {
     const moving = fleet.filter(u => u.orders.length);
     const c = moving.length ? { x: moving.reduce((a, u) => a + u.x, 0) / moving.length, y: moving.reduce((a, u) => a + u.y, 0) / moving.length } : obj;
     /* with the fleet: a little behind its middle; alone: go for it */
-    const go = moving.length >= 3 ? c : obj;
-    tx = go.x; ty = go.y; stand = moving.length >= 3 ? 120 : 320; lock = true;
+    let go = moving.length >= 3 ? c : obj;
+    /* against a defended goal the ship hangs back behind the fleet, out of the towers' reach */
+    if (moving.length >= 3 && (isCore(obj) || defenders(obj) > 0)) {
+      const back = h || G.dock, bd = Math.hypot(back.x - c.x, back.y - c.y) || 1;
+      go = { x: c.x + (back.x - c.x) / bd * 450, y: c.y + (back.y - c.y) / bd * 450 };
+    }
+    tx = go.x; ty = go.y; stand = moving.length >= 3 ? 80 : 320; lock = true;
   } else if (h) { tx = h.x + 150; ty = h.y + 150; stand = 40; }
   else { tx = G.dock.x; ty = G.dock.y + 200; stand = 40; }
   /* round a gravity well, never through it */
@@ -132,8 +176,14 @@ function pilot(op, fights) {
   const brake = blocked || closing > want + 40 || speed > cap + 30;
   inp.keys.KeyS = brake;
   inp.rightDown = !brake && d > stand && closing < want;
-  const aim = lock ? nearest(G.enemies, s, o => !o.dormant && (!o.def.cloaked || o.seenT > 0), 650) : null;
+  /* the laser and the weapons answer whatever hostile comes in reach, always */
+  const aim = nearest(G.enemies.concat(G.pirates), s, o => o.alive && !o.dormant && (!o.def || !o.def.structure || lock) && (!o.def || !o.def.cloaked || o.seenT > 0), lock ? 650 : 520);
   inp.keys.Space = !!aim;
+  /* drilling: the laser at the rock (never through a volatile one) */
+  if (fire && !aim) {
+    const first = NS.mining.raycast(s.x, s.y, tx, ty, s);
+    inp.mouseDown = d < stand + 260 && !(first && first.volatile);
+  }
   for (let i = 0; i < NS.hardpoints.slots().length; ++i) {
     const on = !!NS.hardpoints.state().held[i];
     if (!!aim !== on) NS.hardpoints.trigger(i, !!aim);
@@ -141,38 +191,133 @@ function pilot(op, fights) {
 }
 
 const PLAN = ['solar', 'solar', 'laser', 'habitat', 'solar', 'shipyard', 'laser', 'habitat', 'solar', 'flak', 'repairbay', 'laser', 'tesla', 'solar', 'habitat', 'laser', 'missile'];
-const FLEET = ['fighter', 'gunboat', 'lancer', 'fighter', 'gunboat', 'bulwark', 'fighter', 'aegis', 'lancer'];
+/* an army that outranges the defences: Bulwarks (640 px siege) and Lancers to break structures,
+   gunboats to hold, an Aegis to shield the push, a few fighters for the Stalkers */
+const HEAVY = ['bulwark', 'gunboat', 'lancer', 'bulwark', 'gunboat', 'aegis', 'lancer'];
+let supplyShort = false;
+
+/* the order a base is taken apart in: what makes units, what outranges, what shoots, what shields */
+const PRIORITY = ['syn_factory', 'syn_battery', 'syn_tower', 'syn_pylon'];
+const war = { attacking: false, marching: false, start: 0, since: 0 };
+
+/* the next thing to hit on the way to the goal: its defences first, then the goal itself */
+function stepTarget(goal, from) {
+  /* peel the base from the outside: the defence nearest the approach (factories, batteries, towers,
+     pylons within 900 px of the goal), then the goal itself */
+  const near = G.enemies.filter(o => o.alive && PRIORITY.indexOf(o.type) >= 0 && dist(o, goal) < 900 && (!o.def.cloaked || o.seenT > 0));
+  if (!near.length) return goal;
+  const p = from || goal;
+  return near.sort((a, b) => dist(a, p) - dist(b, p))[0];
+}
+
+/* where the army stops before the push: 1,400 px short of the goal, on the way from home */
+function staging(goal, home) {
+  const d = dist(goal, home) || 1;
+  const k = Math.min(1, 1400 / d);
+  return { x: goal.x + (home.x - goal.x) * k, y: goal.y + (home.y - goal.y) * k };
+}
+
+/* defenders round a goal: towers and batteries within 900 px */
+function defenders(goal) {
+  return G.enemies.filter(o => o.alive && (o.type === 'syn_tower' || o.type === 'syn_battery' || o.type === 'citadel') && dist(o, goal) < 900).length;
+}
+
+/* the army: defend the outpost (or the allied station), else gather and break the goal */
+function army(op, h) {
+  const fleet = G.units.filter(u => u.alive && u.side === 'player' && u.def.dmg);
+  if (!fleet.length) { war.attacking = false; return; }
+  const idle = fleet.filter(u => !u.orders.length);
+  const ally = G.allies.find(a => a.alive);
+  const guard = ally || h;
+  /* raiders at home or at the station come first */
+  const raid = nearest(G.enemies, guard, o => !o.def.structure && !o.dormant && (!o.def.cloaked || o.seenT > 0), ally ? 1000 : 900);
+  /* while gathering, idle craft see off raiders; once marching or pushing, the turrets hold home */
+  if (raid && !war.attacking && !war.marching && idle.length) NS.command.order('amove', raid.x, raid.y, null, false, idle);
+  if (raid && !objective(op, h)) return;
+  /* haulers getting away lose the run: the fast craft chase them (all of them when that is the goal) */
+  const huntOnly = op.goals.some(g => g.type === 'raze' && g.of.indexOf('hauler') >= 0);
+  if (huntOnly || (op.syndicate && op.syndicate.escape)) {
+    const hauler = nearest(G.enemies, h, o => o.type === 'hauler');
+    if (hauler) {
+      const fast = fleet.slice().sort((a, b) => b.def.speed - a.def.speed).slice(0, huntOnly ? fleet.length : 3);
+      const free = fast.filter(u => !u.orders.length || u.orders[0].kind !== 'attack' || !u.orders[0].target || !u.orders[0].target.alive);
+      if (free.length) NS.command.order('attack', hauler.x, hauler.y, hauler, false, free);
+      if (huntOnly) return;
+    }
+    if (huntOnly) return;
+  }
+  const goal = objective(op, h);
+  if (!goal) {
+    /* nothing to break: hold by the station or the hub */
+    if (idle.length && guard && idle.some(u => dist(u, guard) > 350)) NS.command.order('move', guard.x, guard.y + 120, null, false, idle);
+    return;
+  }
+  const st = staging(goal, h);
+  /* the force a goal takes: a core a real army, a lone structure a few craft */
+  const def = defenders(goal);
+  const need = isCore(goal) ? Math.min(14, 5 + 2 * def) : def ? Math.min(10, 4 + def) : 3;
+  const patience = op.time ? 60 : 150;
+  if (!war.attacking) {
+    war.since += 1;
+    if (!war.marching) {
+      /* gather at home, out of the enemy's reach */
+      const home = fleet.filter(u => dist(u, h) < 1100);
+      if (idle.length && !raid) NS.command.order('move', h.x, h.y + 160, null, false, idle.filter(u => dist(u, h) > 400));
+      if (home.length >= need || (home.length >= Math.ceil(need * 0.7) && war.since > patience)) { war.marching = true; war.since = 0; NS.command.order('move', st.x, st.y, null, false, home); }
+      return;
+    }
+    /* march together; push once most have arrived (or after forty seconds) */
+    const there = fleet.filter(u => dist(u, st) < 600);
+    if (there.length >= Math.ceil(fleet.length * 0.7) || war.since > 40) { war.attacking = true; war.marching = false; war.start = fleet.length; war.since = 0; }
+    else if (idle.length) NS.command.order('move', st.x, st.y, null, false, idle);
+    return;
+  }
+  /* the push: everyone on the next target; fall back to regroup when it has bled out */
+  const alive = fleet.length;
+  /* fall back to regroup when the push has bled out - unless the goal is nearly down */
+  if (alive < Math.max(3, war.start * 0.4) && goal.hp > goal.maxHp * 0.35) { war.attacking = false; war.marching = false; war.since = 0; NS.command.order('move', h.x, h.y + 160, null, false, fleet); return; }
+  const t = stepTarget(goal, st);
+  /* siege craft fire on the structure itself; the rest attack-move alongside and screen them */
+  const siege = fleet.filter(u => (u.type === 'bulwark' || u.type === 'lancer') && !(u.orders[0] && u.orders[0].kind === 'attack' && u.orders[0].target === t));
+  if (siege.length) NS.command.order('attack', t.x, t.y, t, false, siege);
+  const lazy = fleet.filter(u => u.type !== 'bulwark' && u.type !== 'lancer' && (!u.orders.length || u.orders[0].kind === 'move'));
+  if (lazy.length) NS.command.order('amove', t.x, t.y, null, false, lazy);
+}
 
 /* the commander: build, supply, produce, attack */
 function command(op, fights) {
   if (!G.base || G.cine) return;
   const b = G.base;
+  /* an outpost lost and abandoned: reclaim it first (800 credits), as a player would from the hub */
+  if (b.data.abandoned) { B.reclaim(); return; }
   if (!B.claimed()) { B.place('hub', b.site.hubX, b.site.hubY); return; }
   const h = B.hub();
   if (!h || h.prog < 1) return;
   if (b.data.crew + 2 <= NS.colony.housing(b.data) && G.save.credits > 1500) B.recruit();
   /* Lattice corruption: purge what has turned or is far gone (a circuit each), as a player would */
   for (const o of b.data.buildings) if ((o.rogue || (o.cor || 0) > 0.5) && (b.data.stock.comp.circuit || 0) > 0) B.purge(o);
-  if ((b.data.stock.comp.circuit || 0) < 2 && b.data.buildings.some(o => (o.cor || 0) > 0.2) && NS.freighters.shipments() < NS.supply.SHIP_MAX) NS.freighters.order('parts');
+  /* no circuit to spare and a turret turned on you: tear it down */
+  for (const o of b.data.buildings.slice()) if (o.rogue && NS.colonyData.BUILDING_BY_ID[o.type].range && !(b.data.stock.comp.circuit > 0)) B.demolish(o);
+  if ((b.data.stock.comp.circuit || 0) < 2 && b.data.buildings.some(o => o.rogue || (o.cor || 0) > 0.2) && NS.freighters.shipments() < NS.supply.SHIP_MAX) NS.freighters.order('parts');
   if (fights) {
     const yard = b.data.buildings.find(o => o.type === 'shipyard' && o.prog >= 1);
+    /* titanium bars and alloy plate for the heavy craft: keep a parts shipment coming */
+    const st = b.data.stock;
+    if ((st.bar.titanium || 0) < 8 && G.save.credits > 6000 && NS.freighters.shipments() < NS.supply.SHIP_MAX) NS.freighters.order('parts');
     if (yard && (yard.queue || []).length < 2) {
-      /* the next craft of the list it can pay for; short of everything, iron for fighters */
+      /* heavy craft first; fighters only as a small screen against the Stalkers */
       const n = G.units.filter(u => u.alive && u.side === 'player').length;
-      let queued = false;
-      for (let k = 0; k < FLEET.length && !queued; ++k) queued = B.queueUnit(yard, FLEET[(n + k) % FLEET.length]).ok;
-      if (!queued && G.save.credits > 6000 && NS.freighters.shipments() < 1) NS.freighters.order('parts');
+      let queued = false, why = '';
+      for (let k = 0; k < HEAVY.length && !queued; ++k) { const r = B.queueUnit(yard, HEAVY[(n + k) % HEAVY.length]); queued = r.ok; why = why || r.reason || ''; }
+      const fighters = G.units.filter(u => u.alive && u.side === 'player' && u.type === 'fighter').length;
+      if (!queued && fighters < 4) queued = B.queueUnit(yard, 'fighter').ok;
+      supplyShort = /supply/i.test(why);
     }
-    /* the fleet goes once enough have gathered */
-    const fleet = G.units.filter(u => u.alive && u.side === 'player' && u.def.dmg);
-    const idle = fleet.filter(u => !u.orders.length);
-    const obj = objective(op, h);
-    /* a core takes a real fleet: eight, or whatever there is after five minutes */
-    const need = obj && isCore(obj) ? 8 : 4, wait = obj && isCore(obj) ? 300 : 150;
-    if (obj && (idle.length >= need || (idle.length >= 2 && G.run.t > wait))) NS.command.order('amove', obj.x, obj.y, null, false, idle);
+    army(op, h);
   }
   if (b.data.buildings.filter(o => o.prog < 1).length >= 2) return;
-  const plan = fights ? PLAN : ['solar', 'laser'];
+  /* fleet supply full: another habitat (and the power for it) */
+  const plan = fights ? PLAN.concat(supplyShort ? ['habitat', 'solar', 'habitat', 'solar', 'habitat'] : []) : ['solar', 'laser'];
   const have = {}, want = {};
   for (const o of b.data.buildings) have[o.type] = (have[o.type] || 0) + 1;
   for (const type of plan) {
@@ -195,6 +340,9 @@ function play(op, fights, cap) {
   for (let i = 0; i < 20 && G.cine; ++i) { H.run(NS, 30); NS.cinematics.skip(); }
   const trace = [];
   let t = 0, tick = 0;
+  war.attacking = false; war.marching = false; war.since = 0; tanking = false;
+  /* craft from the last trip still carry its orders: a new operation, new orders */
+  for (const u of G.units) if (u.side === 'player') u.orders.length = 0;
   while (G.run && G.run.op && G.run.op.status === 'active' && t < cap) {
     pilot(op, fights);
     if (++tick % 20 === 0) command(op, fights);
@@ -202,6 +350,11 @@ function play(op, fights, cap) {
     t += 3 / 60;
     if (G.cine && G.cine.kind !== 'docking') NS.cinematics.skip();
     if (G.run && G.run.ending && !hurtBy._end) hurtBy._end = G.run.ending + '@' + Math.round(t);
+    /* FATE=2: the first seconds of every try, to see what greets the ship */
+    if (process.env.FATE === '2' && t < 20 && Math.floor(t / 4) !== Math.floor((t - 0.05) / 4) && G.ship) {
+      const sh = G.ship, near = G.enemies.concat(G.pirates).filter(e => e.alive && dist(e, sh) < 800).map(e => (e.type || e.kind) + '@' + Math.round(dist(e, sh))).join(',');
+      console.log('    open ' + op.id + ' ' + Math.round(t) + ' hull ' + Math.round(sh.hull) + ' at ' + Math.round(sh.x) + ',' + Math.round(sh.y) + ' near ' + near.slice(0, 140) + ' hub ' + !!B.hub() + ' base ' + (G.base && G.base.data.abandoned ? 'abandoned' : 'ok'));
+    }
     if (!G.ship) break;
     if (G.run && G.run.op && trace.length < t) trace.push(G.run.op.pace.tension);
     if (process.env.TRACE === op.id && fights && Math.floor(t / 15) !== Math.floor((t - 0.05) / 15) && G.ship) {
@@ -214,6 +367,8 @@ function play(op, fights, cap) {
     }
   }
   const o = G.run && G.run.op;
+  if (process.env.FATE) console.log('    try ' + op.id + ' ' + Math.round(t) + ' s ' + (o ? o.status + (o.why ? ' ' + o.why : '') : 'trip over') + (hurtBy._end ? ' ' + hurtBy._end : '') + ' lvl ' + (G.save.skill || {}).level);
+  delete hurtBy._end;
   let kills = 0;
   if (G.run) for (const k in G.run.razed) kills += G.run.razed[k];
   if (G.run) hurtBy._razed = JSON.stringify(G.run.razed);
@@ -231,7 +386,7 @@ function veteran(fights) {
   s.seenIntro = s.seenHelp = true;
   for (const z of ['kessler', 'amber', 'verdant']) for (const op of O.zoneOps(z)) O.finish(s, op, true, 60);
   s.licenses.push('amber', 'verdant', 'crimson');
-  s.credits = 60000;
+  s.credits = 120000;
   s.stats.earned = 200000;
   s.unlocks.push('wing');
   s.store.comp = { alloy: 40, circuit: 20 };
@@ -249,7 +404,7 @@ function veteran(fights) {
     /* and the fuel kit the outer belts ask for: cells in the manifest */
     s.store.comp.fuelcell = 24;
     s.manifest.comp.fuelcell = 6;
-    s.credits = 60000;
+    s.credits = 120000;
     s.rd = 160;
     s.rd = 300;
     for (const id of ['e_eff', 'e_eff', 'e_grip', 'e_scoop', 'e_scoop', 'e_cells', 'f_shield', 'f_shield', 'f_turret', 'f_impact', 'f_rad', 'f_rad', 'b_vaccine', 'b_vaccine', 't_dmg', 't_dmg', 't_range', 'c_build', 'b_firewall', 'b_emp', 'u_hp', 'u_dmg']) NS.rules.buyNode(s, id);
@@ -257,13 +412,24 @@ function veteran(fights) {
   NS.save.refreshStats();
 }
 
+/* ONLY=c_citadel,vc_war plays just those operations (the rest count as cleared), LVL=1.6 starts there */
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 function campaign(fights, label, ops) {
-  if (!ops) veteran(fights);
+  if (!ops) {
+    veteran(fights);
+    if (process.env.LVL) G.save.skill.level = +process.env.LVL;
+  }
   const rows = [];
   for (const op of ops || O.zoneOps('crimson')) {
-    let r = play(op, fights, 900), tries = 1;
+    if (ONLY && ONLY.indexOf(op.id) < 0) { O.finish(G.save, op, true, 60); continue; }
+    /* peaks get longer budgets: no clock of their own, and a fortress takes time */
+    const cap = op.mood === 'N' ? 1500 : op.mood === 'W' ? 1200 : 900;
+    /* between operations a pilot flies mining trips; short of money, the bot is paid one (it does not mine) */
+    const topUp = () => { if (G.save.credits < 15000) { G.save.credits += 10000; G.save.stats.earned += 10000; } };
+    topUp();
+    let r = play(op, fights, cap), tries = 1;
     /* a loss eases the difficulty, so a few more tries find the level the bot can win at */
-    while (!r.won && fights && tries < 5) { r = play(op, fights, 900); ++tries; }
+    while (!r.won && fights && tries < 5) { topUp(); r = play(op, fights, cap); ++tries; }
     r.tries = tries;
     rows.push(r);
     if (process.env.FATE) console.log('  ' + op.id + ' ' + (r.won ? 'won' : 'lost ' + r.why) + ' kills ' + r.kills + ' fleet ' + r.fleet + ' hurt ' + JSON.stringify(hurtBy));
@@ -280,20 +446,33 @@ function campaign(fights, label, ops) {
 }
 
 const pro = campaign(true, 'Competent bot - Crimson Maw');
+if (ONLY) check = () => {};
 const by = id => pro.find(r => r.id === id) || { mean: 0, won: false, tries: 9 };
 check('the competent bot clears at least six Crimson operations (retries allowed), the challenge and the breather among them', pro.length === 8 && pro.filter(r => r.won).length >= 6 && by('c_scout').won && by('c_raid').won, JSON.stringify(pro.map(r => r.id + ':' + r.won + ':' + r.why)));
 check('the Citadel opens the Void Crown licence', O.licenceReady(G.save, 4));
 check('the challenge and the breather are won at the first try', by('c_scout').tries === 1 && by('c_raid').tries === 1);
 check('the peaks run hotter than the start of the belt', by('c_twin').mean > by('c_scout').mean && by('c_citadel').mean > by('c_scout').mean);
 
-/* the Void Crown's fighting operations, flown on from the same career (the commander does not mine,
-   escort or drill the Crown Heart, so Void Crystals, Survivors and The Crown are left out) */
+/* the Void Crown, flown on from the same career: the ship mines, escorts and drills the Crown Heart
+   as the operation asks, the commander builds, defends and breaks bases */
 if (G.save.licenses.indexOf('void') < 0) G.save.licenses.push('void');
-const voidRows = campaign(true, 'Competent bot - Void Crown (fighting operations)', ['vc_ally', 'vc_base', 'vc_front', 'vc_war'].map(id => NS.opsData.OP_BY_ID[id]));
-check('the commander holds out for the allied station or builds its Void base', voidRows.some(r => (r.id === 'vc_ally' || r.id === 'vc_base') && r.won), JSON.stringify(voidRows.map(r => r.id + ':' + r.won + ':' + r.tries)));
+/* a pilot reaching the Void flies the Leviathan, its hull and laser built up */
+{
+  const sv = G.save;
+  if (sv.hulls.indexOf('leviathan') < 0) sv.hulls.push('leviathan');
+  sv.hull = 'leviathan';
+  sv.credits += 200000;
+  for (const id of ['hull', 'hull', 'hull', 'hull', 'hull', 'laser', 'laser', 'laser', 'fuel', 'fuel']) NS.rules.buyUpgrade(sv, id);
+  sv.credits = Math.max(sv.credits - 150000, 40000);
+  NS.save.refreshStats();
+}
+const voidRows = campaign(true, 'Competent bot - Void Crown', O.zoneOps('void'));
+const vby = id => voidRows.find(r => r.id === id) || { won: false };
+check('the commander clears at least five of the seven Void operations (retries allowed)', voidRows.filter(r => r.won).length >= 5, JSON.stringify(voidRows.map(r => r.id + ':' + r.won + ':' + r.tries)));
+check('the challenge and the breather of the Void are won', vby('vc_hunt').won && vby('vc_base').won);
 console.log('  difficulty level at the end: ' + G.save.skill.level.toFixed(2));
 
-const weak = campaign(false, 'Weak bot - Crimson Maw (no fleet)');
+const weak = ONLY ? [] : campaign(false, 'Weak bot - Crimson Maw (no fleet)');
 const wby = id => weak.find(r => r.id === id) || { won: false };
 check('a lone ship cannot take a fortress', !wby('c_twin').won && !wby('c_citadel').won);
 check('a lone ship clears fewer operations than a commander with a fleet', weak.filter(r => r.won).length < pro.filter(r => r.won).length);
