@@ -30,6 +30,10 @@ const hurtBy = {};
   const orig = NS.ship.hurt;
   NS.ship.hurt = function(n, why) {
     hurtBy[why] = (hurtBy[why] || 0) + n;
+    if (process.env.WHO === '2' && G.ship && G.ship.hull - n <= 0) {
+      const sh = G.ship;
+      console.log('    DEATH by ' + why + ' at ' + Math.round(sh.x) + ',' + Math.round(sh.y) + ' near ' + G.enemies.concat(G.pirates).filter(o => o.alive && dist(o, sh) < 900).map(o => (o.type || o.kind) + '@' + Math.round(dist(o, sh)) + (o.front ? 'F' : '') + (o.wave ? 'W' + o.wave : '') + (o.base !== undefined ? 'B' : '') + (o.def ? o.def.faction : '')).join(',').slice(0, 300) + ' hub ' + (B.hub() ? Math.round(dist(B.hub(), sh)) : '-') + ' tanking ' + tanking + ' fuel ' + Math.round(sh.fuel));
+    }
     if (process.env.WHO && why === 'bolt' && !hurtBy._who) {
       const sh = G.ship;
       const e = G.enemies.filter(o => o.alive).sort((a, b) => dist(a, sh) - dist(b, sh))[0];
@@ -75,6 +79,8 @@ const goalOf = (op, type) => op.goals.find(g => g.type === type);
 
 /* the ship: haulers first in a freighter hunt, then threats to the outpost, then the objective */
 let tanking = false;
+let lastWhy = '';
+const saved = {};
 function pilot(op, fights) {
   const s = G.ship, run = G.run, inp = G.input;
   inp.rightDown = inp.mouseDown = false;
@@ -263,7 +269,9 @@ function army(op, h) {
       /* gather at home, out of the enemy's reach */
       const home = fleet.filter(u => dist(u, h) < 1100);
       if (idle.length && !raid) NS.command.order('move', h.x, h.y + 160, null, false, idle.filter(u => dist(u, h) > 400));
-      if (home.length >= need || (home.length >= Math.ceil(need * 0.7) && war.since > patience)) { war.marching = true; war.since = 0; NS.command.order('move', st.x, st.y, null, false, home); }
+      /* at the supply cap no more craft come: go with what gathered */
+      const capped = supplyShort && home.length >= Math.ceil(fleet.length * 0.8) && home.length >= 6;
+      if (home.length >= need || capped || (home.length >= Math.ceil(need * 0.7) && war.since > patience)) { war.marching = true; war.since = 0; NS.command.order('move', st.x, st.y, null, false, home); }
       return;
     }
     /* march together; push once most have arrived (or after forty seconds) */
@@ -303,7 +311,7 @@ function command(op, fights) {
     const yard = b.data.buildings.find(o => o.type === 'shipyard' && o.prog >= 1);
     /* titanium bars and alloy plate for the heavy craft: keep a parts shipment coming */
     const st = b.data.stock;
-    if ((st.bar.titanium || 0) < 8 && G.save.credits > 6000 && NS.freighters.shipments() < NS.supply.SHIP_MAX) NS.freighters.order('parts');
+    if ((st.bar.titanium || 0) < 8 && G.save.credits > 1500 && NS.freighters.shipments() < NS.supply.SHIP_MAX) NS.freighters.order('parts');
     if (yard && (yard.queue || []).length < 2) {
       /* heavy craft first; fighters only as a small screen against the Stalkers */
       const n = G.units.filter(u => u.alive && u.side === 'player').length;
@@ -312,10 +320,13 @@ function command(op, fights) {
       const fighters = G.units.filter(u => u.alive && u.side === 'player' && u.type === 'fighter').length;
       if (!queued && fighters < 4) queued = B.queueUnit(yard, 'fighter').ok;
       supplyShort = /supply/i.test(why);
+      lastWhy = queued ? '' : why;
     }
     army(op, h);
   }
   if (b.data.buildings.filter(o => o.prog < 1).length >= 2) return;
+  /* the yard waits on titanium: the army comes before more buildings */
+  if (fights && (b.data.stock.bar.titanium || 0) < 4 && G.save.credits < 8000 && b.data.buildings.some(o => o.type === 'shipyard') && !supplyShort) return;
   /* fleet supply full: another habitat (and the power for it) */
   const plan = fights ? PLAN.concat(supplyShort ? ['habitat', 'solar', 'habitat', 'solar', 'habitat'] : []) : ['solar', 'laser'];
   const have = {}, want = {};
@@ -336,6 +347,9 @@ function command(op, fights) {
 }
 
 function play(op, fights, cap) {
+  /* SAVE_AT=c_citadel,vc_war writes the career to SAVE_DIR (default .) as the commander first reaches those operations */
+  if (process.env.SAVE_AT && fights && !saved[op.id] && process.env.SAVE_AT.split(',').indexOf(op.id) >= 0 && (saved[op.id] = true))
+    require('fs').writeFileSync(require('path').join(process.env.SAVE_DIR || '.', 'save-' + op.id + '.json'), JSON.stringify(G.save));
   NS.trip.startTrip('career', NS.ores.ZONE_BY_ID[op.zone].index, { op: op.id });
   for (let i = 0; i < 20 && G.cine; ++i) { H.run(NS, 30); NS.cinematics.skip(); }
   const trace = [];
@@ -357,13 +371,21 @@ function play(op, fights, cap) {
     }
     if (!G.ship) break;
     if (G.run && G.run.op && trace.length < t) trace.push(G.run.op.pace.tension);
+    if (process.env.TRACE2 === op.id && Math.floor(t / 30) !== Math.floor((t - 0.05) / 30)) {
+      const cit = G.enemies.find(o => o.alive && (o.type === 'citadel' || o.type === 'syn_core'));
+      const syn = G.enemies.filter(o => o.alive && o.def.faction === 'syndicate');
+      console.log('T2', Math.round(t), 'units', JSON.stringify(G.units.filter(u => u.alive && u.side === 'player').reduce((m, u) => (m[u.type] = (m[u.type] || 0) + 1, m), {})), 'war', war.attacking ? 'atk' : war.marching ? 'march' : 'home',
+        'cit', cit ? Math.round(cit.hp) + '/' + Math.round(cit.shield || 0) : '-', 'syn', JSON.stringify(syn.reduce((m, o) => (m[o.type] = (m[o.type] || 0) + 1, m), {})),
+        'cr', Math.round(G.save.credits), 'ti', G.base && G.base.data.stock.bar.titanium, 'yq', G.base && JSON.stringify((G.base.data.buildings.find(o => o.type === 'shipyard') || {}).queue), 'ship', G.ship && Math.round(G.ship.hull), 'why', lastWhy, 'bld', G.base ? G.base.data.buildings.length : 0, 'sup', G.base ? NS.colony.supplyCap(G.base.data, G.stats) : 0);
+    }
     if (process.env.TRACE === op.id && fights && Math.floor(t / 15) !== Math.floor((t - 0.05) / 15) && G.ship) {
       const bs = NS.aiBase.state().bases[0];
       console.log('T', Math.round(t), 'ship', Math.round(G.ship.x), Math.round(G.ship.y), 'hull', Math.round(G.ship.hull) + '/' + G.ship.maxHull, 'fuel', Math.round(G.ship.fuel),
         'base', bs && Math.round(bs.x), bs && Math.round(bs.y), 'dist', bs && Math.round(dist(G.ship, bs)), 'fleet', G.units.filter(u => u.alive && u.def.dmg).length,
         'cr', Math.round(G.save.credits), 'bld', G.base ? G.base.data.buildings.map(o => o.type.slice(0, 4) + (o.prog < 1 ? '*' : '')).join(',') : '-',
         'yardq', G.base && (G.base.data.buildings.find(o => o.type === 'shipyard') || {}).queue, 'stock', G.base && JSON.stringify(G.base.data.stock.bar), 'hold', JSON.stringify(G.run.freight.bar) + JSON.stringify(G.run.freight.comp),
-        'hub', !!B.hub(), 'docked', G.run.docked, 'raid', (G.enemies.filter(o => o.alive && !o.def.structure && o.wave > 5000).map(o => o.type + '@' + Math.round(dist(o, G.ship))).join(',')), 'obj', (objective(op, G.ship) || {}).type);
+        'hub', !!B.hub(), 'docked', G.run.docked, 'raid', (G.enemies.filter(o => o.alive && !o.def.structure && o.wave > 5000).map(o => o.type + '@' + Math.round(dist(o, G.ship))).join(',')), 'obj', (objective(op, G.ship) || {}).type, 'war', JSON.stringify(war), 'units', JSON.stringify(G.units.filter(u => u.alive && u.side === 'player').reduce((m, u) => (m[u.type] = (m[u.type] || 0) + 1, m), {})),
+        'supply', NS.base.supply ? JSON.stringify(NS.base.supply()) : '', 'ore', G.base && JSON.stringify(G.base.data.stock.ore), 'comp', G.base && JSON.stringify(G.base.data.stock.comp));
     }
   }
   const o = G.run && G.run.op;
@@ -417,6 +439,8 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 function campaign(fights, label, ops) {
   if (!ops) {
     veteran(fights);
+    /* FROM=save-c_citadel.json plays on from a written career */
+    if (process.env.FROM && fights) { G.save = NS.rules.migrateSave(JSON.parse(require('fs').readFileSync(process.env.FROM, 'utf8'))); NS.save.refreshStats(); }
     if (process.env.LVL) G.save.skill.level = +process.env.LVL;
   }
   const rows = [];
@@ -424,8 +448,18 @@ function campaign(fights, label, ops) {
     if (ONLY && ONLY.indexOf(op.id) < 0) { O.finish(G.save, op, true, 60); continue; }
     /* peaks get longer budgets: no clock of their own, and a fortress takes time */
     const cap = op.mood === 'N' ? 1500 : op.mood === 'W' ? 1200 : 900;
-    /* between operations a pilot flies mining trips; short of money, the bot is paid one (it does not mine) */
-    const topUp = () => { if (G.save.credits < 15000) { G.save.credits += 10000; G.save.stats.earned += 10000; } };
+    /* between operations a pilot flies mining trips and comes back with some 30,000 credits; the bot
+       does not mine, so it is paid them */
+    const topUp = () => {
+      const sv = G.save;
+      while (sv.credits < 30000) { sv.credits += 10000; sv.stats.earned += 10000; }
+      /* and banks what a fleet needs: titanium and iron bars, alloy, circuits, fuel cells - and loads them */
+      const need = { bar: { titanium: 30, iron: 60 }, comp: { alloy: 40, circuit: 20, fuelcell: 24 } };
+      for (const k in need) for (const id in need[k]) sv.store[k][id] = Math.max(sv.store[k][id] || 0, need[k][id]);
+      sv.manifest.bar.titanium = Math.max(sv.manifest.bar.titanium || 0, 8);
+      sv.manifest.comp.alloy = Math.max(sv.manifest.comp.alloy || 0, 8);
+      sv.manifest.comp.fuelcell = Math.max(sv.manifest.comp.fuelcell || 0, 6);
+    };
     topUp();
     let r = play(op, fights, cap), tries = 1;
     /* a loss eases the difficulty, so a few more tries find the level the bot can win at */
