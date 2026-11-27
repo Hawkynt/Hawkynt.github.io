@@ -64,6 +64,23 @@ steps(2);
 check('when every allied station falls the operation fails', !ally.alive && G.run.op.status === 'failed' && G.run.op.why === 'ally');
 NS.trip.endTrip('dock');
 
+/* the station gives the ship time to arrive, but cannot hold alone */
+G.save.skill.level = 1.7;
+launch('vc_ally');
+G.ship.x = 200; G.ship.y = 200;
+const st = G.allies[0];
+check('a raised difficulty fortifies the station as much as it toughens the foes', Math.abs(st.maxHp - OP_BY_ID.vc_ally.allies[0].hp * NS.skill.diff(1.7).hp) < 1e-6);
+steps(60 * 75);
+check('even at a raised difficulty the station still stands 75 s in without help', st.alive && G.run.op.status === 'active');
+NS.trip.endTrip('dock');
+G.save.skill.level = 1;
+launch('vc_ally');
+G.ship.x = 200; G.ship.y = 200;
+let fell = false;
+for (let s = 0; s < 240 && !fell; s += 5) { steps(60 * 5); G.ship.x = 200; G.ship.y = 200; fell = !G.allies[0].alive; }
+check('left alone it falls before the four minutes are out', fell);
+NS.trip.endTrip('dock');
+
 /* holding out */
 launch('vc_ally');
 G.run.op.t = OP_BY_ID.vc_ally.goals[0].n;
@@ -107,6 +124,7 @@ G.save.crownDone = false;
 launch('vc_crown');
 const crown = G.rocks.find(r => r.kind === 'crown');
 check('The Crown brings the Crown Heart, an allied station and the feud', crown && G.allies.length >= 1 && NS.allies.feud());
+check('the Crown sings it whole: four times the hull, raised by the difficulty level', Math.abs(crown.maxHp - 4200 * 4 * NS.operation.dm().hp) < 1e-6 && crown.hp === crown.maxHp);
 G.run.crownBroken = true;
 steps(2);
 check('shattering the Crown Heart wins it', G.run.op.status === 'won');

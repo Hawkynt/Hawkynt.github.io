@@ -233,4 +233,8 @@ steps(60 * 8);
 check('a Lattice base turns out nanoprobes', mine(0).some(e => e.type === 'nanodrone' || e.type === 'nanoswarm') && !mine(0).some(e => e.type === 'syn_fighter'));
 NS.trip.endTrip('dock');
 
+/* a base destroyed outright fulfils its raze goals */
+check('with every base down, the raze goals are met', NS.ops.complete(OP_BY_ID.c_expand, { razed: { syn_relay: 1 }, basesDown: true }) && !NS.ops.complete(OP_BY_ID.c_expand, { razed: { syn_relay: 1 }, basesDown: false }));
+check('a hauler hunt too', NS.ops.complete(OP_BY_ID.c_freight, { razed: {}, basesDown: true }));
+
 done();

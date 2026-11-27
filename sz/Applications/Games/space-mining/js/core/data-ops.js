@@ -246,8 +246,8 @@
       brief: 'The Syndicate\'s heart: a shielded citadel behind shield pylons and artillery, Juggernauts at the gate. Break the pylons, silence the batteries, raze the citadel - and the Void Crown is open.',
       goals: [{ type: 'raze', of: ['citadel'], n: 1, text: 'Raze the citadel' }],
       waves: { off: true },
-      syndicate: { bases: [{ at: 'far', citadel: true, order: 'fortress', mix: 'heavy', credits: 1500, start: ['syn_pylon', 'syn_pylon', 'syn_battery', 'syn_battery', 'syn_tower', 'syn_tower', 'syn_tower', 'syn_factory', 'syn_harvester', 'syn_harvester'],
-        guards: { juggernaut: 2, syn_fighter: 4 }, attack: { first: 200, every: 120, size: 6 } }] },
+      syndicate: { bases: [{ at: 'far', citadel: true, hold: true, order: 'fortress', mix: 'heavy', credits: 1000, start: ['syn_pylon', 'syn_pylon', 'syn_battery', 'syn_tower', 'syn_tower', 'syn_factory', 'syn_harvester', 'syn_harvester'],
+        guards: { juggernaut: 2, syn_fighter: 3 }, attack: { first: 240, every: 140, size: 5 } }] },
       reward: { cr: 8000, rd: 14 } },
 
     /* the Void Crown: everything at once - allied stations, three feuding factions, the Crown */
@@ -261,8 +261,8 @@
       brief: 'A free miners\' station at the rim is under siege by the Hive. Hold out four minutes with it standing - its guns help, but it cannot stand alone.',
       goals: [{ type: 'hold', n: 240, text: 'Hold out (seconds)' }],
       waves: { off: true },
-      allies: [{ hp: 3200, name: 'Freehold Station' }],
-      fronts: [{ faction: 'alien', kinds: { swarmer: 6, carrier: 0.3 }, first: 20, every: 38, size: [6, 9], at: 'ally' }],
+      allies: [{ hp: 5000, name: 'Freehold Station' }],
+      fronts: [{ faction: 'alien', kinds: { swarmer: 6, carrier: 0.3 }, first: 40, every: 38, size: [6, 9], at: 'ally' }],
       reward: { cr: 6500, rd: 10 } },
     { id: 'vc_base', zone: 'void', name: 'Build Base', mood: 'E', time: 0,
       brief: 'Plant a flag in the Void: found an outpost, finish three turrets and hold the first wave.',

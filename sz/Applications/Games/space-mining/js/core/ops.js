@@ -73,7 +73,8 @@
      m: { units (banked), banked: { ore: units }, stats (career statistics now), base (at the start),
           delivered (freighters docked at their post), waves (repelled this trip), outpost (a
           finished hub in the belt), built (finished buildings by type), clean (an outbreak the
-          operation started is over), razed (Syndicate kills by type), scouted, repelled, t (seconds
+          operation started is over), razed (Syndicate kills by type), basesDown (every base of the
+          operation destroyed: its raze goals are met), scouted, repelled, t (seconds
           the operation has run, for hold), crown (the Crown Heart shattered) } */
   function measure(g, m) {
     if (g.type === 'bank') return m.units || 0;
@@ -93,6 +94,8 @@
     if (g.type === 'hold') return Math.floor(m.t || 0);
     if (g.type === 'crown') return m.crown ? 1 : 0;
     if (g.type === 'raze') {
+      /* every base destroyed outright: nothing more is built or shipped, the goal is met */
+      if (m.basesDown) return g.n;
       let n = 0;
       for (let i = 0; i < g.of.length; ++i) n += (m.razed && m.razed[g.of[i]]) || 0;
       return n;

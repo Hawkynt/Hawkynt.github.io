@@ -4,6 +4,7 @@ by Hawkynt 23.11.2026
 + Space Mining: 38 operations picked on the belt map, each with its own twist (a fast courier, a one-hit-point freighter, skimmer swarms, a pirate gun outpost, Jammers, Minelayers, radiation seasons, the Bloom, the Lattice, enemy bases, allied stations, the Crown); operations chain within one trip and the station names the next one
 + Space Mining: a mission score after every operation and a difficulty level that follows it - play well and the next operations grow harder, struggle and they ease
 * Space Mining: freighters need their escort - they wait at the dock, hold when left alone and get raided; unopposed ambushes ruin them
+* Space Mining: Crimson Maw and Void Crown balance - a base with every structure down counts as razed, haulers run for the far edge, artillery splash falls off and craft spread out to fight, the Citadel rebuilds nothing it loses, allied stations grow with the difficulty and the Crown Heart takes minutes to drill
 + Space Mining: weapon hardpoints (Pulse Cannon, Scatter Flak, Missile Rack, Rail Lance, EMP Mine, Gravity Net, Tether Tow, Cloak Field, Drone Swarm) and damage types against armour
 + Space Mining: Syndicate bases that mine, build, defend and attack; cloaked Stalkers, Juggernauts and the Citadel; Sporecaster and Spike craft that rot and hijack their structures
 + Space Mining: craft with abilities - Herder Tug, Minelayer, Aegis, Phantom, Lancer, Bulwark - cast from the selection panel or with T

@@ -275,7 +275,9 @@
       const list = NS.units.queryPlayer(s.x, s.y, r);
       for (let i = 0; i < list.length; ++i) {
         const u = list[i];
-        if (u.alive && (u.x - s.x) * (u.x - s.x) + (u.y - s.y) * (u.y - s.y) < (r + u.r) * (r + u.r)) NS.units.damage(u, s.dmg * 0.6);
+        /* splash falls off toward its edge, as it does on buildings */
+        const du = Math.sqrt((u.x - s.x) * (u.x - s.x) + (u.y - s.y) * (u.y - s.y));
+        if (u.alive && du < r + u.r) NS.units.damage(u, s.dmg * NS.operation.dm().dmg * 0.6 * (1 - 0.5 * du / (r + u.r)));
       }
       for (let i = 0; i < G.allies.length; ++i) {
         const a = G.allies[i];

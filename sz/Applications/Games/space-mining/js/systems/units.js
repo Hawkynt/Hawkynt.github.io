@@ -153,14 +153,16 @@
     const d = Math.sqrt(dx * dx + dy * dy) || 1;
     const want = Math.min(speed, Math.max(0, d - (stop || 0)) * 2.6);
     let ax = dx / d * want, ay = dy / d * want;
-    /* separation from close friends */
-    const list = grid.query(u.x, u.y, u.r * 2.4, near);
+    /* separation from close friends - wider in a fight, so one shell does not catch a clump */
+    const o0 = u.orders && u.orders[0];
+    const spread = o0 && (o0.kind === 'attack' || o0.kind === 'amove') ? 34 : 6;
+    const list = grid.query(u.x, u.y, u.r * 2.4 + spread, near);
     for (let i = 0; i < list.length; ++i) {
       const o = list[i];
       if (o === u) continue;
       const ox = u.x - o.x, oy = u.y - o.y;
       const od = Math.sqrt(ox * ox + oy * oy) || 1;
-      const clear = u.r + o.r + 6;
+      const clear = u.r + o.r + spread;
       if (od < clear) { ax += ox / od * 90 * (1 - od / clear); ay += oy / od * 90 * (1 - od / clear); }
     }
     /* steer round big rocks (miners at work may touch theirs) */

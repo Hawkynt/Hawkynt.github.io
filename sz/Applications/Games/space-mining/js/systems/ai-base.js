@@ -228,11 +228,12 @@
     const e = NS.enemies.spawn('hauler', base.x, base.y, {});
     e.base = base.i;
     const W = G.world.w, H = G.world.h;
-    const ex = base.x < W / 2 ? 40 : W - 40, ey = base.y < H / 2 ? 40 : H - 40;
-    e.route = Math.abs(base.x - ex) < Math.abs(base.y - ey) ? { x: ex, y: base.y + (R() - 0.5) * 600 } : { x: base.x + (R() - 0.5) * 600, y: ey };
+    /* a long haul: across the belt to the far edge, through open space where it can be caught */
+    const ey = base.y < H / 2 ? H - 40 : 40;
+    e.route = { x: W / 2 + (base.x - W / 2) * 0.3 + (R() - 0.5) * 1200, y: ey };
     e.route.x = Math.max(40, Math.min(W - 40, e.route.x));
     e.route.y = Math.max(40, Math.min(H - 40, e.route.y));
-    NS.trip.banner('HAULER UNDOCKS', 'A Syndicate hauler makes for the edge of the belt', '#d8a060');
+    NS.trip.banner('HAULER UNDOCKS', 'A Syndicate hauler makes for the far edge of the belt', '#d8a060');
   }
 
   /* a hauler made it off the belt */
@@ -382,6 +383,8 @@
 
   Object.assign(NS.aiBase, {
     clear, state, setup, update, think, escaped, sporeAt, hijack, nearestStructure, core, capture, restore,
-    repelled: () => B.repelled, escapedCount: () => B.escaped, scouted: () => B.scouted
+    repelled: () => B.repelled, escapedCount: () => B.escaped, scouted: () => B.scouted,
+    /* every base of the operation destroyed */
+    allDown: () => B.bases.length > 0 && B.bases.every(b => b.dead)
   });
 })();

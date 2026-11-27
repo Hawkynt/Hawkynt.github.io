@@ -20,6 +20,8 @@
 
   /* seconds between a decided operation and the next one starting in the same trip */
   const NEXT_IN = 10;
+  /* the Crown Heart's hull in its capstone, times its free-trip hull */
+  const CROWN_HULL = 4;
 
   const WHY = {
     time: 'The clock ran out - the trip goes on',
@@ -108,6 +110,9 @@
     if (op.convoy) NS.freighters.setup(op);
     if (op.syndicate) NS.aiBase.setup(op);
     NS.allies.setup(op);
+    /* in its capstone the Crown sings itself whole: drilling it takes minutes under the fronts */
+    if (op.goals.some(g => g.type === 'crown'))
+      for (const r of G.rocks) if (r.kind === 'crown') r.hp = r.maxHp = r.maxHp * CROWN_HULL * dm().hp;
     /* an outpost already standing takes the operation's wave pace at once */
     if (op.waves && G.base && NS.base.claimed()) NS.waves.arm(true);
     return run.op;
@@ -130,7 +135,7 @@
     const run = G.run;
     const m = { units: run.bankedUnits || 0, banked: Object.assign({}, run.banked), stats: G.save.stats, base: o.base, delivered: o.delivered || 0,
       waves: run.waves || 0, clean: o.seeded && !!(G.base && NS.base.hub()) && !infected(),
-      razed: run.razed || {}, scouted: NS.aiBase.scouted(), repelled: NS.aiBase.repelled(), t: o.t,
+      razed: run.razed || {}, basesDown: NS.aiBase.allDown(), scouted: NS.aiBase.scouted(), repelled: NS.aiBase.repelled(), t: o.t,
       crown: run.crownBroken || (run.zone.id === 'void' && G.save.crownDone && !G.rocks.some(r => r.kind === 'crown')) };
     outpost(m);
     if (extra) {

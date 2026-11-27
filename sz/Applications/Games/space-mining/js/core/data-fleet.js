@@ -86,7 +86,7 @@
     { id: 'syn_factory', armour: 'structure', name: 'War Factory', faction: 'syndicate', hp: 1400, speed: 0, r: 40, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, factory: true, loot: 300, color: '#d86a4a' },
     { id: 'syn_relay', armour: 'structure', name: 'Relay', faction: 'syndicate', hp: 450, speed: 0, r: 18, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, reach: 220, loot: 60, color: '#ffb07a' },
     { id: 'syn_pylon', armour: 'structure', name: 'Shield Pylon', faction: 'syndicate', hp: 800, speed: 0, r: 24, range: 0, dmg: 0, rof: 9, pts: 0, target: 'static', structure: true, guard: 320, loot: 200, color: '#ff8ab0' },
-    { id: 'citadel', armour: 'structure', name: 'Syndicate Citadel', faction: 'syndicate', hp: 9000, speed: 0, r: 84, range: 560, dmg: 30, rof: 0.5, pts: 0, target: 'static', structure: true, capital: true, artillery: true, shield: 3500, loot: 6000, color: '#ff3a5a' },
+    { id: 'citadel', armour: 'structure', name: 'Syndicate Citadel', faction: 'syndicate', hp: 4500, speed: 0, r: 84, range: 560, dmg: 30, rof: 1.4, pts: 0, target: 'static', structure: true, capital: true, artillery: true, shield: 1500, loot: 6000, color: '#ff3a5a' },
     { id: 'mothership', armour: 'bio', name: 'Hive Mothership', faction: 'alien', hp: 6000, speed: 55, r: 96, range: 520, dmg: 22, rof: 0.45, pts: 80, target: 'buildings', loot: 3000, shield: 1500, spawns: 'swarmer', boss: true, color: '#d050ff' },
   ];
   const ENEMY_BY_ID = {};

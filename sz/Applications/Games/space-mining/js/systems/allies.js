@@ -1,5 +1,5 @@
 /* The Void Crown's allies and fronts: allied stations an operation puts out at the rim (own hull,
-   guns that shoot the nearest hostile in reach, a failed operation when all of them fall),
+   guns that shoot the nearest hostile in reach, a hull the difficulty level raises as it raises the foes', a failed operation when all of them fall),
    fronts - groups of one faction arriving from the rim on a schedule and going for a station or
    for you - and the feud that sets the factions on each other (the nearest craft of another
    faction becomes a raider's target). Owns G.allies. */
@@ -40,9 +40,11 @@
   function setup(op) {
     clear();
     A.feud = !!op.feud;
+    /* a station is fortified as much as the difficulty toughens its foes: a stronger siege, the same time to arrive */
+    const k = NS.operation.dm().hp;
     for (const a of op.allies || []) {
-      const p = rimSpot();
-      G.allies.push({ ally: true, alive: true, x: p.x, y: p.y, r: ALLY.r, hp: a.hp, maxHp: a.hp, name: a.name || 'Allied Station', fireT: R(), angle: R() * TAU, flash: 0 });
+      const p = rimSpot(), hp = a.hp * k;
+      G.allies.push({ ally: true, alive: true, x: p.x, y: p.y, r: ALLY.r, hp: hp, maxHp: hp, name: a.name || 'Allied Station', fireT: R(), angle: R() * TAU, flash: 0 });
     }
     A.fronts = (op.fronts || []).map((f, i) => ({ i: i, t: f.first }));
   }
