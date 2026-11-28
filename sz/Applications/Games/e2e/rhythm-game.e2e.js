@@ -52,8 +52,11 @@ exports.run = async (t) => {
   await t.shot('03-map');
   t.check('Escape skips onto the map', await t.state("G.screen === 'map' && !G.cine"));
 
+  /* click focus away (the desktop), then click the Play button: the game must take the keyboard */
+  await t.run((NS) => { const top = window.document; const b = top.body; if (b && b.focus) { b.tabIndex = -1; b.focus(); } });
   await t.hit('play');
   await skipCine(t);
+  t.check('a click into the game gives it the keyboard', await t.state('NS.view.canvas.ownerDocument.activeElement === NS.view.canvas && NS.view.canvas.ownerDocument.hasFocus()'));
   t.check('the first stage starts', await t.state("G.screen === 'game' && G.run.stage.id === 'docks-1'"));
   /* a few real key presses through the DevTools protocol */
   await t.waitFor('G.run.cond.t > 0.5', 8000);

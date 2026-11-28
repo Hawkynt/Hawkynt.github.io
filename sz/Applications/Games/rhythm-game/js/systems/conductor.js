@@ -1,7 +1,7 @@
 /* The song clock. A song starts a lead-in before its first bar (or before the bar a Continue or a
    resume rejoins it at) on frame time; just before that bar it asks SZ.GameMusic to play the chart's
    song from the same section and bar with a short fade, and from then on follows the audio context
-   (the audio time since the song's first bar), slewing gently and jumping only on a large error, so
+   (the audio time since the song's first bar, less the output latency, so it is the time you hear), slewing gently and jumping only on a large error, so
    the notes stay locked to what you hear. Without audio (muted, tests, no Web Audio) frame time
    runs the song alone. The global audio offset shifts presses, and a key event's own timestamp
    places a press between frames. */
@@ -47,7 +47,9 @@
     if (sch && sch.song === c.song) {
       /* audio time of song time 0 */
       const origin = sch.startedAt - c.bar * c.chart.barLen;
-      const at = ctx.currentTime - origin;
+      /* what is heard lags the context clock by the output latency */
+      const lag = (ctx.outputLatency || 0) || (ctx.baseLatency || 0);
+      const at = ctx.currentTime - lag - origin;
       const err = at - c.t;
       if (!c.synced || Math.abs(err) > 0.12) { c.t = at; c.synced = true; }
       else c.t += err * Math.min(1, dt * 6);

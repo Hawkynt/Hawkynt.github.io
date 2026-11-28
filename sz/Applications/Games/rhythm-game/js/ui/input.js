@@ -3,7 +3,8 @@
    opens the song list; in menus the arrows move the cursor, Enter or Space choose, Esc goes back; any
    key turns a cinematic page (Esc skips). Pointer: in play a press on the highway hits the lane under
    it (every finger its own lane, held for holds), the touch buttons work; in menus a click chooses
-   what it was pressed on, the wheel scrolls lists. The calibration test takes lane keys and taps. */
+   what it was pressed on, the wheel scrolls lists. Every press focuses the canvas, so the keys reach the
+   game after any click into its window. The calibration test takes lane keys and taps. */
 ;(function() {
   'use strict';
 
@@ -77,10 +78,17 @@
     return p;
   }
 
+  /* the canvas takes the keyboard: preventDefault below stops the browser from focusing it */
+  function focus() {
+    const cv = NS.view.canvas;
+    try { if (cv.focus) cv.focus({ preventScroll: true }); } catch (_) {}
+  }
+
   function onDown(ev) {
     G.input.touch = ev.pointerType === 'touch' || ev.pointerType === 'pen';
     const p = point(ev);
     if (ev.preventDefault) ev.preventDefault();
+    focus();
     if (G.cine) { NS.cine.next(); return; }
     if (G.screen === 'game' && !G.ui.confirm) {
       const hit = W.hitAt(p.x, p.y);
@@ -122,7 +130,9 @@
     cv.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
+    window.addEventListener('focus', focus);
+    focus();
   }
 
-  Object.assign(NS.input, { laneOfKey, stamp, menuKey, onKeyDown, onKeyUp, onDown, onMove, onUp, onWheel, attach });
+  Object.assign(NS.input, { focus, laneOfKey, stamp, menuKey, onKeyDown, onKeyUp, onDown, onMove, onUp, onWheel, attach });
 })();

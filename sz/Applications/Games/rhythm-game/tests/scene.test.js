@@ -38,6 +38,11 @@ function playSong(profile, maxFrames) {
 }
 
 check('boots onto the title', G.screen === 'title');
+let focused = 0;
+env.gameCanvas.focus = () => { ++focused; };
+NS.input.onDown({ clientX: 10, clientY: 10, pointerType: 'mouse', pointerId: 1, preventDefault() {} });
+NS.input.onUp({ clientX: 10, clientY: 10, pointerType: 'mouse', pointerId: 1 });
+check('a press anywhere in the game focuses its canvas, so the keys reach it', focused === 1);
 frames(120);
 check('the bot plays the demo song behind the title', G.run && G.run.mode === 'demo' && G.run.eng.counts.perfect + G.run.eng.counts.great > 0);
 check('the title draws', calls() > 200);
@@ -175,6 +180,26 @@ for (const slot of Object.keys(M.SLOTS)) for (const item of M.SLOTS[slot]) {
   try { G.profile.owned.cos[item.id] = true; G.profile.equip[slot] = item.id; NS.frame.draw(); } catch (e) { errs.push(item.id + ': ' + e.message); }
 }
 check('every mutator, note skin, highway, hit effect and performer draws', errs.length === 0, errs.join(' | '));
+/* the song clock follows what is heard: the audio time minus the output latency */
+{
+  const CD = NS.conductor;
+  const c = CD.create(G.run.chart, { lead: 0 });
+  const realA = window.SZ.GameAudio, realM = window.SZ.GameMusic;
+  window.SZ.GameAudio = Object.assign({}, realA, { running: true, muted: false, context: { currentTime: 3, outputLatency: 0.03, baseLatency: 0.01 } });
+  window.SZ.GameMusic = { enabled: true, current: c.song, schedule: { startedAt: 1, song: c.song }, play() {}, setIntensity() {} };
+  c.started = true;
+  CD.update(c, 1 / 60);
+  check('the song clock subtracts the output latency from the audio time', Math.abs(c.t - (3 - 0.03 - 1)) < 1e-9, c.t);
+  window.SZ.GameMusic = { enabled: true, current: c.song, schedule: { startedAt: 1, song: {} }, play() {}, setIntensity() {} };
+  const before = c.t;
+  CD.update(c, 1 / 60);
+  check('and ignores a schedule that belongs to another song', Math.abs(c.t - before - 1 / 60) < 1e-9);
+  window.SZ.GameAudio = realA; window.SZ.GameMusic = realM;
+}
+NS.screens.setScreen('results');
+check('popups sit below the results headline', NS.screens.toastTop() >= 540);
+NS.screens.setScreen('title');
+check('and at the top elsewhere', NS.screens.toastTop() < 40);
 check('no shadowBlur anywhere', ctx.shadowBlurUsed === 0);
 frames(3);
 const s0 = NS.artKit.stats().created;

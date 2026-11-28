@@ -65,13 +65,18 @@
     }
   }
 
+  /* on the results the headline owns the top, so popups go below the panels */
+  function toastTop() {
+    return G.screen === 'results' ? 548 : 14;
+  }
+
   function drawToasts() {
     const list = G.ui.toasts;
     for (let k = 0; k < Math.min(SHOWN, list.length); ++k) {
       const t = list[k];
       const a = Math.min(1, t.t * 5, (LIFE - t.t) * 2);
       const w = Math.min(560, kit.width(t.text, 14, 'bold') + 56);
-      const x = 640 - w / 2, y = 14 + k * 42;
+      const x = 640 - w / 2, y = toastTop() + k * 42;
       ctx.save();
       ctx.globalAlpha = a;
       ctx.translate(0, (1 - Math.min(1, t.t * 5)) * -14);
@@ -102,5 +107,5 @@
     return true;
   }
 
-  Object.assign(NS.screens, { setScreen, open, back, pause, resume, toast, updateToasts, drawToasts, confirm, drawConfirm });
+  Object.assign(NS.screens, { toastTop, setScreen, open, back, pause, resume, toast, updateToasts, drawToasts, confirm, drawConfirm });
 })();
