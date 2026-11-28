@@ -15,6 +15,8 @@
   //   SZ.GameMusic.play(song)          start or crossfade to a song (opts: onBar, from, fade)
   //   SZ.GameMusic.play(song, { onBar: true, from: 'build' })  switch on the next bar line,
   //                                    entering the song at a section
+  //   SZ.GameMusic.play(song, { from: 'groove', bar: 12, fade: 0.05 })  enter 12 bars past the
+  //                                    groove (the rhythm game rejoins a song after a pause)
   //   SZ.GameMusic.play(null)          fade out
   //   SZ.GameMusic.setIntensity(0..1)  layers come in as it rises
   //   SZ.GameMusic.stinger('win')      a short phrase in the current key
@@ -1090,6 +1092,8 @@
         current.wanted = wanted;
         current.bar = 0;
         current.pos = start(R, wantedOpts.from);
+        /* { bar } enters the song that many bars in (the bars it skips advance as they would play) */
+        for (let b = 0; b < (wantedOpts.bar | 0); ++b) { current.pos = advance(R, current.pos, intensity); ++current.bar; }
         current.nextAt = current.startedAt = at;
         fade(current.gain, ctx, current.level, fadeIn, at);
       } else {
@@ -1125,8 +1129,8 @@
   }
 
   /* opts: { onBar } switches on the next bar line instead of crossfading now, { from } enters
-     the song at the first section of that name (intro, groove, build, drop, break), { fade }
-     the crossfade in seconds (1.2 by default) */
+     the song at the first section of that name (intro, groove, build, drop, break), { bar } that
+     many bars past it, { fade } the crossfade in seconds (1.2 by default) */
   function play(song, opts) {
     wanted = song || null;
     wantedOpts = opts || {};
@@ -1216,7 +1220,7 @@
     play, setIntensity, stinger, compose, noteOf, chordSteps, SCALES, DRUMS,
     STYLES, resolve, planCycle, start, advance, sectionOf, locate, chordOf, variant, render,
     get position() { return position; },
-    get schedule() { return current ? { startedAt: current.startedAt, nextAt: current.nextAt } : null; },
+    get schedule() { return current ? { startedAt: current.startedAt, nextAt: current.nextAt, song: current.wanted } : null; },
     get enabled() { return enabled; },
     set enabled(v) { setEnabled(v); },
     toggle() { setEnabled(!enabled); },
