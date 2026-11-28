@@ -197,7 +197,7 @@ check('every mutator, note skin, highway, hit effect and performer draws', errs.
   window.SZ.GameAudio = realA; window.SZ.GameMusic = realM;
 }
 NS.screens.setScreen('results');
-check('popups sit below the results headline', NS.screens.toastTop() >= 540);
+check('popups on the results stack under the grade, clear of the headline and the buttons', (() => { const L = NS.screens.toastLayout(); return L.top >= 480 && L.top + L.shown * 42 < 600 && L.cx + L.maxW / 2 <= 450; })());
 NS.screens.setScreen('title');
 check('and at the top elsewhere', NS.screens.toastTop() < 40);
 check('no shadowBlur anywhere', ctx.shadowBlurUsed === 0);

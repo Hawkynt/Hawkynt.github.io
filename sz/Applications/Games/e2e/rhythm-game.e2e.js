@@ -63,8 +63,18 @@ exports.run = async (t) => {
   await t.key('ArrowLeft', 'ArrowLeft', 37);
   await t.key('d', 'KeyD', 68);
   t.check('real key presses light the lanes', await t.state('G.input.laneFlash[0] > 0'));
+  /* frame gaps in the game window while it plays */
+  await t.run((NS) => {
+    const w = NS.view.canvas.ownerDocument.defaultView;
+    const m = window.__gaps = { last: 0, max: 0, long: 0, n: 0 };
+    const tick = (ts) => { if (m.last) { const g = ts - m.last; m.max = Math.max(m.max, g); if (g > 50) ++m.long; ++m.n; } m.last = ts; if (!m.stop) w.requestAnimationFrame(tick); };
+    w.requestAnimationFrame(tick);
+  });
   await autoplay(t, true);
   await t.wait(9000);
+  const gaps = await t.run(() => { window.__gaps.stop = true; return window.__gaps; });
+  console.log('frame gaps while playing:', JSON.stringify(gaps));
+  t.check('the song plays without freezes (no frame over 100 ms)', gaps.n > 100 && gaps.max < 100, gaps);
   await t.shot('04-playing');
   t.check('the song is played with key events', await t.state('G.run.eng.counts.perfect + G.run.eng.counts.great > 4 && G.run.eng.counts.miss < 3'));
   t.check('the highway and notes draw', (await t.pixels(380, 100, 520, 520)).colors > 30);
@@ -75,11 +85,32 @@ exports.run = async (t) => {
   await t.key('Escape', 'Escape', 27);
   await t.wait(200);
   t.check('and resumes with a count-in', await t.state("G.screen === 'game'"));
+  /* a click on the desktop window's title bar must leave the keyboard with the game */
+  const bar = await t.run((NS) => {
+    const gw = NS.view.canvas.ownerDocument.defaultView;
+    const f = Array.from(document.querySelectorAll('iframe')).find(x => x.contentWindow === gw);
+    let el = f && f.parentElement;
+    while (el && !el.querySelector('[class*="title"]')) el = el.parentElement;
+    const tb = el && el.querySelector('[class*="title"]');
+    if (!tb) return null;
+    const r = tb.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  if (bar) {
+    await t.page.click(bar.x, bar.y);
+    await t.wait(300);
+    await t.run((NS, G) => { G.input.laneFlash[3] = 0; });
+    await t.key('k', 'KeyK', 75);
+    t.check('after a click on the window title bar the keys still reach the game', await t.state('G.input.laneFlash[3] > 0'));
+  } else t.check('the window title bar is found', false);
   await t.waitFor("G.screen === 'results'", 120000);
   await t.wait(1800);
   await t.shot('06-results');
   t.check('the song ends in the results with a grade', await t.state("G.result && G.result.cleared && G.result.grade !== 'F'"));
 
+  const t0 = await t.run((NS) => { const a = performance.now(); NS.worldData.stageChart(NS.worldData.BY_ID['spire-5']); return performance.now() - a; });
+  console.log('first chart of a stage (calibration):', Math.round(t0), 'ms');
+  t.check('a stage calibrates in under 400 ms', t0 < 400, Math.round(t0));
   await t.run((NS) => NS.play.start('story', { stage: 'foundry-6' }));
   await skipCine(t);
   await t.waitFor("G.ui.banner || G.run.done", 60000);
