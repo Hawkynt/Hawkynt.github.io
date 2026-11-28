@@ -1,135 +1,128 @@
-/* Input: auto-pause on blur, the keyboard (F2 reset, Escape pause, song browsing,
-   lane keys d/f/j/k) and the canvas pointer (song row clicks, lane taps during
-   play, continue on results, resume on pause). Audio bootstraps on first gesture. */
+/* Input. Keys: D F J K and the arrows hit the lanes in play (a press is timed from the key event's own
+   timestamp; held keys repeat nothing), Space unleashes Surge, Esc/P pause and resume, R retries, F2
+   opens the song list; in menus the arrows move the cursor, Enter or Space choose, Esc goes back; any
+   key turns a cinematic page (Esc skips). Pointer: in play a press on the highway hits the lane under
+   it (every finger its own lane, held for holds), the touch buttons work; in menus a click chooses
+   what it was pressed on, the wheel scrolls lists. The calibration test takes lane keys and taps. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.RhythmGame || (SZ.RhythmGame = {});
+  const G = NS.state;
   const C = NS.constants;
-  const S = NS.state;
-  const D = NS.dom;
-  const { ensureAudioCtx, resumeAudioCtx, pauseMusic, resumeMusic } = NS.audio;
+  const W = NS.widgets;
+  const scr = NS.screens;
 
-  /* Pause when the window is hidden or loses focus */
-  SZ.GameAutoPause.attach({
-    isRunning: () => S.state === C.STATE_PLAYING,
-    pause: () => {
-      S.state = C.STATE_PAUSED;
-      pauseMusic();
-      NS.os.updateWindowTitle();
-    }
-  });
+  function laneOfKey(k) {
+    for (let l = 0; l < 4; ++l) if (C.KEYS[l].indexOf(k) >= 0) return l;
+    return -1;
+  }
 
-  window.addEventListener('keydown', (e) => {
-    // Bootstrap audio context on first user gesture (browser requirement)
-    ensureAudioCtx();
-    resumeAudioCtx();
+  function stamp(ev) {
+    const t = ev && ev.timeStamp;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return typeof t === 'number' && t > 0 && t < 1e11 && Math.abs(t - now) < 2000 ? t : now;
+  }
 
-    if (e.key === 'F2') {
-      e.preventDefault();
-      NS.song.initGame();
+  function menuKey(k) {
+    if (k === 'arrowup' || k === 'w') W.moveCursorDir(0, -1);
+    else if (k === 'arrowdown' || k === 's') W.moveCursorDir(0, 1);
+    else if (k === 'arrowleft' || k === 'a') W.moveCursorDir(-1, 0);
+    else if (k === 'arrowright' || k === 'd') W.moveCursorDir(1, 0);
+    else if (k === 'enter' || k === ' ') W.activate(G.hitAreas[G.menuCursor]);
+    else return false;
+    return true;
+  }
+
+  function onKeyDown(ev) {
+    const k = String(ev.key || '').toLowerCase();
+    if (k === 'f2') { ev.preventDefault && ev.preventDefault(); if (G.screen === 'game') scr.pause(); scr.setScreen('library', 'title'); return; }
+    if (G.ui.confirm) { if (k === 'escape') G.ui.confirm = null; else menuKey(k); return; }
+    if (G.cine) { if (ev.repeat) return; if (k === 'escape') NS.cine.skip(); else NS.cine.next(); return; }
+    if (G.ui.crate) { if (k === 'enter' || k === ' ' || k === 'escape') { const c = G.ui.crate; if (c.shown < c.rolls.length) { c.next = 0; c.t += 0.75; } else G.ui.crate = null; } return; }
+    const lane = laneOfKey(k);
+    if (G.screen === 'game') {
+      if (ev.preventDefault && (lane >= 0 || k === ' ')) ev.preventDefault();
+      if (ev.repeat) return;
+      if (lane >= 0) NS.play.press(lane, stamp(ev));
+      else if (k === ' ') NS.play.surge();
+      else if (k === 'escape' || k === 'p') scr.pause();
       return;
     }
+    if (G.screen === 'settings' && G.ui.calib && !G.ui.calib.done && lane >= 0) { NS.settings.tap(stamp(ev) / 1000); G.input.laneFlash[lane] = 1; return; }
+    if (G.screen === 'paused') {
+      if (k === 'escape' || k === 'p') { scr.resume(); return; }
+      if (k === 'r') { NS.play.restart(); return; }
+    }
+    if (G.screen === 'results' && k === 'r') { NS.play.restart(); return; }
+    if (menuKey(k)) { ev.preventDefault && ev.preventDefault(); return; }
+    if (k === 'escape') {
+      if (G.screen === 'title') return;
+      if (G.screen === 'results') scr.setScreen(G.result && G.result.stage ? 'map' : 'title');
+      else scr.back();
+    }
+  }
 
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (S.state === C.STATE_PLAYING) {
-        S.state = C.STATE_PAUSED;
-        pauseMusic();
-        NS.os.updateWindowTitle();
-      } else if (S.state === C.STATE_PAUSED) {
-        S.state = C.STATE_PLAYING;
-        resumeMusic();
-        NS.os.updateWindowTitle();
-      }
+  function onKeyUp(ev) {
+    const lane = laneOfKey(String(ev.key || '').toLowerCase());
+    if (lane >= 0) NS.play.release(lane, stamp(ev));
+  }
+
+  const down = {};
+  function point(ev) {
+    const p = NS.view.toPlane(ev.clientX, ev.clientY);
+    G.input.mx = p.x;
+    G.input.my = p.y;
+    return p;
+  }
+
+  function onDown(ev) {
+    G.input.touch = ev.pointerType === 'touch' || ev.pointerType === 'pen';
+    const p = point(ev);
+    if (ev.preventDefault) ev.preventDefault();
+    if (G.cine) { NS.cine.next(); return; }
+    if (G.screen === 'game' && !G.ui.confirm) {
+      const hit = W.hitAt(p.x, p.y);
+      if (hit >= 0) { W.activate(G.hitAreas[hit]); return; }
+      const lane = NS.highway.laneAt(p.x, p.y);
+      if (lane >= 0) { down[ev.pointerId] = { lane: lane }; NS.play.press(lane, stamp(ev)); }
       return;
     }
+    down[ev.pointerId] = { area: W.hitAt(p.x, p.y), x: p.x, y: p.y };
+  }
 
-    if (S.state === C.STATE_SONG_SELECT) {
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        NS.song.selectSong(-1);
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        NS.song.selectSong(1);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        NS.song.startSong(S.selectedSongIndex);
-      }
-      return;
-    }
+  function onMove(ev) {
+    point(ev);
+    if (ev.pointerType === 'mouse') { G.input.touch = false; G.input.moved = 1; }
+  }
 
-    if (S.state === C.STATE_RESULTS) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        NS.song.initGame();
-      }
-      return;
-    }
+  function onUp(ev) {
+    const p = point(ev);
+    const d = down[ev.pointerId];
+    delete down[ev.pointerId];
+    if (!d) return;
+    if (d.lane != null) { NS.play.release(d.lane, stamp(ev)); return; }
+    const a = W.hitAt(p.x, p.y);
+    if (a >= 0 && a === d.area) W.activate(G.hitAreas[a]);
+  }
 
-    if (S.state !== C.STATE_PLAYING) return;
+  function onWheel(ev) {
+    if (ev.preventDefault) ev.preventDefault();
+    G.ui.scroll = Math.max(0, (G.ui.scroll || 0) + (ev.deltaY > 0 ? 2 : -2));
+  }
 
-    const laneIndex = C.LANE_KEYS.indexOf(e.key.toLowerCase());
-    if (laneIndex >= 0) {
-      e.preventDefault();
-      NS.scoring.hitNote(laneIndex);
-    }
-  });
+  function attach() {
+    const cv = NS.view.canvas;
+    cv.addEventListener('pointerdown', onDown);
+    cv.addEventListener('pointermove', onMove);
+    cv.addEventListener('pointerup', onUp);
+    cv.addEventListener('pointercancel', onUp);
+    cv.addEventListener('contextmenu', e => e.preventDefault && e.preventDefault());
+    cv.addEventListener('wheel', onWheel, { passive: false });
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+  }
 
-  D.canvas.addEventListener('pointerdown', (e) => {
-    ensureAudioCtx();
-    resumeAudioCtx();
-
-    if (S.state === C.STATE_SONG_SELECT) {
-      // Calculate click position relative to canvas
-      const rect = D.canvas.getBoundingClientRect();
-      const scaleX = C.CANVAS_W / rect.width;
-      const scaleY = C.CANVAS_H / rect.height;
-      const clickX = (e.clientX - rect.left) * scaleX;
-      const clickY = (e.clientY - rect.top) * scaleY;
-
-      // Check if a song row was clicked
-      const startY = 110;
-      const rowH = 60;
-      for (let i = 0; i < NS.songs.SONGS.length; ++i) {
-        const rowTop = startY + i * rowH;
-        const rowBot = rowTop + 50;
-        if (clickX >= C.CANVAS_W / 2 - 200 && clickX <= C.CANVAS_W / 2 + 200 &&
-            clickY >= rowTop && clickY <= rowBot) {
-          S.selectedSongIndex = i;
-          NS.song.startSong(S.selectedSongIndex);
-          return;
-        }
-      }
-
-      // Click anywhere else on song select starts the currently selected song
-      NS.song.startSong(S.selectedSongIndex);
-      return;
-    }
-
-    if (S.state === C.STATE_PLAYING) {
-      // Click lanes during gameplay — determine lane from x position
-      const rect = D.canvas.getBoundingClientRect();
-      const scaleX = C.CANVAS_W / rect.width;
-      const clickX = (e.clientX - rect.left) * scaleX;
-      const clickLane = Math.floor((clickX - C.LANE_START_X) / C.laneWidth);
-      if (clickLane >= 0 && clickLane < C.LANE_COUNT)
-        NS.scoring.hitNote(clickLane);
-      return;
-    }
-
-    if (S.state === C.STATE_RESULTS) {
-      NS.song.initGame();
-      return;
-    }
-
-    if (S.state === C.STATE_PAUSED) {
-      S.state = C.STATE_PLAYING;
-      resumeMusic();
-      NS.os.updateWindowTitle();
-    }
-  });
-
-  Object.assign(NS.input, {});
+  Object.assign(NS.input, { laneOfKey, stamp, menuKey, onKeyDown, onKeyUp, onDown, onMove, onUp, onWheel, attach });
 })();

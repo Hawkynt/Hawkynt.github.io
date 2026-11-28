@@ -32,8 +32,9 @@ Legend: ✅ in place · ◐ partial / thin · ❌ missing · — does not fit th
 | Breakout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Prism Run; Duo and Arena co-op with CPU partners; soundtrack |
 | Bubble Bobble | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Fizz and the Dry Lagoon; generated rooms; co-op with Pop; soundtrack |
 | Minesweeper | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Bloomfield Expedition; solver-proven fields; faithful Classic; Versus CPU; soundtrack; browser test |
+| Rhythm Game | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | The Hush; charts built from the composed music; difficulty calibrated per stage by bot playtests; boss duels; shop, crates, Fame; browser test |
 
-Remaining for Tier A: late-game prestige / endless scaling exists only in Cookie Clicker. Every
+Remaining for Tier A: late-game prestige / endless scaling exists only in Cookie Clicker and the Rhythm Game (Fame tours). Every
 Tier A game now has a soundtrack (see Shared gaps - Music).
 
 ### Tier B — first-wave overhaul (October 2026), the "keep coming back" layer is missing
@@ -58,11 +59,10 @@ quests, mostly no cinematics, little to collect. They need a **top-up**, not a r
 
 ### Tier C — never overhauled (small, ~2–3k lines; only module split, sound, touch and digest tests)
 
-Full overhaul needed (Tetris, Breakout, Bubble Bobble and Minesweeper are done, see Tier A). Suggested order:
+Full overhaul needed (Tetris, Breakout, Bubble Bobble, Minesweeper and the Rhythm Game are done, see Tier A). Suggested order:
 
 | # | Game | Today | Overhaul hook |
 |---|---|---|---|
-| 4 | Rhythm Game | procedural music, combo | song campaign, note skins, lane FX, Daily song, difficulty mastery |
 | 6 | Fantasy Cards | deck building, AI | campaign of duels, card collection/rarities, pack openings, card backs |
 | 7 | Space Puzzle | gravity shots | solver-verified level worlds, ship skins |
 | 8 | Mind Puzzle | shift puzzles | solver-verified worlds, narrative frame |
@@ -79,14 +79,14 @@ Full overhaul needed (Tetris, Breakout, Bubble Bobble and Minesweeper are done, 
   trance, electro, dnb, dubstep, chip, synthwave, funk, epic, ambient, and the 16-bit FM family
   fm16calm, fm16, fm16war) into endless songs - intro,
   groove, build-up, drop, breakdown, every pass changing melody, harmony, form or key - and
-  `variant(theme, key)` gives every level a song of its own. Every game except the Rhythm Game
-  (whose songs are the gameplay) has a `music.js` with themes per world/mode, a song per level,
+  `variant(theme, key)` gives every level a song of its own. Every game has a `music.js` with
+  themes per world/mode (the Rhythm Game charts its notes from the composed bars), a song per level,
   intensity from its own danger cues and Music On/Off in its menu; `e2e/run.js soundtracks` checks
   them all in a browser, `e2e/run.js music` renders every style and saves WAVs to listen to.
 - **CPU players**: a game whose bots are proven over the real engine can also seat them as CPU
   rivals or partners - Tetris Versus (step-by-step steering at four strengths), Breakout's partner
   paddles and Bubble Bobble's Pop show the pattern; candidates are the other games with bots.
-- **Browser tests**: only Tetris, Breakout, Bubble Bobble, Minesweeper and the start menu have an
+- **Browser tests**: only Tetris, Breakout, Bubble Bobble, Minesweeper, the Rhythm Game and the start menu have an
   `e2e/<game>.e2e.js` scenario; every game needs one (real clicks and keys, screenshots looked at).
 - **Keyboard**: every action game should steer with the arrows and WASD alike (Tetris got WASD in
   November 2026); the desktop now hands the keyboard to a game's window when it opens.

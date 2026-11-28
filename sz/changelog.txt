@@ -22,6 +22,8 @@ by Hawkynt 23.11.2026
 * Space Mining: big battles stay smooth - the game lowers its visual detail when frames get heavy
 # Space Mining: rows of the Supply list stay in place while you change their numbers
 + Games: three 16-bit console music styles with composed long passes
++ Rhythm Game: The Hush - a five-district story of thirty songs whose notes are charted from the music the engine composes, five boss duels with telegraphed attacks and cinematics, holds, chords, Hush and drift notes, Surge and pickups, Free Play in four difficulties with practice speeds and mastery, Marathon, Daily Mix, Zen, Boss Rush, Weekly Remix and Remix Tour
++ Rhythm Game: a tech tree, boosters, a shop with daily offers and Record Crates, performers, note skins, highways and hit effects, festivals, quests, weekly challenges, streaks, Fame tours, audio calibration and Continue mid-song; difficulty rises district by district, each stage calibrated by bot playtests
 * Bomberman: a power-up under every 7th to 10th brick on every stage
 
 Main: 6.33

@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Rhythm Game — hit falling notes in time with music using D/F/J/K keys. Features timing accuracy (Perfect/Great/Good/Miss), combo multiplier, 6 songs, final grades S/A/B/C/D, neon glow effects, particle explosions, screen flash on perfect hits, BPM-synced background pulse, note trail effects, and elastic combo counter in the SynthelicZ Desktop.">
+<meta name="description" content="Free online rhythm game with a story: play the music back to life across five districts of Hush City - thirty songs charted from the music you hear, five boss duels with telegraphed attacks and cinematics, holds, chords, Hush notes and drift notes, Surge and power-ups, Free Play in four difficulties, Marathon, Daily Mix, Zen, Boss Rush, Remix Tour, a tech tree, shop, Record Crates and seasonal festivals.">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Rhythm Game -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Hit falling notes with perfect timing using D/F/J/K keys. Build combos, earn grades, and enjoy neon glow effects, particle explosions, screen flash on perfect hits, BPM-synced background pulse, note trails, and elastic combo counter.">
+<meta property="og:title" content="Rhythm Game: The Hush -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Free online rhythm game with a story: play the music back to life across five districts of Hush City - thirty songs charted from the music you hear, five boss duels with telegraphed attacks and cinematics, holds, chords, Hush notes and drift notes, Surge and power-ups, Free Play in four difficulties, Marathon, Daily Mix, Zen, Boss Rush, Remix Tour, a tech tree, shop, Record Crates and seasonal festivals.">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/rhythm-game/index.html">
-<link rel="canonical" href="index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/Games/rhythm-game/index.html">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  "name": "Rhythm Game",
+  "name": "Rhythm Game: The Hush",
   "url": "https://hawkynt.github.io/sz/Applications/Games/rhythm-game/index.html",
-  "description": "Rhythm game with 4-key input (D/F/J/K), timing accuracy grading, combo multiplier, 6 procedurally generated songs, final letter grades, neon glow effects, particle explosions, screen flash on perfect hits, BPM-synced background pulse, note trail effects, elastic combo counter, and smooth note-scroll animations.",
+  "description": "Free online rhythm game with a story: play the music back to life across five districts of Hush City - thirty songs charted from the music you hear, five boss duels with telegraphed attacks and cinematics, holds, chords, Hush notes and drift notes, Surge and power-ups, Free Play in four difficulties, Marathon, Daily Mix, Zen, Boss Rush, Remix Tour, a tech tree, shop, Record Crates and seasonal festivals.",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -26,73 +26,69 @@
 <script src="../../sz-app-bootstrap.js?v=91ca7024"></script>
 <link rel="stylesheet" href="../../shared/menu.css?v=705a98bf">
 <link rel="stylesheet" href="../../shared/dialog.css?v=e0232036">
-<link rel="stylesheet" href="styles.css?v=9d96ad55">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<noscript><p>Rhythm Game — hit notes in time with music using keyboard keys. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Free online rhythm game with a story, thirty songs charted from their own music, boss duels, Free Play, Marathon and a tech tree. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to play.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
     <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="title">Title Screen</div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="library">Song List<span class="shortcut">F2</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-entry" data-action="story">Story Map...</div>
+      <div class="menu-entry" data-action="modes">Modes...</div>
+      <div class="menu-entry" data-action="tree">Tech Tree...</div>
+      <div class="menu-entry" data-action="shop">Shop...</div>
+      <div class="menu-entry" data-action="wardrobe">Collection...</div>
+      <div class="menu-entry" data-action="journal">Journal...</div>
+      <div class="menu-entry" data-action="settings">Settings and Calibration...</div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="music">Menu Music On/Off</div>
+      <div class="menu-entry" data-action="reset">Erase Progress...</div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
     <div class="menu-dropdown">
+      <div class="menu-entry" data-action="help">How to Play...</div>
       <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="about">About Rhythm Game</div>
     </div>
   </div>
 </div>
 
-<!-- Game Canvas -->
+<!-- Game Area -->
 <div class="game-frame">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
   <div class="status-section" id="statusScore">Score: 0</div>
-  <div class="status-section" id="statusCombo">Combo: 0</div>
-  <div class="status-section" id="statusSong">Select a song</div>
-</div>
-
-<!-- High Scores Dialog -->
-<div class="dialog-overlay" id="highScoresBackdrop">
-  <div class="dialog">
-    <div class="dialog-title">High Scores</div>
-    <div class="dialog-body">
-      <table class="high-scores-table">
-        <thead>
-          <tr><th>#</th><th>Song</th><th>Score</th><th>Grade</th></tr>
-        </thead>
-        <tbody id="highScoresBody"></tbody>
-      </table>
-    </div>
-    <div class="dialog-buttons">
-      <button data-result="reset" type="button">Reset</button>
-      <button data-result="ok" data-default type="button">OK</button>
-    </div>
-  </div>
+  <div class="status-section" id="statusLevel">Combo: 0</div>
+  <div class="status-section" id="statusLines">Accuracy: -</div>
+  <div class="status-section" id="statusState">Title</div>
 </div>
 
 <!-- Controls Dialog -->
 <div class="dialog-overlay" id="controlsBackdrop">
-  <div class="dialog">
+  <div class="dialog" style="width: 460px;">
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>D / F / J / K</td><td>Hit notes in lanes 1-4</td></tr>
-        <tr><td>Enter</td><td>Select song / Continue</td></tr>
-        <tr><td>Arrow Up/Down</td><td>Navigate song list</td></tr>
-        <tr><td>F2</td><td>New game / Back to song select</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
+        <tr><td>D F J K / arrows</td><td>Hit lanes 1-4 (hold for long notes)</td></tr>
+        <tr><td>Space</td><td>Unleash Surge</td></tr>
+        <tr><td>Mouse / touch</td><td>Press a lane; tap the Surge button</td></tr>
+        <tr><td>Esc / P</td><td>Pause</td></tr>
+        <tr><td>R</td><td>Retry (paused or on the results)</td></tr>
+        <tr><td>Arrows / Enter</td><td>Move through menus and choose</td></tr>
+        <tr><td>F2</td><td>Song list</td></tr>
+        <tr><td>Click / any key</td><td>Next cinematic line (Esc skips)</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -106,13 +102,9 @@
   <div class="dialog">
     <div class="dialog-title">About Rhythm Game</div>
     <div class="dialog-body">
-      <strong>Rhythm Game</strong><br><br>
-      Hit falling notes in time with music! Use D/F/J/K keys to hit notes
-      as they reach the hit zone. Timing accuracy determines your score:
-      Perfect, Great, Good, or Miss. Build combos for score multipliers.
-      Features 6 songs, final letter grades (S/A/B/C/D), neon glow effects,
-      particle explosions, screen flash, BPM-synced background pulse, note
-      trails, and an elastic combo counter.<br><br>
+      <strong>Rhythm Game: The Hush</strong><br><br>
+      A silence has swallowed the music of Hush City. Play it back to life with Lyra Vale and her drone metronome Metro, from the Neon Docks to the Crown Spire - every note is charted from the song you hear.<br><br>
+      Free Play in four difficulties, Marathon, the Daily Mix, Zen, Boss Rush and the Remix Tour, power-ups and Surge, a tech tree, a shop with Record Crates and seasonal festivals. Songs in progress save themselves.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -122,50 +114,69 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Rhythm Game - Free Online Music Note Highway Game with Combos</h1>
-<p>Hit falling notes in time with procedurally generated music using D/F/J/K keys. Build combos for score multipliers, earn letter grades (S/A/B/C/D), and enjoy neon glow effects, particle explosions, and BPM-synced visuals across 6 songs.</p>
+<h1>Rhythm Game: The Hush - Free Online Rhythm Game with a Story</h1>
+<p>Hit notes in four lanes in time with music composed live in your browser, across five districts of Hush City - the Neon Docks, the Glass Gardens, the Rust Foundry, the Undertow Club and the Crown Spire - with thirty songs, five boss duels and cinematics.</p>
 <h2>Features</h2>
 <ul>
-<li>4-lane note highway with smooth falling notes and timing accuracy grading</li>
-<li>Timing judgments: Perfect, Great, Good, and Miss with visual feedback</li>
-<li>Combo and multiplier system (x2/x3/x4) with milestone celebrations at 10, 30, 50, 100</li>
-<li>6 built-in songs with procedural music via Web Audio API</li>
-<li>Final letter grades: S, A, B, C, D based on performance</li>
-<li>Neon glow effects on lanes, notes, hit zone, and combo counter</li>
-<li>Multi-layered particle explosions scaled by timing accuracy</li>
-<li>Screen flash on Perfect hits and combo milestones</li>
-<li>Note comet-tail trails and neon trail particle systems</li>
-<li>BPM-synced background pulse with radial vignette</li>
-<li>Mouse and keyboard input support</li>
-<li>Persistent high scores per song via localStorage</li>
+<li>Charts built from the music you hear: kick, snare, bass line and melody</li>
+<li>Perfect, Great and Good judgements with Early/Late and audio calibration</li>
+<li>Holds, chords, Hush notes to avoid and drift notes that slide between lanes</li>
+<li>Star phrases and Surge, shield, heart, magnet and multiplier pickups, boosters</li>
+<li>Five boss duels with telegraphed attacks: Bass Drop, Glass Fog, Hammerfall, Riptide and Silence</li>
+<li>Free Play in Easy, Normal, Hard and Expert with practice speeds and song mastery</li>
+<li>Marathon, Daily Mix, Zen, Boss Rush, Weekly Remix and the Remix Tour</li>
+<li>Tech tree, shop, Record Crates, performers, note skins, highways and hit effects</li>
+<li>Seasonal festivals, daily quests, streaks, levels, Fame and achievements</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
 
 <script src="../../shared/menu.js?v=70dc8e82"></script>
 <script src="../../shared/dialog.js?v=5f2ff829"></script>
-<script src="../../shared/game-effects.js?v=c42c41e9"></script>
-<script src="../../shared/game-autopause.js?v=71500526"></script>
 <script src="../../shared/game-audio.js?v=661cd9eb"></script>
-<script src="js/core/namespace.js?v=a9798753"></script>
-<script src="js/core/constants.js?v=c3d240d8"></script>
-<script src="js/data/songs.js?v=7d0310e9"></script>
-<script src="js/core/state.js?v=cc1fd3cd"></script>
-<script src="js/core/dom.js?v=c89f4439"></script>
-<script src="js/systems/audio.js?v=64cfe449"></script>
-<script src="js/core/rules.js?v=c79d6d3b"></script>
-<script src="js/ui/highscores.js?v=9f469e55"></script>
-<script src="js/ui/status.js?v=f4e9056f"></script>
-<script src="js/systems/scoring.js?v=fc97f5c7"></script>
-<script src="js/systems/song.js?v=e24fa7ec"></script>
-<script src="js/systems/flow.js?v=4a47825e"></script>
-<script src="js/render/lanes.js?v=09262b5d"></script>
-<script src="js/render/notes.js?v=51bb6a84"></script>
-<script src="js/render/screens.js?v=2d08ecb8"></script>
-<script src="js/render/board.js?v=88f27792"></script>
-<script src="js/ui/input.js?v=c6cb142e"></script>
-<script src="js/core/os.js?v=a8345dc9"></script>
-<script src="js/ui/menu.js?v=eccf3522"></script>
-<script src="js/app.js?v=48a8c9e1"></script>
+<script src="../../shared/game-music.js?v=b6bdb8de"></script>
+<script src="js/core/namespace.js"></script>
+<script src="js/core/constants.js"></script>
+<script src="js/core/rng.js"></script>
+<script src="js/core/data-songs.js"></script>
+<script src="js/core/chart.js"></script>
+<script src="js/core/engine.js"></script>
+<script src="js/core/bot.js"></script>
+<script src="js/core/data-worlds.js"></script>
+<script src="js/core/data-story.js"></script>
+<script src="js/core/data-meta.js"></script>
+<script src="js/core/seasons.js"></script>
+<script src="js/core/progress.js"></script>
+<script src="js/core/state.js"></script>
+<script src="js/core/save.js"></script>
+<script src="js/core/audio.js"></script>
+<script src="js/core/music.js"></script>
+<script src="js/systems/fx.js"></script>
+<script src="js/systems/conductor.js"></script>
+<script src="js/systems/cine.js"></script>
+<script src="js/systems/demo.js"></script>
+<script src="js/render/view.js"></script>
+<script src="js/render/art-kit.js"></script>
+<script src="js/render/backdrop.js"></script>
+<script src="js/render/notes-art.js"></script>
+<script src="js/render/highway.js"></script>
+<script src="js/render/actors.js"></script>
+<script src="js/render/fx-render.js"></script>
+<script src="js/ui/kit.js"></script>
+<script src="js/ui/widgets.js"></script>
+<script src="js/render/hud.js"></script>
+<script src="js/render/cine-render.js"></script>
+<script src="js/ui/screens.js"></script>
+<script src="js/systems/play.js"></script>
+<script src="js/ui/title.js"></script>
+<script src="js/ui/map.js"></script>
+<script src="js/ui/library.js"></script>
+<script src="js/ui/shop.js"></script>
+<script src="js/ui/panels.js"></script>
+<script src="js/ui/settings.js"></script>
+<script src="js/ui/input.js"></script>
+<script src="js/ui/status-bar.js"></script>
+<script src="js/render/frame.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

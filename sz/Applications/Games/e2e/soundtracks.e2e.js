@@ -14,7 +14,7 @@ const GAMES = [
   ['space-invaders', 'SpaceInvaders', 'si-'], ['platformer', 'Platformer', 'pf-'], ['physics-puzzle', 'PhysicsPuzzle', 'pp-'], ['fantasy-puzzle', 'FantasyPuzzle', 'fp-'],
   ['cooking-game', 'CookingGame', 'cg-'], ['space-racing', 'SpaceRacing', 'sr-'], ['space-farming', 'SpaceFarming', 'sf-'],
   ['card-games', 'CardGames', 'ca-'], ['fantasy-cards', 'FantasyCards', 'fc-'], ['space-puzzle', 'SpacePuzzle', 'sp-'], ['mind-puzzle', 'MindPuzzle', 'mp-'],
-  ['illusion-puzzle', 'IllusionPuzzle', 'ip-'], ['tactical-realms', 'TacticalRealms', 'tr-'],
+  ['illusion-puzzle', 'IllusionPuzzle', 'ip-'], ['tactical-realms', 'TacticalRealms', 'tr-'], ['rhythm-game', 'RhythmGame', 'rg-'],
 ].concat(process.env.SZ_SOUNDTRACKS ? JSON.parse(process.env.SZ_SOUNDTRACKS) : []);
 
 exports.run = async (t) => {

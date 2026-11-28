@@ -1,57 +1,35 @@
-/* Tunables: canvas size, lane geometry, the timing windows that grade a hit,
-   scoring values, scroll speed, state names, storage keys and the neon palette. */
+/* Tuning constants: the 1280 x 720 view plane and the highway in it, the timing windows (Perfect 45 ms,
+   Great 90 ms, Good 135 ms), judgement values and accuracy weights, the combo multiplier steps, the
+   lane keys and colours, pool sizes, storage keys (including the old game's high scores) and the UI
+   palette. Pure data. */
 ;(function() {
   'use strict';
 
   const SZ = window.SZ || (window.SZ = {});
   const NS = SZ.RhythmGame || (SZ.RhythmGame = {});
 
-  /* ── Storage ── */
-  const STORAGE_PREFIX = 'sz-rhythm-game';
+  const UI = {
+    accent: '#5af0ff', gold: '#ffd25a', good: '#7bf0a0', bad: '#ff5a7a', disc: '#ffc85a', crystal: '#c48aff', xp: '#8ab4ff',
+    text: '#f4f0ff', textDim: '#b8b0d8', textMute: '#6e6890', panelTop: 'rgba(36,22,64,0.94)', panelBottom: 'rgba(12,6,28,0.96)',
+    font: '"Trebuchet MS", "Segoe UI", Verdana, sans-serif',
+  };
 
-  const laneWidth = 900 / (4 + 2);
-
-  Object.assign(NS.constants, {
-    CANVAS_W: 900,
-    CANVAS_H: 640,
-    MAX_DT: 0.05,
-
-    /* ── Game states ── */
-    STATE_SONG_SELECT: 'SONG_SELECT',
-    STATE_PLAYING: 'PLAYING',
-    STATE_PAUSED: 'PAUSED',
-    STATE_RESULTS: 'RESULTS',
-
-    STORAGE_PREFIX: STORAGE_PREFIX,
-    STORAGE_HIGHSCORES: STORAGE_PREFIX + '-highscores',
-    MAX_HIGH_SCORES: 20,
-
-    /* ── Lane config ── */
-    LANE_COUNT: 4,
-    LANE_KEYS: ['d', 'f', 'j', 'k'],
-    LANE_COLORS: ['#f44', '#4f4', '#44f', '#ff4'],
-    LANE_LABELS: ['D', 'F', 'J', 'K'],
-    laneWidth: laneWidth,
-    LANE_START_X: laneWidth,
-    HIT_ZONE_Y: 640 - 80,
-    NOTE_RADIUS: 18,
-
-    /* ── Timing windows (seconds) — generous for casual play ── */
-    PERFECT_WINDOW: 0.07,
-    GREAT_WINDOW: 0.14,
-    GOOD_WINDOW: 0.22,
-    MISS_WINDOW: 0.32,
-
-    /* ── Scoring ── */
-    SCORE_PERFECT: 300,
-    SCORE_GREAT: 200,
-    SCORE_GOOD: 100,
-
-    /* ── Note scroll speed (pixels per second) — slower for readability ── */
-    NOTE_SPEED: 260,
-
-    /* ── Neon glow colors (brighter saturated versions of lane colors) ── */
-    NEON_COLORS: ['#ff2255', '#22ff66', '#2266ff', '#ffee22'],
-    NEON_GLOW_COLORS: ['#ff0044', '#00ff44', '#0044ff', '#ffdd00']
-  });
+  NS.constants = {
+    VIEW_W: 1280, VIEW_H: 720, TAU: Math.PI * 2,
+    LANES: 4,
+    /* the highway: hit line at HIT_Y, horizon at TOP_Y, widths at both ends */
+    HW_X: 640, HIT_Y: 610, TOP_Y: 70, HW_BOTTOM: 520, HW_TOP: 150,
+    LANE_COLORS: ['#ff4a8a', '#4ae0ff', '#7bff6a', '#ffcc3a'],
+    KEYS: [['d', 'arrowleft'], ['f', 'arrowdown'], ['j', 'arrowup'], ['k', 'arrowright']],
+    KEY_LABELS: ['D', 'F', 'J', 'K'],
+    WINDOWS: { perfect: 0.045, great: 0.09, good: 0.135 },
+    VALUES: { perfect: 300, great: 200, good: 100, hold: 60 },
+    ACC: { perfect: 1, great: 0.7, good: 0.4, miss: 0 },
+    MULT_STEPS: [10, 25, 50],
+    LOOK: 1.6, /* seconds a note is on screen at scroll speed 5 */
+    STEP: 1 / 60, MAX_DT: 0.1, AUTOSAVE: 3,
+    MAX_PARTICLES: 900, MAX_TEXTS: 40, MAX_RINGS: 48,
+    PROFILE_KEY: 'sz-rhythm-game-profile', RUN_KEY: 'sz-rhythm-game-run', LEGACY_SCORES_KEY: 'sz-rhythm-game-highscores', SAVE_VERSION: 1,
+    UI,
+  };
 })();
